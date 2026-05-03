@@ -1,0 +1,57 @@
+[package]
+name = "cocoa_dom"
+version = "0.1.0"
+authors = ["Seph Gentle"]
+license = "MIT"
+description = "DOM-shaped façade over Cocoa/AppKit, used by tachys/leptos to render native macOS UIs."
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+send_wrapper = { workspace = true, default-features = true }
+
+[dev-dependencies]
+reactive_graph = { workspace = true, features = ["effects"] }
+tachys = { workspace = true, features = ["reactive_graph"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+dispatch2 = "0.3"
+any_spawner = { workspace = true }
+futures = { workspace = true, default-features = true }
+taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "block_layout", "taffy_tree"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSGeometry",
+    "NSString",
+    "NSObjCRuntime",
+    "NSThread",
+] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSWindow",
+    "NSView",
+    "NSResponder",
+    "NSButton",
+    "NSControl",
+    "NSText",
+    "NSTextField",
+    "NSSecureTextField",
+    "NSSlider",
+    "NSPopUpButton",
+    "NSCell",
+    "NSColor",
+    "NSGraphics",
+    "NSEvent",
+    "NSRunningApplication",
+    "NSStackView",
+    "NSImage",
+    "NSImageView",
+    "NSEvent",
+    "NSMenu",
+    "NSMenuItem",
+] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+] }

@@ -31,6 +31,28 @@ where
     }
 }
 
+// macOS-only escape hatches: the cocoa builders accept attribute
+// values that aren't web `AttributeValue`s (e.g. `Vec<&str>` for
+// `<pop_up_button items=...>`). The view! macro wraps every non-
+// literal attribute value through `into_attribute_value`, so we
+// need direct `IntoAttributeValue` impls for these types whose
+// Output is the type itself.
+#[cfg(target_os = "macos")]
+impl IntoAttributeValue for Vec<&'static str> {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl IntoAttributeValue for Vec<String> {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
 /// A possible value for an HTML attribute.
 pub trait AttributeValue: Send {
     /// The state that should be retained between building and rebuilding.

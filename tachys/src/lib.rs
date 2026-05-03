@@ -17,6 +17,7 @@
 
 /// Commonly-used traits.
 pub mod prelude {
+    #[cfg(not(target_os = "macos"))]
     pub use crate::{
         html::{
             attribute::{
@@ -34,45 +35,76 @@ pub mod prelude {
             element::{ElementChild, ElementExt, InnerHtmlAttribute},
             node_ref::NodeRefAttribute,
         },
-        renderer::{dom::Dom, Renderer},
+        renderer::dom::Dom,
+    };
+
+    pub use crate::{
+        renderer::Renderer,
         view::{
             add_attr::AddAnyAttr,
             any_view::{AnyView, IntoAny, IntoMaybeErased},
             IntoRender, Mountable, Render, RenderHtml,
         },
     };
+
+    // Native: re-export the cocoa renderer alias as `Dom` so existing
+    // `use prelude::Dom` sites keep resolving on macOS.
+    #[cfg(target_os = "macos")]
+    pub use crate::renderer::cocoa::Dom;
+
+    #[cfg(target_os = "macos")]
+    pub use crate::html::attribute::{
+        any_attribute::IntoAnyAttribute, IntoAttributeValue,
+    };
 }
 
+#[cfg(not(target_os = "macos"))]
 use wasm_bindgen::JsValue;
+#[cfg(not(target_os = "macos"))]
 use web_sys::Node;
 
-/// Helpers for interacting with the DOM.
+/// Cocoa-flavoured element builders (macOS only). Requires the
+/// `reactive_graph` feature — the builder API uses `RenderEffect` to
+/// install reactive attribute values automatically.
+#[cfg(all(target_os = "macos", feature = "reactive_graph"))]
+pub mod cocoa;
+/// Helpers for interacting with the DOM (web only).
+#[cfg(not(target_os = "macos"))]
 pub mod dom;
 /// Types for building a statically-typed HTML view tree.
 pub mod html;
 /// Supports adding interactivity to HTML.
 pub mod hydration;
-/// Types for MathML.
+/// Types for MathML (web only).
+#[cfg(not(target_os = "macos"))]
 pub mod mathml;
 /// Defines various backends that can render views.
 pub mod renderer;
 /// Rendering views to HTML.
 pub mod ssr;
-/// Types for SVG.
+/// Types for SVG (web only).
+#[cfg(not(target_os = "macos"))]
 pub mod svg;
+/// On macOS, `tachys::svg` is a thin facade — the macro emits
+/// `tachys::svg::view()` for `<view>` tags (since `view` is a real
+/// SVG tag), and we re-route that to our Cocoa view builder.
+#[cfg(target_os = "macos")]
+pub mod svg_macos;
+#[cfg(target_os = "macos")]
+pub use svg_macos as svg;
 /// Core logic for manipulating views.
 pub mod view;
 
 pub use either_of as either;
-#[cfg(feature = "islands")]
+#[cfg(all(feature = "islands", not(target_os = "macos")))]
 #[doc(hidden)]
 pub use wasm_bindgen;
-#[cfg(feature = "islands")]
+#[cfg(all(feature = "islands", not(target_os = "macos")))]
 #[doc(hidden)]
 pub use web_sys;
 
 /// View implementations for the `oco_ref` crate (cheaply-cloned string types).
-#[cfg(feature = "oco")]
+#[cfg(all(feature = "oco", not(target_os = "macos")))]
 pub mod oco;
 /// View implementations for the `reactive_graph` crate.
 #[cfg(feature = "reactive_graph")]
@@ -81,6 +113,7 @@ pub mod reactive_graph;
 /// A type-erased container.
 pub mod erased;
 
+#[cfg(not(target_os = "macos"))]
 pub(crate) trait UnwrapOrDebug {
     type Output;
 
@@ -93,6 +126,7 @@ pub(crate) trait UnwrapOrDebug {
     ) -> Option<Self::Output>;
 }
 
+#[cfg(not(target_os = "macos"))]
 impl<T> UnwrapOrDebug for Result<T, JsValue> {
     type Output = T;
 

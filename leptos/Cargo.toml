@@ -144,6 +144,10 @@ rustc_version = { workspace = true, default-features = true }
 [target.'cfg(erase_components)'.dependencies]
 leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
 
+# macOS-native deps used by `mount_macos`.
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa_dom = { path = "../cocoa_dom", version = "0.1.0" }
+
 [package.metadata.cargo-all-features]
 denylist = [
   "tracing",

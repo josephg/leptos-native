@@ -25,6 +25,9 @@ members = [
   "server_fn/server_fn_macro_default",
   "tachys",
 
+  # macos-native port
+  "cocoa_dom",
+
   # integrations
   "integrations/actix",
   "integrations/axum",
