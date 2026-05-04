@@ -422,11 +422,15 @@ impl Element {
             }
             "placeholder" => {
                 if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
-                    entry.set_placeholder_text(Some(value));
+                    if entry.placeholder_text().as_deref() != Some(value) {
+                        entry.set_placeholder_text(Some(value));
+                    }
                 } else if let Some(entry) =
                     widget.downcast_ref::<gtk4::PasswordEntry>()
                 {
-                    entry.set_placeholder_text(Some(value));
+                    if entry.placeholder_text().as_deref() != Some(value) {
+                        entry.set_placeholder_text(Some(value));
+                    }
                 }
             }
             _ => { /* silently ignored */ }
@@ -541,7 +545,7 @@ impl Element {
         if let Some(scale) = widget.downcast_ref::<gtk4::Scale>() {
             let cb = cb.clone();
             scale.connect_value_changed(move |_| {
-                if let Ok(mut cb) = cb.lock() {
+                if let Ok(mut cb) = cb.try_lock() {
                     cb();
                 }
             });
@@ -551,7 +555,7 @@ impl Element {
         if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
             let cb = cb.clone();
             check.connect_toggled(move |_| {
-                if let Ok(mut cb) = cb.lock() {
+                if let Ok(mut cb) = cb.try_lock() {
                     cb();
                 }
             });
@@ -560,7 +564,7 @@ impl Element {
         // DropDown selection change.
         if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
             dd.connect_selected_notify(move |_| {
-                if let Ok(mut cb) = cb.lock() {
+                if let Ok(mut cb) = cb.try_lock() {
                     cb();
                 }
             });
@@ -726,9 +730,13 @@ impl Text {
 /// representation. Used by tachys to anchor dynamic content (the
 /// moral equivalent of an HTML comment node used as a marker).
 ///
-/// Backed by a hidden `gtk::Box` (zero spacing, not visible). A hidden
-/// widget is removed from layout entirely on GTK, so there's no need
-/// for the `position: Absolute` Taffy hack used in `cocoa_dom`.
+/// Backed by a hidden `gtk::Label`. A hidden widget is removed from
+/// layout entirely on GTK, so there's no need for the `position:
+/// Absolute` Taffy hack used in `cocoa_dom`. We use a label rather
+/// than a Box because a label cannot accept children — if tachys
+/// incorrectly tries to mount content under a placeholder, GTK will
+/// error at the widget level rather than silently rendering visible
+/// children under an invisible container.
 #[derive(Clone, Debug)]
 pub struct Placeholder {
     node: Node,
@@ -749,7 +757,11 @@ impl Placeholder {
     }
 
     pub fn create() -> Self {
-        let widget = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        // Use a label rather than a box for the placeholder: a label
+        // cannot accept children, so if tachys ever incorrectly mounts
+        // something under a placeholder, GTK will error rather than
+        // silently creating a visible child of an invisible widget.
+        let widget = gtk4::Label::new(None::<&str>);
         widget.set_visible(false);
         Placeholder {
             node: Node::from_widget(widget, NodeKind::Placeholder),

@@ -10,11 +10,14 @@
 //!   - per-control `BindAttribute` impls that wire up the right
 //!     GTK signal observer on the way in and an Effect on the way out.
 //!
-//! On GTK, two-way binding uses `glib::signal_handler_block` /
-//! `signal_handler_unblock` around the outbound (signal → setter)
-//! handler during inbound (Effect → widget) writes, so the inverse
-//! round-trip never fires. This is more robust than cocoa's
-//! target/action overwrite model, which is inherently single-handler.
+//! GTK4 does not fire `changed` / `value-changed` / `toggled` on
+//! programmatic widget modification (only on user interaction). The
+//! diff-first guards in `set_attribute`/`set_bool_attribute` are
+//! belt-and-braces. No explicit signal-blocking via
+//! `signal_handler_block` is needed — this is simpler than the
+//! macOS port, where the two-way cycle requires explicit diffing
+//! because AppKit DOES fire action messages on programmatic state
+//! changes.
 
 #![allow(missing_docs)]
 

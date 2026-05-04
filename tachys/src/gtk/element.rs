@@ -51,7 +51,10 @@ impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
 // ---------------------------------------------------------------------
 
 pub struct View<Children> {
-    flex_direction: Option<gtk_dom::gtk::Orientation>,
+    /// Tag passed to `GtkElement::create` at build time.
+    /// `"vstack"` / `"hstack"` / `"view"` — controls the Box
+    /// orientation.
+    tag: &'static str,
     padding: Option<f32>,
     gap: Option<f32>,
     flex_grow: Option<f32>,
@@ -60,7 +63,7 @@ pub struct View<Children> {
 
 pub fn view() -> View<()> {
     View {
-        flex_direction: None,
+        tag: "view",
         padding: None,
         gap: None,
         flex_grow: None,
@@ -69,13 +72,6 @@ pub fn view() -> View<()> {
 }
 
 impl<Ch> View<Ch> {
-    pub fn flex_direction(self, _dir: FlexDirection) -> Self {
-        // Orientation is set at create time via tag; this method
-        // exists for cocoa API parity and does nothing on GTK —
-        // use `<vstack>` or `<hstack>` instead.
-        self
-    }
-
     pub fn padding(mut self, p: f32) -> Self {
         self.padding = Some(p);
         self
@@ -93,7 +89,7 @@ impl<Ch> View<Ch> {
 
     pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh)> {
         View {
-            flex_direction: self.flex_direction,
+            tag: self.tag,
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
@@ -109,13 +105,10 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = GtkElement::create("view");
+        let el = GtkElement::create(self.tag);
         let widget = el.widget();
 
         if let Some(box_) = widget.downcast_ref::<gtk_dom::gtk::Box>() {
-            // If an explicit orientation tag was used during create (e.g.
-            // hstack/vstack), the tag already set orientation. For plain
-            // `<view>`, it defaulted to Vertical.
             if let Some(p) = self.padding {
                 let px = p as i32;
                 box_.set_margin_top(px);
@@ -148,10 +141,10 @@ where
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-/// Vertical stack — a container with default vertical orientation.
+/// Vertical stack — `gtk::Box::new(Vertical, 0)`.
 pub fn vstack() -> View<()> {
     View {
-        flex_direction: None,
+        tag: "vstack",
         padding: None,
         gap: None,
         flex_grow: None,
@@ -159,10 +152,10 @@ pub fn vstack() -> View<()> {
     }
 }
 
-/// Horizontal stack — a container with horizontal orientation.
+/// Horizontal stack — `gtk::Box::new(Horizontal, 0)`.
 pub fn hstack() -> View<()> {
     View {
-        flex_direction: None,
+        tag: "hstack",
         padding: None,
         gap: None,
         flex_grow: None,
@@ -174,9 +167,6 @@ pub fn hstack() -> View<()> {
 pub fn stack_view() -> View<()> {
     vstack()
 }
-
-// Re-export layout enums for cocoa API parity.
-pub use gtk_dom::gtk::Orientation as FlexDirection;
 
 // ---------------------------------------------------------------------
 // button()
