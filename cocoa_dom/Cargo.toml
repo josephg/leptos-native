@@ -12,7 +12,7 @@ send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
-tachys = { workspace = true, features = ["reactive_graph"] }
+tachys = { workspace = true, features = ["reactive_graph", "native-ui"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

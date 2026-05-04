@@ -63,6 +63,9 @@ rustc_version = { workspace = true, default-features = true }
 tracing = ["dep:tracing"]
 ssr = ["dep:percent-encoding"]
 nightly = []
+# Defensive: when native-ui is enabled in a build that happens to
+# include this crate, lib.rs is gated to empty (it's web-only).
+native-ui = []
 
 [package.metadata.docs.rs]
 all-features = true

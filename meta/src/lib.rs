@@ -1,3 +1,10 @@
+// leptos_meta drives `<head>` tags (`<title>`, `<meta>`, `<link>`,
+// `<script>`, `<style>`). It targets the browser DOM; on native UI
+// targets — macOS (Cocoa) and Linux (GTK) — there is no document
+// head, so we compile the whole crate to an empty rlib. The
+// `leptos_native` cfg is emitted by `build.rs`; see
+// ../../tachys/build.rs for the rationale.
+#![cfg(not(leptos_native))]
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 

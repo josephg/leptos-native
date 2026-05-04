@@ -178,14 +178,17 @@ pub mod prelude {
         // Web-only modules. These either import web-sys types directly
         // or pull in tachys submodules that are cfg'd-out on macOS.
         // The macOS port provides Cocoa-flavoured equivalents elsewhere.
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(leptos_native))]
         pub use crate::{form::*, hydration::*, mount::*};
 
         // The macOS-side mount entry point. Lives in the same module
         // namespace so user code can write `use leptos::prelude::*;
-        // mount_to_window(...)`.
-        #[cfg(target_os = "macos")]
+        // mount_to_window(...)`. Requires the `native-ui` feature.
+        #[cfg(all(target_os = "macos", leptos_native))]
         pub use crate::mount_macos::*;
+        // The Linux-side mount entry point — same shape.
+        #[cfg(all(target_os = "linux", leptos_native))]
+        pub use crate::mount_gtk::*;
 
         // macOS analog of `leptos_dom::helpers::set_interval_with_handle`
         // (web's setInterval). Backed by NSTimer; same signature so
@@ -212,7 +215,7 @@ pub mod prelude {
         pub use cocoa_dom::{local_storage, Storage, StorageError};
 
         pub use leptos_config::*;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(leptos_native))]
         pub use leptos_dom::helpers::*;
         pub use leptos_macro::*;
         pub use leptos_server::*;
@@ -231,14 +234,18 @@ pub mod prelude {
             error::{FromServerFnError, ServerFnError, ServerFnErrorErr},
         };
         // tachys::reactive_graph::{bind, node_ref} are cfg'd-out on
-        // macOS; only re-export them on the web target.
-        #[cfg(not(target_os = "macos"))]
+        // native targets; only re-export them on the web target.
+        #[cfg(not(leptos_native))]
         pub use tachys::reactive_graph::{
             bind::BindAttribute, node_ref::*, Suspend,
         };
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", leptos_native))]
         pub use tachys::{
             cocoa::BindAttribute, reactive_graph::Suspend,
+        };
+        #[cfg(all(target_os = "linux", leptos_native))]
+        pub use tachys::{
+            gtk::BindAttribute, reactive_graph::Suspend,
         };
         pub use tachys::view::{
             fragment::Fragment, template::ViewTemplate,
@@ -250,7 +257,7 @@ pub mod prelude {
 /// Components used for working with HTML forms, like `<ActionForm>`.
 /// Web-only — AppKit form controls are wired through the Cocoa
 /// element module instead.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod form;
 
 /// A standard way to wrap functions and closures to pass them to components.
@@ -275,13 +282,13 @@ pub mod error {
 
 /// Control-flow components like `<Show>`, `<For>`, and `<Await>`.
 pub mod control_flow {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(leptos_native))]
     pub use crate::animated_show::*;
     pub use crate::{await_::*, for_loop::*, show::*, show_let::*};
 }
 // `animated_show` uses leptos_dom::helpers::set_timeout_with_handle
 // which is web-only.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 mod animated_show;
 mod await_;
 mod for_loop;
@@ -290,12 +297,12 @@ mod show_let;
 
 /// A component that allows rendering a component somewhere else.
 /// Web-only — uses `leptos_dom::helpers::document()`.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod portal;
 
 /// Components to enable server-side rendering and client-side
 /// hydration. Web-only.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod hydration;
 
 /// Utilities for exporting nonces to be used for a Content Security Policy.
@@ -328,13 +335,17 @@ mod provider;
 #[doc(inline)]
 pub use tachys;
 /// Tools to mount an application to the DOM, or to hydrate it from server-rendered HTML.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod mount;
 /// Tools to mount an application to a native macOS window. The
 /// AppKit-flavoured analogue of [`mount`](self::mount); see
-/// `mount_to_window`.
-#[cfg(target_os = "macos")]
+/// `mount_to_window`. Requires the `native-ui` feature.
+#[cfg(all(target_os = "macos", leptos_native))]
 pub mod mount_macos;
+/// Tools to mount an application to a native GTK window on Linux.
+/// Same shape as [`mount_macos`]; see `mount_to_window`.
+#[cfg(all(target_os = "linux", leptos_native))]
+pub mod mount_gtk;
 #[doc(inline)]
 pub use leptos_config as config;
 #[doc(inline)]
@@ -357,24 +368,31 @@ pub use leptos_server as server;
 #[doc(inline)]
 pub use tachys::html::attribute as attr;
 /// HTML element types. Web-only — on macOS the parallel Cocoa
-/// element builders live in `tachys::cocoa`.
-#[cfg(not(target_os = "macos"))]
+/// element builders live in `tachys::cocoa`; on Linux in
+/// `tachys::gtk`.
+#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::html::element as html;
 /// Cocoa-flavoured element builders (macOS analogue of `html`).
-#[cfg(target_os = "macos")]
+/// Requires the `native-ui` feature.
+#[cfg(all(target_os = "macos", leptos_native))]
 #[doc(inline)]
 pub use tachys::cocoa as cocoa;
+/// GTK-flavoured element builders (Linux analogue of `html`).
+/// Requires the `native-ui` feature.
+#[cfg(all(target_os = "linux", leptos_native))]
+#[doc(inline)]
+pub use tachys::gtk as gtk;
 /// HTML event types.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 #[doc(no_inline)]
 pub use tachys::html::event as ev;
 /// MathML element types.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::mathml as math;
 /// SVG element types.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::svg;
 

@@ -1,14 +1,14 @@
 /// A type-erased `AnyAttribute`.
 pub mod any_attribute;
 /// Types for ARIA attributes (web only — uses HTML element types).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod aria;
 /// Types for custom attributes (web only).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod custom;
 /// Traits to define global attribute methods on all HTML elements
 /// (web only — uses HTML element types).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod global;
 mod key;
 pub(crate) mod maybe_next_attr_erasure_macros;
@@ -20,8 +20,9 @@ pub use key::*;
 // macOS-only: bind:selection=signal on <pop_up_button> emits
 // `.bind(::leptos::attr::Selection, signal)`. The Selection key
 // is defined in `tachys::cocoa::bind`; re-export it here so the
-// macro's path resolves.
-#[cfg(target_os = "macos")]
+// macro's path resolves. Requires the `native-ui` feature (otherwise
+// `tachys::cocoa` itself isn't compiled).
+#[cfg(all(target_os = "macos", leptos_native))]
 pub use crate::cocoa::bind::Selection;
 use maybe_next_attr_erasure_macros::{
     next_attr_combine, next_attr_output_type,

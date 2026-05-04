@@ -8,9 +8,6 @@ publish = false
 name = "stores_macos"
 path = "src/main.rs"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-leptos = { path = "../../leptos", default-features = false }
-reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }
 reactive_stores = { path = "../../reactive_stores" }
-reactive_stores_macro = { path = "../../reactive_stores_macro" }
-tachys = { path = "../../tachys", features = ["reactive_graph"] }

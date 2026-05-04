@@ -1,19 +1,25 @@
 use crate::view::Mountable;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use crate::view::ToTemplate;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use std::borrow::Cow;
 use std::{fmt::Debug, marker::PhantomData};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use wasm_bindgen::JsValue;
 
 /// A DOM renderer (web target).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod dom;
 
-/// A Cocoa/AppKit renderer (macOS target).
-#[cfg(target_os = "macos")]
+/// A Cocoa/AppKit renderer (macOS target). Requires the `native-ui`
+/// feature; otherwise tachys uses the web renderer even on macOS.
+#[cfg(all(target_os = "macos", leptos_native))]
 pub mod cocoa;
+
+/// A GTK4 renderer (Linux target). Requires the `native-ui` feature;
+/// otherwise tachys uses the web renderer even on Linux.
+#[cfg(all(target_os = "linux", leptos_native))]
+pub mod gtk;
 
 /// The renderer being used for the application.
 ///
@@ -27,23 +33,31 @@ pub mod cocoa;
 /// future, so to the extent possible the rest of the crate tries to stick to using
 /// [`Renderer`].
 /// methods rather than directly manipulating the DOM inline.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub type Rndr = dom::Dom;
 /// Renderer alias for the macOS target — points at the Cocoa/AppKit backend.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", leptos_native))]
 pub type Rndr = cocoa::Dom;
+/// Renderer alias for the Linux target — points at the GTK4 backend.
+#[cfg(all(target_os = "linux", leptos_native))]
+pub type Rndr = gtk::Dom;
 
 /// Types used by the renderer.
 ///
 /// See [`Rndr`] for additional information on this rendering approach.
 pub mod types {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(leptos_native))]
     pub use super::dom::{
         ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
         TemplateElement, Text,
     };
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", leptos_native))]
     pub use super::cocoa::{
+        ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
+        TemplateElement, Text,
+    };
+    #[cfg(all(target_os = "linux", leptos_native))]
+    pub use super::gtk::{
         ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
         TemplateElement, Text,
     };
@@ -150,7 +164,7 @@ pub struct RemoveEventHandler<T>(
 
 // `new` and `into_inner` are only used by the web renderer; on
 // native we never construct or unwrap a RemoveEventHandler this way.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl<T> RemoveEventHandler<T> {
     /// Creates a new container with a function that will be called when it is dropped.
     pub(crate) fn new(remove: impl FnOnce() + Send + Sync + 'static) -> Self {
@@ -179,7 +193,7 @@ impl<T> Drop for RemoveEventHandler<T> {
 /// concepts that have no native counterpart. On macOS we cfg it out
 /// entirely; the renderer-specific behaviour we still need (events,
 /// styles) lives directly on `cocoa::Dom` as inherent methods.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub trait DomRenderer: Renderer {
     /// Generic event type, from which any specific event can be converted.
     type Event;

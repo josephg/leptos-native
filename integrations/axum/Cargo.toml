@@ -52,6 +52,10 @@ default = [
 ]
 islands-router = ["tachys/islands"]
 tracing = ["dep:tracing"]
+# Defensive: when native-ui is enabled in a build that happens to
+# include this crate, lib.rs is gated to empty (it's web-only — an
+# Axum SSR integration).
+native-ui = []
 
 [package.metadata.docs.rs]
 all-features = true

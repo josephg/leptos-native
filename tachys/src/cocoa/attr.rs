@@ -115,11 +115,10 @@ where
 /// Drives `apply` whenever the underlying signal(s) change.
 ///
 /// For `Static`, calls `apply(value)` once and returns `None`.
-/// For `Reactive`, builds a `RenderEffect` that calls `apply(closure())`
-/// on every reactive run; returns the effect so the caller can keep it
-/// alive (drop = unsubscribe). The first run happens synchronously
-/// inside the constructor, so the initial value is set before this
-/// returns.
+/// For `Reactive`, builds a [`RenderEffect`] that calls
+/// `apply(closure())` on every reactive run. The effect's internal
+/// constructor runs the closure synchronously inside the reactive
+/// observer, so the initial value is set before this returns.
 pub fn install<T: 'static>(
     value: MaybeReactive<T>,
     mut apply: impl FnMut(T) + 'static,

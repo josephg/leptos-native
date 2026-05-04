@@ -8,7 +8,5 @@ publish = false
 name = "persistent_counter_macos"
 path = "src/main.rs"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-leptos = { path = "../../leptos", default-features = false }
-reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
-tachys = { path = "../../tachys", features = ["reactive_graph"] }
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }

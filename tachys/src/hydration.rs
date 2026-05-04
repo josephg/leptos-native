@@ -5,7 +5,7 @@ use crate::{
 #[cfg(any(debug_assertions, leptos_debuginfo))]
 use std::cell::Cell;
 use std::{cell::RefCell, panic::Location, rc::Rc};
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use web_sys::{Comment, Element, Node, Text};
 
 #[cfg(feature = "mark_branches")]
@@ -144,7 +144,7 @@ thread_local! {
     static CURRENTLY_HYDRATING: Cell<Option<&'static Location<'static>>> = const { Cell::new(None) };
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) fn set_currently_hydrating(
     location: Option<&'static Location<'static>>,
 ) {
@@ -158,7 +158,7 @@ pub(crate) fn set_currently_hydrating(
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_element(tag_name: &str, node: Node) -> Element {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {
@@ -191,7 +191,7 @@ pub(crate) fn failed_to_cast_element(tag_name: &str, node: Node) -> Element {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_marker_node(node: Node) -> Comment {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {
@@ -227,24 +227,24 @@ pub(crate) fn failed_to_cast_marker_node(node: Node) -> Comment {
 /// Stub for the native target. The text-node cast can fail on the web
 /// when SSR HTML and client view tree disagree; on native there is no
 /// SSR, so this should be unreachable.
-#[cfg(target_os = "macos")]
+#[cfg(leptos_native)]
 pub(crate) fn failed_to_cast_text_node(
     _node: crate::renderer::types::Node,
 ) -> crate::renderer::types::Text {
     panic!(
         "failed_to_cast_text_node called on native — hydration is not \
-         supported on macOS (see implementation_log.md)"
+         supported on native targets (see implementation_log.md)"
     );
 }
 
 /// Stub for the native target. See [`failed_to_cast_text_node`] above.
-#[cfg(target_os = "macos")]
+#[cfg(leptos_native)]
 pub(crate) fn failed_to_cast_marker_node(
     _node: crate::renderer::types::Node,
 ) -> crate::renderer::types::Placeholder {
     panic!(
         "failed_to_cast_marker_node called on native — hydration is not \
-         supported on macOS (see implementation_log.md)"
+         supported on native targets (see implementation_log.md)"
     );
 }
 
@@ -252,7 +252,7 @@ pub(crate) fn failed_to_cast_marker_node(
 /// Unreachable on native (hydration is stubbed there); kept so the
 /// type-check passes for the call sites in `html/element/mod.rs` even
 /// though those call sites are themselves cfg'd-out on native.
-#[cfg(target_os = "macos")]
+#[cfg(leptos_native)]
 #[allow(dead_code)]
 pub(crate) fn failed_to_cast_element(
     _tag_name: &str,
@@ -260,11 +260,11 @@ pub(crate) fn failed_to_cast_element(
 ) -> crate::renderer::types::Element {
     panic!(
         "failed_to_cast_element called on native — hydration is not \
-         supported on macOS (see implementation_log.md)"
+         supported on native targets (see implementation_log.md)"
     );
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_text_node(node: Node) -> Text {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {

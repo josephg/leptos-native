@@ -32,6 +32,8 @@ default = []
 tracing = ["dep:tracing"]
 trace-component-props = ["dep:serde", "dep:serde_json"]
 hydration = ["reactive_graph/hydration"]
+# Activates the native UI rendering backend. Propagates to tachys.
+native-ui = ["tachys/native-ui"]
 
 [package.metadata.docs.rs]
 all-features = true

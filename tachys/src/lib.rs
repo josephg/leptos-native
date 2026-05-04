@@ -17,7 +17,7 @@
 
 /// Commonly-used traits.
 pub mod prelude {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(leptos_native))]
     pub use crate::{
         html::{
             attribute::{
@@ -48,63 +48,95 @@ pub mod prelude {
     };
 
     // Native: re-export the cocoa renderer alias as `Dom` so existing
-    // `use prelude::Dom` sites keep resolving on macOS.
-    #[cfg(target_os = "macos")]
+    // `use prelude::Dom` sites keep resolving on macOS. Only active
+    // when the `native-ui` feature is enabled (otherwise the cocoa
+    // module isn't compiled).
+    #[cfg(all(target_os = "macos", leptos_native))]
     pub use crate::renderer::cocoa::Dom;
+    // Same for Linux — the GTK renderer alias is also `Dom`.
+    #[cfg(all(target_os = "linux", leptos_native))]
+    pub use crate::renderer::gtk::Dom;
 
-    #[cfg(target_os = "macos")]
+    #[cfg(leptos_native)]
     pub use crate::html::attribute::{
         any_attribute::IntoAnyAttribute, IntoAttributeValue,
     };
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use wasm_bindgen::JsValue;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use web_sys::Node;
 
 /// Cocoa-flavoured element builders (macOS only). Requires the
-/// `reactive_graph` feature — the builder API uses `RenderEffect` to
-/// install reactive attribute values automatically.
-#[cfg(all(target_os = "macos", feature = "reactive_graph"))]
+/// `native-ui` and `reactive_graph` features — the builder API uses
+/// `RenderEffect` to install reactive attribute values automatically.
+#[cfg(all(target_os = "macos", leptos_native, feature = "reactive_graph"))]
 pub mod cocoa;
+
+/// GTK-flavoured element builders (Linux only). Same shape as
+/// [`cocoa`]; see that module's docs.
+#[cfg(all(target_os = "linux", leptos_native, feature = "reactive_graph"))]
+pub mod gtk;
 /// Helpers for interacting with the DOM (web only).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod dom;
 /// Types for building a statically-typed HTML view tree.
 pub mod html;
 /// Supports adding interactivity to HTML.
 pub mod hydration;
 /// Types for MathML (web only).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod mathml;
 /// Defines various backends that can render views.
 pub mod renderer;
 /// Rendering views to HTML.
 pub mod ssr;
 /// Types for SVG (web only).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod svg;
-/// On macOS, `tachys::svg` is a thin facade — the macro emits
+/// On macOS native, `tachys::svg` is a thin facade — the macro emits
 /// `tachys::svg::view()` for `<view>` tags (since `view` is a real
 /// SVG tag), and we re-route that to our Cocoa view builder.
-#[cfg(target_os = "macos")]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub mod svg_macos;
-#[cfg(target_os = "macos")]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub use svg_macos as svg;
+/// Same pattern for GTK/Linux — the `<view>` SVG tag resolves to
+/// our GTK box container.
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod svg_gtk;
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use svg_gtk as svg;
 /// Core logic for manipulating views.
 pub mod view;
 
 pub use either_of as either;
-#[cfg(all(feature = "islands", not(target_os = "macos")))]
+#[cfg(all(feature = "islands", not(leptos_native)))]
 #[doc(hidden)]
 pub use wasm_bindgen;
-#[cfg(all(feature = "islands", not(target_os = "macos")))]
+#[cfg(all(feature = "islands", not(leptos_native)))]
 #[doc(hidden)]
 pub use web_sys;
 
 /// View implementations for the `oco_ref` crate (cheaply-cloned string types).
-#[cfg(all(feature = "oco", not(target_os = "macos")))]
+#[cfg(all(feature = "oco", not(leptos_native)))]
 pub mod oco;
 /// View implementations for the `reactive_graph` crate.
 #[cfg(feature = "reactive_graph")]
@@ -113,7 +145,7 @@ pub mod reactive_graph;
 /// A type-erased container.
 pub mod erased;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) trait UnwrapOrDebug {
     type Output;
 
@@ -126,7 +158,7 @@ pub(crate) trait UnwrapOrDebug {
     ) -> Option<Self::Output>;
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl<T> UnwrapOrDebug for Result<T, JsValue> {
     type Output = T;
 

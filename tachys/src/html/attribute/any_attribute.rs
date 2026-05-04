@@ -381,7 +381,7 @@ impl Attribute for Vec<AnyAttribute> {
                         Rndr::set_inner_html(&old.el, "");
                     }
                     NamedAttributeKey::Property(prop_name) => {
-                        #[cfg(not(target_os = "macos"))]
+                        #[cfg(not(leptos_native))]
                         Rndr::set_property(
                             &old.el,
                             &prop_name,
@@ -389,7 +389,7 @@ impl Attribute for Vec<AnyAttribute> {
                         );
                         // Property removal is a web-only concept; no-op
                         // on native (see implementation_log.md).
-                        #[cfg(target_os = "macos")]
+                        #[cfg(leptos_native)]
                         let _ = prop_name;
                     }
                     NamedAttributeKey::Attribute(key) => {
