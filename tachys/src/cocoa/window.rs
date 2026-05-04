@@ -57,17 +57,25 @@ impl<Ch> Window<Ch> {
 }
 
 #[allow(missing_docs)]
-pub struct WindowState<Ch: Mountable> {
+pub struct WindowState {
     /// The opened-window bookkeeping: NSWindow, content_root,
-    /// TaffyTree, resize delegate. Held to keep all of those alive
-    /// for as long as the WindowState exists.
+    /// TaffyTree, resize+close delegate. Held to keep all of those
+    /// alive for as long as the WindowState exists.
+    ///
+    /// The user's children aren't stored here — they're moved into
+    /// the close handler on the WindowDelegate at build time, which
+    /// runs `unmount` on them when the NSWindow fires
+    /// `windowWillClose:`. This makes per-window cleanup actually
+    /// happen on close (handlers + Taffy entries get released)
+    /// instead of leaking for the lifetime of the app.
     opened: OpenedWindow,
-    /// User's view tree, mounted under the content root.
-    children: Ch,
 }
 
-impl<Ch: Render> Render for Window<Ch> {
-    type State = WindowState<Ch::State>;
+impl<Ch: Render> Render for Window<Ch>
+where
+    Ch::State: 'static,
+{
+    type State = WindowState;
 
     fn build(self) -> Self::State {
         let mtm = MainThreadMarker::new()
@@ -89,7 +97,20 @@ impl<Ch: Render> Render for Window<Ch> {
         // Show the window after layout so we don't flash an empty one.
         opened.show(mtm);
 
-        WindowState { opened, children }
+        // Move children + content_root into a close handler that
+        // runs when AppKit fires `windowWillClose:`. Closing the
+        // window via Cmd-W, the close button, or `nswindow.close()`
+        // all funnel through there, so this is the single cleanup
+        // point per window. The closure runs on the main thread
+        // (delegate callbacks always do), so accessing the SendWrapper
+        // inside is fine.
+        let content_root_for_cleanup = opened.content_root.clone();
+        let _ = opened.delegate.install_close_handler(Box::new(move || {
+            children.unmount();
+            content_root_for_cleanup.as_node().teardown();
+        }));
+
+        WindowState { opened }
     }
 
     fn rebuild(self, _state: &mut Self::State) {
@@ -99,12 +120,11 @@ impl<Ch: Render> Render for Window<Ch> {
     }
 }
 
-impl<Ch: Mountable> Mountable for WindowState<Ch> {
+impl Mountable for WindowState {
     fn unmount(&mut self) {
-        // Children first so their Effects unsubscribe before the tree
-        // they reference goes away.
-        self.children.unmount();
-        self.opened.content_root.as_node().teardown();
+        // Programmatic close → AppKit fires windowWillClose: →
+        // delegate runs the cleanup closure (idempotent: it Option-
+        // takes its slot).
         self.opened.close();
     }
 

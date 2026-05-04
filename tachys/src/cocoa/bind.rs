@@ -14,7 +14,7 @@
 #![allow(missing_docs)]
 
 use crate::cocoa::element::{Checkbox, Label, PopUpButton, Slider, TextField};
-use cocoa_dom::Element as CocoaElement;
+use cocoa_dom::{BoolAttr, Element as CocoaElement, StringAttr};
 use reactive_graph::{
     effect::RenderEffect,
     signal::RwSignal,
@@ -122,7 +122,7 @@ pub(crate) fn install_text_field_value_bind(
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_attribute("value", &v);
+        el_for_set.set_string_attribute(StringAttr::Value, &v);
     })
 }
 
@@ -284,7 +284,7 @@ pub(crate) fn install_checkbox_checked_bind(
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_bool_attribute("checked", v);
+        el_for_set.set_bool_attribute(BoolAttr::Checked, v);
     })
 }
 

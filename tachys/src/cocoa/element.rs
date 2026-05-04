@@ -13,7 +13,7 @@ use cocoa_dom::{
         set_flex_direction, set_flex_grow, set_gap, set_padding,
         FlexDirection,
     },
-    Element as CocoaElement, Text as CocoaText,
+    BoolAttr, Element as CocoaElement, StringAttr, Text as CocoaText,
 };
 use reactive_graph::effect::RenderEffect;
 
@@ -27,11 +27,13 @@ use reactive_graph::effect::RenderEffect;
 /// effects (so they survive as long as the element is mounted), and
 /// the children's State.
 pub struct ElementState<ChildState> {
-    el: CocoaElement,
+    /// Pub for test inspection — consider using `Mountable::elements()`
+    /// in production code paths instead.
+    pub el: CocoaElement,
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
-    _effects: Vec<RenderEffect<()>>,
-    children: ChildState,
+    pub(crate) _effects: Vec<RenderEffect<()>>,
+    pub(crate) children: ChildState,
 }
 
 impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
@@ -279,14 +281,25 @@ impl Button {
     /// [`PendingHandler`](crate::html::event::PendingHandler) is
     /// pushed onto a Vec and applied during `Render::build` once
     /// the underlying NSView exists.
+    ///
+    /// The `Self: SupportsEvent<E>` bound rejects events the
+    /// element doesn't accept — `<button on:input=...>` won't
+    /// compile.
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
+        Self: crate::html::event::SupportsEvent<E>,
         E: crate::html::event::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
         self
     }
+}
+
+// Buttons fire on click (NSButton target/action).
+impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Button
+{
 }
 
 impl Render for Button {
@@ -299,7 +312,7 @@ impl Render for Button {
         // Wire the title — install handles both static and reactive.
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_attribute("title", &t);
+            el_for_title.set_string_attribute(StringAttr::Title, &t);
         }) {
             effects.push(eff);
         }
@@ -307,7 +320,7 @@ impl Render for Button {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -394,6 +407,7 @@ impl Checkbox {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
+        Self: crate::html::event::SupportsEvent<E>,
         E: crate::html::event::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
@@ -412,6 +426,12 @@ impl Checkbox {
     }
 }
 
+// A checkbox toggles on click.
+impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Checkbox
+{
+}
+
 impl Render for Checkbox {
     type State = ElementState<()>;
 
@@ -422,17 +442,17 @@ impl Render for Checkbox {
         // Title: drive via the standard install pipeline.
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_attribute("title", &t);
+            el_for_title.set_string_attribute(StringAttr::Title, &t);
         }) {
             effects.push(eff);
         }
 
         // One-way `checked=...` — install fires the closure on every
         // Effect tick with a typed bool, routed through
-        // `set_bool_attribute("checked", ...)`.
+        // `set_bool_attribute(BoolAttr::Checked, ...)`.
         let el_for_checked = el.clone();
         if let Some(eff) = install(self.checked, move |b| {
-            el_for_checked.set_bool_attribute("checked", b);
+            el_for_checked.set_bool_attribute(BoolAttr::Checked, b);
         }) {
             effects.push(eff);
         }
@@ -527,6 +547,7 @@ impl Slider {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
+        Self: crate::html::event::SupportsEvent<E>,
         E: crate::html::event::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
@@ -567,7 +588,7 @@ impl Render for Slider {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -663,6 +684,7 @@ impl PopUpButton {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
+        Self: crate::html::event::SupportsEvent<E>,
         E: crate::html::event::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
@@ -702,7 +724,7 @@ impl Render for PopUpButton {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -783,7 +805,8 @@ impl Label {
 /// Label has its own State because it wraps a `Text` rather than an
 /// `Element`, but the Mountable contract is the same shape.
 pub struct LabelState {
-    text: CocoaText,
+    /// Pub for test inspection.
+    pub text: CocoaText,
     _effects: Vec<RenderEffect<()>>,
 }
 
@@ -917,6 +940,7 @@ impl TextField {
     /// dropped (the underlying cocoa_dom call no-ops).
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
+        Self: crate::html::event::SupportsEvent<E>,
         E: crate::html::event::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
@@ -936,6 +960,19 @@ impl TextField {
     }
 }
 
+// Text fields fire on every keystroke (`input`) and on commit
+// (`change` — return key / focus loss). Click is a deliberate
+// non-event: clicking inside the field places the caret, no
+// "click" semantic equivalent.
+impl crate::html::event::SupportsEvent<crate::html::event::InputEvent>
+    for TextField
+{
+}
+impl crate::html::event::SupportsEvent<crate::html::event::ChangeEvent>
+    for TextField
+{
+}
+
 impl Render for TextField {
     type State = ElementState<()>;
 
@@ -945,13 +982,13 @@ impl Render for TextField {
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
-            el.set_attribute("placeholder", &p);
+            el.set_string_attribute(StringAttr::Placeholder, &p);
         }
 
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -960,7 +997,7 @@ impl Render for TextField {
         // Install one-way `.value(...)` if used.
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_attribute("value", &v);
+            el_for_value.set_string_attribute(StringAttr::Value, &v);
         }) {
             effects.push(eff);
         }

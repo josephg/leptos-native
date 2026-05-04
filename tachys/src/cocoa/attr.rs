@@ -19,9 +19,13 @@ use reactive_graph::effect::RenderEffect;
 /// The closure is `Send` so that `MaybeReactive<T>` itself is `Send`,
 /// which is required by leptos's `IntoView` blanket impl. Most user
 /// closures are Send already (reactive_graph signals are Send).
+///
+/// `Fn` (not `FnMut`): we only ever READ the value through this
+/// closure — `RenderEffect` re-runs the closure on each signal
+/// change to fetch a fresh value, never mutates closure state.
 pub enum MaybeReactive<T: 'static> {
     Static(T),
-    Reactive(Box<dyn FnMut() -> T + Send + 'static>),
+    Reactive(Box<dyn Fn() -> T + Send + 'static>),
 }
 
 /// Conversion trait so attribute setters can take either form
@@ -125,7 +129,7 @@ pub fn install<T: 'static>(
             apply(v);
             None
         }
-        MaybeReactive::Reactive(mut f) => {
+        MaybeReactive::Reactive(f) => {
             let effect = RenderEffect::new(move |_prev| {
                 let v = f();
                 apply(v);

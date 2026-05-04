@@ -447,7 +447,7 @@ fn measure_leaf(
         view.setFrame(original);
         fit
     } else {
-        unsafe { view.intrinsicContentSize() }
+        view.intrinsicContentSize()
     };
 
     // Editable text fields: width is NOT content-driven. The user

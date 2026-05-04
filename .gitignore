@@ -11,6 +11,7 @@ blob.rs
 .idea
 .direnv
 .envrc
+.build
 
 .vscode
 vendor

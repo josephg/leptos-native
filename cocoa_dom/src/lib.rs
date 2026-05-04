@@ -27,7 +27,9 @@ pub mod renderer;
 pub mod spawner;
 pub mod window;
 
-pub use node::{Element, Node, NodeKind, Placeholder, Text};
+pub use node::{
+    BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
+};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
 
 // Re-export the most common objc2 / objc2_app_kit types so

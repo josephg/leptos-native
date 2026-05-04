@@ -1191,3 +1191,586 @@ cases. `remove_attribute` for those names delegates to
 (integer, enum, NSColor), add a typed setter alongside (e.g.
 `set_int_attribute`, `set_color_attribute`). Don't grow
 `set_attribute` into a stringly-typed dispatch hub.
+
+
+## Typed `Attribute` enum for compile-time-checked attribute dispatch
+
+Builders previously called the renderer trait's stringly-typed
+`set_attribute("title", ...)` / `set_bool_attribute("enabled", ...)`,
+matching against the same string at the cocoa_dom layer. Typos
+were silent runtime no-ops.
+
+Added `cocoa_dom::Attribute` — an enum covering the small set of
+attributes we recognize (`Title`, `Value`, `Placeholder`,
+`Enabled`, `Hidden`, `Checked`). New typed entry points on
+`Element`:
+  * `set_string_attribute(Attribute, &str)`
+  * `set_bool_attribute(Attribute, bool)`
+  * `remove_attribute_typed(Attribute)`
+
+Each setter `match`es only the variants relevant to its value
+type; the others silently no-op. (Stricter would be two enums
+`StringAttr` / `BoolAttr` — easy to refactor later if it becomes
+a footgun.)
+
+The string-keyed `set_attribute(&str, &str)` and
+`remove_attribute(&str)` stay on `Element` because the upstream
+`Rndr` trait expects them. They now route through
+`Attribute::from_name(s)` and call the typed methods, so the
+internal match still lives on the enum.
+
+All cocoa-builder call sites (`tachys/src/cocoa/element.rs`,
+`bind.rs`) now use the typed variants. The `Rndr` trait surface
+in `cocoa_dom/src/renderer.rs` is unchanged — that one keeps
+`&str` in/out for trait conformance.
+
+**Pattern**: when an attribute name is hardcoded at the call site,
+prefer the typed enum. Reserve the string entry points for paths
+where the name is genuinely runtime-supplied (the `Rndr` trait
+surface, `from_name` parsing, debug logging).
+
+
+## Code review — events + attributes — concerns to revisit
+
+Self-review of the events/attributes layer (`cocoa_dom/src/event.rs`,
+`cocoa_dom/src/node.rs`, `tachys/src/html/event_macos.rs`,
+`tachys/src/cocoa/element.rs`, `tachys/src/cocoa/bind.rs`,
+`tachys/src/cocoa/attr.rs`). Things that work today but smell or
+will bite us later — none urgent, all worth fixing before this layer
+ossifies.
+
+### Type-safety: silent no-ops on control-type mismatch
+
+Multiple paths silently drop wiring when the underlying NSView isn't
+the expected subclass:
+  * `Element::on_click` downcasts to NSButton → no-op on non-buttons.
+    We hit this exact bug ourselves with the slider (NSSlider is a
+    sibling of NSButton, not a subclass; `on_click` did nothing).
+    Fix was `Element::on_action` (NSControl-based), but `on_click`
+    is still the path `PendingHandler::Click` uses.
+  * `PendingHandler::apply_to` routes Click → on_click, Input/Change
+    → text-field hooks. `on:click` on a `<text_field>` or `on:input`
+    on a `<button>` silently drops, no warning.
+  * `Element::on_text_change` / `on_text_end_editing` — same shape;
+    silent no-op if the view isn't NSTextField.
+
+Pattern matches the web's loose `addEventListener` shape, but here
+we know the control type at the call site (the builder type tells
+us). Could enforce at compile time per-builder (Button only accepts
+ClickEvent; TextField only accepts Input/Change/etc). At minimum,
+should `eprintln!` in debug builds when a downcast fails so the
+user gets a hint rather than silence.
+
+### Type-safety: `Attribute` enum allows runtime mismatch
+
+`Attribute` is one enum with both string- and bool-valued variants.
+`set_string_attribute(Attribute, &str)` and
+`set_bool_attribute(Attribute, bool)` each match only the relevant
+subset; passing a wrong-type variant silently no-ops.
+
+E.g. `el.set_string_attribute(Attribute::Enabled, "foo")` compiles
+and runs without warning. Stricter would be two enums (`StringAttr`
+/ `BoolAttr`); easy to refactor if it bites.
+
+### Resource lifecycle: handler retain leak
+
+`HANDLER_STORE` and `TEXT_FIELD_STORE` (thread-local
+HashMap<view_ptr, Vec<Retained<...>>>) keep delegate/target objects
+alive for the lifetime of their NSView. Cleanup is via
+`drop_handlers_for(view)` from `Node::teardown`, called from
+`Mountable::unmount`. Two concerns:
+
+  1. **Lifecycle isn't actually wired end-to-end.**
+     `mount_to_window` leaks the Owner, so `Mountable::unmount`
+     never runs in the only entry point we ship. Handlers
+     accumulate forever in long-running apps.
+  2. **Stale comment in `event.rs:108-110`** says "Currently never
+     called". It IS called now (from `Node::teardown`); the comment
+     is obsolete.
+
+### Resource lifecycle: pointer-keyed handler stores
+
+`view_key(view)` casts `&NSView` to `*const NSView as usize`.
+Stale-key risk if an NSView is freed and a new one allocated at
+the same address — the old store entry would attach to the new
+view. In practice safe because we hold `Retained<NSView>` which
+keeps refcount ≥ 1 until our entry is removed, but the contract
+is implicit. If we ever introduce weak references or allow views
+to be replaced under us, this breaks silently.
+
+Alternative: use `objc2::rc::WeakId` keys, or attach the handler
+state as an associated object on the NSView itself.
+
+### Inconsistency: button click vs text-field input fan-out
+
+Text fields support multiple handlers per event (the fan-out
+delegate's `on_input`/`on_change` are `Vec<Box<dyn FnMut(String)>>`).
+Buttons (and other NSControls) use NSControl's single target/action
+slot — calling `on_click` twice replaces the previous wiring (the
+old ActionTarget stays in the retain store but never fires).
+
+So `bind:checked` + `on:click` on the same checkbox = the second
+install wins, the first is silently dropped. Different semantics
+from text fields, no warning.
+
+### Boilerplate / duplication
+
+  * **Bound{Value,Float,Index,Checked} structs** in `bind.rs` are
+    structurally identical except for `T`. Could be one
+    `Bound<T> { getter, setter }`. Same for `install_*_value_bind`
+    /  `install_*_checked_bind` / etc.
+  * **Builder boilerplate**: Button, Checkbox, Slider, PopUpButton,
+    TextField each carry their own `Vec<PendingHandler>`,
+    `enabled: Option<MaybeReactive<bool>>`, `.on()` / `.add_any_attr()`
+    methods, and an `enabled` install block in `build()`. Plenty of
+    copy-paste; a shared trait or macro could collapse it.
+  * **`IntoMaybeReactive<T>` requires per-type impls** for both
+    `Static` and `Reactive(closure)` paths. Combinatorial as we add
+    new value types. Specialization or sealed-trait magic might
+    collapse.
+
+### Other smells / questions
+
+  * **`PendingHandler` is a closed enum** (one variant per event
+    kind). Each new event type (`on:keydown`, `on:focus`, etc.)
+    requires editing four places: marker type, EventDescriptor
+    impl, PendingHandler variant, apply_to arm. A
+    `Box<dyn ApplyToElement>` trait object would localize the
+    addition to the new event's own impl. Not urgent — events are a
+    small bounded set.
+  * **`MaybeReactive::Reactive` uses `FnMut`** where `Fn` would
+    suffice (we only ever read). FnMut works but is over-broad.
+  * **`add_any_attr` on builders only handles `OnAttribute`** —
+    spread-attribute support is event-only. If a user spreads a
+    class/style/prop attribute through `{..attr}`, it'll fail to
+    typecheck; we don't gracefully degrade.
+  * **`set_string_attribute` schedules relayout for Title/Value but
+    not Placeholder**. Placeholder text affects intrinsic width;
+    setting it mid-life could change visible size. In practice not
+    hit because placeholder is set once at build, but inconsistent
+    dirty-marking is a footgun for future reactive placeholder
+    support.
+  * **`on_button_click` is now a thin wrapper over
+    `on_control_action`**. Could be inlined / removed.
+  * **`Selection` AttributeKey lives in `cocoa::bind` and is
+    re-exported from `tachys::html::attribute`** to satisfy the
+    macro emit path (`::leptos::attr::Selection`). Awkward
+    indirection that every future cocoa-only bind key will need.
+    A small `#[cfg(target_os = "macos")] mod cocoa_keys` in the
+    attribute module might centralize them.
+  * **`Rndr` trait `set_attribute(&str, &str)` surface** is mostly
+    vestigial on macOS — cocoa builders use the typed methods
+    directly. Kept for trait conformance. May be removable once we
+    audit which generic tachys code paths actually invoke it on
+    cocoa::Dom.
+  * **Re-entrance handling with `eprintln!`**: when a callback
+    triggers another call into the same delegate, we skip with a
+    stderr message (`event.rs:184-188`, `event.rs:210-214`). Better
+    than panic but stderr noise feels wrong for a library; should
+    probably be a tracing call or feature-gated.
+
+
+## Compile-time event/attribute correctness + window cleanup
+
+Three fixes from the events+attributes review.
+
+### `SupportsEvent<E>` for compile-time event-on-builder check
+
+Added `SupportsEvent<E>` marker trait in
+`tachys/src/html/event_macos.rs`. Each builder's `.on()` method now
+takes a `Self: SupportsEvent<E>` bound. Each builder explicitly
+opts in to events it supports:
+
+  * `Button` → `ClickEvent`
+  * `Checkbox` → `ClickEvent`
+  * `TextField` (incl. secure) → `InputEvent`, `ChangeEvent`
+  * `Slider` / `PopUpButton` — no events yet (only `bind:`)
+
+Mismatched pairings now produce a compile error rather than
+silently no-oping. Verified: inserting `<button on:input=…>` errors
+with "expected `ClickEvent`, found `InputEvent`" pointing at the
+trait bound. Slight error-message awkwardness because the bound
+forces type inference rather than producing a "no impl" error
+directly, but acceptable.
+
+The spread-attribute path (`{..attr}` carrying an `OnAttribute`)
+remains type-erased — type checking there would require
+reverting to the inline `.on()` shape per attribute. Documented
+as a known limitation; mismatches there still hit cocoa_dom's
+runtime downcast and silently no-op.
+
+### Split `Attribute` → `StringAttr` + `BoolAttr`
+
+Replaced the single-enum design with two enums:
+
+  * `StringAttr { Title, Value, Placeholder }` — used with
+    `Element::set_string_attribute(StringAttr, &str)` /
+    `remove_string_attribute(StringAttr)`.
+  * `BoolAttr { Enabled, Hidden, Checked }` — used with
+    `Element::set_bool_attribute(BoolAttr, bool)` /
+    `remove_bool_attribute(BoolAttr)`.
+
+Passing the wrong-type variant to the wrong setter is now a
+compile error. The `Rndr`-trait `set_attribute(&str, &str)` and
+`remove_attribute(&str)` entry points stay (they look up both
+enums via `from_name`). The stringly-typed bool-set route
+(`set_attribute("enabled", "true")`) was deliberately dropped —
+the typed setter is the only blessed path for booleans.
+
+Earlier I went with one enum specifically to satisfy the user's
+"one CocoaAttribute enum" request; the follow-up "compile-error"
+requirement made that incompatible. Two enums won.
+
+### `windowWillClose:` cleanup hook
+
+`WindowDelegate` ivars widened from a bare `Node` to a
+`WindowDelegateState { root, on_close: RefCell<Option<...>> }`,
+and the delegate now observes `windowWillClose:` in addition to
+`windowDidResize:`. New `WindowDelegate::install_close_handler`
+sets the closure to run on close.
+
+`tachys::cocoa::window::WindowState::build` now MOVES the built
+children into a close-handler closure that calls
+`children.unmount()` + `content_root.teardown()`. The closure
+runs once when AppKit fires `windowWillClose:` (whether the user
+clicks the close button, hits Cmd-W, or calls `close()`
+programmatically). `WindowState` no longer stores `children` —
+ownership lives entirely in the delegate's closure. `WindowState`
+itself is still leaked by `mount_to_window` / `run` (the
+`Box::leak` pattern), but that's now a small fixed cost rather
+than the full reactive view tree.
+
+For multi-window apps, this means closing one window actually
+releases its handler stores, Taffy nodes, and Effect
+subscriptions — instead of accumulating for app lifetime.
+
+Verified the login_form example closes cleanly with no panics.
+Doesn't fully prove leak-freedom (no instrumentation for that
+yet), but the code path runs and the AppKit teardown order
+(`willClose:` → handler runs → window deallocates) is correct.
+
+
+## Small fixes from the review list
+
+Knocked out a handful of low-cost items from the events+attributes
+review:
+
+  * **Stale `event.rs` doc** — top-of-file comment and
+    `drop_handlers_for` doc claimed cleanup is "currently never
+    called". Updated to reflect that it IS called from
+    `Node::teardown`, which fires via the `Mountable::unmount`
+    cascade (e.g. `windowWillClose:`).
+  * **`MaybeReactive::Reactive` tightened from `FnMut` to `Fn`** —
+    we only ever read through the closure inside a `RenderEffect`;
+    no caller needs `FnMut`. The `IntoMaybeReactive<T>` impls
+    already required `Fn`, so this just matches the variant to
+    its actual usage.
+  * **`set_string_attribute(StringAttr::Placeholder, ...)` now
+    schedules relayout** when the placeholder changes. Placeholder
+    text contributes to NSTextField's intrinsic content size when
+    the field is empty; previously a mid-life placeholder change
+    wouldn't have triggered Taffy re-measure. (Not hit by current
+    examples — placeholder is set once at build — but consistency
+    matters.) Also added a same-value diff guard, matching
+    Title/Value behaviour.
+  * **Removed `event::on_button_click`** — was a thin wrapper over
+    `on_control_action`. `Element::on_click` now calls
+    `on_control_action(button.as_ref(), cb)` directly. One less API
+    surface.
+  * **Re-entrance `eprintln!` gated behind `#[cfg(debug_assertions)]`**
+    in `ActionTarget::action_fired`,
+    `TextFieldDelegate::control_text_did_change`, and
+    `control_text_did_end_editing`. Release builds no longer
+    write to stderr on the (rare) re-entrance case.
+  * **Cleared four stale warnings**: unused `NSButton` /
+    `Dimension` / `AnyThread` imports + two unnecessary `unsafe`
+    blocks. cocoa_dom now builds clean.
+
+Items left from the review:
+  * Pointer-keyed handler stores (smell, not a bug today)
+  * Button click vs text-field fan-out semantic inconsistency
+  * `Bound{Value,Float,Index,Checked}` struct duplication →
+    `Bound<T>` generic refactor
+  * `IntoMaybeReactive<T>` per-type impls (combinatorial)
+  * `add_any_attr` event-only (incomplete spread support)
+  * `Selection` AttributeKey re-export indirection
+  * `Rndr::set_attribute(&str, &str)` vestigial trait surface
+
+
+## Test infrastructure: cocoa_dom unit tests
+
+Stood up a unit-test scaffold under `cocoa_dom/tests/`. Three test
+binaries — `element_creation`, `attributes`, `events` — covering the
+basic NSView façade. 52 tests, all passing.
+
+### Custom main-thread harness
+
+Cargo's default test harness spawns a worker thread per test. AppKit
+requires the main thread, so `MainThreadMarker::new()` returns
+`None` from worker threads and our constructors panic.
+
+Each test binary uses `harness = false` in `cocoa_dom/Cargo.toml`'s
+`[[test]]` block and supplies its own `fn main()` via a
+`run_tests(&[(name, fn_ptr), ...])` helper in
+`cocoa_dom/tests/common/mod.rs`. The helper runs each test on the
+binary's main thread (where AppKit is happy), catches panics with
+`std::panic::catch_unwind`, and prints a libtest-style summary.
+
+Tests look like plain `fn name()` rather than `#[test] fn`, with a
+single `main` registering them. Slightly more boilerplate than
+`#[test]` but the only way to keep the actual main thread.
+
+### `fire_action` helper
+
+Tests dispatch NSControl actions via `msg_send![target,
+actionFired: control]` directly. We tried
+`performSelector:withObject:` first but objc2's strict-typed
+`msg_send!` rejects it: that selector's declared return type is `id`
+while our `actionFired:` returns void, and even forcing the
+`Option<Retained<AnyObject>>` return triggers a segfault on the
+garbage return-register read.
+
+Hardcoding `actionFired:` couples tests to the selector name
+(currently in `cocoa_dom::event::ActionTarget`), but the alternative
+— a generic-but-untyped invocation — would need raw `objc_msgSend`
+FFI. Acceptable trade-off.
+
+### `fire_text_did_change` / `fire_text_did_end_editing`
+
+These invoke the NSTextFieldDelegate methods (`controlTextDidChange:`
+/ `controlTextDidEndEditing:`) DIRECTLY via `msg_send!` on the
+field's delegate, building a synthetic `NSNotification` with the
+field as `object`.
+
+Initially we tried posting the notifications via
+`NSNotificationCenter::postNotificationName_object`. The change
+notification went through (AppKit must register the delegate as an
+observer when `setDelegate:` is called), but the end-editing one
+did not — possibly because AppKit only delivers that one via direct
+delegate invocation. Direct invocation works for both and is
+independent of AppKit's opaque observer registration.
+
+### What's tested today
+
+  * `cocoa_dom/tests/element_creation.rs` (10 tests) — every
+    supported tag (view, button, checkbox, label, text_field,
+    secure_text_field, slider, pop_up_button, stack_view, unknown)
+    produces the expected NSView subclass with the right
+    configuration (continuous slider, pull-up popup, editable text
+    field, etc.).
+  * `cocoa_dom/tests/attributes.rs` (27 tests) — `StringAttr` /
+    `BoolAttr` `from_name` round-trips, typed setters per variant,
+    cross-type silent no-ops, removal resets, the `&str` Rndr-trait
+    entry point, idempotence guards.
+  * `cocoa_dom/tests/events.rs` (15 tests) — `on_click` / `on_action`
+    on every NSControl subclass, the slider-on-`on_click` regression
+    guard, NSControl single target/action replacement,
+    TextFieldDelegate fan-out (multiple `on_input` and `on_change`
+    handlers coexist), value getters (slider double_value, popup
+    selection, checkbox checked).
+
+### Not yet covered
+
+  * Tachys-side builder tests (`Button`, `Checkbox`, ... — needs
+    reactive scope setup).
+  * `bind:` integration (text/checkbox/slider/popup signal round-trips).
+  * Layout + Taffy compute-layout tests.
+  * `windowWillClose:` cleanup verification.
+  * `SupportsEvent` compile-fail tests (needs `trybuild`).
+  * Any XCUIAutomation tests (separate Xcode project, deferred).
+
+
+## XCUIAutomation-equivalent test tier — `xcuitests/`
+
+Stood up an end-to-end UI test tier driven by the Accessibility
+framework (AXUIElement). 7 tests passing against
+`examples/login_form_macos`; ~5–6s total wall time.
+
+### Why not XCUIAutomation literally?
+
+XCUIApplication requires a "UI testing bundle" target, which exists
+only inside Xcode .xcodeproj projects — Swift Package Manager
+doesn't support that bundle type. We'd have to either:
+  (a) generate + maintain an .xcodeproj (xcodegen, hand-rolled
+      pbxproj, or tuist), OR
+  (b) drive the app via the lower-level Accessibility framework
+      from a regular SPM XCTestCase.
+
+Went with (b). Same end-to-end fidelity (real .app launches in a
+real AppKit window, real CGEvent keyboard events, real button
+clicks via target/action), no Xcode project ceremony, no extra
+tools to install.
+
+### Layout
+
+```
+xcuitests/
+  Package.swift
+  bundle_app.sh       — wraps a cargo example as a .app bundle
+  run_tests.sh        — bundle + swift test entry point
+  grant_permission.sh — opens System Settings to the AX pane
+  Sources/AppDriver/
+    Permissions.swift — AXIsProcessTrusted check + remediation
+    AXElement.swift   — Swift wrapper around AXUIElement
+    AXSession.swift   — launch app, cache primary window
+  Tests/LoginFormUITests/
+    LoginFormUITests.swift
+```
+
+### `bundle_app.sh`
+
+Cargo example crates aren't workspace members, so each has its own
+`target/` dir. The script builds release, copies the binary into a
+hand-built `.app` skeleton with a minimal Info.plist, and prints
+the absolute bundle path. Tests pick it up via
+`LEPTOS_MAC_APP_PATH` env var.
+
+### `AppDriver` — AX wrapper library
+
+The Accessibility C API is verbose (`AXUIElementCopyAttributeValue`
++ `CFBridgingRelease` boilerplate). `AppDriver` collects the dance
+into:
+
+  * `AXSession.init(bundlePath:)` — launches the .app, waits for
+    its first window, caches the primary window's AXUIElement.
+  * `AXElement.role` / `subrole` / `title` / `stringValue` /
+    `numberValue` / `enabled` — typed attribute reads.
+  * `AXElement.firstChild(role:)` /
+    `firstChild(role:title:)` / `firstChild(role:subrole:)` /
+    `allChildren(role:)` / `allChildren(role:subrole:)` — finders.
+  * `AXElement.click()` — `kAXPressAction`.
+  * `AXElement.typeText(_:)` — focuses the field, then synthesises
+    real CGEvent keyboard events with
+    `keyboardSetUnicodeString` so unicode chars don't need
+    virtual-keycode mapping. AppKit's normal field-editor path
+    fires `controlTextDidChange:`, our `bind:value` write-back
+    runs, signals update.
+  * `AXElement.wait(timeout:for:)` /
+    `waitForDescendant(timeout:matching:)` — 25ms polling for
+    reactive state to settle.
+
+### Permission gotchas (one-time setup pain)
+
+TCC tracks Accessibility per-binary, not per-shell, and inherits
+in surprising ways:
+
+  * `swift test` ultimately invokes `xctest` at
+    `/Applications/Xcode.app/Contents/Developer/usr/bin/xctest`
+    (a symlink to the MacOSX.platform agent).
+  * Granting Accessibility to the parent IDE/terminal does NOT
+    cascade to xctest — they have separate signed identities.
+  * `AXIsProcessTrustedWithOptions(.prompt: true)` registers an
+    xctest entry in System Settings on first call so the user can
+    toggle it on. Without prompt:true, the binary never appears
+    in the list.
+
+`Permissions.swift` does the prompt-enabled check and throws a
+clear remediation message including the parent process name (so
+the user knows whether to grant to Terminal, iTerm, Cursor,
+Claude Code, etc. — but ALSO that they probably need to grant to
+xctest itself).
+
+### AppKit-via-AX gotchas
+
+  * **AX `setStringValue` is silent.** Setting `kAXValueAttribute`
+    on an NSTextField updates the displayed string but does NOT
+    fire `controlTextDidChange:` — that's only fired for edits
+    via the field editor. Our `bind:value` write-back leg listens
+    to the change notification, so AX value-sets bypass it
+    entirely. `AXElement.typeText` uses CGEvent keyboard input
+    instead, which goes through the field editor naturally.
+  * **NSSecureTextField shares the AXTextField role.** It uses
+    `subrole=AXSecureTextField` to differentiate. Tests must
+    filter by `(role: AXTextField, subrole: AXSecureTextField)`
+    to find the password field; plain text fields have nil
+    subrole.
+  * **macOS spawns extra AX windows for system UI** (password
+    autofill suggestion popup, save-panel sheets, etc.). These
+    show up as AXWindow nodes in the app's AX tree. The test
+    submission first failed because typing into a secure field
+    spawned the autofill popup, which became `windows.first` in
+    the AX tree — our test then queried the autofill tree
+    instead of the login form. Fixed by capturing the original
+    `primaryWindow` reference once at session init and reusing
+    it. See `AXSession.primaryWindow`.
+
+### What's covered
+
+7 tests on `login_form_macos`:
+  * `test_window_present_with_title` — launch + window title.
+  * `test_initial_controls_present` — role/subrole filters work
+    against the actual AppKit AX tree.
+  * `test_sign_in_disabled_initially` — initial enabled-state.
+  * `test_sign_in_enables_with_valid_input` — full reactive
+    chain: type into fields → controlTextDidChange:` → bind:value
+    setter → can_submit Memo → button.enabled re-renders.
+  * `test_sign_in_stays_disabled_for_short_password` — Memo
+    rejection path.
+  * `test_remember_checkbox_toggles` — checkbox.value round-trip.
+  * `test_submit_populates_status_label` — full submit flow with
+    status label written by an Effect on click.
+
+### Follow-ups
+
+  * Extend to `settings_macos` (slider drag, popup selection, mute
+    gating).
+  * Extend to `counters_macos` (For-loop dynamic children, keyed
+    add/remove).
+  * Per-test screenshot capture for visual regression.
+  * CI matrix on a macOS runner — needs an Accessibility-granted
+    xctest entry, which is a manual TCC step.
+
+
+## XCUI coverage extended to settings + counters
+
+24 tests now passing across three test targets in ~17 s.
+
+### Multi-bundle test runner
+
+`xcuitests/run_tests.sh` now bundles all three example apps and
+sets a `LEPTOS_MAC_<NAME>_PATH` env var per bundle. Tests use the
+new `AXSession.forExample("LOGIN_FORM" | "SETTINGS" | "COUNTERS")`
+convenience to read the right one.
+
+### `AXElement.dumpTree()`
+
+Added an indented multi-line tree-printer for diagnosing test
+failures against new examples. Each new test target starts with a
+`disabled_test_dump_tree` placeholder (rename without the prefix to
+enable). It's the fastest way to see what AppKit is actually
+exposing for a given UI before writing assertions.
+
+### SettingsUITests gotchas
+
+  * **Slider value setting just works.** Setting
+    `kAXValueAttribute` with an `NSNumber` on NSSlider fires its
+    target/action — our `bind:value` outgoing leg listens via
+    `Element::on_action`, so the volume signal updates and the
+    label re-renders.
+  * **Popup item selection requires opening the menu first.**
+    Setting `kAXValueAttribute` on NSPopUpButton with the item
+    title is silent (the AX value attribute reports the current
+    selection but isn't writable for selection changes). The
+    correct flow is `kAXShowMenuAction` → wait for the AXMenu
+    children → press the matching `AXMenuItem` by title.
+
+### CountersUITests gotchas
+
+  * **`<hstack>` is transparent to AX.** AppKit only surfaces
+    NSView containers as AXGroup when they have specific
+    accessibility configuration; our plain `FlippedView`
+    containers don't. So per-row buttons appear as flat children
+    of the window, interleaved with the header buttons.
+  * **Rows by adjacency.** Locator helpers scan
+    `window.children` for adjacent (-1 button, value label,
+    +1 button) triples. Each triple is one row. This is robust
+    against AppKit's lack of grouping but assumes our row
+    composition stays `(minus, value, plus)` in source order.
+
+### Possible follow-up if `<hstack>` ergonomics matter for AX
+
+Could give our hstack/vstack containers an AX role of `AXGroup`
+plus an explicit `AXIdentifier` so tests have a named hook. That'd
+be a small-but-pervasive change in `cocoa_dom::node::Element::create`
+plus the layout module. Not pursued now — adjacency-based locators
+work fine for the current shape.

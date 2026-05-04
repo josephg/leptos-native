@@ -1,0 +1,298 @@
+//! Event-wiring tests.
+//!
+//! Exercises `Element::on_click` / `on_action` / `on_text_change` /
+//! `on_text_end_editing` via the synthetic-action helpers in
+//! `common`. No window or run loop required — target/action and
+//! NSControlTextEditingDelegate notifications are dispatched
+//! synchronously via the ObjC runtime / NSNotificationCenter.
+
+#![cfg(target_os = "macos")]
+
+mod common;
+
+use cocoa_dom::Element;
+use objc2::runtime::AnyObject;
+use objc2_app_kit::{NSControl, NSTextField};
+use std::cell::Cell;
+use std::rc::Rc;
+
+// ---------------------------------------------------------------------
+// on_click — buttons + popups (NSButton subtree)
+// ---------------------------------------------------------------------
+
+fn on_click_fires_on_button() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("button");
+    let count = Rc::new(Cell::new(0));
+    let c = count.clone();
+    el.on_click(move || c.set(c.get() + 1));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let control = any.downcast_ref::<NSControl>().unwrap();
+    common::fire_action(control);
+    common::fire_action(control);
+
+    assert_eq!(count.get(), 2);
+}
+
+fn on_click_on_label_is_no_op() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+    // Should silently no-op (label isn't NSButton). Just verify no
+    // panic; we don't fire action because there's nothing wired.
+    el.on_click(|| panic!("must not fire"));
+}
+
+// ---------------------------------------------------------------------
+// on_action — works for any NSControl (slider, popup, button)
+// ---------------------------------------------------------------------
+
+fn on_action_fires_on_slider() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("slider");
+    let count = Rc::new(Cell::new(0));
+    let c = count.clone();
+    el.on_action(move || c.set(c.get() + 1));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let control = any.downcast_ref::<NSControl>().unwrap();
+    common::fire_action(control);
+
+    assert_eq!(count.get(), 1, "slider on_action should fire");
+}
+
+fn on_action_fires_on_popup() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("pop_up_button");
+    let count = Rc::new(Cell::new(0));
+    let c = count.clone();
+    el.on_action(move || c.set(c.get() + 1));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let control = any.downcast_ref::<NSControl>().unwrap();
+    common::fire_action(control);
+
+    assert_eq!(count.get(), 1);
+}
+
+fn on_action_on_view_is_no_op() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("view");
+    el.on_action(|| panic!("must not fire"));
+}
+
+// Regression guard: on_click on a slider would silently drop because
+// NSSlider isn't a subclass of NSButton (both extend NSControl
+// directly). We hit this bug once; this test prevents recurrence.
+fn on_click_on_slider_silently_drops_no_panic() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("slider");
+    // on_click expects NSButton; slider isn't one. Silent no-op.
+    el.on_click(|| panic!("must not fire on slider via on_click"));
+    // Action target is None; can't fire_action without panicking,
+    // so we just confirm the install itself didn't panic.
+}
+
+// ---------------------------------------------------------------------
+// Repeated installs — last-write-wins on NSControl target/action
+// ---------------------------------------------------------------------
+
+fn second_on_click_replaces_first() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("button");
+    let first = Rc::new(Cell::new(0));
+    let second = Rc::new(Cell::new(0));
+    {
+        let f = first.clone();
+        el.on_click(move || f.set(f.get() + 1));
+    }
+    {
+        let s = second.clone();
+        el.on_click(move || s.set(s.get() + 1));
+    }
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let control = any.downcast_ref::<NSControl>().unwrap();
+    common::fire_action(control);
+
+    // Second handler fires; first stays in retain-store but its
+    // target/action pair was overwritten on the control.
+    assert_eq!(first.get(), 0, "first handler shouldn't fire");
+    assert_eq!(second.get(), 1, "second handler should fire");
+}
+
+// ---------------------------------------------------------------------
+// on_text_change — TextFieldDelegate fan-out
+// ---------------------------------------------------------------------
+
+fn on_text_change_fires_on_text_field() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let captured = Rc::new(Cell::new(String::new()));
+    let c = captured.clone();
+    el.on_text_change(move |v| c.set(v));
+
+    // Set the string value programmatically, then post the
+    // notification (mirrors what AppKit does on real keystrokes).
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    field.setStringValue(&objc2_foundation::NSString::from_str("typed"));
+    common::fire_text_did_change(field);
+
+    assert_eq!(captured.take(), "typed");
+}
+
+fn on_text_change_on_button_is_no_op() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("button");
+    el.on_text_change(|_| panic!("must not fire"));
+}
+
+fn multiple_on_text_change_fan_out() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let calls = Rc::new(Cell::new(0));
+    let last_a = Rc::new(Cell::new(String::new()));
+    let last_b = Rc::new(Cell::new(String::new()));
+
+    {
+        let c = calls.clone();
+        let l = last_a.clone();
+        el.on_text_change(move |v| {
+            c.set(c.get() + 1);
+            l.set(v);
+        });
+    }
+    {
+        let c = calls.clone();
+        let l = last_b.clone();
+        el.on_text_change(move |v| {
+            c.set(c.get() + 1);
+            l.set(v);
+        });
+    }
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    field.setStringValue(&objc2_foundation::NSString::from_str("hi"));
+    common::fire_text_did_change(field);
+
+    assert_eq!(calls.get(), 2, "both handlers fan out");
+    assert_eq!(last_a.take(), "hi");
+    assert_eq!(last_b.take(), "hi");
+}
+
+// ---------------------------------------------------------------------
+// on_text_end_editing — coexists with on_text_change
+// ---------------------------------------------------------------------
+
+fn on_text_end_editing_fires_on_commit() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let captured = Rc::new(Cell::new(String::new()));
+    let c = captured.clone();
+    el.on_text_end_editing(move |v| c.set(v));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    field.setStringValue(&objc2_foundation::NSString::from_str("done"));
+    common::fire_text_did_end_editing(field);
+
+    assert_eq!(captured.take(), "done");
+}
+
+fn on_change_and_on_input_coexist() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let inputs = Rc::new(Cell::new(0));
+    let changes = Rc::new(Cell::new(0));
+
+    {
+        let i = inputs.clone();
+        el.on_text_change(move |_| i.set(i.get() + 1));
+    }
+    {
+        let c = changes.clone();
+        el.on_text_end_editing(move |_| c.set(c.get() + 1));
+    }
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    field.setStringValue(&objc2_foundation::NSString::from_str("x"));
+    common::fire_text_did_change(field);
+    common::fire_text_did_change(field);
+    common::fire_text_did_end_editing(field);
+
+    assert_eq!(inputs.get(), 2, "input fires per change notification");
+    assert_eq!(changes.get(), 1, "change fires once on commit");
+}
+
+// ---------------------------------------------------------------------
+// Element value getters (slider, popup, checkbox)
+// ---------------------------------------------------------------------
+
+fn slider_double_value_round_trips() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("slider");
+    el.set_slider_min(0.0);
+    el.set_slider_max(100.0);
+    el.set_double_value(42.5);
+    assert!((el.double_value() - 42.5).abs() < 1e-9);
+}
+
+fn popup_items_and_selection() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("pop_up_button");
+    let items: Vec<String> =
+        ["Alpha", "Beta", "Gamma"].into_iter().map(String::from).collect();
+    el.set_popup_items(&items);
+    el.set_popup_selection(2);
+    assert_eq!(el.popup_selection(), 2);
+}
+
+fn checkbox_checked_round_trips() {
+    use cocoa_dom::BoolAttr;
+    let _mtm = common::test_mtm();
+    let el = Element::create("checkbox");
+    assert!(!el.checked());
+    el.set_bool_attribute(BoolAttr::Checked, true);
+    assert!(el.checked());
+}
+
+fn main() {
+    common::run_tests(&[
+        // on_click
+        ("on_click_fires_on_button", on_click_fires_on_button),
+        ("on_click_on_label_is_no_op", on_click_on_label_is_no_op),
+        // on_action
+        ("on_action_fires_on_slider", on_action_fires_on_slider),
+        ("on_action_fires_on_popup", on_action_fires_on_popup),
+        ("on_action_on_view_is_no_op", on_action_on_view_is_no_op),
+        (
+            "on_click_on_slider_silently_drops_no_panic",
+            on_click_on_slider_silently_drops_no_panic,
+        ),
+        // Repeated installs
+        ("second_on_click_replaces_first", second_on_click_replaces_first),
+        // Text change
+        (
+            "on_text_change_fires_on_text_field",
+            on_text_change_fires_on_text_field,
+        ),
+        (
+            "on_text_change_on_button_is_no_op",
+            on_text_change_on_button_is_no_op,
+        ),
+        ("multiple_on_text_change_fan_out", multiple_on_text_change_fan_out),
+        // End editing
+        (
+            "on_text_end_editing_fires_on_commit",
+            on_text_end_editing_fires_on_commit,
+        ),
+        ("on_change_and_on_input_coexist", on_change_and_on_input_coexist),
+        // Value getters
+        ("slider_double_value_round_trips", slider_double_value_round_trips),
+        ("popup_items_and_selection", popup_items_and_selection),
+        ("checkbox_checked_round_trips", checkbox_checked_round_trips),
+    ]);
+}

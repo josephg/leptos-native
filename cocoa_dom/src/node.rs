@@ -22,6 +22,75 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, fmt, rc::Rc};
 
+/// Compile-time-checked attribute identifiers, split by value type.
+///
+/// Cocoa builders should use these typed enums when they know the
+/// attribute name at the call site:
+///   * String-valued attributes → [`StringAttr`] +
+///     [`Element::set_string_attribute`]
+///   * Bool-valued attributes → [`BoolAttr`] +
+///     [`Element::set_bool_attribute`]
+///
+/// Passing the wrong-type variant to the wrong setter is a compile
+/// error.
+///
+/// `Element::set_attribute(&str, &str)` and
+/// `Element::remove_attribute(&str)` stay around for compatibility
+/// with the `Rndr` trait (which is web-shaped and expects string
+/// keys). Internally those route through `from_name` lookups on
+/// the appropriate enum.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum StringAttr {
+    Title,
+    Value,
+    Placeholder,
+}
+
+impl StringAttr {
+    pub fn from_name(s: &str) -> Option<Self> {
+        Some(match s {
+            "title" => Self::Title,
+            "value" => Self::Value,
+            "placeholder" => Self::Placeholder,
+            _ => return None,
+        })
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::Value => "value",
+            Self::Placeholder => "placeholder",
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BoolAttr {
+    Enabled,
+    Hidden,
+    Checked,
+}
+
+impl BoolAttr {
+    pub fn from_name(s: &str) -> Option<Self> {
+        Some(match s {
+            "enabled" => Self::Enabled,
+            "hidden" => Self::Hidden,
+            "checked" => Self::Checked,
+            _ => return None,
+        })
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Enabled => "enabled",
+            Self::Hidden => "hidden",
+            Self::Checked => "checked",
+        }
+    }
+}
+
 /// Distinguishes the three node varieties tachys cares about.
 ///
 /// In the web DOM these correspond to Element / Text / Comment nodes.
@@ -228,7 +297,7 @@ impl Element {
     pub fn create_with(tag: &str, mtm: MainThreadMarker) -> Self {
         use crate::{
             flipped_view::FlippedView,
-            layout::{Dimension, FlexDirection, Style},
+            layout::{FlexDirection, Style},
         };
 
         // Default frame is a sentinel; layout overwrites it.
@@ -326,13 +395,11 @@ impl Element {
             }
             "pop_up_button" => {
                 use objc2_app_kit::NSPopUpButton;
-                let p = unsafe {
-                    NSPopUpButton::initWithFrame_pullsDown(
-                        NSPopUpButton::alloc(mtm),
-                        frame,
-                        false,
-                    )
-                };
+                let p = NSPopUpButton::initWithFrame_pullsDown(
+                    NSPopUpButton::alloc(mtm),
+                    frame,
+                    false,
+                );
                 let v: Retained<NSView> =
                     unsafe { Retained::cast_unchecked(p) };
                 let mut s = Style::default();
@@ -472,28 +539,35 @@ impl Element {
         }
     }
 
-    /// Set a string-valued attribute. The supported set is small;
-    /// extend here as needed.
-    ///
-    /// Currently understood:
-    /// - `title` — `setTitle:` on NSButton (and subclasses)
-    /// - `value` — `setStringValue:` on NSControl
-    /// - `placeholder` — `setPlaceholderString:` on NSTextField
-    ///
-    /// For boolean attributes (`enabled`, `hidden`, `checked`), use
-    /// [`set_bool_attribute`](Self::set_bool_attribute) instead — we
-    /// deliberately don't round-trip booleans through `"true"`/`"false"`
-    /// strings.
+    /// `&str`-keyed entry point matching the `Rndr` trait. Routes
+    /// through the typed enums — silently no-ops on unknown names.
+    /// Internal cocoa builders should prefer the typed
+    /// [`set_string_attribute`](Self::set_string_attribute) and
+    /// [`set_bool_attribute`](Self::set_bool_attribute) directly.
     pub fn set_attribute(&self, name: &str, value: &str) {
+        if let Some(attr) = StringAttr::from_name(name) {
+            self.set_string_attribute(attr, value);
+        }
+        // Bool attrs through this entry point would require parsing
+        // "true"/"false" — we deliberately don't, since the typed
+        // setter is the only blessed path. Unknown names no-op.
+    }
+
+    /// Typed string-valued attribute setter. Routing:
+    ///   * `Title`       → `NSButton::setTitle:`
+    ///   * `Value`       → `NSControl::setStringValue:`
+    ///   * `Placeholder` → `NSTextField::setPlaceholderString:`
+    pub fn set_string_attribute(&self, attr: StringAttr, value: &str) {
         let view = self.ns_view();
         let mut content_changed = false;
-        match name {
-            "title" => {
+        match attr {
+            StringAttr::Title => {
                 if let Some(button) = downcast::<NSButton>(view) {
-                    // Skip if the title hasn't actually changed — avoids
-                    // a needless layout/redraw cycle when the same value
-                    // is re-applied (e.g. by a bind: Effect after user
-                    // typing already left the title unchanged).
+                    // Skip if the title hasn't actually changed —
+                    // avoids a needless layout/redraw cycle when the
+                    // same value is re-applied (e.g. by a bind:
+                    // Effect after user typing already left the title
+                    // unchanged).
                     let current = button.title().to_string();
                     if current != value {
                         button.setTitle(&NSString::from_str(value));
@@ -501,7 +575,7 @@ impl Element {
                     }
                 }
             }
-            "value" => {
+            StringAttr::Value => {
                 if let Some(control) = downcast::<NSControl>(view) {
                     let current = control.stringValue().to_string();
                     if current != value {
@@ -510,13 +584,26 @@ impl Element {
                     }
                 }
             }
-            "placeholder" => {
+            StringAttr::Placeholder => {
                 if let Some(field) = downcast::<NSTextField>(view) {
-                    let s = NSString::from_str(value);
-                    field.setPlaceholderString(Some(&s));
+                    // Diff before mutating: NSTextField doesn't redraw
+                    // on same-value sets but we keep the parity with
+                    // Title/Value behavior anyway.
+                    let current: String = field
+                        .placeholderString()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+                    if current != value {
+                        let s = NSString::from_str(value);
+                        field.setPlaceholderString(Some(&s));
+                        // Placeholder text shows when the field is
+                        // empty; its width contributes to NSTextField's
+                        // intrinsicContentSize. Mark dirty so Taffy
+                        // re-measures.
+                        content_changed = true;
+                    }
                 }
             }
-            _ => { /* silently ignored */ }
         }
         if content_changed {
             // Intrinsic size may have changed; trigger a relayout
@@ -525,36 +612,29 @@ impl Element {
         }
     }
 
-    /// Set a typed boolean attribute. Used for true booleans on
-    /// AppKit controls — `enabled`, `hidden`, `checked`. Routing
-    /// per name:
-    ///   * `"enabled"` → `NSControl::setEnabled:`
-    ///   * `"hidden"`  → `NSView::setHidden:`
-    ///   * `"checked"` → `NSButton::setState:` (NSControlStateValueOn / Off)
+    /// Typed boolean-valued attribute setter. Routing:
+    ///   * `Enabled` → `NSControl::setEnabled:`
+    ///   * `Hidden`  → `NSView::setHidden:`
+    ///   * `Checked` → `NSButton::setState:` (On / Off)
     ///
-    /// Each setter diffs against the current value before mutating
-    /// (avoids redundant redraws / focus flashes).
-    ///
-    /// We deliberately keep this separate from string `set_attribute`
-    /// rather than round-tripping through `"true"`/`"false"`. On the
-    /// web that detour matches HTML's stringly-typed model; here it's
-    /// just a footgun.
-    pub fn set_bool_attribute(&self, name: &str, value: bool) {
+    /// Each setter diffs against the current AppKit value before
+    /// mutating (avoids redundant redraws / focus-ring flashes).
+    pub fn set_bool_attribute(&self, attr: BoolAttr, value: bool) {
         let view = self.ns_view();
-        match name {
-            "hidden" => {
+        match attr {
+            BoolAttr::Hidden => {
                 if view.isHidden() != value {
                     view.setHidden(value);
                 }
             }
-            "enabled" => {
+            BoolAttr::Enabled => {
                 if let Some(control) = downcast::<NSControl>(view) {
                     if control.isEnabled() != value {
                         control.setEnabled(value);
                     }
                 }
             }
-            "checked" => {
+            BoolAttr::Checked => {
                 if let Some(button) = downcast::<NSButton>(view) {
                     use objc2_app_kit::{
                         NSControlStateValueOff, NSControlStateValueOn,
@@ -569,7 +649,6 @@ impl Element {
                     }
                 }
             }
-            _ => { /* silently ignored */ }
         }
     }
 
@@ -583,7 +662,7 @@ impl Element {
     /// holds a Vec<Box<dyn FnMut>>.)
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
         if let Some(button) = downcast::<NSButton>(self.ns_view()) {
-            crate::event::on_button_click(button, cb);
+            crate::event::on_control_action(button.as_ref(), cb);
         }
     }
 
@@ -699,24 +778,50 @@ impl Element {
         }
     }
 
+    /// `&str`-keyed entry point matching the `Rndr` trait. Looks
+    /// up the name in both [`StringAttr`] and [`BoolAttr`]; silently
+    /// no-ops on unknown names.
     pub fn remove_attribute(&self, name: &str) {
+        if let Some(attr) = StringAttr::from_name(name) {
+            self.remove_string_attribute(attr);
+            return;
+        }
+        if let Some(attr) = BoolAttr::from_name(name) {
+            self.remove_bool_attribute(attr);
+        }
+    }
+
+    /// Reset a string attribute to empty/None.
+    pub fn remove_string_attribute(&self, attr: StringAttr) {
         let view = self.ns_view();
-        match name {
-            "title" => {
+        match attr {
+            StringAttr::Title => {
                 if let Some(button) = downcast::<NSButton>(view) {
                     button.setTitle(&NSString::from_str(""));
                 }
             }
-            "value" => {
+            StringAttr::Value => {
                 if let Some(control) = downcast::<NSControl>(view) {
                     control.setStringValue(&NSString::from_str(""));
                 }
             }
-            // Bool attrs: removing means "set to false-equivalent."
-            "hidden" => self.set_bool_attribute("hidden", false),
-            "enabled" => self.set_bool_attribute("enabled", true),
-            "checked" => self.set_bool_attribute("checked", false),
-            _ => {}
+            StringAttr::Placeholder => {
+                if let Some(field) = downcast::<NSTextField>(view) {
+                    field.setPlaceholderString(None);
+                }
+            }
+        }
+    }
+
+    /// Reset a bool attribute to its default-absent value:
+    ///   * `Hidden`  → `false` (visible)
+    ///   * `Enabled` → `true` (enabled — NSControl's default)
+    ///   * `Checked` → `false` (off)
+    pub fn remove_bool_attribute(&self, attr: BoolAttr) {
+        match attr {
+            BoolAttr::Hidden => self.set_bool_attribute(BoolAttr::Hidden, false),
+            BoolAttr::Enabled => self.set_bool_attribute(BoolAttr::Enabled, true),
+            BoolAttr::Checked => self.set_bool_attribute(BoolAttr::Checked, false),
         }
     }
 }

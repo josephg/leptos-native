@@ -9,18 +9,20 @@
 //! outlives the registration.
 //!
 //! When the element is removed from the tree, [`drop_handlers_for`]
-//! should be called to clean up the registry entry. (Currently it
-//! never is — Stage 3 leaks handlers; revisit when we have a clean
-//! teardown story.)
+//! is called from [`crate::node::Node::teardown`] to clean up the
+//! registry entry. Teardown is driven by the `Mountable::unmount`
+//! cascade — for top-level windows that means
+//! `WindowDelegate::windowWillClose:` runs the cleanup closure
+//! that unmounts the window's children.
 
 use objc2::{
     define_class, msg_send,
     rc::Retained,
     runtime::{NSObject, ProtocolObject, Sel},
-    sel, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly,
+    sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
-    NSButton, NSControl, NSControlTextEditingDelegate, NSTextField,
+    NSControl, NSControlTextEditingDelegate, NSTextField,
     NSTextFieldDelegate, NSView,
 };
 use objc2_foundation::{NSNotification, NSObjectProtocol};
@@ -48,6 +50,10 @@ define_class!(
             let mut cb = match self.ivars().try_borrow_mut() {
                 Ok(cb) => cb,
                 Err(_) => {
+                    // Re-entrance: a click handler synchronously
+                    // triggered another click on the same control.
+                    // Skip rather than panic.
+                    #[cfg(debug_assertions)]
                     eprintln!(
                         "[cocoa_dom] reentrant click handler call \
                          skipped"
@@ -105,10 +111,10 @@ pub fn keep_target_alive(view: &NSView, target: Retained<ActionTarget>) {
     });
 }
 
-/// Drop all retained handlers attached to `view`. Should be called when
-/// the view is being torn down. Currently never called — see module
-/// docs.
-#[allow(dead_code)]
+/// Drop all retained handlers attached to `view`. Called from
+/// [`crate::node::Node::teardown`], which is invoked via the
+/// `Mountable::unmount` chain (e.g. on `windowWillClose:` for a
+/// window's content tree).
 pub fn drop_handlers_for(view: &NSView) {
     let key = view_key(view);
     HANDLER_STORE.with_borrow_mut(|store| {
@@ -181,6 +187,7 @@ define_class!(
             let mut handlers = match self.ivars().try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
+                    #[cfg(debug_assertions)]
                     eprintln!(
                         "[cocoa_dom] reentrant controlTextDidChange skipped"
                     );
@@ -207,6 +214,7 @@ define_class!(
             let mut handlers = match self.ivars().try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
+                    #[cfg(debug_assertions)]
                     eprintln!(
                         "[cocoa_dom] reentrant controlTextDidEndEditing \
                          skipped"
@@ -323,9 +331,3 @@ pub fn on_control_action(
     keep_target_alive(control.as_ref(), target);
 }
 
-/// Wire the given closure to fire when an NSButton is clicked.
-/// Thin wrapper over [`on_control_action`] kept for explicit
-/// button-only usage.
-pub fn on_button_click(button: &NSButton, cb: impl FnMut() + 'static) {
-    on_control_action(button.as_ref(), cb);
-}

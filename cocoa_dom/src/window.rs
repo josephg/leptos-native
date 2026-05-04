@@ -9,7 +9,9 @@ use crate::{
     node::{Element, Node},
 };
 use objc2::{
-    define_class, rc::Retained, runtime::{NSObject, ProtocolObject},
+    define_class, msg_send,
+    rc::Retained,
+    runtime::{NSObject, ProtocolObject},
     DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
@@ -19,15 +21,29 @@ use objc2_app_kit::{
 use objc2_foundation::{
     NSNotification, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
 };
+use std::cell::RefCell;
+
+/// Closure invoked when the window is about to close (NSWindow's
+/// `windowWillClose:` notification). Runs at most once — install
+/// returns the previous one (if any) and `take()` clears the slot.
+type CleanupClosure = Box<dyn FnOnce()>;
+
+/// Backing state for [`WindowDelegate`]. Holds the content root (so
+/// the resize handler can read its frame) plus an optional cleanup
+/// closure that fires once on `windowWillClose:`.
+pub struct WindowDelegateState {
+    pub root: Node,
+    pub on_close: RefCell<Option<CleanupClosure>>,
+}
 
 define_class!(
-    /// NSWindowDelegate that re-runs Taffy layout when the window
-    /// resizes. Holds the [`Node`] of the window's content_root so it
-    /// can locate the right Taffy tree (each Node carries its own
-    /// `Rc`-shared LayoutHandle pointing at its window's tree).
+    /// NSWindowDelegate that re-runs Taffy layout on resize and
+    /// fires a Rust cleanup closure on close. The cleanup closure
+    /// is installed by the higher-level builder (typically tachys'
+    /// `WindowState::build`) once it has the children to unmount.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[ivars = Node]
+    #[ivars = WindowDelegateState]
     pub struct WindowDelegate;
 
     unsafe impl NSObjectProtocol for WindowDelegate {}
@@ -38,9 +54,20 @@ define_class!(
             // AppKit has already resized the contentView before
             // calling this; read the new size off our root NSView and
             // recompute against it.
-            let root: &Node = self.ivars();
-            let new_size = root.ns_view().frame().size;
-            layout::compute_layout(root, new_size);
+            let new_size = self.ivars().root.ns_view().frame().size;
+            layout::compute_layout(&self.ivars().root, new_size);
+        }
+
+        #[unsafe(method(windowWillClose:))]
+        fn window_will_close(&self, _notification: &NSNotification) {
+            // Take + run the cleanup closure exactly once. If
+            // `install_close_handler` was never called, this is a
+            // no-op.
+            if let Some(cb) =
+                self.ivars().on_close.borrow_mut().take()
+            {
+                cb();
+            }
         }
     }
 );
@@ -50,8 +77,21 @@ impl WindowDelegate {
     /// clone of the Node (cheap — shared NSView retain + Rc bump);
     /// register it on an NSWindow via `setDelegate(...)`.
     pub fn new(root: Node, mtm: MainThreadMarker) -> Retained<Self> {
-        let alloc = Self::alloc(mtm).set_ivars(root);
-        unsafe { objc2::msg_send![super(alloc), init] }
+        let alloc = Self::alloc(mtm).set_ivars(WindowDelegateState {
+            root,
+            on_close: RefCell::new(None),
+        });
+        unsafe { msg_send![super(alloc), init] }
+    }
+
+    /// Install (or replace) the cleanup closure to run on
+    /// `windowWillClose:`. Returns any previously-installed closure
+    /// without running it (caller's responsibility to drop).
+    pub fn install_close_handler(
+        &self,
+        cb: CleanupClosure,
+    ) -> Option<CleanupClosure> {
+        self.ivars().on_close.borrow_mut().replace(cb)
     }
 }
 
@@ -129,7 +169,7 @@ pub fn open_window(
     layout::register_in_tree(content_root.as_node(), &tree);
     nswindow.setContentView(Some(content_root.ns_view()));
 
-    // Resize delegate.
+    // Resize / close delegate.
     let delegate = WindowDelegate::new(content_root.as_node().clone(), mtm);
     let delegate_proto: &ProtocolObject<dyn NSWindowDelegate> =
         ProtocolObject::from_ref(&*delegate);
@@ -159,4 +199,3 @@ impl OpenedWindow {
         self.nswindow.close();
     }
 }
-

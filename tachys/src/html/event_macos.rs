@@ -80,6 +80,23 @@ impl EventDescriptor for ChangeEvent {
 }
 
 // ---------------------------------------------------------------------
+// Compile-time control/event compatibility
+// ---------------------------------------------------------------------
+
+/// Marker trait — a builder type implements `SupportsEvent<E>` for
+/// each event descriptor `E` whose payload makes sense on it.
+///
+/// Each builder's `.on()` method requires `Self: SupportsEvent<E>`,
+/// so `<text_field on:click=...>` (Click on TextField) and
+/// `<button on:input=...>` (Input on Button) fail at compile time
+/// rather than silently no-oping at runtime.
+///
+/// Add new pairings as builders gain new events. The default is
+/// "no events accepted" — controls without explicit
+/// `SupportsEvent<E>` impls reject all `.on()` calls.
+pub trait SupportsEvent<E: EventDescriptor> {}
+
+// ---------------------------------------------------------------------
 // PendingHandler — typed wrapper passed from the builder into build()
 // ---------------------------------------------------------------------
 
@@ -89,13 +106,16 @@ impl EventDescriptor for ChangeEvent {
 /// handler against the constructed `cocoa_dom::Element`.
 ///
 /// Routing per variant (in `apply_to`):
-///   * `Click`  — `Element::on_click`           (NSButton target/action)
-///   * `Input`  — `Element::on_text_change`     (controlTextDidChange:)
+///   * `Click`  — `Element::on_click`            (NSButton target/action)
+///   * `Input`  — `Element::on_text_change`      (controlTextDidChange:)
 ///   * `Change` — `Element::on_text_end_editing` (controlTextDidEndEditing:)
 ///
-/// If the element type doesn't match (e.g. `Click` on a text field),
-/// the underlying cocoa_dom call no-ops — matches the web's
-/// `addEventListener` shape.
+/// Builder-side compile-time checks via [`SupportsEvent`] should
+/// prevent mismatched (handler, control) pairs from reaching here
+/// in the inline `.on()` path. The free-standing `on(...)` →
+/// `OnAttribute` → `add_any_attr` spread path is type-erased and
+/// unchecked; mismatches there hit the underlying cocoa_dom
+/// downcast and silently no-op.
 pub enum PendingHandler {
     Click(Box<dyn FnMut() + Send + 'static>),
     Input(Box<dyn FnMut(String) + Send + 'static>),

@@ -55,3 +55,50 @@ objc2-app-kit = { version = "0.3", features = [
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
 ] }
+
+# AppKit needs the main thread. Cargo's default test harness spawns a
+# worker thread per test; AppKit calls then panic via
+# `MainThreadMarker::new()` returning None. Each integration test
+# below uses `harness = false` and supplies its own main fn that runs
+# the test bodies sequentially on the actual main thread (via the
+# `main_thread_test_main!` macro in `tests/common`).
+
+[[test]]
+name = "element_creation"
+path = "tests/element_creation.rs"
+harness = false
+
+[[test]]
+name = "attributes"
+path = "tests/attributes.rs"
+harness = false
+
+[[test]]
+name = "events"
+path = "tests/events.rs"
+harness = false
+
+[[test]]
+name = "text_and_placeholder"
+path = "tests/text_and_placeholder.rs"
+harness = false
+
+[[test]]
+name = "tree_mutation"
+path = "tests/tree_mutation.rs"
+harness = false
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false
+
+[[test]]
+name = "app_menu"
+path = "tests/app_menu.rs"
+harness = false
+
+[[test]]
+name = "builders"
+path = "tests/builders.rs"
+harness = false
