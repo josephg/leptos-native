@@ -17,13 +17,16 @@ mod value;
 use crate::view::{Position, ToTemplate};
 pub use key::*;
 
-// macOS-only: bind:selection=signal on <pop_up_button> emits
+// macOS: bind:selection=signal on <pop_up_button> emits
 // `.bind(::leptos::attr::Selection, signal)`. The Selection key
 // is defined in `tachys::cocoa::bind`; re-export it here so the
 // macro's path resolves. Requires the `native-ui` feature (otherwise
 // `tachys::cocoa` itself isn't compiled).
 #[cfg(all(target_os = "macos", leptos_native))]
 pub use crate::cocoa::bind::Selection;
+// Same for Linux/GTK — the Selection key lives in tachys::gtk::bind.
+#[cfg(all(target_os = "linux", leptos_native))]
+pub use crate::gtk::bind::Selection;
 use maybe_next_attr_erasure_macros::{
     next_attr_combine, next_attr_output_type,
 };

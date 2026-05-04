@@ -40,7 +40,7 @@ members = [
   "router_macro",
   "any_error",
 ]
-exclude = ["benchmarks", "examples", "projects"]
+exclude = ["benchmarks", "examples", "examples_gtk", "projects"]
 
 [workspace.package]
 edition = "2021"
