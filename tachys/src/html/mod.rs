@@ -50,11 +50,34 @@ pub mod element;
 /// On macOS native, `tachys::html::element` is a thin facade
 /// re-exporting the Cocoa builders, so that `view!{}` macro
 /// emissions like `::leptos::tachys::html::element::button()`
-/// resolve correctly. Requires the `native-ui` feature.
-#[cfg(all(target_os = "macos", leptos_native))]
+/// resolve correctly. Requires the `native-ui` and `reactive_graph`
+/// features.
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub mod element_macos;
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub use element_macos as element;
+/// On Linux native, same role — re-exports the GTK builders at the
+/// path the macro expects.
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod element_gtk;
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use element_gtk as element;
 
 /// Types for DOM events.
 #[cfg(not(leptos_native))]
@@ -62,11 +85,33 @@ pub mod event;
 /// On macOS native, `tachys::html::event` is a thin facade providing
 /// event descriptors and the `on(event, handler)` wrapper that maps
 /// to our Cocoa target/action infrastructure. Requires the
-/// `native-ui` feature.
-#[cfg(all(target_os = "macos", leptos_native))]
+/// `native-ui` and `reactive_graph` features.
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub mod event_macos;
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub use event_macos as event;
+/// On Linux native, same role — event descriptors and the
+/// `on(event, handler)` wrapper mapping to GTK signals.
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod event_gtk;
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use event_gtk as event;
 /// Types for adding interactive islands to inert HTML pages.
 #[cfg(not(leptos_native))]
 pub mod islands;

@@ -73,6 +73,11 @@ use web_sys::Node;
 /// `RenderEffect` to install reactive attribute values automatically.
 #[cfg(all(target_os = "macos", leptos_native, feature = "reactive_graph"))]
 pub mod cocoa;
+
+/// GTK-flavoured element builders (Linux only). Same shape as
+/// [`cocoa`]; see that module's docs.
+#[cfg(all(target_os = "linux", leptos_native, feature = "reactive_graph"))]
+pub mod gtk;
 /// Helpers for interacting with the DOM (web only).
 #[cfg(not(leptos_native))]
 pub mod dom;
@@ -93,10 +98,32 @@ pub mod svg;
 /// On macOS native, `tachys::svg` is a thin facade — the macro emits
 /// `tachys::svg::view()` for `<view>` tags (since `view` is a real
 /// SVG tag), and we re-route that to our Cocoa view builder.
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub mod svg_macos;
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(
+    target_os = "macos",
+    leptos_native,
+    feature = "reactive_graph"
+))]
 pub use svg_macos as svg;
+/// Same pattern for GTK/Linux — the `<view>` SVG tag resolves to
+/// our GTK box container.
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod svg_gtk;
+#[cfg(all(
+    target_os = "linux",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use svg_gtk as svg;
 /// Core logic for manipulating views.
 pub mod view;
 

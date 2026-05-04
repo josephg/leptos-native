@@ -163,7 +163,7 @@ impl Dom {
     /// marker).
     pub fn mount_before<M>(new_child: &mut M, before: &Node)
     where
-        M: Mountable,
+        M: Mountable + ?Sized,
     {
         let parent = synthesise_parent_element(before)
             .expect("gtk_dom: mount_before — node has no parent");
@@ -172,13 +172,12 @@ impl Dom {
 
     pub fn try_mount_before<M>(new_child: &mut M, before: &Node) -> bool
     where
-        M: Mountable,
+        M: Mountable + ?Sized,
     {
         let Some(parent) = synthesise_parent_element(before) else {
             return false;
         };
-        new_child.mount(&parent, Some(before));
-        true
+        new_child.try_mount(&parent, Some(before))
     }
 }
 
@@ -220,12 +219,8 @@ impl Mountable for Node {
         Dom::try_insert_node(parent, self, marker)
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        // Used by hydration / dynamic-children diffing to splice a new
-        // node in just before this one. On native we don't have a good
-        // way back from a raw widget to a typed parent Element, so
-        // this is unimplemented for now (matches cocoa).
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable) -> bool {
+        Dom::try_mount_before(child, self)
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -242,8 +237,12 @@ impl Mountable for Element {
         Dom::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        false
+    fn try_mount(&mut self, parent: &Element, marker: Option<&Node>) -> bool {
+        Dom::try_insert_node(parent, self.as_node(), marker)
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable) -> bool {
+        Dom::try_mount_before(child, self.as_node())
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -260,8 +259,12 @@ impl Mountable for Text {
         Dom::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        false
+    fn try_mount(&mut self, parent: &Element, marker: Option<&Node>) -> bool {
+        Dom::try_insert_node(parent, self.as_node(), marker)
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable) -> bool {
+        Dom::try_mount_before(child, self.as_node())
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -278,8 +281,12 @@ impl Mountable for Placeholder {
         Dom::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        false
+    fn try_mount(&mut self, parent: &Element, marker: Option<&Node>) -> bool {
+        Dom::try_insert_node(parent, self.as_node(), marker)
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable) -> bool {
+        Dom::try_mount_before(child, self.as_node())
     }
 
     fn elements(&self) -> Vec<Element> {

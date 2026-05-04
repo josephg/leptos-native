@@ -13,7 +13,6 @@
 //! called. On the native code path they should be unreachable.
 
 use crate::node::{Element, Node, Placeholder, Text};
-use gtk4::prelude::*;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -134,8 +133,7 @@ impl Renderer {
         new_child: &Node,
         anchor: Option<&Node>,
     ) -> bool {
-        parent.insert_node(new_child, anchor);
-        true
+        parent.try_insert_node(new_child, anchor)
     }
 
     pub fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
@@ -143,9 +141,7 @@ impl Renderer {
     }
 
     pub fn remove(node: &Node) {
-        if node.widget().parent().is_some() {
-            node.widget().unparent();
-        }
+        node.teardown();
     }
 
     /// Hydration-only API. Should be unreachable on native — see
@@ -198,11 +194,7 @@ impl Renderer {
         _value: &str,
     ) {
     }
-    pub fn remove_css_property(
-        _style: &CssStyleDeclaration,
-        _name: &str,
-    ) {
-    }
+    pub fn remove_css_property(_style: &CssStyleDeclaration, _name: &str) {}
 
     pub fn set_inner_html(_el: &Element, _html: &str) {
         // No HTML on native; this is a no-op rather than a panic so

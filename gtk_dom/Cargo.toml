@@ -18,8 +18,7 @@ tachys = { workspace = true, features = ["reactive_graph"] }
 gtk4 = { workspace = true, default-features = true }
 glib = { workspace = true, default-features = true }
 gio = { workspace = true, default-features = true }
-any_spawner = { workspace = true }
-futures = { workspace = true, default-features = true }
+any_spawner = { workspace = true, features = ["glib"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

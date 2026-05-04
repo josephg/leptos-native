@@ -1,4 +1,4 @@
-//! Attribute-value plumbing for Cocoa elements.
+//! Attribute-value plumbing for GTK elements.
 //!
 //! Builder methods like `.title(...)` accept anything that implements
 //! [`IntoMaybeReactive<T>`]. The two impls of interest:
@@ -7,22 +7,19 @@
 //! - **`F: Fn() -> T`** — a closure. Wrapped as `MaybeReactive::Reactive`.
 //!   At build time we register a [`RenderEffect`] that re-runs the
 //!   closure whenever any signal it reads changes, and updates the
-//!   underlying NSView property each time.
+//!   underlying GTK widget property each time.
 //!
 //! The `RenderEffect` is owned by the element's `State` so it lives
 //! exactly as long as the element is mounted.
+//!
+//! This is a near-verbatim copy of `tachys/src/cocoa/attr.rs` — the
+//! renderer-agnostic `MaybeReactive`/`install` machinery is identical
+//! between backends. If a third native backend ever lands, extract to
+//! `tachys/src/native/attr.rs`.
 
 use reactive_graph::effect::RenderEffect;
 
 /// Either a static value or a closure that produces one reactively.
-///
-/// The closure is `Send` so that `MaybeReactive<T>` itself is `Send`,
-/// which is required by leptos's `IntoView` blanket impl. Most user
-/// closures are Send already (reactive_graph signals are Send).
-///
-/// `Fn` (not `FnMut`): we only ever READ the value through this
-/// closure — `RenderEffect` re-runs the closure on each signal
-/// change to fetch a fresh value, never mutates closure state.
 pub enum MaybeReactive<T: 'static> {
     Static(T),
     Reactive(Box<dyn Fn() -> T + Send + 'static>),
@@ -34,8 +31,7 @@ pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
 }
 
-// Static-value impls. `&str` and `String` have explicit impls so
-// callers can pass them without `.to_string()`.
+// Static-value impls.
 impl IntoMaybeReactive<String> for String {
     fn into_maybe_reactive(self) -> MaybeReactive<String> {
         MaybeReactive::Static(self)
@@ -72,10 +68,7 @@ impl IntoMaybeReactive<usize> for usize {
     }
 }
 
-// Closure impl. We avoid `impl<T, F> IntoMaybeReactive<T> for F` (that
-// would conflict with the static impls above) by writing one closure
-// impl per concrete output type. This is enough for the small set of
-// attribute types we currently support.
+// Closure impls.
 impl<F> IntoMaybeReactive<String> for F
 where
     F: Fn() -> String + Send + 'static,

@@ -16,7 +16,9 @@
 //! flow through `tachys`/`reactive_graph`'s generic plumbing, with a
 //! runtime panic if accessed off-main.
 
-use gtk4::{glib, prelude::*};
+use gtk4::prelude::*;
+#[allow(unused_imports)]
+use gtk4::glib;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -102,20 +104,26 @@ impl Node {
         self.widget.as_ptr() == other.widget.as_ptr()
     }
 
-    /// Drop the resources owned by this node:
-    ///   - detach the widget from its parent (`gtk::Widget::unparent`)
+    /// Drop the resources owned by this node — delegates to the
+    /// parent's [`Element::remove_child`], which calls
+    /// `gtk::Widget::unparent` to detach.
     ///
     /// In `cocoa_dom` this also unregisters the Taffy node and drops
     /// retained event-handler targets; on GTK both are unnecessary —
     /// GTK does its own layout, and signal-handler closures are owned
     /// by the widget itself, so they drop with it.
     ///
-    /// Safe to call repeatedly; `unparent` no-ops if the widget has no
-    /// parent.
+    /// Safe to call repeatedly; this no-ops if the widget has no parent.
     pub fn teardown(&self) {
-        if self.widget.parent().is_some() {
-            self.widget.unparent();
-        }
+        let Some(parent) = self.widget.parent() else {
+            return;
+        };
+
+        let parent = Element::from_node_unchecked(Node::from_widget(
+            parent,
+            NodeKind::Element,
+        ));
+        let _ = parent.remove_child(self);
     }
 }
 
@@ -211,6 +219,28 @@ impl Element {
         self.node.widget()
     }
 
+    fn prepare_child_for_parent(&self, child: &Node) -> bool {
+        let parent = self.widget();
+        let child_widget = child.widget();
+
+        if child_widget.as_ptr() == parent.as_ptr() {
+            return false;
+        }
+
+        match child_widget.parent() {
+            Some(current_parent)
+                if current_parent.as_ptr() == parent.as_ptr() =>
+            {
+                true
+            }
+            Some(_) => {
+                child.teardown();
+                child_widget.parent().is_none()
+            }
+            None => true,
+        }
+    }
+
     /// Insert `child` before `marker` in this element's child list.
     /// If `marker` is `None`, append.
     ///
@@ -220,83 +250,124 @@ impl Element {
     ///
     ///   - `gtk::Box`: append / insert via `insert_child_after` (the
     ///     sibling immediately *before* the marker).
-    ///   - `gtk::Window` / `gtk::ApplicationWindow`: `set_child` (the
-    ///     window only takes a single root child; marker is ignored).
-    ///   - other: silently dropped — Stage 1 doesn't ship support for
+    ///   - `gtk::Window` / `gtk::ApplicationWindow`: `set_child` when
+    ///     appending the single root child.
+    ///   - other: returns `false` — Stage 1 doesn't ship support for
     ///     other container kinds.
     pub fn insert_node(&self, child: &Node, marker: Option<&Node>) {
+        let _ = self.try_insert_node(child, marker);
+    }
+
+    /// Try to insert `child` before `marker`. Returns `false` if the
+    /// parent is not a supported GTK container, or if `marker` is not a
+    /// child of this parent.
+    pub fn try_insert_node(&self, child: &Node, marker: Option<&Node>) -> bool {
         let parent = self.widget();
         let child_widget = child.widget();
 
         if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
             match marker {
-                None => box_.append(child_widget),
+                None => {
+                    if !self.prepare_child_for_parent(child) {
+                        return false;
+                    }
+
+                    if child_widget.parent().as_ref().map(|p| p.as_ptr())
+                        == Some(parent.as_ptr())
+                    {
+                        if box_.last_child().as_ref().map(|last| last.as_ptr())
+                            != Some(child_widget.as_ptr())
+                        {
+                            box_.reorder_child_after(
+                                child_widget,
+                                box_.last_child().as_ref(),
+                            );
+                        }
+                    } else {
+                        box_.append(child_widget);
+                    }
+                }
                 Some(marker) => {
+                    let marker_widget = marker.widget();
+                    if marker_widget.as_ptr() == child_widget.as_ptr() {
+                        return true;
+                    }
+                    let Some(marker_parent) = marker_widget.parent() else {
+                        return false;
+                    };
+                    if marker_parent.as_ptr() != parent.as_ptr() {
+                        return false;
+                    }
+
+                    if !self.prepare_child_for_parent(child) {
+                        return false;
+                    }
+
                     let prev = marker.widget().prev_sibling();
-                    box_.insert_child_after(child_widget, prev.as_ref());
+                    if prev.as_ref().map(|prev| prev.as_ptr())
+                        == Some(child_widget.as_ptr())
+                    {
+                        return true;
+                    }
+
+                    if child_widget.parent().as_ref().map(|p| p.as_ptr())
+                        == Some(parent.as_ptr())
+                    {
+                        box_.reorder_child_after(child_widget, prev.as_ref());
+                    } else {
+                        box_.insert_child_after(child_widget, prev.as_ref());
+                    }
                 }
             }
-            return;
+            return true;
         }
 
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>()
-        {
+        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
+            if marker.is_some() || !self.prepare_child_for_parent(child) {
+                return false;
+            }
             window.set_child(Some(child_widget));
-            return;
+            return true;
         }
         if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
+            if marker.is_some() || !self.prepare_child_for_parent(child) {
+                return false;
+            }
             window.set_child(Some(child_widget));
-            return;
+            return true;
         }
         // Other parent classes: not supported in Stage 1.
+        false
     }
 
     /// Remove `child` from this element's child list. Returns the
     /// node back if it was actually our child, otherwise `None`.
+    ///
+    /// Removal uses `gtk::Widget::unparent()` — the universal GTK4
+    /// child-detachment call that works uniformly across every
+    /// container class (Box, Frame, Grid, Window, Notebook, Stack,
+    /// …). We don't dispatch per container class here the way
+    /// [`insert_node`] does: insertion semantics are container-
+    /// specific (ordered, positioned, single-child), but detachment
+    /// is uniform across all GTK widgets.
     pub fn remove_child(&self, child: &Node) -> Option<Node> {
-        let parent = self.widget();
         let child_widget = child.widget();
-
         let child_parent = child_widget.parent()?;
-        if child_parent.as_ptr() != parent.as_ptr() {
+        if child_parent.as_ptr() != self.widget().as_ptr() {
             return None;
         }
-
-        if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
-            box_.remove(child_widget);
-            return Some(child.clone());
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>()
-        {
-            window.set_child(None::<&gtk4::Widget>);
-            return Some(child.clone());
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
-            window.set_child(None::<&gtk4::Widget>);
-            return Some(child.clone());
-        }
-        // Fallback: detach from whatever parent we have.
         child_widget.unparent();
         Some(child.clone())
     }
 
     /// Remove every child.
+    ///
+    /// Walks the widget's first-child chain, unparenting each as it
+    /// goes. Like [`remove_child`], this works uniformly across all
+    /// container classes.
     pub fn clear_children(&self) {
-        let parent = self.widget();
-
-        if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
-            while let Some(child) = box_.first_child() {
-                box_.remove(&child);
-            }
-            return;
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>()
-        {
-            window.set_child(None::<&gtk4::Widget>);
-            return;
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
-            window.set_child(None::<&gtk4::Widget>);
+        while let Some(child) = self.widget().first_child() {
+            child.unparent();
         }
     }
 
@@ -330,8 +401,7 @@ impl Element {
                     if current.as_deref() != Some(value) {
                         check.set_label(Some(value));
                     }
-                } else if let Some(label) =
-                    widget.downcast_ref::<gtk4::Label>()
+                } else if let Some(label) = widget.downcast_ref::<gtk4::Label>()
                 {
                     if label.label().as_str() != value {
                         label.set_label(value);
@@ -343,8 +413,7 @@ impl Element {
                     if entry.text().as_str() != value {
                         entry.set_text(value);
                     }
-                } else if let Some(label) =
-                    widget.downcast_ref::<gtk4::Label>()
+                } else if let Some(label) = widget.downcast_ref::<gtk4::Label>()
                 {
                     if label.label().as_str() != value {
                         label.set_label(value);
@@ -386,8 +455,7 @@ impl Element {
                 }
             }
             "checked" => {
-                if let Some(check) =
-                    widget.downcast_ref::<gtk4::CheckButton>()
+                if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>()
                 {
                     if check.is_active() != value {
                         check.set_active(value);
@@ -420,6 +488,159 @@ impl Element {
         }
     }
 
+    /// Wire a callback that fires whenever the text content of an
+    /// entry changes (every keystroke / paste / etc.). No-op if this
+    /// element isn't a `gtk::Entry`. Multiple handlers stack —
+    /// each call appends an additional `connect_changed` signal
+    /// connection.
+    pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
+        if let Some(entry) = self.widget().downcast_ref::<gtk4::Entry>() {
+            let cb = std::cell::RefCell::new(cb);
+            entry.connect_changed(move |e| {
+                if let Ok(mut cb) = cb.try_borrow_mut() {
+                    cb(e.text().to_string());
+                } else {
+                    eprintln!(
+                        "[gtk_dom] reentrant text-change handler skipped"
+                    );
+                }
+            });
+        }
+    }
+
+    /// Wire a callback that fires when the user commits an edit in a
+    /// text field (return key, Enter). No-op if this element isn't a
+    /// `gtk::Entry`. Coexists with `on_text_change`.
+    pub fn on_text_activate(&self, cb: impl FnMut(String) + 'static) {
+        if let Some(entry) = self.widget().downcast_ref::<gtk4::Entry>() {
+            let cb = std::cell::RefCell::new(cb);
+            entry.connect_activate(move |e| {
+                if let Ok(mut cb) = cb.try_borrow_mut() {
+                    cb(e.text().to_string());
+                } else {
+                    eprintln!(
+                        "[gtk_dom] reentrant text-activate handler skipped"
+                    );
+                }
+            });
+        }
+    }
+
+    /// Wire a callback that fires when an actionable control changes
+    /// value (slider drag, dropdown selection, checkbox toggle). No-op
+    /// if the element doesn't have a matching signal.
+    ///
+    /// This is the generic "value changed" companion to [`on_click`];
+    /// use it for slider/checkbox-type controls where "click" is
+    /// misleading.
+    pub fn on_action(&self, cb: impl FnMut() + 'static) {
+        let widget = self.widget();
+        let cb = std::sync::Arc::new(std::sync::Mutex::new(cb));
+
+        // Slider: connect_value_changed fires on drag + click-to-move.
+        if let Some(scale) = widget.downcast_ref::<gtk4::Scale>() {
+            let cb = cb.clone();
+            scale.connect_value_changed(move |_| {
+                if let Ok(mut cb) = cb.lock() {
+                    cb();
+                }
+            });
+            return;
+        }
+        // Checkbox toggle.
+        if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
+            let cb = cb.clone();
+            check.connect_toggled(move |_| {
+                if let Ok(mut cb) = cb.lock() {
+                    cb();
+                }
+            });
+            return;
+        }
+        // DropDown selection change.
+        if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
+            dd.connect_selected_notify(move |_| {
+                if let Ok(mut cb) = cb.lock() {
+                    cb();
+                }
+            });
+        }
+    }
+
+    /// Read the on/off state of a `gtk::CheckButton` (checkbox /
+    /// switch / other toggle types). Returns `false` for non-checkbutton
+    /// widgets.
+    pub fn checked(&self) -> bool {
+        self.widget()
+            .downcast_ref::<gtk4::CheckButton>()
+            .map(|c| c.is_active())
+            .unwrap_or(false)
+    }
+
+    /// Read the current value of a `gtk::Scale` (slider). Returns 0.0
+    /// for non-scale widgets.
+    pub fn double_value(&self) -> f64 {
+        self.widget()
+            .downcast_ref::<gtk4::Scale>()
+            .map(|s| s.value())
+            .unwrap_or(0.0)
+    }
+
+    /// Set the value on a `gtk::Scale`. Diffs to avoid redundant
+    /// redraws and signal cycles. No-ops on non-scale widgets.
+    pub fn set_double_value(&self, v: f64) {
+        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+            if (s.value() - v).abs() > f64::EPSILON {
+                s.set_value(v);
+            }
+        }
+    }
+
+    /// Set the slider's minimum value. No-op on non-scale widgets.
+    pub fn set_slider_min(&self, v: f64) {
+        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+            s.adjustment().set_lower(v);
+        }
+    }
+
+    /// Set the slider's maximum value. No-op on non-scale widgets.
+    pub fn set_slider_max(&self, v: f64) {
+        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+            s.adjustment().set_upper(v);
+        }
+    }
+
+    /// Replace the items list on a `gtk::DropDown`. No-op on non-
+    /// dropdown widgets.
+    pub fn set_popup_items(&self, items: &[String]) {
+        if let Some(dd) = self.widget().downcast_ref::<gtk4::DropDown>() {
+            let model = gtk4::StringList::new(&[]);
+            for it in items {
+                model.append(it);
+            }
+            dd.set_model(Some(&model));
+        }
+    }
+
+    /// Currently-selected index on a `gtk::DropDown` (0-based).
+    /// Returns 0 for non-dropdown widgets.
+    pub fn popup_selection(&self) -> u32 {
+        self.widget()
+            .downcast_ref::<gtk4::DropDown>()
+            .map(|dd| dd.selected())
+            .unwrap_or(0)
+    }
+
+    /// Programmatically pick an item by index. Diffs first to avoid
+    /// redundant signal fires. No-op on non-dropdown widgets.
+    pub fn set_popup_selection(&self, idx: u32) {
+        if let Some(dd) = self.widget().downcast_ref::<gtk4::DropDown>() {
+            if dd.selected() != idx {
+                dd.set_selected(idx);
+            }
+        }
+    }
+
     pub fn remove_attribute(&self, name: &str) {
         let widget = self.widget();
         match name {
@@ -431,8 +652,7 @@ impl Element {
             "value" => {
                 if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
                     entry.set_text("");
-                } else if let Some(label) =
-                    widget.downcast_ref::<gtk4::Label>()
+                } else if let Some(label) = widget.downcast_ref::<gtk4::Label>()
                 {
                     label.set_label("");
                 }
@@ -490,8 +710,7 @@ impl Text {
     /// Update the displayed string. No-ops if the value hasn't
     /// changed.
     pub fn set_text(&self, content: &str) {
-        if let Some(label) = self.node.widget().downcast_ref::<gtk4::Label>()
-        {
+        if let Some(label) = self.node.widget().downcast_ref::<gtk4::Label>() {
             if label.label().as_str() != content {
                 label.set_label(content);
             }
@@ -545,8 +764,3 @@ impl Placeholder {
         self.node
     }
 }
-
-// `glib` is re-imported above purely so the prelude `use` brings in
-// the `IsA` / `WidgetExt` trait methods. It isn't otherwise used.
-#[allow(dead_code)]
-fn _glib_use_marker(_: glib::Object) {}

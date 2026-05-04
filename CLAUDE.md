@@ -63,6 +63,9 @@ commands.
 cargo run -p gtk_dom --example hello_window
 cargo run -p gtk_dom --example counter
 
+# Build & run the macro-level counter (view!{} + #[component]):
+cargo run --manifest-path examples/counter_gtk/Cargo.toml
+
 # Typecheck the GTK façade:
 cargo build -p gtk_dom
 

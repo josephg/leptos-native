@@ -115,12 +115,16 @@ delegation = ["tachys/delegation"]
 islands-router = ["tachys/mark_branches"]
 # Activates the native UI rendering backend (Cocoa on macOS, GTK on
 # Linux). Propagates to tachys (which routes to the right backend by
-# target_os) and to leptos_dom, and activates the optional
-# `cocoa_dom` dep used by `mount_macos`. See tachys/Cargo.toml.
+# target_os) and to leptos_dom, activates the optional native-renderer
+# deps, and enables `reactive_graph/effects` (required for reactive
+# UI updates — without it, RenderEffect is a no-op). See
+# tachys/Cargo.toml.
 native-ui = [
   "tachys/native-ui",
   "leptos_dom/native-ui",
+  "reactive_graph/effects",
   "dep:cocoa_dom",
+  "dep:gtk_dom",
 ]
 subsecond = [
   "reactive_graph/subsecond",
@@ -158,6 +162,10 @@ leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
 # and cocoa_dom isn't pulled into the build).
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa_dom = { path = "../cocoa_dom", version = "0.1.0", optional = true }
+
+# Linux-native deps used by `mount_gtk` (same pattern as cocoa_dom).
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk_dom = { path = "../gtk_dom", version = "0.1.0", optional = true }
 
 [package.metadata.cargo-all-features]
 denylist = [

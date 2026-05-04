@@ -1800,7 +1800,6 @@ name = "gtk_dom"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
- "futures",
  "gio",
  "glib",
  "gtk4",
@@ -2307,6 +2306,7 @@ dependencies = [
  "either_of",
  "futures",
  "getrandom 0.4.1",
+ "gtk_dom",
  "hydration_context",
  "leptos-spin-macro",
  "leptos_config",

@@ -186,6 +186,9 @@ pub mod prelude {
         // mount_to_window(...)`. Requires the `native-ui` feature.
         #[cfg(all(target_os = "macos", leptos_native))]
         pub use crate::mount_macos::*;
+        // The Linux-side mount entry point — same shape.
+        #[cfg(all(target_os = "linux", leptos_native))]
+        pub use crate::mount_gtk::*;
 
         pub use leptos_config::*;
         #[cfg(not(leptos_native))]
@@ -216,11 +219,10 @@ pub mod prelude {
         pub use tachys::{
             cocoa::BindAttribute, reactive_graph::Suspend,
         };
-        // Linux: `Suspend` is renderer-agnostic and lives in
-        // `tachys::reactive_graph`; `BindAttribute` for GTK arrives
-        // alongside the rest of `tachys::gtk` in Stage 5.
         #[cfg(all(target_os = "linux", leptos_native))]
-        pub use tachys::reactive_graph::Suspend;
+        pub use tachys::{
+            gtk::BindAttribute, reactive_graph::Suspend,
+        };
         pub use tachys::view::{
             fragment::Fragment, template::ViewTemplate,
         };
@@ -316,6 +318,10 @@ pub mod mount;
 /// `mount_to_window`. Requires the `native-ui` feature.
 #[cfg(all(target_os = "macos", leptos_native))]
 pub mod mount_macos;
+/// Tools to mount an application to a native GTK window on Linux.
+/// Same shape as [`mount_macos`]; see `mount_to_window`.
+#[cfg(all(target_os = "linux", leptos_native))]
+pub mod mount_gtk;
 #[doc(inline)]
 pub use leptos_config as config;
 #[doc(inline)]
@@ -338,7 +344,8 @@ pub use leptos_server as server;
 #[doc(inline)]
 pub use tachys::html::attribute as attr;
 /// HTML element types. Web-only — on macOS the parallel Cocoa
-/// element builders live in `tachys::cocoa`.
+/// element builders live in `tachys::cocoa`; on Linux in
+/// `tachys::gtk`.
 #[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::html::element as html;
@@ -347,6 +354,11 @@ pub use tachys::html::element as html;
 #[cfg(all(target_os = "macos", leptos_native))]
 #[doc(inline)]
 pub use tachys::cocoa as cocoa;
+/// GTK-flavoured element builders (Linux analogue of `html`).
+/// Requires the `native-ui` feature.
+#[cfg(all(target_os = "linux", leptos_native))]
+#[doc(inline)]
+pub use tachys::gtk as gtk;
 /// HTML event types.
 #[cfg(not(leptos_native))]
 #[doc(no_inline)]
