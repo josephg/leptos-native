@@ -67,10 +67,10 @@ Neither native port has a test runner yet; the iteration loop is
 
 ```sh
 # Build & run a specific example (current state; more under examples/*_macos):
-cargo run --manifest-path examples/counter_macos/Cargo.toml
-cargo run --manifest-path examples/counters_macos/Cargo.toml
-cargo run --manifest-path examples/greeter_macos/Cargo.toml
-cargo run --manifest-path examples/checkbox_macos/Cargo.toml
+cargo run --manifest-path examples_cocoa/counter/Cargo.toml
+cargo run --manifest-path examples_cocoa/counters/Cargo.toml
+cargo run --manifest-path examples_cocoa/greeter/Cargo.toml
+cargo run --manifest-path examples_cocoa/checkbox/Cargo.toml
 
 # Just typecheck a crate (the workspace is huge — scope to what changed):
 cargo build --manifest-path cocoa_dom/Cargo.toml
@@ -295,7 +295,7 @@ When a change touches both ports, list both sets of paths so reviewers can scan 
   - macOS: `EventDescriptor` impl + `PendingHandler` variant in `tachys/src/html/event_macos.rs` + install hook in `cocoa_dom/src/event.rs` + passthrough method on `cocoa_dom::Element`.
   - GTK: `EventDescriptor` impl + `PendingHandler` variant in `tachys/src/html/event_gtk.rs` *(Stage 5)* + install helper in `gtk_dom/src/event.rs` *(Stage 3 will create this)* + passthrough method on `gtk_dom::Element`.
 - **If you change layout behavior:**
-  - macOS: re-test resize on at least `counter_macos` (static) and `counters_macos` (dynamic add/remove). Layout regressions are the most common breakage.
+  - macOS: re-test resize on at least `counter (examples_cocoa/counter)` (static) and `counters_macos` (dynamic add/remove). Layout regressions are the most common breakage.
   - GTK: re-test the affected examples; GTK self-lays-out so layout regressions are rarer, but resize behavior of `gtk::Box` with mixed `hexpand` children is worth eyeballing.
 - **If you touch shared `tachys` / `leptos` code:**
   - Verify default workspace build still passes: `cargo build --workspace --exclude cocoa_dom` (or exclude `gtk_dom` on macOS).

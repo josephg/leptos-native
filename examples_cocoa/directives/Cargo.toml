@@ -1,0 +1,13 @@
+[package]
+name = "directives"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "directives"
+path = "src/main.rs"
+
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }
+cocoa_dom = { path = "../../cocoa_dom" }

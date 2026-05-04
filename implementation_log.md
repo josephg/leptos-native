@@ -2668,3 +2668,85 @@ Now 15 example apps compile for macOS:
   * `provide_context` / `use_context` — working.
   * #[component] prop patterns: WriteSignal, closure, context.
   * Builder-style API (`button().on(click, ...).child(...)`).
+
+
+## Post-GTK-merge fixup + rename to examples_cocoa/
+
+Resolved merge conflicts from GTK branch integration. The GTK branch
+introduced the `leptos_native` cfg flag (set by `build.rs` when
+`native-ui` feature is active) and rearranged module gating in
+`tachys/src/html/mod.rs`.
+
+### Merge conflict resolution
+
+  * `tachys/src/html/mod.rs` — accepted the `#[cfg(not(leptos_native))]`
+    guards for web-only modules from the GTK branch.
+  * Ungated `pub mod directive;` and `FEATURE_CONFLICT_DIAGNOSTIC` —
+    both needed by our cocoa code (`.directive()` on builders
+    references `IntoDirective`).
+  * Added `native-ui` feature to `cocoa_dom`'s dev-dependency on
+    `tachys` so unit tests compile with `leptos_native` active.
+
+### Example dependency pattern
+
+Updated all 15 macOS examples from the old pattern:
+
+```toml
+[target.'cfg(target_os = "macos")'.dependencies]
+leptos = { path = "../../leptos", default-features = false }
+reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
+tachys = { path = "../../tachys", features = ["reactive_graph"] }
+```
+
+to the new, simpler pattern (matching the GTK examples):
+
+```toml
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }
+```
+
+(Plus extra deps for fetch, stores, directives, and counter_without_macros.)
+
+### Renamed to examples_cocoa/
+
+All 15 macOS examples moved from `examples/*_macos` to
+`examples_cocoa/*` (with `_macos` suffix stripped):
+
+  * `counter_macos` → `examples_cocoa/counter`
+  * `counters_macos` → `examples_cocoa/counters`
+  * `greeter_macos` → `examples_cocoa/greeter`
+  * `checkbox_macos` → `examples_cocoa/checkbox`
+  * `settings_macos` → `examples_cocoa/settings`
+  * `login_form_macos` → `examples_cocoa/login_form`
+  * `timer_macos` → `examples_cocoa/timer`
+  * `persistent_counter_macos` → `examples_cocoa/persistent_counter`
+  * `component_event_test` → `examples_cocoa/component_event_test`
+  * `fetch_macos` → `examples_cocoa/fetch`
+  * `directives_macos` → `examples_cocoa/directives`
+  * `counter_without_macros_macos` → `examples_cocoa/counter_without_macros`
+  * `parent_child_macos` → `examples_cocoa/parent_child`
+  * `slots_macos` → `examples_cocoa/slots`
+  * `stores_macos` → `examples_cocoa/stores`
+
+Added `examples_cocoa` to the workspace `exclude` list in the root
+`Cargo.toml` so these standalone crates don't try to join the
+workspace. Updated Cargo.toml `[package].name` and `[[bin]].name`
+for each example.
+
+### Files updated
+
+  * `Cargo.toml` — added `examples_cocoa` to workspace exclude
+  * `cocoa_dom/Cargo.toml` — added `native-ui` to tachys dev-dep
+  * `tachys/src/html/mod.rs` — resolved conflicts, ungated directive
+    + FEATURE_CONFLICT_DIAGNOSTIC
+  * `xcuitests/bundle_app.sh` — changed `examples/` to
+    `examples_cocoa/`
+  * `xcuitests/run_tests.sh` — updated example names
+  * `CLAUDE.md` — updated example paths
+  * `README_macos.md` — updated paths, dependency template
+
+### Verified
+
+  * All 15 examples build (`examples_cocoa/*/Cargo.toml`).
+  * 124 cocoa_dom unit tests pass.
+  * 24 XCUI tests pass (all accessibility tests).

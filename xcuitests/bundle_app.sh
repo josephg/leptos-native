@@ -6,7 +6,7 @@
 #   ./bundle_app.sh <example_name> <bundle_id>
 #
 # Example:
-#   ./bundle_app.sh login_form_macos com.leptos.test.LoginForm
+#   ./bundle_app.sh login_form com.leptos.test.LoginForm
 #
 # Output:
 #   target/xcuitests/<example_name>.app/
@@ -27,7 +27,7 @@ EXAMPLE="$1"
 BUNDLE_ID="$2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-MANIFEST="$REPO_ROOT/examples/$EXAMPLE/Cargo.toml"
+MANIFEST="$REPO_ROOT/examples_cocoa/$EXAMPLE/Cargo.toml"
 TARGET_DIR="$REPO_ROOT/target/xcuitests"
 APP_DIR="$TARGET_DIR/$EXAMPLE.app"
 
@@ -41,7 +41,7 @@ cargo build --release --manifest-path "$MANIFEST" >&2
 
 # 2. Locate the produced binary. The example crates aren't part of
 # the workspace, so each has its own per-crate target dir.
-BIN="$REPO_ROOT/examples/$EXAMPLE/target/release/$EXAMPLE"
+BIN="$REPO_ROOT/examples_cocoa/$EXAMPLE/target/release/$EXAMPLE"
 if [[ ! -x "$BIN" ]]; then
     echo "error: built binary not found / not executable at $BIN" >&2
     exit 1

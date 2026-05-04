@@ -61,7 +61,7 @@ tachys/src/cocoa/   — Bridges cocoa_dom to tachys' Render/Mountable
                      (button(), label(), slider(), …) and the bind:
                      plumbing.
 leptos/src/mount_macos.rs — `mount_to_window` / `run` entry points.
-examples/<name>_macos/  — Each example is its own Cargo crate (not a
+examples_cocoa/<name>/  — Each example is its own Cargo crate (not a
                           workspace member, so each has its own
                           target/ dir).
 xcuitests/    — Swift package: end-to-end UI tests that drive built
@@ -76,21 +76,21 @@ CLAUDE.md     — Onboarding doc for AI assistants.
 
 ## Running the examples
 
-The included examples in `examples/*_macos/`:
+The included examples in `examples_cocoa/`:
 
 | Example              | Demonstrates                                      |
 |----------------------|---------------------------------------------------|
-| `counter_macos`      | view! macro + #[component] + reactive label       |
-| `counters_macos`     | `<For>` dynamic children, per-row signals         |
-| `greeter_macos`      | `bind:value` two-way bind on a text field         |
-| `checkbox_macos`     | `bind:checked` + `on:input` + `on:change` coexist |
-| `settings_macos`     | slider, popup, mute-gates-slider reactive enable  |
-| `login_form_macos`   | secure_text_field, button.enabled=Memo, submit    |
+| `counter`      | view! macro + #[component] + reactive label       |
+| `counters`     | `<For>` dynamic children, per-row signals         |
+| `greeter`      | `bind:value` two-way bind on a text field         |
+| `checkbox`     | `bind:checked` + `on:input` + `on:change` coexist |
+| `settings`     | slider, popup, mute-gates-slider reactive enable  |
+| `login_form`   | secure_text_field, button.enabled=Memo, submit    |
 
 To run any of them:
 
 ```sh
-cargo run --manifest-path examples/login_form_macos/Cargo.toml
+cargo run --manifest-path examples_cocoa/login_form/Cargo.toml
 ```
 
 (Or `cd` into the example dir and `cargo run`.)
@@ -100,8 +100,8 @@ close the window.
 
 ## Writing your own app
 
-Add a new crate under `examples/` (or anywhere else) with a Cargo.toml
-along these lines:
+Add a new crate under `examples_cocoa/` (or anywhere else) with a
+Cargo.toml like:
 
 ```toml
 [package]
@@ -113,10 +113,8 @@ edition = "2021"
 name = "my_app"
 path = "src/main.rs"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-leptos = { path = "../../leptos", default-features = false }
-reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
-tachys = { path = "../../tachys", features = ["reactive_graph"] }
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }
 ```
 
 Then in `src/main.rs`:

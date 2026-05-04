@@ -27,11 +27,11 @@ bundle() {
 }
 
 echo "Bundling example apps..."
-bundle login_form_macos com.leptos.test.LoginForm \
+bundle login_form com.leptos.test.LoginForm \
     LEPTOS_MAC_LOGIN_FORM_PATH
-bundle settings_macos com.leptos.test.Settings \
+bundle settings com.leptos.test.Settings \
     LEPTOS_MAC_SETTINGS_PATH
-bundle counters_macos com.leptos.test.Counters \
+bundle counters com.leptos.test.Counters \
     LEPTOS_MAC_COUNTERS_PATH
 
 # Backward-compat: older tests / docs reference LEPTOS_MAC_APP_PATH
