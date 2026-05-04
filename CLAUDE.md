@@ -32,6 +32,32 @@ Read these before diving in:
   explains the reactive system and renderer layering both ports
   reuse).
 
+### System documentation
+
+The GTK4 and GLib C reference docs are installed on this system at:
+
+- **GTK4:** `/usr/share/doc/libgtk-4-doc/gtk4/`
+- **GLib:**  `/usr/share/doc/libglib2.0-dev/glib/`
+- **GIO:**   `/usr/share/doc/libglib2.0-dev/gio/`
+
+These are the **canonical docs** for GLib async primitives —
+`g_main_context_invoke`, `g_idle_add`, `g_source_attach`,
+`g_source_remove`, `GSource`, `GMainLoop` — and their exact
+semantics (ownership, inline-vs-deferred dispatch, thread-safety,
+auto-remove-on-return-FALSE). Always consult them before writing
+or debugging spawner / event-loop code. The Rust bindings (`glib`
+crate, `gtk4` crate) are thin wrappers; the C docs are the
+authoritative reference for behavior.
+
+Key pages to know:
+- `method.MainContext.invoke.html` — inline vs idle dispatch rules
+- `func.idle_add.html` — always-deferred idle callback (attaches to
+  global-default context)
+- `func.idle_add_full.html` — priority + `GDestroyNotify` variant
+- `struct.MainContext.html` — ownership, acquire/release, thread-
+  default contexts
+- `struct.MainLoop.html` — run-loop lifecycle during `app.run()`
+
 ## Build & run
 
 Neither native port has a test runner yet; the iteration loop is
