@@ -1774,3 +1774,76 @@ plus an explicit `AXIdentifier` so tests have a named hook. That'd
 be a small-but-pervasive change in `cocoa_dom::node::Element::create`
 plus the layout module. Not pursued now — adjacency-based locators
 work fine for the current shape.
+
+
+## Test coverage push
+
+127 tests passing across two tiers:
+
+  * **103 cocoa_dom unit tests** (8 test binaries):
+    - `element_creation.rs` (10) — every supported tag + class.
+    - `attributes.rs` (27) — typed StringAttr/BoolAttr setters,
+      removers, name lookup, Rndr trait surface, idempotence.
+    - `events.rs` (15) — on_click / on_action / fan-out
+      delegate / value getters.
+    - `text_and_placeholder.rs` (5) — Text + Placeholder ctors.
+    - `tree_mutation.rs` (11) — insert_node / remove_child /
+      clear_children / ptr_eq / into_node round-trip.
+    - `layout.rs` (10) — Taffy compute_layout against built
+      trees: row/column direction, padding, gap, flex_grow,
+      nested containers, edge cases.
+    - `app_menu.rs` (7) — App > Quit ⌘Q + Edit menu (Undo,
+      Redo ⇧⌘Z, Cut, Copy, Paste, Delete, Select All) selectors,
+      key equivalents, nil-target first-responder dispatch.
+    - `builders.rs` (18) — tachys cocoa builders: Button,
+      Checkbox, Label, TextField (incl. secure), Slider,
+      PopUpButton, vstack. Static + reactive attribute paths.
+
+  * **24 XCUIAutomation-equivalent tests** in `xcuitests/`
+    (login_form_macos, settings_macos, counters_macos).
+
+### Pump helper for reactive unit tests
+
+`common::pump_run_loop(secs)` runs the main run loop briefly via
+raw FFI to `CFRunLoopRunInMode`. Needed because `RenderEffect`
+schedules its rebuild on the main queue via our spawner, and
+without an active run loop those scheduled futures don't fire.
+Tests that mutate signals call `pump_run_loop(0.1)` between the
+`signal.set` and the assertion.
+
+### Required `pub` on builder state fields
+
+`ElementState.el` and `LabelState.text` were previously private
+(crate-internal) — fine for production where Mountable's public
+surface is enough, but tests need direct access to inspect the
+constructed NSView. Made them `pub` (with a doc note pointing to
+`Mountable::elements()` for non-test callers).
+
+### tests.md status
+
+  * 141 items marked done (■) across the checklist, up from 0.
+  * 191 items still pending.
+
+### What's left
+
+Remaining items in tests.md that aren't yet covered, grouped by
+why they're deferred:
+
+  * **Defer-by-difficulty**: off-main-thread panics (need
+    threaded test setup), performance budgets (no agreed
+    targets), 1k-row stress tests, memory-leak detection.
+  * **Defer-by-scope**: `view!` macro expansion tests (need
+    fixture apps or proc-macro test harness), components with
+    `children` prop, `mount_to_window` UnmountHandle (we leak
+    the Owner).
+  * **Defer-by-fixture**: bind: re-entrant updates, two binds
+    to same signal, explicit programmatic unmount (would need
+    purpose-built tiny fixture apps; existing examples don't
+    expose these edges directly).
+  * **Renderer trait surface tests**: `Dom::*` forwarders →
+    `cocoa_dom::Renderer::*` smokes, `CastFrom<Node>`,
+    hydration stub panics. Doable as cocoa_dom unit tests but
+    not yet written.
+  * **Spawner lifecycle**: init / re-init / spawn_local /
+    waker behaviour. Needs an async test setup with run-loop
+    pumping.
