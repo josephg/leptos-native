@@ -113,6 +113,15 @@ trace-component-props = [
 ]
 delegation = ["tachys/delegation"]
 islands-router = ["tachys/mark_branches"]
+# Activates the native UI rendering backend (Cocoa on macOS, GTK on
+# Linux). Propagates to tachys (which routes to the right backend by
+# target_os) and to leptos_dom, and activates the optional
+# `cocoa_dom` dep used by `mount_macos`. See tachys/Cargo.toml.
+native-ui = [
+  "tachys/native-ui",
+  "leptos_dom/native-ui",
+  "dep:cocoa_dom",
+]
 subsecond = [
   "reactive_graph/subsecond",
   "dep:subsecond",
@@ -144,9 +153,11 @@ rustc_version = { workspace = true, default-features = true }
 [target.'cfg(erase_components)'.dependencies]
 leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
 
-# macOS-native deps used by `mount_macos`.
+# macOS-native deps used by `mount_macos` (activated only when the
+# `native-ui` feature is on; otherwise `mount_macos` is cfg'd out
+# and cocoa_dom isn't pulled into the build).
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa_dom = { path = "../cocoa_dom", version = "0.1.0" }
+cocoa_dom = { path = "../cocoa_dom", version = "0.1.0", optional = true }
 
 [package.metadata.cargo-all-features]
 denylist = [

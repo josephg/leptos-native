@@ -27,6 +27,9 @@ default = []
 ssr = []
 tracing = ["dep:tracing"]
 nonce = ["leptos/nonce"]
+# Defensive: when native-ui is enabled in a build that happens to
+# include this crate, lib.rs is gated to empty (it's web-only).
+native-ui = []
 
 [package.metadata.docs.rs]
 all-features = true

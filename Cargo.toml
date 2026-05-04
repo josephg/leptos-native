@@ -25,8 +25,9 @@ members = [
   "server_fn/server_fn_macro_default",
   "tachys",
 
-  # macos-native port
+  # native ports
   "cocoa_dom",
+  "gtk_dom",
 
   # integrations
   "integrations/actix",
@@ -123,6 +124,8 @@ tokio-tungstenite = { default-features = false, version = "0.28" }
 serial_test = { default-features = false, version = "3.3" }
 erased = { default-features = false, version = "0.1" }
 glib = { default-features = false, version = "0.21" }
+gio = { default-features = false, version = "0.21" }
+gtk4 = { default-features = false, version = "0.10" }
 async-trait = { default-features = false, version = "0.1" }
 anyhow = { default-features = false, version = "1.0" }
 walkdir = { default-features = false, version = "2.5" }

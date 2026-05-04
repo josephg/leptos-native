@@ -1,3 +1,7 @@
+// Web-only — the Actix integration ties leptos to actix-web for
+// HTTP serving. Compile to an empty rlib on native UI targets. See
+// ../../tachys/build.rs for the `leptos_native` rationale.
+#![cfg(not(leptos_native))]
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 

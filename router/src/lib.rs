@@ -1,3 +1,12 @@
+// leptos_router targets the browser DOM (uses `web_sys::window`,
+// `tachys::dom`, `tachys::html::element`, etc.). On native UI
+// targets — macOS (Cocoa) and Linux (GTK) — there is no DOM and the
+// crate has no useful surface, so we compile it to an empty rlib
+// rather than tracking down every offending import. The
+// `leptos_native` cfg is emitted by `build.rs`; see
+// ../../tachys/build.rs for the rationale.
+#![cfg(not(leptos_native))]
+
 //! # Leptos Router
 //!
 //! Leptos Router is a router and state management tool for web applications

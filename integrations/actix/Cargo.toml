@@ -37,6 +37,10 @@ default = ["actix-default"]
 actix-default = ["actix-web/default"]
 islands-router = ["tachys/islands"]
 tracing = ["dep:tracing"]
+# Defensive: when native-ui is enabled in a build that happens to
+# include this crate, lib.rs is gated to empty (it's web-only — an
+# Actix Web SSR integration).
+native-ui = []
 
 [package.metadata.cargo-all-features]
 denylist = ["tracing"]

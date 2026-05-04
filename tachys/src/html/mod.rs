@@ -1,6 +1,6 @@
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use self::attribute::Attribute;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use crate::{
     hydration::Cursor,
     no_attrs,
@@ -11,9 +11,9 @@ use crate::{
     },
     view::{Position, PositionState, Render, RenderHtml},
 };
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use attribute::any_attribute::AnyAttribute;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 use std::borrow::Cow;
 
 /// Diagnostic message shared by event, directive, and property `.expect()` calls.
@@ -25,7 +25,7 @@ use std::borrow::Cow;
 /// unification in a client-side (CSR or hydrate) build.
 ///
 /// Only referenced from the web-only event/directive/property modules.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub(crate) const FEATURE_CONFLICT_DIAGNOSTIC: &str =
     "Value is None because the `ssr` feature is active. When `ssr` is \
      enabled, tachys skips creating client-side values (event handlers, \
@@ -38,60 +38,62 @@ pub(crate) const FEATURE_CONFLICT_DIAGNOSTIC: &str =
 /// Types for HTML attributes.
 pub mod attribute;
 /// Types for manipulating the `class` attribute and `classList`.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod class;
 /// Types for creating user-defined attributes with custom behavior (directives).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod directive;
 /// Types for HTML elements (web only — Cocoa elements live in their own
 /// module, defined in Stage 5).
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod element;
-/// On macOS, `tachys::html::element` is a thin facade re-exporting
-/// the Cocoa builders, so that `view!{}` macro emissions like
-/// `::leptos::tachys::html::element::button()` resolve correctly.
-#[cfg(target_os = "macos")]
+/// On macOS native, `tachys::html::element` is a thin facade
+/// re-exporting the Cocoa builders, so that `view!{}` macro
+/// emissions like `::leptos::tachys::html::element::button()`
+/// resolve correctly. Requires the `native-ui` feature.
+#[cfg(all(target_os = "macos", leptos_native))]
 pub mod element_macos;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", leptos_native))]
 pub use element_macos as element;
 
 /// Types for DOM events.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod event;
-/// On macOS, `tachys::html::event` is a thin facade providing event
-/// descriptors and the `on(event, handler)` wrapper that maps to our
-/// Cocoa target/action infrastructure.
-#[cfg(target_os = "macos")]
+/// On macOS native, `tachys::html::event` is a thin facade providing
+/// event descriptors and the `on(event, handler)` wrapper that maps
+/// to our Cocoa target/action infrastructure. Requires the
+/// `native-ui` feature.
+#[cfg(all(target_os = "macos", leptos_native))]
 pub mod event_macos;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", leptos_native))]
 pub use event_macos as event;
 /// Types for adding interactive islands to inert HTML pages.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod islands;
 /// Types for accessing a reference to an HTML element.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod node_ref;
 /// Types for DOM properties.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod property;
 /// Types for the `style` attribute and individual style manipulation.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub mod style;
 
 /// A `<!DOCTYPE>` declaration. Web-only — disabled on native targets
 /// since the renderer has no concept of inert HTML or doctypes.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub struct Doctype {
     value: &'static str,
 }
 
 /// Creates a `<!DOCTYPE>`.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub fn doctype(value: &'static str) -> Doctype {
     Doctype { value }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl Render for Doctype {
     type State = ();
 
@@ -100,10 +102,10 @@ impl Render for Doctype {
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 no_attrs!(Doctype);
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl RenderHtml for Doctype {
     type AsyncOutput = Self;
     type Owned = Self;
@@ -142,12 +144,12 @@ impl RenderHtml for Doctype {
 }
 
 /// An element that contains no interactivity, and whose contents can be known at compile time.
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub struct InertElement {
     html: Cow<'static, str>,
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl InertElement {
     /// Creates a new inert element.
     pub fn new(html: impl Into<Cow<'static, str>>) -> Self {
@@ -156,10 +158,10 @@ impl InertElement {
 }
 
 /// Retained view state for [`InertElement`].
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 pub struct InertElementState(Cow<'static, str>, Element);
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl Mountable for InertElementState {
     fn unmount(&mut self) {
         self.1.unmount();
@@ -178,7 +180,7 @@ impl Mountable for InertElementState {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl Render for InertElement {
     type State = InertElementState;
 
@@ -199,7 +201,7 @@ impl Render for InertElement {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl AddAnyAttr for InertElement {
     type Output<SomeNewAttr: Attribute> = Self;
 
@@ -217,7 +219,7 @@ impl AddAnyAttr for InertElement {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(leptos_native))]
 impl RenderHtml for InertElement {
     type AsyncOutput = Self;
     type Owned = Self;
