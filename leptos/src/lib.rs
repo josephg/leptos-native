@@ -187,6 +187,30 @@ pub mod prelude {
         #[cfg(target_os = "macos")]
         pub use crate::mount_macos::*;
 
+        // macOS analog of `leptos_dom::helpers::set_interval_with_handle`
+        // (web's setInterval). Backed by NSTimer; same signature so
+        // example code compiles unchanged.
+        #[cfg(target_os = "macos")]
+        pub use cocoa_dom::{
+            set_interval, set_interval_with_handle, IntervalError,
+            IntervalHandle,
+        };
+
+        // macOS-flavoured NodeRef. The web one
+        // (`tachys::reactive_graph::node_ref::NodeRef<E>`) is
+        // parameterised over an HtmlElement type and uses JsCast;
+        // we provide a monomorphic version over our single
+        // `cocoa_dom::Element` type.
+        #[cfg(target_os = "macos")]
+        pub use tachys::cocoa::NodeRef;
+
+        // macOS persistent storage analog (`NSUserDefaults`). Web's
+        // `window().local_storage()` parity — same Result-of-Option
+        // shape so example code with `.ok().flatten()` chains works
+        // unchanged.
+        #[cfg(target_os = "macos")]
+        pub use cocoa_dom::{local_storage, Storage, StorageError};
+
         pub use leptos_config::*;
         #[cfg(not(target_os = "macos"))]
         pub use leptos_dom::helpers::*;

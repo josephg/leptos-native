@@ -156,6 +156,13 @@ pub fn drop_handlers_for(view: &NSView) {
 pub struct TextFieldHandlers {
     on_input: Vec<Box<dyn FnMut(String) + 'static>>,
     on_change: Vec<Box<dyn FnMut(String) + 'static>>,
+    /// Fires on `controlTextDidBeginEditing:` (web `focus`).
+    on_focus: Vec<Box<dyn FnMut() + 'static>>,
+    /// Fires on `controlTextDidEndEditing:` alongside `on_change`.
+    /// Web semantics: blur fires on focus loss (which on AppKit is
+    /// synonymous with end-of-editing). The difference from `change`
+    /// is just the payload — blur has none.
+    on_blur: Vec<Box<dyn FnMut() + 'static>>,
 }
 
 type SharedHandlers = std::rc::Rc<RefCell<TextFieldHandlers>>;
@@ -172,6 +179,26 @@ define_class!(
     unsafe impl NSObjectProtocol for TextFieldDelegate {}
 
     unsafe impl NSControlTextEditingDelegate for TextFieldDelegate {
+        #[unsafe(method(controlTextDidBeginEditing:))]
+        fn control_text_did_begin_editing(
+            &self,
+            _notification: &NSNotification,
+        ) {
+            let mut handlers = match self.ivars().try_borrow_mut() {
+                Ok(h) => h,
+                Err(_) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[cocoa_dom] reentrant controlTextDidBeginEditing skipped"
+                    );
+                    return;
+                }
+            };
+            for cb in handlers.on_focus.iter_mut() {
+                cb();
+            }
+        }
+
         #[unsafe(method(controlTextDidChange:))]
         fn control_text_did_change(&self, notification: &NSNotification) {
             let object = notification.object();
@@ -224,6 +251,9 @@ define_class!(
             };
             for cb in handlers.on_change.iter_mut() {
                 cb(value.clone());
+            }
+            for cb in handlers.on_blur.iter_mut() {
+                cb();
             }
         }
     }
@@ -302,6 +332,29 @@ pub fn on_text_field_end_editing(
 ) {
     let handlers = ensure_text_field_entry(field);
     handlers.borrow_mut().on_change.push(Box::new(cb));
+}
+
+/// Append a focus observer — fires on
+/// `controlTextDidBeginEditing:` (the field gained focus and the
+/// user has started or is about to start editing).
+pub fn on_text_field_focus(
+    field: &NSTextField,
+    cb: impl FnMut() + 'static,
+) {
+    let handlers = ensure_text_field_entry(field);
+    handlers.borrow_mut().on_focus.push(Box::new(cb));
+}
+
+/// Append a blur observer — fires when editing ends (Return,
+/// Tab, click-elsewhere, programmatic resignation). Coexists
+/// with `on_text_field_end_editing` (which carries the value);
+/// blur handlers run after change handlers from the same notif.
+pub fn on_text_field_blur(
+    field: &NSTextField,
+    cb: impl FnMut() + 'static,
+) {
+    let handlers = ensure_text_field_entry(field);
+    handlers.borrow_mut().on_blur.push(Box::new(cb));
 }
 
 /// Wire the given closure to fire when an NSControl's action fires

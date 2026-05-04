@@ -1,13 +1,21 @@
-//! Stub `RenderHtml` + `AddAnyAttr` impls for the Cocoa element
-//! types so they satisfy the `IntoView` blanket impl in
-//! `leptos::into_view`.
+//! Stub `RenderHtml` (and optionally `AddAnyAttr`) impls for the
+//! Cocoa element types so they satisfy the `IntoView` blanket impl
+//! in `leptos::into_view`.
 //!
 //! Why this exists: leptos's `IntoView` trait is bounded
 //! `Render + RenderHtml + Send`. We have real `Render` impls (in
-//! [`crate::cocoa::element`]); the rest need to exist *for the type
-//! checker*, even though SSR / hydration are not real concepts on
-//! native macOS. See `implementation_log.md` (the "stub `hydrate` to
-//! delegate to `build`" entry) for the cleanup story.
+//! [`crate::cocoa::element`]); the SSR/hydration story is stubbed
+//! since neither concept is real on native macOS. See
+//! `implementation_log.md` (the "stub `hydrate` to delegate to
+//! `build`" entry) for the cleanup story.
+//!
+//! Two macros are exported:
+//!   - `cocoa_stub_view_impls!($ty)` — stubs BOTH `AddAnyAttr`
+//!     (drops attrs) and `RenderHtml`. Use for builders not yet
+//!     refactored to the type-parametric attribute pipeline.
+//!   - `cocoa_stub_render_html!($ty)` — stubs ONLY `RenderHtml`.
+//!     Use after a builder has gained a real `AddAnyAttr` impl
+//!     (the `<At = ()>` type-parametric refactor).
 //!
 //! Each stub:
 //!   - `to_html_with_buf`: empty (no SSR — write nothing).
@@ -20,9 +28,8 @@
 //!     stored).
 //!   - `MIN_LENGTH`: 0 — only used for SSR string-buffer sizing.
 
-/// Macro to install the stub impls on a non-generic Cocoa element type
-/// (Button, Label, TextField). `Self::Owned = Self` requires Self to
-/// be 'static, which non-generic Cocoa types are.
+/// Combined stub: AddAnyAttr (drops attrs) + RenderHtml. Used
+/// for builders not yet refactored to the typed-attribute path.
 macro_rules! cocoa_stub_view_impls {
     ($ty:ty) => {
         impl $crate::view::add_attr::AddAnyAttr for $ty {
@@ -58,7 +65,6 @@ macro_rules! cocoa_stub_view_impls {
                     $crate::html::attribute::any_attribute::AnyAttribute,
                 >,
             ) {
-                // No SSR on native — emit nothing.
             }
 
             fn hydrate<const FROM_SERVER: bool>(
@@ -66,10 +72,6 @@ macro_rules! cocoa_stub_view_impls {
                 _cursor: &$crate::hydration::Cursor,
                 _position: &$crate::view::PositionState,
             ) -> Self::State {
-                // Hydration is stubbed on native (see implementation_log
-                // 2026-05-03 entry). Fall back to a fresh build —
-                // semantically correct for the only path that matters
-                // (mount_to_window, which doesn't hydrate).
                 <Self as $crate::view::Render>::build(self)
             }
 

@@ -1,0 +1,16 @@
+[package]
+name = "stores_macos"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "stores_macos"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+leptos = { path = "../../leptos", default-features = false }
+reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
+reactive_stores = { path = "../../reactive_stores" }
+reactive_stores_macro = { path = "../../reactive_stores_macro" }
+tachys = { path = "../../tachys", features = ["reactive_graph"] }

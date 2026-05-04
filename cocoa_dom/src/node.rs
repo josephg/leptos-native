@@ -778,6 +778,24 @@ impl Element {
         }
     }
 
+    /// Wire a callback that fires when the text field gains focus
+    /// (`controlTextDidBeginEditing:`). No-op on non-NSTextField.
+    pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
+        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
+            crate::event::on_text_field_focus(field, cb);
+        }
+    }
+
+    /// Wire a callback that fires when the text field loses focus
+    /// (Return / Tab / click-elsewhere — same notification as
+    /// `on_text_end_editing` but with no value payload). No-op
+    /// on non-NSTextField.
+    pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
+        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
+            crate::event::on_text_field_blur(field, cb);
+        }
+    }
+
     /// `&str`-keyed entry point matching the `Rndr` trait. Looks
     /// up the name in both [`StringAttr`] and [`BoolAttr`]; silently
     /// no-ops on unknown names.

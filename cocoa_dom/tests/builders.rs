@@ -15,11 +15,14 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSControl, NSPopUpButton, NSSlider, NSTextField};
 use reactive_graph::{owner::Owner, signal::RwSignal, traits::*};
 use tachys::{
-    cocoa::element::{
-        button, checkbox, label, pop_up_button, secure_text_field,
-        slider, text_field, vstack,
+    cocoa::{
+        element::{
+            button, checkbox, label, pop_up_button, secure_text_field,
+            slider, text_field, vstack, Button,
+        },
+        NodeRef,
     },
-    view::Render,
+    view::{Render, RenderHtml},
 };
 
 /// Run the test body inside a fresh reactive `Owner` scope, with
@@ -321,6 +324,118 @@ fn checkbox_diff_skip_when_signal_same_value() {
     });
 }
 
+// ---------------------------------------------------------------------
+// use: directives
+// ---------------------------------------------------------------------
+
+fn directive_no_param_fires_with_element() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use std::sync::{Arc, Mutex};
+        let received: Arc<Mutex<Option<String>>> =
+            Arc::new(Mutex::new(None));
+
+        let r = received.clone();
+        let highlight = move |el: cocoa_dom::Element| {
+            // Read something off the element so we know it really
+            // arrived. Title for a button.
+            let any: &AnyObject = el.ns_view().as_ref();
+            let b = any.downcast_ref::<NSButton>().unwrap();
+            *r.lock().unwrap() = Some(b.title().to_string());
+        };
+
+        let _st = button().title("Hello").directive(highlight, ()).build();
+
+        // Directive runs synchronously inside Render::build, so
+        // the value is set by now — no run-loop pump needed.
+        assert_eq!(received.lock().unwrap().as_deref(), Some("Hello"));
+    });
+}
+
+fn directive_with_param() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use std::sync::{Arc, Mutex};
+        let received: Arc<Mutex<Option<i32>>> =
+            Arc::new(Mutex::new(None));
+
+        let r = received.clone();
+        let echo_param = move |_el: cocoa_dom::Element, n: i32| {
+            *r.lock().unwrap() = Some(n);
+        };
+
+        let _st = button().directive(echo_param, 42_i32).build();
+
+        assert_eq!(*received.lock().unwrap(), Some(42));
+    });
+}
+
+fn multiple_directives_run_in_order() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<&'static str>>> =
+            Arc::new(Mutex::new(Vec::new()));
+
+        let l1 = log.clone();
+        let first = move |_el: cocoa_dom::Element| {
+            l1.lock().unwrap().push("first");
+        };
+        let l2 = log.clone();
+        let second = move |_el: cocoa_dom::Element| {
+            l2.lock().unwrap().push("second");
+        };
+
+        let _st = button()
+            .directive(first, ())
+            .directive(second, ())
+            .build();
+
+        assert_eq!(*log.lock().unwrap(), vec!["first", "second"]);
+    });
+}
+
+// ---------------------------------------------------------------------
+// NodeRef
+// ---------------------------------------------------------------------
+
+fn node_ref_is_filled_after_build() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let r = NodeRef::new();
+        assert!(r.get_untracked().is_none(), "starts empty");
+
+        let st = button().title("X").node_ref(r).build();
+
+        // The ref is filled with the same Element the State holds.
+        let from_ref = r
+            .get_untracked()
+            .expect("node_ref should be filled after build");
+        let st_ptr: *const _ = st.el.ns_view();
+        let ref_ptr: *const _ = from_ref.ns_view();
+        assert_eq!(st_ptr, ref_ptr);
+    });
+}
+
+fn node_ref_on_load_fires() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let r = NodeRef::new();
+        let fired = std::rc::Rc::new(std::cell::Cell::new(false));
+        let f = fired.clone();
+        r.on_load(move |_el| f.set(true));
+
+        // on_load fires inside an Effect — pumping the run loop
+        // gives reactive scheduling a chance.
+        common::pump_run_loop(0.05);
+        assert!(!fired.get(), "on_load shouldn't fire before build");
+
+        let _st = text_field().node_ref(r).build();
+        common::pump_run_loop(0.1);
+        assert!(fired.get(), "on_load should fire after build");
+    });
+}
+
 fn label_idempotent_set_does_not_error() {
     // Set the same string value multiple times via a signal —
     // should be safe (StringAttr::Title diff-guards).
@@ -370,5 +485,101 @@ fn main() {
         // Idempotence
         ("checkbox_diff_skip_when_signal_same_value", checkbox_diff_skip_when_signal_same_value),
         ("label_idempotent_set_does_not_error", label_idempotent_set_does_not_error),
+        // NodeRef
+        ("node_ref_is_filled_after_build", node_ref_is_filled_after_build),
+        ("node_ref_on_load_fires", node_ref_on_load_fires),
+        // Directives
+        ("directive_no_param_fires_with_element", directive_no_param_fires_with_element),
+        ("directive_with_param", directive_with_param),
+        ("multiple_directives_run_in_order", multiple_directives_run_in_order),
+        // Typed-attribute pipeline (add_any_attr → OnAttribute → build)
+        (
+            "on_click_via_add_any_attr_fires",
+            on_click_via_add_any_attr_fires,
+        ),
+        (
+            "two_attributes_via_add_any_attr_run_in_order",
+            two_attributes_via_add_any_attr_run_in_order,
+        ),
+        ("into_owned_preserves_element_state", into_owned_preserves_element_state),
     ]);
 }
+
+// ---------------------------------------------------------------------
+// Typed-attribute pipeline — verifying the `<At = ()>` refactor
+// ---------------------------------------------------------------------
+
+fn on_click_via_add_any_attr_fires() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let fired = std::sync::Arc::new(AtomicBool::new(false));
+        let cb = fired.clone();
+        use tachys::html::event::{click, on};
+        use tachys::view::add_attr::AddAnyAttr;
+
+        // Build via add_any_attr(OnAttribute), not the inline .on(…) path.
+        let attr = on(click, move |()| cb.store(true, Ordering::SeqCst));
+        let st = button().title("T").add_any_attr(attr).build();
+
+        // The typed pipeline's `attrs.build(&el)` SHOULD have run
+        // OnAttribute::build(&el) which calls `el.on_click(…)`.
+        // Prove it by firing the action.
+        let any: &AnyObject = st.el.ns_view().as_ref();
+        let control = any.downcast_ref::<NSControl>().unwrap();
+        common::fire_action(control);
+
+        assert!(fired.load(Ordering::SeqCst), "on:click via add_any_attr should fire");
+    });
+}
+
+fn two_attributes_via_add_any_attr_run_in_order() {
+    // Two OnAttribute instances applied through add_any_attr (as a
+    // tuple). Both should install, and since NSControl only has one
+    // target/action slot, the LAST one wins. Verify the sequence:
+    // first is installed, second overwrites, second fires.
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let first = std::sync::Arc::new(AtomicBool::new(false));
+        let second = std::sync::Arc::new(AtomicBool::new(false));
+
+        let f1 = first.clone();
+        let f2 = second.clone();
+        use tachys::html::event::{click, on};
+        use tachys::view::add_attr::AddAnyAttr;
+
+        let _st = button()
+            .title("T")
+            .add_any_attr(on(click, move |()| f1.store(true, Ordering::SeqCst)))
+            .add_any_attr(on(click, move |()| f2.store(true, Ordering::SeqCst)))
+            .build();
+
+        let any: &AnyObject = _st.el.ns_view().as_ref();
+        let control = any.downcast_ref::<NSControl>().unwrap();
+        common::fire_action(control);
+
+        // Second handler overwrites. This is NSControl single-
+        // target/action semantics — documented quirk in
+        // implementation_log.md (Tier 2.F review).
+        assert!(!first.load(Ordering::SeqCst), "first handler shouldn't fire");
+        assert!(second.load(Ordering::SeqCst), "second handler should fire");
+    });
+}
+
+fn into_owned_preserves_element_state() {
+    // RenderHtml::into_owned returns Self::Owned =
+    // Self<At::CloneableOwned>. For OnAttribute, CloneableOwned = ().
+    // Verify this doesn't panic and the result can be built.
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use tachys::html::event::{click, on};
+        use tachys::view::{add_attr::AddAnyAttr, RenderHtml};
+
+        let b = button().title("X").add_any_attr(on(click, |_: ()| {}));
+        // Must compile and run without panicking.
+        let _owned = b.into_owned();
+    });
+}
+

@@ -201,6 +201,71 @@ fn on_text_end_editing_fires_on_commit() {
     assert_eq!(captured.take(), "done");
 }
 
+// ---------------------------------------------------------------------
+// Focus / blur — controlTextDidBeginEditing / EndEditing
+// ---------------------------------------------------------------------
+
+fn on_text_focus_fires_on_begin_editing() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let calls = Rc::new(Cell::new(0));
+    let c = calls.clone();
+    el.on_text_focus(move || c.set(c.get() + 1));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_begin_editing(field);
+    assert_eq!(calls.get(), 1);
+}
+
+fn on_text_blur_fires_on_end_editing() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let calls = Rc::new(Cell::new(0));
+    let c = calls.clone();
+    el.on_text_blur(move || c.set(c.get() + 1));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_end_editing(field);
+    assert_eq!(calls.get(), 1);
+}
+
+fn on_change_and_on_blur_both_fire_on_commit() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let changes = Rc::new(Cell::new(0));
+    let blurs = Rc::new(Cell::new(0));
+    let last_change = Rc::new(Cell::new(String::new()));
+    {
+        let c = changes.clone();
+        let l = last_change.clone();
+        el.on_text_end_editing(move |v| {
+            c.set(c.get() + 1);
+            l.set(v);
+        });
+    }
+    {
+        let b = blurs.clone();
+        el.on_text_blur(move || b.set(b.get() + 1));
+    }
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    field.setStringValue(&objc2_foundation::NSString::from_str("done"));
+    common::fire_text_did_end_editing(field);
+
+    assert_eq!(changes.get(), 1, "change should fire");
+    assert_eq!(blurs.get(), 1, "blur should fire alongside change");
+    assert_eq!(last_change.take(), "done");
+}
+
+fn on_text_focus_on_button_is_no_op() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("button");
+    el.on_text_focus(|| panic!("must not fire"));
+}
+
 fn on_change_and_on_input_coexist() {
     let _mtm = common::test_mtm();
     let el = Element::create("text_field");
@@ -290,6 +355,11 @@ fn main() {
             on_text_end_editing_fires_on_commit,
         ),
         ("on_change_and_on_input_coexist", on_change_and_on_input_coexist),
+        // Focus / blur
+        ("on_text_focus_fires_on_begin_editing", on_text_focus_fires_on_begin_editing),
+        ("on_text_blur_fires_on_end_editing", on_text_blur_fires_on_end_editing),
+        ("on_change_and_on_blur_both_fire_on_commit", on_change_and_on_blur_both_fire_on_commit),
+        ("on_text_focus_on_button_is_no_op", on_text_focus_on_button_is_no_op),
         // Value getters
         ("slider_double_value_round_trips", slider_double_value_round_trips),
         ("popup_items_and_selection", popup_items_and_selection),

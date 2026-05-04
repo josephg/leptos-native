@@ -35,6 +35,18 @@ pub const input: InputEvent = InputEvent;
 pub struct ChangeEvent;
 pub const change: ChangeEvent = ChangeEvent;
 
+/// Marker type for the focus event — fires when a control gains
+/// keyboard focus. For text fields this is
+/// `controlTextDidBeginEditing:`.
+pub struct FocusEvent;
+pub const focus: FocusEvent = FocusEvent;
+
+/// Marker type for the blur event — fires when a control loses
+/// focus. For text fields this is `controlTextDidEndEditing:` (so
+/// blur fires alongside change, just without a value payload).
+pub struct BlurEvent;
+pub const blur: BlurEvent = BlurEvent;
+
 /// Each event descriptor knows its payload type ([`EventType`]) and
 /// how to package a user-supplied handler into a [`PendingHandler`]
 /// the element can install in `Render::build`.
@@ -79,6 +91,26 @@ impl EventDescriptor for ChangeEvent {
     }
 }
 
+impl EventDescriptor for FocusEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Focus(Box::new(move || handler(())))
+    }
+}
+
+impl EventDescriptor for BlurEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Blur(Box::new(move || handler(())))
+    }
+}
+
 // ---------------------------------------------------------------------
 // Compile-time control/event compatibility
 // ---------------------------------------------------------------------
@@ -120,6 +152,8 @@ pub enum PendingHandler {
     Click(Box<dyn FnMut() + Send + 'static>),
     Input(Box<dyn FnMut(String) + Send + 'static>),
     Change(Box<dyn FnMut(String) + Send + 'static>),
+    Focus(Box<dyn FnMut() + Send + 'static>),
+    Blur(Box<dyn FnMut() + Send + 'static>),
 }
 
 impl PendingHandler {
@@ -131,6 +165,8 @@ impl PendingHandler {
             PendingHandler::Click(cb) => el.on_click(cb),
             PendingHandler::Input(cb) => el.on_text_change(cb),
             PendingHandler::Change(cb) => el.on_text_end_editing(cb),
+            PendingHandler::Focus(cb) => el.on_text_focus(cb),
+            PendingHandler::Blur(cb) => el.on_text_blur(cb),
         }
     }
 }
@@ -177,5 +213,106 @@ impl OnAttribute {
     /// alongside other pre-build handlers and install at build time.
     pub fn take_pending(mut self) -> Option<PendingHandler> {
         self.handler.take()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Attribute trait impl — lets OnAttribute flow through the upstream
+// AddAnyAttr / NextAttribute machinery, so `<Component on:click=…>`
+// reaches our element builders' typed-attribute pipeline.
+// ---------------------------------------------------------------------
+
+use crate::html::attribute::{
+    Attribute, NamedAttributeKey, NextAttribute,
+};
+
+impl Attribute for OnAttribute {
+    const MIN_LENGTH: usize = 0;
+
+    type State = ();
+    type AsyncOutput = Self;
+    /// Cloneable variant is `()` — a deliberate no-op. The
+    /// cloneable / cloneable-owned path is used for spreading the
+    /// same attribute across multiple elements (`{..attrs}` on a
+    /// fragment, etc.). For `<Component on:event=…>` (the
+    /// motivating case) it's not invoked. If real example code
+    /// ever spreads an `on:` attribute across N elements we'll
+    /// need a `SharedOnAttribute` with `Arc<Mutex<…>>`-shared
+    /// closures; until then, silent no-op is the cheap path.
+    type Cloneable = ();
+    type CloneableOwned = ();
+
+    fn html_len(&self) -> usize {
+        0
+    }
+
+    fn to_html(
+        self,
+        _buf: &mut String,
+        _class: &mut String,
+        _style: &mut String,
+        _inner_html: &mut String,
+    ) {
+        // No SSR on macOS.
+    }
+
+    fn hydrate<const FROM_SERVER: bool>(
+        self,
+        el: &cocoa_dom::Element,
+    ) -> Self::State {
+        self.apply(el);
+    }
+
+    fn build(self, el: &cocoa_dom::Element) -> Self::State {
+        self.apply(el);
+    }
+
+    fn rebuild(self, _state: &mut Self::State) {
+        // No-op rebuild. Re-installing target/action with a new
+        // closure each rebuild is doable but rarely useful at
+        // this granularity — the inline `.on()` path is what the
+        // happy case uses, and that's a build-time install.
+    }
+
+    fn into_cloneable(self) -> Self::Cloneable {
+        // See `Cloneable` doc above — silent drop.
+    }
+
+    fn into_cloneable_owned(self) -> Self::CloneableOwned {
+        // See `Cloneable` doc above — silent drop.
+    }
+
+    fn dry_resolve(&mut self) {}
+
+    async fn resolve(self) -> Self::AsyncOutput {
+        self
+    }
+
+    fn keys(&self) -> Vec<NamedAttributeKey> {
+        Vec::new()
+    }
+}
+
+impl NextAttribute for OnAttribute {
+    type Output<NewAttr: Attribute> = (Self, NewAttr);
+
+    fn add_any_attr<NewAttr: Attribute>(
+        self,
+        new_attr: NewAttr,
+    ) -> Self::Output<NewAttr> {
+        (self, new_attr)
+    }
+}
+
+// ToTemplate is required for some upstream paths that bound on
+// `Attribute: ToTemplate`. Empty for non-SSR.
+impl crate::view::ToTemplate for OnAttribute {
+    fn to_template(
+        _buf: &mut String,
+        _class: &mut String,
+        _style: &mut String,
+        _inner_html: &mut String,
+        _position: &mut crate::view::Position,
+    ) {
     }
 }

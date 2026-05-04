@@ -13,7 +13,9 @@
 
 pub mod attr;
 pub mod bind;
+pub(crate) mod directives;
 pub mod element;
+pub mod node_ref;
 mod render_html_stub;
 pub mod window;
 
@@ -22,6 +24,7 @@ pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
     button, hstack, label, stack_view, text_field, view, vstack,
 };
+pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums so users

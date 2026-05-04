@@ -15,10 +15,13 @@ fn LoginForm() -> impl IntoView {
     });
 
     let on_submit = move |_| {
+        // get_untracked: this is an event handler outside any
+        // reactive tracking context — we just want to snapshot
+        // the values at click time.
         status.set(format!(
             "Signed in as {} (remember={})",
-            username.get(),
-            remember.get()
+            username.get_untracked(),
+            remember.get_untracked()
         ));
     };
 

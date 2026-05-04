@@ -83,6 +83,23 @@ pub fn fire_text_did_change(field: &objc2_app_kit::NSTextField) {
     };
 }
 
+/// Synthesise `controlTextDidBeginEditing:` (focus gained).
+/// Drives `on:focus` handlers.
+pub fn fire_text_did_begin_editing(
+    field: &objc2_app_kit::NSTextField,
+) {
+    let delegate = field
+        .delegate()
+        .expect("fire_text_did_begin_editing: field has no delegate");
+    let notif = synth_notification(
+        "NSControlTextDidBeginEditingNotification",
+        field.as_ref(),
+    );
+    let _: () = unsafe {
+        msg_send![&*delegate, controlTextDidBeginEditing: &*notif]
+    };
+}
+
 /// Synthesise `controlTextDidEndEditing:` (commit — return key /
 /// focus loss). See [`fire_text_did_change`] for why we invoke
 /// directly instead of posting a notification.

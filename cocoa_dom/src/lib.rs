@@ -21,15 +21,21 @@
 pub mod app;
 pub mod event;
 pub mod flipped_view;
+pub mod interval;
 pub mod layout;
 pub mod node;
 pub mod renderer;
 pub mod spawner;
+pub mod storage;
 pub mod window;
 
+pub use interval::{
+    set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
+};
 pub use node::{
     BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
 };
+pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
 
 // Re-export the most common objc2 / objc2_app_kit types so

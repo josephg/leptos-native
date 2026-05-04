@@ -25,6 +25,9 @@ objc2-foundation = { version = "0.3", features = [
     "NSString",
     "NSObjCRuntime",
     "NSThread",
+    "NSTimer",
+    "NSDate",
+    "NSUserDefaults",
 ] }
 objc2-app-kit = { version = "0.3", features = [
     "NSApplication",
@@ -101,4 +104,14 @@ harness = false
 [[test]]
 name = "builders"
 path = "tests/builders.rs"
+harness = false
+
+[[test]]
+name = "interval"
+path = "tests/interval.rs"
+harness = false
+
+[[test]]
+name = "storage"
+path = "tests/storage.rs"
 harness = false

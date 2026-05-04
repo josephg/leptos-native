@@ -24,19 +24,25 @@ use reactive_graph::effect::RenderEffect;
 /// State retained for an element instance between build and rebuild.
 ///
 /// Holds the underlying `cocoa_dom::Element`, any active reactive
-/// effects (so they survive as long as the element is mounted), and
-/// the children's State.
-pub struct ElementState<ChildState> {
+/// effects (so they survive as long as the element is mounted),
+/// the dynamic-attribute state (from `add_any_attr` chains — the
+/// macro's typed-attribute pipeline), and the children's State.
+pub struct ElementState<AttrState, ChildState> {
     /// Pub for test inspection — consider using `Mountable::elements()`
     /// in production code paths instead.
     pub el: CocoaElement,
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
     pub(crate) _effects: Vec<RenderEffect<()>>,
+    /// State for the dynamic attribute tuple installed via
+    /// `add_any_attr`. `()` for the empty-tuple default.
+    pub(crate) _attrs: AttrState,
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
+impl<AttrState, ChildState: Mountable> Mountable
+    for ElementState<AttrState, ChildState>
+{
     fn unmount(&mut self) {
         // Recurse first so children drop their Taffy/handler entries
         // before we drop ours. Then teardown(self.el) removes our own
@@ -75,25 +81,27 @@ impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
 // view() — generic flipped container
 // ---------------------------------------------------------------------
 
-pub struct View<Children> {
+pub struct View<Children, At = ()> {
     flex_direction: Option<FlexDirection>,
     padding: Option<f32>,
     gap: Option<f32>,
     flex_grow: Option<f32>,
     children: Children,
+    attrs: At,
 }
 
-pub fn view() -> View<()> {
+pub fn view() -> View<(), ()> {
     View {
         flex_direction: None,
         padding: None,
         gap: None,
         flex_grow: None,
         children: (),
+        attrs: (),
     }
 }
 
-impl<Ch> View<Ch> {
+impl<Ch, At> View<Ch, At> {
     pub fn flex_direction(mut self, dir: FlexDirection) -> Self {
         self.flex_direction = Some(dir);
         self
@@ -117,22 +125,24 @@ impl<Ch> View<Ch> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh)> {
+    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh), At> {
         View {
             flex_direction: self.flex_direction,
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
             children: (self.children, child),
+            attrs: self.attrs,
         }
     }
 }
 
-impl<Ch> Render for View<Ch>
+impl<Ch, At> Render for View<Ch, At>
 where
     Ch: Render,
+    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<Ch::State>;
+    type State = ElementState<At::State, Ch::State>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("view");
@@ -156,14 +166,18 @@ where
         // every descendant in the right Taffy tree.
         let child_state = self.children.build();
 
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: Vec::new(),
+            _attrs: attrs,
             children: child_state,
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
         // Stage 5 part 1: attribute changes on a View aren't expected
         // (they're set once at build time). When we add reactive
         // styles, this needs proper diffing.
@@ -171,54 +185,150 @@ where
 }
 
 // `stack_view` is just a `view` whose default flex direction is column.
-pub fn stack_view() -> View<()> {
+pub fn stack_view() -> View<(), ()> {
     vstack()
 }
 
 /// Vertical stack — a flipped container with `flex_direction: Column`.
 /// SwiftUI-flavoured shorthand for the common case.
-pub fn vstack() -> View<()> {
+pub fn vstack() -> View<(), ()> {
     View {
         flex_direction: Some(FlexDirection::Column),
         padding: None,
         gap: None,
         flex_grow: None,
         children: (),
+        attrs: (),
     }
 }
 
 /// Horizontal stack — a flipped container with `flex_direction: Row`.
-pub fn hstack() -> View<()> {
+pub fn hstack() -> View<(), ()> {
     View {
         flex_direction: Some(FlexDirection::Row),
         padding: None,
         gap: None,
         flex_grow: None,
         children: (),
+        attrs: (),
     }
+}
+
+// ---------------------------------------------------------------------
+// impl_typed_attrs_for! — macro-ify the AddAnyAttr + RenderHtml
+// boilerplate shared by every <At = ()> builder. Invoke once per
+// builder; cuts ~350 LOC of near-duplicate impls.
+// ---------------------------------------------------------------------
+
+/// Emit `impl AddAnyAttr + impl RenderHtml` for a cocoa element
+/// builder that is generic over a single type parameter `<At = ()>`.
+macro_rules! impl_typed_attrs_for {
+    ($builder:ident, $( $field:ident ),+ $(,)?) => {
+        #[allow(clippy::type_complexity)]
+        impl<At> $crate::view::add_attr::AddAnyAttr for $builder<At>
+        where
+            At: $crate::html::attribute::Attribute,
+        {
+            type Output<NewAttr: $crate::html::attribute::Attribute> =
+                $builder<<At as $crate::html::attribute::NextAttribute>::Output<NewAttr>>;
+
+            fn add_any_attr<NewAttr: $crate::html::attribute::Attribute>(
+                self,
+                attr: NewAttr,
+            ) -> Self::Output<NewAttr> {
+                $builder {
+                    $($field: self.$field,)+
+                    attrs: $crate::html::attribute::NextAttribute::add_any_attr(
+                        self.attrs, attr,
+                    ),
+                }
+            }
+        }
+
+        impl<At> $crate::view::RenderHtml for $builder<At>
+        where
+            At: $crate::html::attribute::Attribute,
+        {
+            type AsyncOutput = $builder<At::AsyncOutput>;
+            type Owned = $builder<At::CloneableOwned>;
+
+            const MIN_LENGTH: usize = 0;
+
+            fn dry_resolve(&mut self) {
+                self.attrs.dry_resolve();
+            }
+
+            async fn resolve(self) -> Self::AsyncOutput {
+                // Destructure so we can move `attrs` through
+                // `.resolve().await` without partially-moving
+                // `self`. The other fields are preserved inside
+                // the destructured bindings and then used to
+                // reconstruct the struct.
+                let $builder { $($field,)+ attrs } = self;
+                let attrs = attrs.resolve().await;
+                $builder { $($field,)+ attrs }
+            }
+
+            fn to_html_with_buf(
+                self,
+                _buf: &mut String,
+                _position: &mut $crate::view::Position,
+                _escape: bool,
+                _mark_branches: bool,
+                _extra_attrs: Vec<
+                    $crate::html::attribute::any_attribute::AnyAttribute,
+                >,
+            ) {
+            }
+
+            fn hydrate<const FROM_SERVER: bool>(
+                self,
+                _cursor: &$crate::hydration::Cursor,
+                _position: &$crate::view::PositionState,
+            ) -> Self::State {
+                <Self as $crate::view::Render>::build(self)
+            }
+
+            fn into_owned(self) -> Self::Owned {
+                let $builder { $($field,)+ attrs } = self;
+                let attrs = attrs.into_cloneable_owned();
+                $builder { $($field,)+ attrs }
+            }
+        }
+    };
 }
 
 // ---------------------------------------------------------------------
 // button()
 // ---------------------------------------------------------------------
 
-pub struct Button {
+pub struct Button<At = ()> {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::html::event::PendingHandler>,
     flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    /// Type-level attribute tuple accumulated via `add_any_attr`
+    /// (the macro's typed-attribute pipeline). Default `()` —
+    /// extends to `(NewAttr,)`, `(NewAttr, AnotherAttr)`, … as
+    /// `add_any_attr` is called.
+    attrs: At,
 }
 
-pub fn button() -> Button {
+pub fn button() -> Button<()> {
     Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         handlers: Vec::new(),
         flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
-impl Button {
+impl<At> Button<At> {
     pub fn title<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -245,6 +355,38 @@ impl Button {
         self
     }
 
+    /// `node_ref=…` from the macro. The ref gets filled with this
+    /// builder's underlying `cocoa_dom::Element` after
+    /// `Render::build` runs.
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    /// `use:directive=param` from the macro. Stores the directive
+    /// call; runs at `Render::build` time with the constructed
+    /// `cocoa_dom::Element` and the supplied `param`.
+    ///
+    /// Directives are escape-hatches for imperative manipulation
+    /// of the underlying NSView — exactly the upstream
+    /// `IntoDirective` shape, with `cocoa_dom::Element` as the
+    /// element type. See `examples/.../directives_macos` for
+    /// usage.
+    ///
+    /// Inherent method (not a trait impl) — Rust resolves it
+    /// before `DirectiveAttribute::directive`, sidestepping the
+    /// fact that our `AddAnyAttr` stub drops attributes.
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+
     /// See [`View::flex_grow`].
     pub fn flex_grow(mut self, g: f32) -> Self {
         self.flex_grow = Some(g);
@@ -260,20 +402,6 @@ impl Button {
         V: IntoMaybeReactive<String>,
     {
         self.title(value)
-    }
-
-    /// Apply an attribute. Used by the `view!{}` macro for spread
-    /// syntax (`<button {..attr}>`). The single supported attribute
-    /// kind today is an event listener; other attribute types
-    /// (class, style, prop) won't satisfy the type signature.
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
-        self
     }
 
     /// Method called by the `view!{}` macro for the standard
@@ -296,14 +424,27 @@ impl Button {
     }
 }
 
-// Buttons fire on click (NSButton target/action).
-impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
-    for Button
+// Buttons fire on click (NSButton target/action). Generic over
+// At because every type-level attribute extension still describes
+// the same control kind.
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Button<At>
 {
 }
 
-impl Render for Button {
-    type State = ElementState<()>;
+// AddAnyAttr — the typed-attribute pipeline. Each call extends
+// `attrs` from `At` to `<At as NextAttribute>::Output<NewAttr>`.
+// At Render::build time, `attrs.build(&el)` walks the resulting
+// tuple and runs each attribute's `build(&el)` against the live
+// NSView.
+impl_typed_attrs_for!(Button, title, enabled, handlers,
+    flex_grow, node_ref, directives);
+
+impl<At> Render for Button<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("button");
@@ -334,17 +475,29 @@ impl Render for Button {
             set_flex_grow(el.as_node(), g);
         }
 
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        // Run the typed-attribute pipeline. For the empty-tuple
+        // default this is `().build(&el)` — a no-op.
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: attrs,
             children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {
+    fn rebuild(self, state: &mut Self::State) {
         // Reactive attrs already update themselves via their Effects.
-        // For static-attr changes across rebuilds, we'd need to diff;
-        // skipped in part 1.
+        // The typed-attribute pipeline rebuilds against its
+        // accumulated state.
+        self.attrs.rebuild(&mut state._attrs);
     }
 }
 
@@ -352,7 +505,7 @@ impl Render for Button {
 // checkbox() — NSButton in switch style with bool state
 // ---------------------------------------------------------------------
 
-pub struct Checkbox {
+pub struct Checkbox<At = ()> {
     title: MaybeReactive<String>,
     /// Static-or-reactive `checked=...` value (one-way: signal →
     /// button state). For two-way binding use `bind:checked=signal`,
@@ -360,18 +513,24 @@ pub struct Checkbox {
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<crate::cocoa::bind::BoundChecked>,
     handlers: Vec<crate::html::event::PendingHandler>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    attrs: At,
 }
 
-pub fn checkbox() -> Checkbox {
+pub fn checkbox() -> Checkbox<()> {
     Checkbox {
         title: MaybeReactive::Static(String::new()),
         checked: MaybeReactive::Static(false),
         pending_bind_checked: None,
         handlers: Vec::new(),
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
-impl Checkbox {
+impl<At> Checkbox<At> {
     pub fn title<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -415,25 +574,40 @@ impl Checkbox {
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    /// `use:directive=param` — see Button::directive for full
+    /// docs. Inherent method (Rust resolves before
+    /// `DirectiveAttribute::directive`).
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
         self
     }
 }
 
 // A checkbox toggles on click.
-impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
-    for Checkbox
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Checkbox<At>
 {
 }
 
-impl Render for Checkbox {
-    type State = ElementState<()>;
+impl_typed_attrs_for!(Checkbox, title, checked, pending_bind_checked,
+    handlers, node_ref, directives);
+
+impl<At> Render for Checkbox<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("checkbox");
@@ -470,21 +644,32 @@ impl Render for Checkbox {
             h.apply_to(&el);
         }
 
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: attrs,
             children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {}
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
 }
 
 // ---------------------------------------------------------------------
 // slider() — NSSlider with min/max + bind:value
 // ---------------------------------------------------------------------
 
-pub struct Slider {
+pub struct Slider<At = ()> {
     value: MaybeReactive<f64>,
     min_value: f64,
     max_value: f64,
@@ -492,9 +677,12 @@ pub struct Slider {
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::html::event::PendingHandler>,
     flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    attrs: At,
 }
 
-pub fn slider() -> Slider {
+pub fn slider() -> Slider<()> {
     Slider {
         value: MaybeReactive::Static(0.0),
         min_value: 0.0,
@@ -503,10 +691,13 @@ pub fn slider() -> Slider {
         pending_bind: None,
         handlers: Vec::new(),
         flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
-impl Slider {
+impl<At> Slider<At> {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<f64>,
@@ -555,19 +746,34 @@ impl Slider {
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    /// `use:directive=param` — see Button::directive for full
+    /// docs. Inherent method (Rust resolves before
+    /// `DirectiveAttribute::directive`).
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
         self
     }
 }
 
-impl Render for Slider {
-    type State = ElementState<()>;
+impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
+    pending_bind, handlers, flex_grow, node_ref, directives);
+
+impl<At> Render for Slider<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("slider");
@@ -608,30 +814,44 @@ impl Render for Slider {
             set_flex_grow(el.as_node(), g);
         }
 
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: attrs,
             children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {}
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
 }
 
 // ---------------------------------------------------------------------
 // pop_up_button() — NSPopUpButton with items + bind:selection
 // ---------------------------------------------------------------------
 
-pub struct PopUpButton {
+pub struct PopUpButton<At = ()> {
     items: Vec<String>,
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::html::event::PendingHandler>,
     flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    attrs: At,
 }
 
-pub fn pop_up_button() -> PopUpButton {
+pub fn pop_up_button() -> PopUpButton<()> {
     PopUpButton {
         items: Vec::new(),
         selection: MaybeReactive::Static(0),
@@ -639,10 +859,13 @@ pub fn pop_up_button() -> PopUpButton {
         pending_bind_selection: None,
         handlers: Vec::new(),
         flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
-impl PopUpButton {
+impl<At> PopUpButton<At> {
     /// Sets the popup's item list. Accepts any iterable of
     /// string-ish things — `Vec<&str>`, `Vec<String>`, etc.
     pub fn items<I, S>(mut self, items: I) -> Self
@@ -692,19 +915,34 @@ impl PopUpButton {
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    /// `use:directive=param` — see Button::directive for full
+    /// docs. Inherent method (Rust resolves before
+    /// `DirectiveAttribute::directive`).
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
         self
     }
 }
 
-impl Render for PopUpButton {
-    type State = ElementState<()>;
+impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
+    pending_bind_selection, handlers, flex_grow, node_ref, directives);
+
+impl<At> Render for PopUpButton<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("pop_up_button");
@@ -746,14 +984,25 @@ impl Render for PopUpButton {
             set_flex_grow(el.as_node(), g);
         }
 
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: attrs,
             children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {}
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -861,7 +1110,7 @@ impl Render for Label {
 // with optional initial value.
 // ---------------------------------------------------------------------
 
-pub struct TextField {
+pub struct TextField<At = ()> {
     value: MaybeReactive<String>,
     placeholder: Option<String>,
     enabled: Option<MaybeReactive<bool>>,
@@ -874,9 +1123,12 @@ pub struct TextField {
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     handlers: Vec<crate::html::event::PendingHandler>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    attrs: At,
 }
 
-pub fn text_field() -> TextField {
+pub fn text_field() -> TextField<()> {
     TextField {
         value: MaybeReactive::Static(String::new()),
         placeholder: None,
@@ -884,13 +1136,16 @@ pub fn text_field() -> TextField {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
 /// Password-masking variant of `text_field()`. Emits an
 /// `NSSecureTextField`, which is a subclass of `NSTextField` — so all
 /// the bind / event / placeholder plumbing works unchanged.
-pub fn secure_text_field() -> TextField {
+pub fn secure_text_field() -> TextField<()> {
     TextField {
         value: MaybeReactive::Static(String::new()),
         placeholder: None,
@@ -898,10 +1153,13 @@ pub fn secure_text_field() -> TextField {
         secure: true,
         pending_bind: None,
         handlers: Vec::new(),
+        node_ref: None,
+        directives: Vec::new(),
+        attrs: (),
     }
 }
 
-impl TextField {
+impl<At> TextField<At> {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -948,14 +1206,22 @@ impl TextField {
         self
     }
 
-    /// Spread-attribute path (`<text_field {..attr}/>`).
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    /// `use:directive=param` — see Button::directive for full
+    /// docs. Inherent method (Rust resolves before
+    /// `DirectiveAttribute::directive`).
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
         self
     }
 }
@@ -963,18 +1229,33 @@ impl TextField {
 // Text fields fire on every keystroke (`input`) and on commit
 // (`change` — return key / focus loss). Click is a deliberate
 // non-event: clicking inside the field places the caret, no
-// "click" semantic equivalent.
-impl crate::html::event::SupportsEvent<crate::html::event::InputEvent>
-    for TextField
+// "click" semantic equivalent. Focus/blur are AppKit's begin/end
+// editing notifications.
+impl<At> crate::html::event::SupportsEvent<crate::html::event::InputEvent>
+    for TextField<At>
 {
 }
-impl crate::html::event::SupportsEvent<crate::html::event::ChangeEvent>
-    for TextField
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ChangeEvent>
+    for TextField<At>
+{
+}
+impl<At> crate::html::event::SupportsEvent<crate::html::event::FocusEvent>
+    for TextField<At>
+{
+}
+impl<At> crate::html::event::SupportsEvent<crate::html::event::BlurEvent>
+    for TextField<At>
 {
 }
 
-impl Render for TextField {
-    type State = ElementState<()>;
+impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
+    pending_bind, handlers, node_ref, directives);
+
+impl<At> Render for TextField<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
@@ -1018,64 +1299,83 @@ impl Render for TextField {
             h.apply_to(&el);
         }
 
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: attrs,
             children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {}
-}
-
-// (Children are handled via tachys' tuple Render/Mountable impls; no
-// extra trait needed.)
-
-// ---------------------------------------------------------------------
-// IntoView plumbing — RenderHtml + AddAnyAttr stubs.
-//
-// These exist for the type checker. SSR / hydration aren't real on
-// native, so the impls are no-ops; the work happens in `Render::build`.
-// ---------------------------------------------------------------------
-
-use super::render_html_stub::cocoa_stub_view_impls;
-
-cocoa_stub_view_impls!(Button);
-cocoa_stub_view_impls!(Checkbox);
-cocoa_stub_view_impls!(Label);
-cocoa_stub_view_impls!(PopUpButton);
-cocoa_stub_view_impls!(Slider);
-cocoa_stub_view_impls!(TextField);
-
-// View<Children> needs its own (generic) impls — the macro only takes
-// concrete types.
-impl<Ch> crate::view::add_attr::AddAnyAttr for View<Ch>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> = View<Ch>;
-
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        _attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        self
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
     }
 }
 
-impl<Ch> crate::view::RenderHtml for View<Ch>
+use super::render_html_stub::cocoa_stub_view_impls;
+
+// Builders not yet refactored: combined AddAnyAttr+RenderHtml stub.
+cocoa_stub_view_impls!(Label);
+
+// View<Children, At> — refactored to the typed-attribute pipeline.
+impl<Ch, At> crate::view::add_attr::AddAnyAttr for View<Ch, At>
 where
     Ch: Render + Send + 'static + crate::view::RenderHtml,
+    At: crate::html::attribute::Attribute,
 {
-    type AsyncOutput = Self;
-    type Owned = Self;
+    type Output<NewAttr: crate::html::attribute::Attribute> =
+        View<Ch, <At as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
+
+    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
+        self,
+        attr: NewAttr,
+    ) -> Self::Output<NewAttr> {
+        View {
+            flex_direction: self.flex_direction,
+            padding: self.padding,
+            gap: self.gap,
+            flex_grow: self.flex_grow,
+            children: self.children,
+            attrs: crate::html::attribute::NextAttribute::add_any_attr(
+                self.attrs, attr,
+            ),
+        }
+    }
+}
+
+impl<Ch, At> crate::view::RenderHtml for View<Ch, At>
+where
+    Ch: Render + Send + 'static + crate::view::RenderHtml,
+    At: crate::html::attribute::Attribute,
+{
+    type AsyncOutput = View<Ch::AsyncOutput, At::AsyncOutput>;
+    type Owned = View<Ch::Owned, At::CloneableOwned>;
 
     const MIN_LENGTH: usize = 0;
 
-    fn dry_resolve(&mut self) {}
+    fn dry_resolve(&mut self) {
+        self.attrs.dry_resolve();
+    }
 
     async fn resolve(self) -> Self::AsyncOutput {
-        self
+        let (children_resolved, attrs_resolved) =
+            futures::join!(self.children.resolve(), self.attrs.resolve());
+        View {
+            flex_direction: self.flex_direction,
+            padding: self.padding,
+            gap: self.gap,
+            flex_grow: self.flex_grow,
+            children: children_resolved,
+            attrs: attrs_resolved,
+        }
     }
 
     fn to_html_with_buf(
@@ -1097,6 +1397,13 @@ where
     }
 
     fn into_owned(self) -> Self::Owned {
-        self
+        View {
+            flex_direction: self.flex_direction,
+            padding: self.padding,
+            gap: self.gap,
+            flex_grow: self.flex_grow,
+            children: self.children.into_owned(),
+            attrs: self.attrs.into_cloneable_owned(),
+        }
     }
 }

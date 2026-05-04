@@ -25,7 +25,6 @@ use std::borrow::Cow;
 /// unification in a client-side (CSR or hydrate) build.
 ///
 /// Only referenced from the web-only event/directive/property modules.
-#[cfg(not(target_os = "macos"))]
 pub(crate) const FEATURE_CONFLICT_DIAGNOSTIC: &str =
     "Value is None because the `ssr` feature is active. When `ssr` is \
      enabled, tachys skips creating client-side values (event handlers, \
@@ -41,7 +40,6 @@ pub mod attribute;
 #[cfg(not(target_os = "macos"))]
 pub mod class;
 /// Types for creating user-defined attributes with custom behavior (directives).
-#[cfg(not(target_os = "macos"))]
 pub mod directive;
 /// Types for HTML elements (web only — Cocoa elements live in their own
 /// module, defined in Stage 5).

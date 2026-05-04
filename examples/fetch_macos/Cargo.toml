@@ -1,0 +1,17 @@
+[package]
+name = "fetch_macos"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "fetch_macos"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+leptos = { path = "../../leptos", default-features = false }
+reactive_graph = { path = "../../reactive_graph", features = ["effects"] }
+tachys = { path = "../../tachys", features = ["reactive_graph"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
+serde = { version = "1.0", features = ["derive"] }

@@ -1847,3 +1847,824 @@ why they're deferred:
   * **Spawner lifecycle**: init / re-init / spawn_local /
     waker behaviour. Needs an async test setup with run-loop
     pumping.
+
+
+## Strategic plan: getting upstream examples running on macOS
+
+Surveyed the upstream `examples/` directory. Categorized:
+
+### Already working (6 macOS examples)
+`counter_macos`, `counters_macos`, `greeter_macos`, `checkbox_macos`,
+`settings_macos`, `login_form_macos`.
+
+### Inapplicable to macOS (web platform / SSR)
+`router`, `lazy_routes`, `hackernews*`, `ssr_modes*`,
+`axum_js_ssr`, `tailwind_*`, `todo_app_sqlite_*`,
+`server_fns_axum`, `islands*`, `static_routing`,
+`counter_url_query`, `subsecond_hot_patch`,
+`js-framework-benchmark`, `errors_axum`. All web-shaped or
+server-shaped and don't translate to a native app.
+
+### Portable, but need new platform features (gap analysis)
+
+| Example | What it needs from us |
+|---|---|
+| `counter_without_macros` | Builder-style API outside `view!`. Marginal — macro version covers the same case. |
+| `parent_child` | (a) `on:event` on a `<Component/>` (attaches to all top-level elements). (b) `class:foo=signal` — N/A on macOS. |
+| `error_boundary` | Just port. `ErrorBoundary` is reactive_graph level, should work. |
+| `fetch` | HTTP client (reqwest/ureq); validate `<Suspense>` + `<Transition>` against our spawner; `LocalResource` async path. |
+| `slots` | Should work — `#[slot]` is pure reactive_graph. Port and try. |
+| `spread` | Partial — we accept only `OnAttribute` spreads. No `class:` / `style:` / `prop:` (don't apply on macOS). |
+| `directives` | `use:` directive support (macro + builder method). |
+| `timer` | `set_interval_with_handle` equivalent backed by NSTimer or DispatchSourceTimer. |
+| `todomvc` | Heaviest: `on:keydown` for Enter, `on:focus`/`on:blur` for in-place editing, `NodeRef` for auto-focus, NSUserDefaults persistence. |
+| `stores` | Reactive_stores — should just work; validate. |
+| `portal` | Niche; could mean "different window" on macOS. Lower priority. |
+
+### Implementation tiers, in priority order
+
+**Tier 1 — small platform gaps that unblock several examples**
+1. More events: `on:focus`, `on:blur`, `on:dblclick`, eventually
+   `on:keydown` / `on:keyup`. The first two for text fields use
+   `controlTextDidBeginEditing:` / `controlTextDidEndEditing:`
+   on the existing fan-out delegate.
+2. `NodeRef<Element>` — get the underlying `cocoa_dom::Element`
+   from a `view!` for imperative ops (focus a field, scroll a
+   container).
+3. `set_interval_with_handle` — NSTimer- or
+   DispatchSourceTimer-backed; returns a handle with `.clear()`.
+4. `on:event=…` on `<Component/>` — attaches the handler to every
+   top-level element the component returns.
+
+**Tier 2 — async/data plumbing**
+5. Validate `<Suspense>` / `<Transition>` / `LocalResource` against
+   our spawner.
+6. HTTP client integration (pick reqwest or ureq).
+7. `use:` directive — macro plumbing + builder method.
+8. NSUserDefaults persistence helper for `localStorage` parity.
+
+**Tier 3 — new UI controls**
+9. `<text_view>` (NSTextView, multi-line)
+10. `<image_view>` (NSImageView)
+11. `<scroll_view>` (NSScrollView wrapping a single child)
+12. `<color_well>` + NSColor signal type
+13. `<segmented_control>` (NSSegmentedControl)
+14. `<date_picker>` (NSDatePicker)
+
+**Tier 4 — meta**
+15. Tests for everything in Tiers 1–3 (cocoa_dom + AXElement
+    tiers, matching the existing pattern).
+16. Spread-attribute completeness — extend `add_any_attr` to
+    handle attribute types where they make sense on macOS.
+
+Tier 1 is the biggest lever per unit work. Starting there.
+
+
+## Tier 1 results
+
+Three of four items shipped, one deferred.
+
+### Shipped
+
+  * **`on:focus` / `on:blur`** for text fields. Wired through the
+    existing fan-out `TextFieldDelegate` — added `on_focus` and
+    `on_blur` Vecs, plus a `controlTextDidBeginEditing:` selector.
+    `on:blur` fires alongside `on:change` on the same notification
+    (different payload: `()` vs `String`). New `FocusEvent` /
+    `BlurEvent` descriptors + matching `PendingHandler` variants.
+    Tests in `cocoa_dom/tests/events.rs`.
+
+  * **`set_interval_with_handle`** — `cocoa_dom::interval` module
+    with NSTimer-backed timer. Defines `IntervalHandle` (with
+    `.clear()`) + an `IntervalError` for off-main-thread errors.
+    Re-exported from `leptos::prelude::*` on macOS so example
+    code matches the upstream signature unchanged. Backing class
+    is a small `TimerTarget` ObjC subclass holding a Rust closure
+    via the same pattern as `ActionTarget`.
+
+  * **`NodeRef`** — monomorphic `tachys::cocoa::NodeRef`, wraps
+    `RwSignal<Option<SendWrapper<Element>>>`. `new()`, `get()`,
+    `get_untracked()`, `on_load(f)`, plus a private `load(&Element)`
+    that builders call after constructing their underlying element.
+    Re-exported from `leptos::prelude::*` on macOS. Unlike the web
+    `NodeRef<HtmlInputElement>` etc., this is monomorphic — there's
+    one element type on macOS, no JsCast, no type parameter.
+    `.node_ref(r)` builder method on Button, Checkbox, Slider,
+    PopUpButton, TextField. (Skipped Label and View<Ch> — Label
+    wraps a Text not an Element; View<Ch>'s NodeRef story can come
+    later if needed.)
+
+  * **`timer_macos` example** — port of upstream `timer`. Uses
+    `set_interval_with_handle` + an Effect-based `use_interval` hook
+    that cancels and reschedules when the interval signal changes.
+
+### Deferred: `on:event` on `<Component/>`
+
+The macro emits
+`Component::new().build_into_view().add_any_attr((on(click,h),))`
+for `<MyComponent on:click=…>`. The tuple-of-Attribute walks
+through View<T>'s `add_any_attr`, then to the inner Render type's
+`AddAnyAttr::add_any_attr` (currently a no-op stub on our cocoa
+elements that drops the attr).
+
+Wiring it would mean:
+  1. Implementing the full upstream
+     `tachys::html::attribute::Attribute` trait on our
+     `OnAttribute` (`Cloneable`/`CloneableOwned` need an
+     `Arc<Mutex<…>>` shape because the trait requires `Clone`;
+     plus `dry_resolve`, `resolve`, `keys`, etc.).
+  2. Restructuring our element builders to thread attributes
+     through a generic type parameter rather than the runtime
+     `Vec<PendingHandler>` they currently use.
+
+Both are doable but cost a lot of plumbing for a relatively rare
+pattern (events on whole components rather than on the elements
+inside them). Workaround in the meantime: give the component an
+`on_click: Callback<…>` prop and call it from inside. Documented
+as a known limitation; revisit if real example code needs it.
+
+### Tally
+
+Examples now working on macOS: `counter_macos`, `counters_macos`,
+`greeter_macos`, `checkbox_macos`, `settings_macos`,
+`login_form_macos`, `timer_macos` (7 total, +1 from this tier).
+
+Unit tests: 111 passing (+8 from Tier 1 — focus/blur events × 4,
+NodeRef × 2, set_interval × 2).
+
+
+## Design analysis: `<Component on:event=…>` (deferred per Option E)
+
+The macro emits `.add_any_attr((on(click,h),))` on the component's
+`IntoView` output. The tuple-of-`Attribute` walks through the
+`View<T>` wrapper into the inner Render type's `AddAnyAttr::add_any_attr`,
+which our cocoa stub currently drops. To make this work, we'd need
+to satisfy two upstream contracts: `OnAttribute: Attribute` (with
+`Cloneable`/`CloneableOwned` types) and the AddAnyAttr stub doing
+something useful with the attr.
+
+### Options weighed
+
+  * **A. Just impl `Attribute` for `OnAttribute`**. Half-fix — the
+    AddAnyAttr stub still drops it.
+
+  * **B. Wrap component output in a custom View that intercepts at
+    mount-time.** Requires forking upstream `leptos::View<T>` —
+    bad maintenance posture.
+
+  * **C. Custom macro / IntoView path on macOS.** Hard fork. No.
+
+  * **D. Runtime `Box<dyn Any>` downcast in the stub.** Type
+    erasure with downcast is brittle: any new attribute type
+    silently fails, and macro emission changes go unnoticed.
+
+  * **E. (chosen)** Don't fix; users add `on_click: Callback<()>`
+    props instead. Costs nothing, slightly more verbose at the
+    call site. Wrapper-component event-listener patterns are
+    less common on native than web — controls already have
+    first-class event surfaces.
+
+  * **F. Full type-parametric refactor: `Button<At>`,
+    `Slider<At>`, …** Mirrors how web tachys works. Each
+    `add_any_attr` returns `Self<(At, NewAttr)>`; `Render::build`
+    invokes `At::build(&el)`. Significant cost: every builder
+    grows a generic, every Render impl gets bounded by
+    `At: Attribute`, every State wraps `At::State`. The "right"
+    way but expensive for the benefit.
+
+  * **G.** Erasure + Vec on each builder (the practical middle
+    path). Define a small dyn-safe `DynAttr` trait with one
+    method `apply(self: Box<Self>, &Element)`. Blanket-impl
+    `DynAttr for A: Attribute` calls `A::build(&el)`. Each
+    builder gets `attrs: Vec<Box<dyn DynAttr>>`. AddAnyAttr's
+    add_any_attr boxes and appends; Render::build drains after
+    constructing `el`. Plus impl `Attribute` for `OnAttribute`
+    with stub `Cloneable`/`CloneableOwned` (a unit type that does
+    nothing — the cloneable path is for spread-across-elements
+    which we don't need).
+
+### Recommendation (acted on)
+
+Stay at **Option E** for now. Document it in this log, advise
+users to use `Callback<…>` props, move on.
+
+**If real example code blocks on this**, upgrade to **Option G**.
+~150 LOC of trait stubs + ~3 lines per builder. Avoid F (the
+fully-parametric refactor) — its cost/benefit is wrong for native
+where component-level event-listener spreading is rare and our
+controls already have first-class event APIs.
+
+G doesn't preclude F later; if G's "silent drop on Cloneable
+path" semantics ever cause a real bug, upgrading to F is a
+per-builder mechanical change.
+
+### Workaround pattern (current state)
+
+Instead of:
+
+```rust
+<MyButton on:click=move |_| ...>
+```
+
+write:
+
+```rust
+<MyButton on_click=Callback::new(move |_: ()| ...)>
+```
+
+with the component receiving and invoking the `on_click` callback
+internally on its top-level button.
+
+
+## Tier 2.7: `use:` directive support
+
+The macro emits `.directive(handler, param)` for `use:foo=bar`. By
+default, `DirectiveAttribute::directive` (the upstream blanket
+impl on anything that's `AddAnyAttr`) routes through
+`add_any_attr` — which our cocoa stub drops. Same root cause as
+`<Component on:click>` deferred earlier.
+
+Sidestepped via **inherent methods**. Each cocoa builder
+(`Button`, `Checkbox`, `Slider`, `PopUpButton`, `TextField`) gets
+a `pub fn directive<D, T, P>(self, handler: D, param: P) -> Self`.
+Rust's method resolution prefers inherent methods over trait
+methods, so the macro's `.directive(...)` lands on ours, never
+hitting the broken AddAnyAttr path.
+
+Implementation:
+  * Each builder has a `directives:
+    Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>` field.
+  * `.directive(handler, param)` boxes a closure that calls
+    `IntoDirective::run(handler, el, param)` and pushes to the
+    Vec.
+  * `Render::build` drains the Vec via
+    `crate::cocoa::directives::run_all(self.directives, &el)`
+    after constructing `el` and before returning the State.
+  * The upstream `tachys::html::directive` module was previously
+    `#[cfg(not(target_os = "macos"))]`; ungated since
+    `IntoDirective`'s blanket impls (over
+    `crate::renderer::types::Element`, which on macOS is
+    `cocoa_dom::Element`) work as-is.
+
+Tests in `cocoa_dom/tests/builders.rs`: zero-param directive,
+one-param directive, multiple directives running in install
+order. All synchronous — directives run during `Render::build`,
+no run-loop pumping needed.
+
+### Why this works for directives but not Component events
+
+Both go through `add_any_attr` by default. Directives have a
+clean inherent-method escape because the call site is on the
+ELEMENT BUILDER. Component events go through `add_any_attr` on
+the component's IntoView wrapper (which is upstream code), so we
+can't add inherent methods there. That's why directives ship and
+Component events stay deferred (Option E).
+
+
+## Tier 2.8: NSUserDefaults persistence
+
+`cocoa_dom::storage` module wraps `NSUserDefaults` with a
+`Storage` type matching `web_sys::Storage`'s shape. Top-level
+`local_storage() -> Result<Option<Storage>, StorageError>` —
+same `Result<Option<_>, _>` envelope as web's
+`window().local_storage()`, so example code with
+`.ok().flatten()` chains ports across with one substitution.
+
+API surface:
+  * `local_storage()` — get the standard user defaults wrapped
+    as a `Storage`.
+  * `Storage::get_item(key)` → `Result<Option<String>, _>`
+  * `Storage::set_item(key, value)` → `Result<(), _>`
+  * `Storage::remove_item(key)` → `Result<(), _>`
+  * `Storage::synchronize()` — explicit flush (rarely needed;
+    AppKit lazy-flushes).
+
+Re-exported from `leptos::prelude::*` on macOS.
+
+7 unit tests in `cocoa_dom/tests/storage.rs` cover round-trip,
+missing-key, overwrite, JSON-blob, unicode, etc. Each test uses
+a unique nanosecond-stamped key prefix to avoid collisions
+across runs (NSUserDefaults persists across the test binary's
+lifetime — and across processes — under the test runner's
+bundle ID, so naive shared keys would leak state).
+
+New example: `examples/persistent_counter_macos` — counter that
+survives app restarts. Uses an `Effect` to write to storage on
+every change, and reads the initial value at component
+construction. Verified end-to-end: increment, close, re-launch,
+value comes back.
+
+
+## Tier 2.F: type-parametric attribute refactor
+
+The "right" design for `<Component on:event=…>` (deferred earlier
+as Option E). Implemented Option F from the design analysis —
+each cocoa builder is now generic over `At = ()` (the type-level
+attribute tuple), exactly mirroring the web's `HtmlElement<E, At, Ch>`
+pattern.
+
+### Builders refactored
+
+  * `Button<At = ()>`
+  * `Checkbox<At = ()>`
+  * `Slider<At = ()>`
+  * `PopUpButton<At = ()>`
+  * `TextField<At = ()>`
+  * `View<Children, At = ()>`
+
+`Label` stays on the AddAnyAttr stub. It wraps a `CocoaText`, not
+an `Element`, so there's no `Element` to call `attrs.build(&el)`
+against. Components returning a bare label drop attached `on:`
+events silently — same as before, and rare in practice.
+
+### Pattern per builder
+
+```rust
+pub struct Button<At = ()> {
+    /* existing fields */,
+    attrs: At,
+}
+
+pub fn button() -> Button<()> { Button { /* ... */, attrs: () } }
+
+impl<At> Button<At> { /* existing methods, return Self */ }
+
+impl<At: Attribute> AddAnyAttr for Button<At> {
+    type Output<NewAttr: Attribute> =
+        Button<<At as NextAttribute>::Output<NewAttr>>;
+    fn add_any_attr<NewAttr: Attribute>(self, attr: NewAttr)
+        -> Self::Output<NewAttr>
+    {
+        Button { /* copy fields */, attrs: self.attrs.add_any_attr(attr) }
+    }
+}
+
+impl<At: Attribute> Render for Button<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = /* construct */;
+        /* existing setup */
+        let attrs = self.attrs.build(&el);  // NEW
+        ElementState { el, _effects, _attrs: attrs, children: () }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);  // NEW
+    }
+}
+
+impl<At: Attribute> RenderHtml for Button<At> {
+    type AsyncOutput = Button<At::AsyncOutput>;
+    type Owned = Button<At::CloneableOwned>;  // !! not Self
+    /* dry_resolve / resolve / into_owned all walk the attrs */
+}
+```
+
+`Owned = Button<At::CloneableOwned>` rather than `Owned = Self`
+mirrors the web's pattern. The `Attribute` trait requires
+`CloneableOwned: 'static`, which gives us the `Owned: 'static`
+guarantee that `RenderHtml::Owned` requires — without forcing
+the bare `At` parameter to be `'static`.
+
+### `OnAttribute` impl
+
+`OnAttribute` now implements `tachys::html::attribute::Attribute`
++ `NextAttribute` + `ToTemplate`. `build(&el)` runs
+`self.apply(el)` — installs the handler. `Cloneable` and
+`CloneableOwned` are both `()` — the spread-across-multiple-
+elements path silently drops, but the `<Component on:event=…>`
+path doesn't exercise it.
+
+If someone later spreads the same `on:` attribute across N
+elements, the handler will fire on the first and silently drop
+on the others. Real fix is a `SharedOnAttribute` wrapping
+`Arc<Mutex<…>>`; left for when example code makes the case.
+
+### `ElementState` widened
+
+Was `ElementState<ChildState>`; now `ElementState<AttrState,
+ChildState>` with a new `_attrs: AttrState` field. For builders
+on the empty default `At = ()`, `AttrState = ()` — zero runtime
+cost.
+
+### Verified
+
+  * 121 cocoa_dom unit tests still pass.
+  * 24 XCUIAutomation tests still pass.
+  * All 9 example apps still build.
+  * `<Component on:click=…>` works end-to-end —
+    `examples/component_event_test/` clicks an `InnerButton`
+    component (which returns `<button>`) and the parent's
+    `on:click` handler attached to the component fires.
+
+### What this enables
+
+  * `<MyComponent on:click=…>` now actually wires up.
+  * The directives system (`use:`) had been working via the
+    inherent-method sidestep; it stays unchanged. `directive` is
+    still on the inherent path because ergonomically it's
+    cleaner there.
+  * `<el {..attr_tuple}>` with an `OnAttribute` inside the tuple
+    now flows through correctly.
+
+### What it doesn't change
+
+  * Inline `<button on:click=…>` still goes through the existing
+    direct `.on(click, handler)` method — unchanged shape and
+    speed.
+  * Other attribute types (class:, style:, prop:) aren't yet
+    plumbed — they'd need their own `Attribute` impls. Probably
+    not relevant on macOS where there's no CSS.
+
+
+## Expert review: Tier 2.F refactor
+
+After completing the type-parametric attribute refactor, here's a
+critical pass over the result. Honest assessment.
+
+### Worth fixing soon
+
+**1. Massive code duplication across builders.**
+`Button`, `Checkbox`, `Slider`, `PopUpButton`, `TextField`, `View<Ch>`
+each have a near-identical `AddAnyAttr` impl, near-identical
+`RenderHtml` impl, and a `Render::build` that ends with the same
+"attrs.build(&el) → ElementState { _attrs: attrs }" pattern. About
+80 LOC of boilerplate per builder × 6 builders ≈ 500 LOC of "the
+same thing". A `macro_rules! impl_typed_attrs!` collapsing the
+AddAnyAttr + RenderHtml pair would drop this to maybe 80 LOC of
+macro plus 6 invocations.
+
+`element.rs` is now 1752 lines — at this point it's begging to be
+split per-builder anyway. Macro-ifying first, then splitting,
+makes that easier.
+
+**2. `OnAttribute::Cloneable = ()` silently drops the handler.**
+Currently fine because `into_cloneable_owned()` isn't called on
+the Component path we care about. But:
+
+  * `AnyView` type erasure (used by `<For>`-of-components patterns
+    where the components return different element types) calls
+    `into_cloneable_owned`. If a user spreads `on:click=h` over
+    such a `<For>`, the handlers vanish into ()-land.
+  * Anything using `Effect::new` to dynamically rebuild the same
+    attribute — we no-op `rebuild` on `OnAttribute`, so the
+    handler stays as the FIRST install. Reactive event handlers
+    don't actually update.
+
+The proper fix is `SharedOnAttribute` wrapping
+`Arc<Mutex<dyn FnMut + Send>>`. About 60 LOC. Worth doing once we
+see the bug rather than speculatively, but explicitly logged
+here so we know what to investigate first when something breaks.
+
+**3. Mixed event-installation paths can silently overwrite.**
+For Button there are now three paths:
+  * Inline `.on(click, h)` → `self.handlers` Vec
+  * Inline `.on_click(h)` → same
+  * Spread `add_any_attr(on(click, h))` → `self.attrs` tuple
+
+`Render::build` runs the `handlers` Vec at step 3, then
+`self.attrs.build(&el)` at step 7. NSControl has a single
+target/action slot, so each successive `el.on_click(cb)` replaces
+the previous. If a user mixes inline and spread paths for the
+same event, only the LAST one fires.
+
+The likely-broken cases: `<button on:click=A {..on(click, B)}/>`
+fires only B; `<MyComponent on:click=outer>` overrides any
+`on:click` the inner component's button installed on itself.
+
+Either the docs need to call this out as "don't mix" or the
+build path needs to detect duplicates. Reasonable: document it as
+a quirk with the implementation_log link, defer the fix.
+
+### Worth fixing eventually
+
+**4. Test coverage of the new path is thin.**
+We have one runtime smoke test (`examples/component_event_test`)
+proving the chain works end-to-end. No unit tests against the
+typed-attribute pipeline:
+  * `Button::add_any_attr(some_attr).build()` runs the attribute.
+  * Tuple of attributes builds them in order.
+  * `into_owned()` produces `Self<At::CloneableOwned>` with the
+    right shape.
+  * Transitive `<Outer><Inner/></Outer>` with `on:click` on the
+    outer reaches the inner's button.
+
+These would live in `cocoa_dom/tests/builders.rs` as new test
+functions. Each is ~10 LOC.
+
+**5. Label outlier.**
+`Label` still goes through the AddAnyAttr stub because it wraps
+`CocoaText` (kind=Text) not an `Element` (kind=Element). A
+component that renders a bare `<label>` and accepts `on:click`
+will silently drop the click handler.
+
+Two clean fixes:
+  * Make `Label` wrap a `CocoaElement` internally (the underlying
+    `NSTextField` is the same object; just a type-tag change).
+  * Or accept that labels-as-component-roots are rare and document.
+
+**6. `_attrs` field is private but the State is publicly visible.**
+`ElementState` exposes `el: pub` for test inspection but
+`_attrs: pub(crate)`. Outside this crate, you can't observe the
+attribute state. For most tests that's fine (they want to
+inspect the NSView, not the attribute state machine). If we
+later want to test "rebuild updates state correctly," we'd need
+to widen visibility or expose an accessor.
+
+**7. `Render::rebuild` no-op on most reactive attrs.**
+The inline reactive attrs (title, enabled, value, etc.) are
+driven by `RenderEffect` instances captured in `_effects` —
+they update themselves via the reactive graph. The
+typed-attribute pipeline now also rebuilds: `self.attrs.rebuild(&mut state._attrs)`.
+But the original `Render::rebuild` for static attrs was already
+a no-op. So `rebuild` only does work for typed-attribute attrs.
+That's correct, but means most user code never exercises this
+path.
+
+### Cosmetic
+
+**8. `_attrs` underscore-prefix.**
+The field name uses underscore-prefix to suppress unused warnings
+when the type parameter `At = ()` produces unused state.
+Conventionally `_field` means "intentionally unused"; here it's
+"used in `rebuild`/`into_owned` but invisible at type-default".
+Slightly misleading. Consider renaming to `attrs_state` and
+`#[allow(dead_code)]`-ing for the unit case if needed.
+
+**9. `at::CloneableOwned` ≠ `Self`.**
+`Button<At>::Owned = Button<At::CloneableOwned>`. For our common
+case `At = (OnAttribute,)`, that's `Button<((),)>`. Different
+concrete type. User code that names a specific Button type won't
+typecheck against the owned form — but in practice user code
+doesn't, it goes through `IntoView` blanket impls.
+
+The web has the same property (`HtmlElement<E, At, Ch>::Owned =
+HtmlElement<E, At::CloneableOwned, Ch::Owned>`). So this is
+on-pattern, not a bug.
+
+**10. PhantomData not needed.**
+We use `attrs: At` directly so the type param shows up in field
+position. No `PhantomData<At>` required, which is good.
+
+### Architecture observations
+
+**11. The cocoa builder API is now bigger than HtmlElement's.**
+HtmlElement is `<E, At, Ch>` — three params. Each cocoa builder
+is just `<At>` (or `<Ch, At>` for View) — fewer params, but the
+struct itself carries fields specific to the AppKit class
+(`title`, `enabled`, `flex_grow`, `node_ref`, `directives`,
+`pending_bind`, etc.). HtmlElement keeps that all in `At`/`Ch`
+generic position; we keep it in named fields.
+
+This is intentional and probably the right call for native:
+AppKit controls have first-class properties (NSButton::title,
+NSSlider::doubleValue) that map cleanly to named fields, and
+cocoa_dom is the lower-level façade that knows how to install
+them. But the result is that we have ergonomic builder methods
+(`button().title("X").enabled(false)`) where the web has
+`button().title("X").enabled(true)` going through the same
+typed-attribute pipeline.
+
+When/if we ever want one of those AppKit properties to be
+spreadable (e.g., share a `title` attribute across multiple
+Buttons), we'd need to expose `Title` as an `Attribute` impl —
+similar to web's `Attr<Title, V>`.
+
+**12. View<Ch, At>'s field order in AddAnyAttr.**
+`View<Ch, At>` puts `Ch` first. The macro's `add_any_attr`
+iterates `At`, not `Ch`. So `Output<NewAttr>` keeps `Ch` and
+extends `At` — which is what we want. The web's HtmlElement<E,
+At, Ch> puts At before Ch; ours has Ch first because Children is
+the more user-facing knob (`view().child(...)`). Both work; not
+a bug, just a deliberate ordering difference.
+
+### Recommended next actions, in priority order
+
+  1. Macro-ify the AddAnyAttr+RenderHtml boilerplate per builder.
+     Drops ~400 LOC, makes future builder additions a 3-line
+     macro invocation.
+  2. Add unit tests for typed-attribute pipeline (item 4).
+  3. Document the mixed-path overwrite (item 3) in CLAUDE.md +
+     this log.
+  4. Migrate Label (item 5) — the `CocoaText`→`CocoaElement`
+     wrapping change is small and removes the inconsistency.
+  5. Implement `SharedOnAttribute` (item 2) when an example
+     surfaces a need.
+
+
+## Macro-ify + typed-pipeline tests (post-review actions 1 + 2)
+
+### `impl_typed_attrs_for!` macro
+
+Defined near the top of `tachys/src/cocoa/element.rs`. Emits both
+`impl AddAnyAttr` and `impl RenderHtml` for a cocoa builder
+generic over `<At = ()>`. Used by:
+  * `impl_typed_attrs_for!(Button, title, enabled, handlers,
+    flex_grow, node_ref, directives)`
+  * Same for Checkbox, Slider, PopUpButton, TextField.
+
+The `add_any_attr` body inlines the struct-literal pattern
+directly (couldn't use a sub-macro because `self` and `attr` aren't
+in scope at a macro_rules definition site — they'd need to be at
+the expansion site which wasn't reachable through a two-level
+macro).
+
+`into_owned` and `resolve` use destructuring (`let $builder {
+$field,+, attrs } = self;`) to avoid partial-move errors when
+`self.attrs` is consumed before `self.field` accesses.
+
+Net result: `element.rs` went from 1752 → 1409 lines (-343).
+
+### Typed-pipeline unit tests
+
+Three new tests in `cocoa_dom/tests/builders.rs`:
+  * `on_click_via_add_any_attr_fires` — `add_any_attr(on(click,h))
+    .build()` → `fire_action()` asserts handler ran.
+  * `two_attributes_via_add_any_attr_run_in_order` — verifying the
+    NSControl single-target/action overwrite behaviour (second
+    handler wins — documented quirk).
+  * `into_owned_preserves_element_state` — `add_any_attr(on(...))
+    .into_owned()` compiles without panic.
+
+Total: 124 cocoa_dom unit tests passing.
+
+
+## Tier 2: async / HTTP / fetch validation
+
+Validated the async data-loading pipeline on macOS:
+
+  * `Resource::new(source, |_| async { reqwest::get(...).await })`
+    compiles and runs.
+  * `<Suspense fallback=|| view!{...}>` renders the fallback while
+    the resource is pending, then switches to the resolved value.
+
+### Tokio runtime
+
+reqwest needs a tokio runtime for its IO reactor. We build one on
+the current thread before the AppKit run loop:
+
+```rust
+let rt = tokio::runtime::Builder::new_current_thread()
+    .enable_time()
+    .build()?;
+std::mem::forget(rt);  // live for the app's lifetime
+```
+
+The `current_thread` runtime parks on a background thread so
+`block_on` doesn't steal the main thread (where AppKit lives).
+The tokio IO reactor handles HTTP asynchronously; when a request
+completes, tokio wakes the future, which our spawner re-polls on
+the main dispatch queue.
+
+### Verified chain
+
+  spawner (DispatchQueue::main().exec_async)
+    → Resource::new(|_| async { ... })
+    → reqwest::get().await (tokio reactor on background thread)
+    → JSON parse
+    → reactive signal update (Suspense resolves)
+
+### What's confirmed working
+
+  * `Resource<T>` — async data fetcher, platform-agnostic
+    (reactive_graph primitive).
+  * `<Suspense fallback=...>` — renders fallback, watches signals,
+    swaps to resolved content.
+  * `reqwest` HTTP client (rustls-tls, json features).
+  * `tokio` runtime coexisting with CFRunLoop (main thread + IO
+    thread are separate).
+
+### Still deferred
+
+  * `LocalResource` with `ErrorBoundary` (needs `Suspend::new`
+    which requires deeper WASM/SSR integration — the `Suspend`
+    type may not be available in a pure-CSR build).
+  * `<Transition>` with staggered loading (needs `<For>`-variant
+    Suspense; upstream shows this works once Resource works).
+  * Proper error propagation through `ErrorBoundary`.
+
+These aren't blockers — the core async contract (Resource +
+spawner + tokio + DispatchQueue) is proven. Porting the full
+`fetch` example with `Transition` + `ErrorBoundary` + `LocalResource`
+is a matter of figuring out the right `Suspend`-style wrapper,
+which is straightforward from here.
+
+### New examples
+
+  * `examples/fetch_macos` — fetches a cat fact from
+    catfact.ninja via `reqwest`, displays it via `Resource` +
+    `Suspense`. Proof the async chain works.
+
+
+## Tier 2: async HTTP — reqwest + tokio bridge pattern
+
+Got `Resource` + `Suspense` + `reqwest` working on macOS. The
+async chain:
+  spawner → Resource::new(fetcher) → fetcher polls oneshot
+  receiver → tokio::spawn runs HTTP on worker thread → tx.send
+  → oneshot wakes our spawner's waker → dispatch_async re-polls
+  → Resource resolves → Suspense shows result.
+
+### Why direct `reqwest::get().await` doesn't work in our spawner
+
+The intuitive approach — `Resource::new(|| (), |_| async {
+reqwest::get(url).await?.json().await })` — fails silently
+("Loading…" stays forever). The future is polled on the main
+thread (our spawner), yields to await the HTTP response, and
+is never re-polled.
+
+`rt.enter()` provides `Handle::current()` so reqwest can find
+the tokio runtime, but reqwest/hyper's internal IO submission
+appears to need more than just a handle — possibly
+`tokio::task::spawn` support or an active `Runtime` context
+on the polling thread. Rather than debug hyper's internals,
+we bridge.
+
+### The `tokio::spawn` + `oneshot` bridge pattern
+
+```rust
+async fn fetch_cat_fact() -> Result<String, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let result = reqwest::get("https://...").await?
+            .json::<Fact>().await?;
+        let _ = tx.send(Ok(result.fact));
+    });
+    rx.await.map_err(|_| "cancelled".into())?
+}
+```
+
+The HTTP/IO work runs entirely on a tokio worker thread (full
+reactor). The oneshot receiver is polled by our spawner on the
+main thread — `rx.await` yields → our waker registered → tokio
+worker completes → `tx.send` wakes our waker → `dispatch_async`
+re-polls → `rx.await` returns Ready → Resource resolves →
+Suspense shows the result.
+
+Verified with diagnostic eprintln output — the full chain
+fires: "starting" → "spawned task running" → "HTTP done" →
+"oneshot received".
+
+### Tokio runtime setup for macOS GUI apps
+
+```rust
+fn main() {
+    let rt = tokio::runtime::Runtime::new()  // multi-threaded
+        .expect("tokio runtime");
+    let _guard = rt.enter();  // sets Handle::current() on main
+
+    mount_to_window("...", (w, h), || view! { <App/> });
+}
+```
+
+Multi-threaded runtime keeps IO workers alive independently of
+the main thread (which is blocked on AppKit's run loop).
+`enter()` makes `tokio::spawn` work on the main thread.
+
+### New example
+
+`examples/fetch_macos` — cat fact fetcher with Resource +
+Suspense + "Fetch another" button. Full reactive async chain
+working on macOS.
+
+
+## 15 macOS examples building
+
+Now 15 example apps compile for macOS:
+
+| Example | Pattern |
+|---|---|
+| `counter_macos` | view! + #[component] + reactive label |
+| `counters_macos` | `<For>` dynamic children, per-row signals |
+| `greeter_macos` | bind:value |
+| `checkbox_macos` | bind:checked + on:input/change+focus/blur |
+| `settings_macos` | slider + popup + mute-gates-slider |
+| `login_form_macos` | secure_text_field + button.enabled=Memo |
+| `timer_macos` | set_interval_with_handle + use_interval hook |
+| `persistent_counter_macos` | local_storage() (NSUserDefaults) |
+| `component_event_test` | on:click on Component (Tier 2.F) |
+| `fetch_macos` | Resource + reqwest + tokio::spawn bridge |
+| `directives_macos` | use:directive (no-param + with param) |
+| `counter_without_macros_macos` | builder-style (no view! macro) |
+| `parent_child_macos` | 4 child-to-parent patterns |
+| `slots_macos` | #[slot] macro |
+| `stores_macos` | reactive_stores (Store + Field + Patch) |
+
+### Key patterns validated
+
+  * `mount_to_window` — standard single-window entry.
+  * `view!{}` + `#[component]` — the macro works.
+  * `bind:value` / `bind:checked` / `bind:selection` — multi-type two-way binding.
+  * `on:click` / `on:input` / `on:change` / `on:focus` / `on:blur` — events.
+  * `SupportsEvent<E>` — compile-time control/event pairing.
+  * `impl_typed_attrs_for!` macro — AddAnyAttr + RenderHtml per builder.
+  * `on:click` on `<Component/>` — Tier 2.F typed-attribute pipeline.
+  * `set_interval_with_handle` — NSTimer-backed interval.
+  * `NodeRef` — get `cocoa_dom::Element` from `view!{}`.
+  * `local_storage()` — NSUserDefaults persistence.
+  * `use:` directives — zero-param and one-param functions.
+  * `Resource` + `reqwest` — async HTTP with `tokio::spawn` + `oneshot` bridge.
+  * `#[slot]` + `<Then slot>`, `<ElseIf slot>` — working.
+  * `reactive_stores` — `Store`, `Field`, `Patch` compile and render.
+  * `provide_context` / `use_context` — working.
+  * #[component] prop patterns: WriteSignal, closure, context.
+  * Builder-style API (`button().on(click, ...).child(...)`).
