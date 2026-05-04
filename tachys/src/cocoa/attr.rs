@@ -72,6 +72,50 @@ impl IntoMaybeReactive<usize> for usize {
     }
 }
 
+impl IntoMaybeReactive<cocoa_dom::Color> for cocoa_dom::Color {
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::Color> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::Date> for cocoa_dom::Date {
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::Date> {
+        MaybeReactive::Static(self)
+    }
+}
+
+// AppKit enum types — Copy enums, used for `alignment`,
+// `segment_style`, `date_picker_style` builder attrs.
+impl IntoMaybeReactive<cocoa_dom::NSTextAlignment>
+    for cocoa_dom::NSTextAlignment
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSTextAlignment> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::NSSegmentStyle>
+    for cocoa_dom::NSSegmentStyle
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSSegmentStyle> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::NSDatePickerStyle>
+    for cocoa_dom::NSDatePickerStyle
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSDatePickerStyle> {
+        MaybeReactive::Static(self)
+    }
+}
+
 // Closure impl. We avoid `impl<T, F> IntoMaybeReactive<T> for F` (that
 // would conflict with the static impls above) by writing one closure
 // impl per concrete output type. This is enough for the small set of
@@ -108,6 +152,57 @@ where
     F: Fn() -> usize + Send + 'static,
 {
     fn into_maybe_reactive(self) -> MaybeReactive<usize> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::Color> for F
+where
+    F: Fn() -> cocoa_dom::Color + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::Color> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::Date> for F
+where
+    F: Fn() -> cocoa_dom::Date + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::Date> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::NSTextAlignment> for F
+where
+    F: Fn() -> cocoa_dom::NSTextAlignment + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSTextAlignment> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::NSSegmentStyle> for F
+where
+    F: Fn() -> cocoa_dom::NSSegmentStyle + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSSegmentStyle> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::NSDatePickerStyle> for F
+where
+    F: Fn() -> cocoa_dom::NSDatePickerStyle + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::NSDatePickerStyle> {
         MaybeReactive::Reactive(Box::new(self))
     }
 }

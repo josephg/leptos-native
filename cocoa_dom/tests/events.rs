@@ -94,31 +94,31 @@ fn on_click_on_slider_silently_drops_no_panic() {
 }
 
 // ---------------------------------------------------------------------
-// Repeated installs — last-write-wins on NSControl target/action
+// Repeated installs — panic on NSControl double-install
 // ---------------------------------------------------------------------
 
-fn second_on_click_replaces_first() {
+fn second_on_click_panics() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
-    let first = Rc::new(Cell::new(0));
-    let second = Rc::new(Cell::new(0));
-    {
-        let f = first.clone();
-        el.on_click(move || f.set(f.get() + 1));
-    }
-    {
-        let s = second.clone();
-        el.on_click(move || s.set(s.get() + 1));
-    }
-
-    let any: &AnyObject = el.ns_view().as_ref();
-    let control = any.downcast_ref::<NSControl>().unwrap();
-    common::fire_action(control);
-
-    // Second handler fires; first stays in retain-store but its
-    // target/action pair was overwritten on the control.
-    assert_eq!(first.get(), 0, "first handler shouldn't fire");
-    assert_eq!(second.get(), 1, "second handler should fire");
+    let result = std::panic::catch_unwind(
+        std::panic::AssertUnwindSafe(|| {
+            let el = Element::create("button");
+            el.on_click(|| {});
+            // Second install on the same control panics rather
+            // than silently overwriting the first.
+            el.on_click(|| {});
+        }),
+    );
+    let payload =
+        result.expect_err("expected second on_click to panic");
+    let msg = payload
+        .downcast_ref::<String>()
+        .map(|s| s.as_str())
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("<non-string panic>");
+    assert!(
+        msg.contains("on_control_action called twice"),
+        "panic message should explain duplicate install; got: {msg}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -266,6 +266,117 @@ fn on_text_focus_on_button_is_no_op() {
     el.on_text_focus(|| panic!("must not fire"));
 }
 
+// ---------------------------------------------------------------------
+// Keydown / keyup — doCommandBySelector pipeline
+// ---------------------------------------------------------------------
+
+fn on_text_keydown_fires_on_enter() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let captured = Rc::new(Cell::new(None::<String>));
+    let c = captured.clone();
+    el.on_text_keydown(move |ev| c.set(Some(ev.key)));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_command(field, sel!(insertNewline:));
+
+    assert_eq!(captured.take(), Some("Enter".to_string()));
+}
+
+fn on_text_keydown_fires_on_escape() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let captured = Rc::new(Cell::new(None::<u32>));
+    let c = captured.clone();
+    el.on_text_keydown(move |ev| c.set(Some(ev.key_code)));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_command(field, sel!(cancelOperation:));
+
+    assert_eq!(captured.take(), Some(27));
+}
+
+fn on_text_keyup_fires_on_command_keys() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let captured = Rc::new(Cell::new(None::<String>));
+    let c = captured.clone();
+    el.on_text_keyup(move |ev| c.set(Some(ev.key)));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_command(field, sel!(insertTab:));
+
+    assert_eq!(captured.take(), Some("Tab".to_string()));
+}
+
+fn keydown_and_keyup_both_fire_on_same_notification() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let down = Rc::new(Cell::new(0));
+    let up = Rc::new(Cell::new(0));
+    {
+        let d = down.clone();
+        el.on_text_keydown(move |_| d.set(d.get() + 1));
+    }
+    {
+        let u = up.clone();
+        el.on_text_keyup(move |_| u.set(u.get() + 1));
+    }
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_command(field, sel!(insertNewline:));
+
+    assert_eq!(down.get(), 1, "keydown fires on doCommand");
+    assert_eq!(up.get(), 1, "keyup fires on the same doCommand");
+}
+
+fn unknown_command_selector_does_not_fire() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    el.on_text_keydown(|_| panic!("must not fire on unknown selector"));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    // `noop:` is a valid AppKit selector but not in our mapping.
+    common::fire_text_did_command(field, sel!(noop:));
+}
+
+fn arrow_keys_map_to_web_names() {
+    use objc2::sel;
+    let _mtm = common::test_mtm();
+    let el = Element::create("text_field");
+    let names = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+    let n = names.clone();
+    el.on_text_keydown(move |ev| n.borrow_mut().push(ev.key));
+
+    let any: &AnyObject = el.ns_view().as_ref();
+    let field = any.downcast_ref::<NSTextField>().unwrap();
+    common::fire_text_did_command(field, sel!(moveUp:));
+    common::fire_text_did_command(field, sel!(moveDown:));
+    common::fire_text_did_command(field, sel!(moveLeft:));
+    common::fire_text_did_command(field, sel!(moveRight:));
+
+    assert_eq!(
+        *names.borrow(),
+        vec!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]
+    );
+}
+
+fn keydown_on_button_is_no_op() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("button");
+    el.on_text_keydown(|_| panic!("must not fire on button"));
+}
+
 fn on_change_and_on_input_coexist() {
     let _mtm = common::test_mtm();
     let el = Element::create("text_field");
@@ -338,7 +449,7 @@ fn main() {
             on_click_on_slider_silently_drops_no_panic,
         ),
         // Repeated installs
-        ("second_on_click_replaces_first", second_on_click_replaces_first),
+        ("second_on_click_panics", second_on_click_panics),
         // Text change
         (
             "on_text_change_fires_on_text_field",
@@ -360,6 +471,14 @@ fn main() {
         ("on_text_blur_fires_on_end_editing", on_text_blur_fires_on_end_editing),
         ("on_change_and_on_blur_both_fire_on_commit", on_change_and_on_blur_both_fire_on_commit),
         ("on_text_focus_on_button_is_no_op", on_text_focus_on_button_is_no_op),
+        // Keydown / keyup
+        ("on_text_keydown_fires_on_enter", on_text_keydown_fires_on_enter),
+        ("on_text_keydown_fires_on_escape", on_text_keydown_fires_on_escape),
+        ("on_text_keyup_fires_on_command_keys", on_text_keyup_fires_on_command_keys),
+        ("keydown_and_keyup_both_fire_on_same_notification", keydown_and_keyup_both_fire_on_same_notification),
+        ("unknown_command_selector_does_not_fire", unknown_command_selector_does_not_fire),
+        ("arrow_keys_map_to_web_names", arrow_keys_map_to_web_names),
+        ("keydown_on_button_is_no_op", keydown_on_button_is_no_op),
         // Value getters
         ("slider_double_value_round_trips", slider_double_value_round_trips),
         ("popup_items_and_selection", popup_items_and_selection),

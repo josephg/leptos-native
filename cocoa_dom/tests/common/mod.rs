@@ -58,6 +58,24 @@ pub fn fire_action(control: &NSControl) {
     let _: () = unsafe { msg_send![target_any, actionFired: control_any] };
 }
 
+/// Synthesise `textDidChange:` on an NSTextView. Use this AFTER
+/// programmatically setting the text view's `string` so handlers
+/// see the new value. Mirrors `fire_text_did_change` for
+/// NSTextField — we invoke the delegate method directly rather
+/// than posting through NSNotificationCenter.
+pub fn fire_text_view_did_change(tv: &objc2_app_kit::NSTextView) {
+    let delegate = tv
+        .delegate()
+        .expect("fire_text_view_did_change: tv has no delegate");
+    let notif = synth_notification(
+        "NSTextDidChangeNotification",
+        tv.as_ref(),
+    );
+    let _: () = unsafe {
+        msg_send![&*delegate, textDidChange: &*notif]
+    };
+}
+
 /// Synthesise `controlTextDidChange:` on a text field. Use this
 /// AFTER programmatically setting the field's stringValue so
 /// handlers see the new value.
@@ -98,6 +116,36 @@ pub fn fire_text_did_begin_editing(
     let _: () = unsafe {
         msg_send![&*delegate, controlTextDidBeginEditing: &*notif]
     };
+}
+
+/// Synthesise `control:textView:doCommandBySelector:` for the
+/// given selector. Drives `on:keydown` / `on:keyup` handlers.
+/// We don't have a real NSTextView in unit tests, so we pass the
+/// field cast to NSTextView's slot — our delegate handler
+/// doesn't dereference the text_view argument, so this is safe
+/// (and matches what AppKit does shape-wise: the field editor
+/// IS-A NSTextView).
+pub fn fire_text_did_command(
+    field: &objc2_app_kit::NSTextField,
+    command: objc2::runtime::Sel,
+) -> bool {
+    use objc2::runtime::Bool;
+    let delegate = field
+        .delegate()
+        .expect("fire_text_did_command: field has no delegate");
+    // Pass the field where a text_view is expected. The delegate
+    // method we implemented ignores the text_view argument, and
+    // the ObjC method dispatcher doesn't type-check arguments
+    // beyond size/alignment.
+    let field_any: &AnyObject = field.as_ref();
+    let result: Bool = unsafe {
+        msg_send![&*delegate,
+            control: field_any,
+            textView: field_any,
+            doCommandBySelector: command
+        ]
+    };
+    result.as_bool()
 }
 
 /// Synthesise `controlTextDidEndEditing:` (commit — return key /

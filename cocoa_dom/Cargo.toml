@@ -28,6 +28,9 @@ objc2-foundation = { version = "0.3", features = [
     "NSTimer",
     "NSDate",
     "NSUserDefaults",
+    "NSCalendar",
+    "NSLocale",
+    "NSTimeZone",
 ] }
 objc2-app-kit = { version = "0.3", features = [
     "NSApplication",
@@ -38,7 +41,9 @@ objc2-app-kit = { version = "0.3", features = [
     "NSControl",
     "NSText",
     "NSTextField",
+    "NSTextView",
     "NSSecureTextField",
+    "NSScrollView",
     "NSSlider",
     "NSPopUpButton",
     "NSCell",
@@ -49,6 +54,13 @@ objc2-app-kit = { version = "0.3", features = [
     "NSStackView",
     "NSImage",
     "NSImageView",
+    "NSSegmentedControl",
+    "NSColorWell",
+    "NSDatePicker",
+    "NSDatePickerCell",
+    "NSStepper",
+    "NSStepperCell",
+    "NSProgressIndicator",
     "NSEvent",
     "NSMenu",
     "NSMenuItem",
@@ -114,4 +126,9 @@ harness = false
 [[test]]
 name = "storage"
 path = "tests/storage.rs"
+harness = false
+
+[[test]]
+name = "focus"
+path = "tests/focus.rs"
 harness = false

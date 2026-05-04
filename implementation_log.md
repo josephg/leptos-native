@@ -5,6 +5,904 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-05 — Reactive variants for the new attributes
+
+Followed up the missing-attribute pass by converting all 21 newly-
+exposed attributes from static `Option<T>` to reactive
+`Option<MaybeReactive<T>>`. User policy: everything reactive
+unless there's a good reason.
+
+### Pattern
+
+```rust
+// Field
+attr: Option<MaybeReactive<T>>,
+
+// Builder method (now generic over IntoMaybeReactive<T>)
+pub fn attr<V>(mut self, v: V) -> Self
+where V: IntoMaybeReactive<T>
+{
+    self.attr = Some(v.into_maybe_reactive());
+    self
+}
+
+// Build site
+if let Some(v) = self.attr {
+    let el_for = el.clone();
+    if let Some(eff) = install(v, move |x| el_for.set_X(x)) {
+        effects.push(eff);
+    }
+}
+```
+
+`apply_universal` and `apply_text_attrs` returned `()` before;
+now they return `Vec<RenderEffect<()>>` so callers can extend
+their own `effects` Vec. Without this, the RenderEffect drops
+immediately and reactivity is dead on the second tick.
+
+### What's now reactive
+
+  * Universal: `alpha`, `tool_tip`
+  * Text styling: `text_color`, `alignment`, `font_size`
+  * Per-control:
+    - Button: `bordered`, `key_equivalent`
+    - TextField/SecureTextField: `bordered`, `bezeled`
+    - Label: `selectable`
+    - Slider: `vertical`, `num_tick_marks`, `snaps_to_ticks`
+    - PopUpButton: `pulls_down`
+    - SegmentedControl: `segment_style`
+    - DatePicker: `style`, `min_date`, `max_date`
+    - ScrollView: `autohides_scrollers`,
+      `has_horizontal_scroller`, `has_vertical_scroller`
+    - ProgressIndicator: `displayed_when_stopped`
+
+### What's NOT reactive (with reason)
+
+  * **Layout attrs** (`flex_direction`, `padding`, `gap`,
+    `flex_grow`): were already static, kept that way. Each
+    change triggers a Taffy relayout, which is expensive.
+    Reactive layout would require a bigger story (debouncing,
+    explicit recompute scheduling).
+  * **Slider/Stepper `min_value`, `max_value`, `increment`** and
+    **DatePicker** wasn't migrated for `value` itself (it has
+    `bind:value` which is already reactive); these range
+    constraints are typically design-time and we kept them
+    static for now.
+  * **TextField `secure`**: switches between NSTextField and
+    NSSecureTextField subclasses — different element types.
+    Can't reactively swap subclasses at runtime; would need
+    element rebuild.
+  * **DatePicker's clear-min/max via `None`**: builder API only
+    supports setting a Date, not clearing. Use a directive +
+    `Element::set_date_picker_min(None)` if you need
+    runtime clearing.
+
+### New IntoMaybeReactive impls
+
+`tachys/src/cocoa/attr.rs` gained 6 new impls — static + closure
+for each of `NSTextAlignment`, `NSSegmentStyle`,
+`NSDatePickerStyle`. The first two also re-exported from
+cocoa_dom (so tachys can name them without taking a direct
+objc2-app-kit dep).
+
+### Tests
+
+7 new reactive-variant tests in `cocoa_dom/tests/builders.rs`,
+each constructing a `RwSignal`, threading it through the builder,
+mutating the signal, pumping the run loop, and asserting the
+AppKit property updated. Total: **211 cocoa_dom tests passing**
+(was 204).
+
+All 20 examples still build clean.
+
+---
+
+## 2026-05-05 — Missing-attribute pass
+
+Brainstormed and shipped a wide pass of NSView/NSControl attributes
+that weren't yet exposed.
+
+### Universal (every Element-backed builder)
+
+  * `alpha` → `NSView::alphaValue` (clamped to 0..1)
+  * `tool_tip` → `NSView::toolTip` (empty string clears)
+
+Wired via two helpers in `tachys::cocoa::element`:
+
+  * `apply_universal(el, alpha, tool_tip)` — called from each
+    builder's `Render::build` after the control-specific setup.
+  * `impl_universal_attrs!(BuilderName)` macro emits the inherent
+    `.alpha(f64)` / `.tool_tip(impl Into<String>)` builder
+    methods. Each builder still has to add the
+    `alpha: Option<f64>` and `tool_tip: Option<String>` fields and
+    list them in `impl_typed_attrs_for!`.
+
+### Text styling (Label, TextField, SecureTextField, Checkbox, TextView)
+
+  * `text_color` → NSTextField/NSTextView `setTextColor:`.
+    NSButton's text color isn't trivially settable (needs an
+    `attributedTitle` round-trip with NSCopying-bounded
+    NSDictionary plumbing); skipped on Button. Documented.
+  * `alignment` → NSTextField/NSTextView `setAlignment:`. Reuses
+    `objc2_app_kit::NSTextAlignment` (re-exported from
+    `cocoa_dom::NSTextAlignment` so tachys doesn't take a direct
+    objc2-app-kit dep).
+  * `font_size` → `NSFont::systemFontOfSize` set on the control.
+
+`apply_text_attrs(el, text_color, alignment, font_size)` is the
+shared install fn. `impl_text_attrs!(BuilderName)` emits the
+builder methods. Button uses an inline impl rather than the macro
+because it doesn't accept `text_color`.
+
+### Per-control statics
+
+  * **Button**: `bordered` (link-style/borderless), `key_equivalent`
+    (`"\r"` for default action button)
+  * **TextField, SecureTextField**: `bordered`, `bezeled` (NSTextField
+    treats them as mutually exclusive — setting one switches off
+    the other; documented in the test)
+  * **Label**: `selectable` (text-copyable)
+  * **Slider**: `vertical`, `num_tick_marks`, `snaps_to_ticks`
+    (`allowsTickMarkValuesOnly`)
+  * **PopUpButton**: `pulls_down` (popup vs pull-down menu)
+  * **SegmentedControl**: `segment_style` (Rounded, RoundRect,
+    Capsule, etc. — re-exported as `cocoa_dom::NSSegmentStyle`)
+  * **DatePicker**: `style` (Textual, TextualAndStepper,
+    ClockAndCalendar — `cocoa_dom::NSDatePickerStyle`),
+    `min_date`, `max_date`
+  * **ScrollView**: `autohides_scrollers`, `has_horizontal_scroller`,
+    `has_vertical_scroller`
+  * **ProgressIndicator**: `displayed_when_stopped`
+
+### Re-exports
+
+`cocoa_dom::lib.rs` now re-exports `NSTextAlignment`,
+`NSDatePickerStyle`, `NSSegmentStyle` so tachys (which doesn't
+take a direct objc2-app-kit dep) can name these types in
+builder method signatures.
+
+### Tests
+
+  * 19 new element-creation tests (`cocoa_dom/tests/element_creation.rs`)
+    — each new setter has a round-trip test against the underlying
+    AppKit property.
+  * 9 new builder tests (`cocoa_dom/tests/builders.rs`) — verify
+    the builder methods plumb through to the AppKit side.
+
+Total: **204 cocoa_dom tests passing** (was 176, +28).
+
+### Skipped (deliberately)
+
+  * **Reactive** variants of these attrs (e.g. `alpha=move || …`).
+    Static-only for now — most styling is set once at build. If
+    users need fade-in/out animations, a directive can install a
+    custom Effect.
+  * **NSButton text color** — needs `attributedTitle` plumbing
+    that's awkward through objc2's NSCopying / NSDictionary trait
+    bounds. Defer until a real example needs it.
+  * **NSScrollView's `borderType`** — set to `NoBorder` at
+    construction; we don't expose it as a builder attr because
+    we use the scroll view as a layout helper, not a styled
+    component. If the user wants a bezeled scroll view, they can
+    use a directive.
+
+### Examples
+
+The showcase demonstrates the new attrs via the existing layout —
+no example changes needed in this pass; users can add `alpha=…`,
+`tool_tip=…`, etc. to any builder via the macro.
+
+### List of all attributes now exposed (per builder)
+
+| Builder            | Attributes                                                                                                                       |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| View               | `flex_direction`, `padding`, `gap`, `flex_grow`, `alpha`, `tool_tip`                                                              |
+| Button             | `title`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `font_size`, `alignment`, `bordered`, `key_equivalent`                      |
+| Checkbox           | `title`, `checked`, `bind:checked`, `alpha`, `tool_tip`, `text_color`, `alignment`, `font_size`                                    |
+| Label              | `text`, `bind:value`, `flex_grow`, `alpha`, `tool_tip`, `text_color`, `alignment`, `font_size`, `selectable`                        |
+| TextField          | `value`, `bind:value`, `placeholder`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `text_color`, `alignment`, `font_size`, `bordered`, `bezeled` |
+| SecureTextField    | (same as TextField)                                                                                                              |
+| TextView           | `value`, `bind:value`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `text_color`, `alignment`, `font_size`                          |
+| ImageView          | `source`, `flex_grow`, `alpha`, `tool_tip`                                                                                        |
+| Slider             | `value`, `bind:value`, `min_value`, `max_value`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `vertical`, `num_tick_marks`, `snaps_to_ticks` |
+| PopUpButton        | `items`, `selection`, `bind:selection`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `pulls_down`                                  |
+| SegmentedControl   | `items`, `selection`, `bind:selection`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `segment_style`                                |
+| ColorWell          | `value`, `bind:value`, `enabled`, `flex_grow`, `alpha`, `tool_tip`                                                                |
+| DatePicker         | `value`, `bind:value`, `enabled`, `flex_grow`, `alpha`, `tool_tip`, `style`, `min_date`, `max_date`                                 |
+| Stepper            | `value`, `bind:value`, `min_value`, `max_value`, `increment`, `enabled`, `flex_grow`, `alpha`, `tool_tip`                          |
+| ProgressIndicator  | `value`, `max_value`, `indeterminate`, `flex_grow`, `alpha`, `tool_tip`, `displayed_when_stopped`                                   |
+| ScrollView         | `flex_grow`, `alpha`, `tool_tip`, `autohides_scrollers`, `has_horizontal_scroller`, `has_vertical_scroller`, `child(...)`         |
+
+---
+
+## 2026-05-04 — `on_control_action` panics on duplicate install
+
+Replaced the silent-overwrite behavior of NSControl target/action
+with a build-time panic. The previous CLAUDE.md note was a
+warning to users; better is to catch the bug for them.
+
+### Why panic, not fan-out
+
+The original audit suggested `Vec<closure>` fan-out. Considered;
+rejected. Fan-out would add a Vec allocation per ActionTarget for
+the 99% case of one handler, and it wouldn't tell users when they
+accidentally double-installed. Panic is allocation-free and
+self-documenting.
+
+The trade-off: `bind:checked + on:click=…` no longer works (bind
+installs a click handler internally; user's `on:click` is the
+second installer). Workaround: combine into a single closure, or
+have the component accept a `Callback<()>` prop and call it
+inside its own bind-driven closure.
+
+### Implementation
+
+`on_control_action` (cocoa_dom/src/event.rs):
+  * Reads `control.target()`. Non-nil means someone already
+    installed a handler — panic with a message naming the
+    workaround.
+  * Uses the control's own target as ground truth rather than
+    HANDLER_STORE; entries can be stale across recycled NSView
+    pointers, and we don't want false positives on a fresh
+    Element that happens to land at a recycled address.
+
+### Tests updated
+
+  * `cocoa_dom/tests/events.rs::second_on_click_panics` (was
+    `second_on_click_replaces_first`) — wraps the second install
+    in `catch_unwind`, asserts the panic message contains the
+    expected diagnostic.
+  * `cocoa_dom/tests/builders.rs::two_attributes_via_add_any_attr_panics`
+    (was `..._run_in_order`) — same shape, exercises the spread
+    path through `add_any_attr`.
+
+### CLAUDE.md updated
+
+The "don't mix inline + spread" gotcha is now documented as a
+hard-error contract rather than a soft "be careful" warning,
+which is what the user's instinct was.
+
+---
+
+## 2026-05-04 — Loose ends: text_view bind:value, Label migration, CLAUDE.md notes
+
+Cleanup pass on the items the audit/review flagged as worth
+fixing, not deferring.
+
+### `<text_view>` two-way bind:value
+
+NSTextView uses `NSTextDelegate` (with `textDidChange:`), a
+separate protocol from the `NSControlTextEditingDelegate` that
+NSTextField uses. Wired up a `TextViewDelegate` ObjC subclass
+mirroring `TextFieldDelegate`'s shape (delegate carries
+`Vec<Box<dyn FnMut(String)>>` ivars, `textDidChange:` fans out).
+Stored per-view in a new `TEXT_VIEW_STORE` thread-local with the
+same recycled-pointer cache-validity check we did for text fields.
+
+`Element::on_text_view_change` is the passthrough — finds the
+inner NSTextView via `documentView()` downcast and installs the
+callback.
+
+`Node::teardown` now also cleans the documentView's handler-store
+entries (in addition to the outer NSScrollView's), so
+`<text_view>` and `<scroll_view>` don't leak entries on unmount.
+
+`BindAttribute<Value, Sig> for TextView` reuses the existing
+`BoundValue`. Showcase example updated to bind:value the
+multi-line section reactively (was previously one-way value=).
+
+New test in `cocoa_dom/tests/builders.rs`:
+`text_view_bind_value_two_way` — exercises both directions
+(simulated keystrokes via `fire_text_view_did_change` helper +
+signal-driven incoming).
+
+### Label migration to CocoaElement
+
+Was: `Label` wrapped a `CocoaText` (NodeKind::Text). Custom
+`LabelState`. Stuck on `cocoa_stub_view_impls!` (drops attached
+attrs). Component-returning-bare-label-plus-on:click silently
+ignored events.
+
+Now: `Label<At = ()>` wraps a `CocoaElement` (NodeKind::Element,
+backed by the existing "label" tag = non-editable NSTextField).
+Standard `ElementState<At::State, ()>` + `impl_typed_attrs_for!`
++ `SupportsEvent<ClickEvent>`. Attached events flow through
+the typed-attribute pipeline now.
+
+**Doesn't fix `<label>{closure_returning_Result}</label>`** —
+`.child` still requires `IntoMaybeReactive<String>` (Label is
+conceptually a leaf, not a container). Result-rendering inside
+ErrorBoundary still needs `<view>{…}</view>` as the wrapper. The
+gotcha was added to CLAUDE.md.
+
+`render_html_stub.rs`'s `cocoa_stub_view_impls!` macro is now
+unused (every cocoa builder goes through `impl_typed_attrs_for!`).
+Kept the file with `#[allow(unused_macros)]` so the next builder
+that doesn't fit typed-attrs can revive it.
+
+Three test usages of `LabelState::text` updated to
+`ElementState::el`.
+
+### CLAUDE.md gotcha notes
+
+Added three macOS-specific notes:
+
+1. **Don't mix inline `on:click` with spread `..on(click,…)`.**
+   NSControl has a single target/action slot, second-write wins
+   silently. Same for `<MyComponent on:click=outer>` overriding
+   the inner component's own on:click.
+2. **`<scroll_view>` needs a bounded parent.** Without
+   `flex_grow=1.0` (or fixed height) on the outer vstack, the
+   scroll view never gets a viewport to clip against and scroll
+   bars don't appear.
+3. **Use `<view>{closure_returning_Result}</view>` not `<label>`**
+   for ErrorBoundary patterns (`Label::child` is String-shaped).
+
+### Tally
+
+Examples: still 20 (showcase updated to use `bind:value=notes`).
+Unit tests: **176 passing** (was 175, +1 for
+`text_view_bind_value_two_way`).
+
+Loose ends remaining from the audit:
+  * `SharedOnAttribute` (Arc-backed) — defer until a real bug
+    surfaces.
+  * Mixed inline+spread `on:click` overwrite — documented in
+    CLAUDE.md (this round).
+  * Label-as-component-root drops attached events — fixed
+    (this round); ergonomic Result-rendering still needs `<view>`.
+
+---
+
+## 2026-05-04 — Tier 3 part 2: date_picker, stepper, progress_indicator
+
+Three more controls following the established pattern (tag handler
+in `cocoa_dom::node::Element::create_with`, builder in
+`tachys::cocoa::element`, facade re-export, builder + element-
+creation tests). All three integrate with the existing
+`bind:` machinery (where applicable).
+
+### `<date_picker>` — NSDatePicker
+- New `cocoa_dom::Date` type — a thin wrapper around `f64` Unix
+  timestamp seconds (matches `NSTimeInterval` semantics; allows
+  pre-epoch and sub-second precision). `Send + Sync + Copy +
+  'static`. Conversion helpers to/from `NSDate`. Deliberately
+  doesn't pull a calendar dep — users can layer chrono / time on
+  top via `from_unix_secs` / `unix_secs`.
+- `bind:value=signal_of_Date` for two-way (`BoundDate`).
+- One-way `value=` and `enabled=`.
+- Default style: textual+stepper (NSDatePicker's default).
+
+### `<stepper>` — NSStepper
+- Builder: `value`, `min_value`, `max_value`, `increment`, `enabled`,
+  `flex_grow`, `bind:value` (reuses `BoundFloat`).
+- Default: range 0–100, increment 1, `valueWraps=false`,
+  `autorepeat=true` (auto-repeats on hold; matches macOS
+  conventions).
+- Pairs naturally with `<text_field>` for numeric input —
+  user code can wire a shared `RwSignal<f64>` to both:
+  ```rust
+  let count = RwSignal::new(0_f64);
+  view! {
+      <hstack>
+          <text_field bind:value=move || count.get().to_string() />
+          <stepper bind:value=count min_value=0.0 max_value=99.0 />
+      </hstack>
+  }
+  ```
+
+### `<progress_indicator>` — NSProgressIndicator
+- Builder: `value` (0..max), `max_value`, `indeterminate=bool`.
+- Read-only — no `bind:` (user input doesn't reach a progress
+  indicator). One-way `value=` is the way to drive it.
+- `indeterminate=true` switches to spinner mode and
+  auto-starts the animation; `false` is a determinate bar.
+- Like ColorWell/SegmentedControl: `Click` event marker is the
+  only one wired (semantically a "value committed" event,
+  documented divergence).
+
+### Showcase updated
+
+`examples_cocoa/showcase` now exercises all three new controls
+inline alongside the existing ones (button, checkbox, text_field,
+secure_text_field, slider, pop_up_button, segmented_control,
+color_well, text_view) — every supported control on one
+scrolling panel.
+
+### Tally
+
+Examples: still 20 (no new examples this round; showcase
+covers the new controls). Unit tests: **175 passing** (was 162;
++7 element-creation tests, +6 builder tests).
+
+Tier 3 controls remaining from the original strategic plan:
+none — `image_view`, `scroll_view`, `color_well`,
+`segmented_control`, `date_picker` all shipped. Plus the bonus
+two: `stepper`, `progress_indicator`.
+
+---
+
+## 2026-05-04 — Audit + cleanup pass (Tier 3 follow-up)
+
+Critical review of the Tier 3 / scroll-view session. Findings &
+fixes:
+
+### Fixed
+
+  * **`subview_parent` foot-gun** (`cocoa_dom/src/node.rs`).
+    Previously gated on a dynamic `NSScrollView` class check, so
+    `<text_view>` (also backed by NSScrollView, but with an opaque
+    NSTextView documentView) would silently route children into
+    the NSTextView. Re-gated on the `Node::is_scroll_view` flag —
+    only `<scroll_view>` routes via documentView; `<text_view>`
+    falls through to `self.ns_view()`. The TextView builder
+    doesn't expose `.child()`, so the macro path was safe, but a
+    raw `cocoa_dom::Element::create("text_view")` user could hit
+    it. Same fix to `apply_layout`'s NSScrollView detection.
+
+  * **Dead imports in `cocoa_dom/tests/builders.rs`** (`Button`,
+    `RenderHtml`).
+
+  * **Unused features in `cocoa_dom/Cargo.toml`** — removed
+    `NSClipView` and `NSSegmentedCell`. Both were added
+    speculatively; objc2-app-kit pulls in what it needs
+    transitively from `NSScrollView` / `NSSegmentedControl`.
+
+  * **Orphan doc comment** at `node.rs:1026` (was sitting above
+    `on_text_end_editing` with the body lost; restored a real
+    docstring).
+
+  * **`ColorWell::enabled`** — the builder was missing the
+    `enabled` setter every other typed builder has. Added.
+
+### Test coverage gaps filled
+
+Added 9 builder tests (`cocoa_dom/tests/builders.rs`):
+`text_view_static_value`, `text_view_reactive_value_updates`,
+`image_view_static_source_missing_file`,
+`scroll_view_with_child_routes_to_doc_view`,
+`segmented_control_items_and_selection`,
+`segmented_control_bind_selection_two_way`,
+`color_well_static_value`, `color_well_bind_value_two_way`,
+`text_field_flex_grow_round_trip`. Total: 162 cocoa_dom tests
+passing (was 153).
+
+### Documented gotchas
+
+These weren't fixed because they reflect deliberate trade-offs or
+"would be nice but cost > benefit." Logged so future-you doesn't
+rediscover the rake.
+
+  1. **Nested `<scroll_view>`s are silently wrong**, not just
+     unhandled. The outer scroll_view's second-pass
+     `compute_layout_with_measure` runs against its subtree with
+     `MaxContent` height — it does NOT itself recurse via
+     `relayout_scroll_views_inner`, so an inner scroll_view inside
+     gets sized as a leaf via `measure_leaf` (which returns
+     NSScrollView's `intrinsicContentSize`, conventionally 0). Fix
+     when an example needs it: have `relayout_scroll_views_inner`
+     recurse into nested scroll_views before exiting the
+     outer-scroll branch, OR run the second pass on every
+     scroll_view bottom-up and only invalidate the immediate
+     ancestor's layout cache.
+
+  2. **`ColorWell` and `SegmentedControl` route their target/action
+     through the `Click` event marker.** Semantically these are
+     "value committed" / "selection changed" events — `change` on
+     the web. `Click` is what the macro emits for `on:click=…`
+     and the wiring works, but the name lies. A future cleanup
+     would add Color- and usize-payload `Change` event variants;
+     defer until users complain about the naming.
+
+  3. **`text_view`'s `enabled` setter routes through
+     `Element::set_text_view_editable`** (NSTextView's
+     `setEditable:`), NOT through the standard
+     `BoolAttr::Enabled` path that other controls use. This is
+     because NSScrollView/NSTextView aren't NSControls so
+     `setEnabled:` doesn't exist on them. Behavior is correct
+     but the code path is divergent.
+
+  4. **`relayout_scroll_views` walks the entire Taffy tree on
+     every `compute_layout`**, even when there are no scroll
+     views. Cheap (just a tree walk + flag check at each node),
+     but on a 1000-row layout pass it's 1000 unnecessary
+     `get_node_context` calls. Could shortcut with a
+     `LayoutTree`-level `has_scroll_views: Cell<bool>` flag.
+
+  5. **`is_scroll_view` flag plumbing assumes Node creation
+     happens before tree registration.** `Node::from_view` builds
+     a Node with `is_scroll_view: false`; `Element::create_with`
+     then sets the flag for the "scroll_view" tag; the Node's
+     mount eventually triggers `register_in_tree` which copies
+     the flag into `NodeContext`. If anything ever registered a
+     Node *during* its construction (before the flag was set),
+     the second pass would skip it. Today's code is structured
+     correctly — Node::from_view doesn't register and
+     create_with returns an unregistered Element — but a future
+     refactor that fuses construction with registration needs to
+     thread the scroll-view-ness through.
+
+  6. **`mark_dirty` after restoring a scroll_view's style only
+     dirties the scroll_view itself, not its descendants.**
+     Subsequent main passes that traverse the scroll_view's
+     children would see Taffy's cached layouts from the second
+     pass (computed against MaxContent height + pinned width).
+     In practice the next main pass starts at the root and
+     re-cascades through the dirty scroll_view, which marks all
+     descendants for recomputation, so this is fine. But if
+     Taffy's cascade semantics ever change, the second pass's
+     stale child layouts could leak.
+
+  7. **NSColorWell's color picker requires a running NSApp run
+     loop.** Tests can construct a color_well and read/set its
+     color directly, but actually opening the picker (via click)
+     needs `[NSApplication run]` — i.e. run via `mount_to_window`,
+     not in unit tests.
+
+  8. **Two-pass layout cost.** Every `compute_layout` does the
+     full main pass plus one extra `compute_layout_with_measure`
+     per scroll view in the tree. For a typical app (one scroll
+     view) that's 2x the work; for a TodoMVC-style app with one
+     scroll view, the cost is dominated by the main pass anyway
+     since the second pass only walks the scroll_view's subtree.
+
+---
+
+## 2026-05-04 — Tier 3 controls: image_view, scroll_view, segmented_control, color_well + showcase
+
+Mechanical fill of the long-tail Tier 3 controls. Each follows the
+existing builder + tag-handler + facade pattern; notable details:
+
+### `<image_view>` — NSImageView
+- `source=path` loads via `NSImage::initWithContentsOfFile:`.
+  Empty path or load failure clears the image (no panic on bad path).
+- Default scaling is `ProportionallyDown`: large images fit; small
+  images render at native size.
+- No async URL loading — fetch yourself and pass a path.
+
+### `<scroll_view>` — NSScrollView wrapping arbitrary children
+
+Three pieces, with a layout-engine subtlety that took two passes
+to get right:
+
+1. **`Element::subview_parent()` helper.** NSScrollView's children
+   live inside its `documentView` (a FlippedView we install at
+   construction), not as direct subviews. Routing
+   `insert_node` / `remove_child` / `clear_children` through
+   `subview_parent` lets `<scroll_view>` participate in the
+   normal mount/unmount machinery without each call site
+   special-casing it. Returns `documentView` for scroll views,
+   `self.ns_view()` otherwise.
+
+2. **apply_layout special-case for NSScrollView.** When walking
+   children, use `documentView.subviews()` instead of the scroll
+   view's own (which would be `[clipView, scrollers]`). Also
+   sizes the documentView frame to the union of children's
+   computed rects so NSScrollView shows scroll bars when content
+   overflows the viewport.
+
+3. **Two-pass layout.** Initially I set scroll_view as a regular
+   flex container and used the main Taffy compute pass for
+   everything. That broke in two ways:
+
+   - **Outer ancestors grew past the window**: Taffy's flex
+     layout picks `flex_basis = content size` for items by
+     default. So scroll_view's flex_basis was 538 (a list of 30
+     rows tall), the parent vstack inherited that, and the whole
+     window content overflowed.
+   - **Children compressed to fit the viewport**: even after
+     bounding scroll_view, Taffy compressed the inner content to
+     scroll_view's allocated height. The documentView ended up
+     viewport-sized, so NSScrollView had nothing to scroll.
+
+   Fix is two pieces:
+
+   - On scroll_view's Taffy style: `flex_basis = 0`,
+     `min_size.height = 0`, `overflow = Hidden`. This is the
+     standard CSS `flex: 1 1 0; min-height: 0; overflow: hidden`
+     pattern for "shrinkable scroll container." With these,
+     scroll_view collapses to nothing by default and grows back
+     only via the user's `flex_grow=…` (or explicit height) up
+     to its parent's allotted size — never past it.
+   - In `cocoa_dom::layout::compute_layout`, after the main
+     pass, run a *second* `compute_layout_with_measure` rooted
+     at each scroll_view's NodeId with `width = Definite(viewport_w)`
+     and `height = MaxContent`. This gives the scroll_view's
+     children their natural sizes (un-compressed) and that's what
+     `apply_layout` uses to size the documentView. The
+     scroll_view's own NSView frame still uses the *first*-pass
+     viewport — `apply_layout` is passed a HashMap of cached
+     first-pass layouts to keep the second pass from
+     overwriting it. After the second pass we restore the
+     scroll_view's style and `mark_dirty` so the next main
+     compute starts fresh.
+
+   The flag `NodeContext::is_scroll_view` (mirrored from
+   `NodeLayout::is_scroll_view`, set in `Element::create_with`
+   for the "scroll_view" tag) lets the second-pass walker
+   identify which subtrees need re-layout.
+
+todomvc updated to wrap its rows in `<scroll_view flex_grow=1.0>`
+so the row list scrolls instead of growing without bound. The
+showcase example also relies on this pattern to keep its
+controls in a fixed-size window.
+
+### `<segmented_control>` — NSSegmentedControl
+- `items=[…]` + `bind:selection=signal` (mirrors `pop_up_button`).
+- Reuses the `Selection` AttributeKey (both pop_up_button and
+  segmented_control have a `bind:selection`); trait resolution
+  picks via receiver type.
+- Click events install via `on_action` (NSControl path) rather
+  than `on_click` (NSButton subtree only — segmented_control isn't
+  one).
+
+### `<color_well>` — NSColorWell + new `cocoa_dom::Color` type
+- `cocoa_dom::Color { r, g, b, a: f32 }` (sRGB, 0..1). Helpers
+  to/from NSColor via the sRGB colorspace; arbitrary-colorspace
+  picker output (Display P3 etc.) is converted to sRGB on read.
+- `bind:value=signal` reads/writes Color through the picker.
+- `bind:value` reuses the standard `Value` AttributeKey;
+  trait-resolution distinguishes from text_field's `bind:value`
+  via the receiver type and `IntoSignal<Color>` vs
+  `IntoSignal<String>`.
+
+### Showcase example
+
+`examples_cocoa/showcase` — single scrolling panel demonstrating
+every control: button, checkbox, text_field, secure_text_field,
+slider, pop_up_button, segmented_control, color_well, text_view.
+Each control is paired with a label that displays its current
+value, demonstrating the `bind:` reactivity end-to-end. Wrapped
+in `<scroll_view>` for free — the controls would otherwise
+overflow the window.
+
+### Known gap
+
+`text_view` has `value=` (one-way) but no `bind:value` yet —
+NSTextView uses NSTextDelegate (separate from the
+NSControlTextEditingDelegate used by NSTextField), so wiring
+two-way would mean a new delegate subclass. The showcase uses
+`value=` for text_view; documented in the example.
+
+### Tally
+
+Examples now working on macOS: counter, counters, greeter,
+checkbox, settings, login_form, parent_child, persistent_counter,
+slots, stores, fetch, directives, timer, counter_without_macros,
+component_event_test, todomvc, error_boundary, transition,
+**scroll_view**, **showcase** (20 total, +2 from this tier).
+
+Unit tests: 152 passing (+11 from this tier — image_view × 3,
+scroll_view × 3, segmented_control × 3, color_well × 2).
+
+---
+
+## 2026-05-04 — Async completion: Suspend, LocalResource, ErrorBoundary, Transition
+
+The async story was the second Tier 2 item still outstanding (per the
+post-Tier-2.F review). Result: everything Just Works on macOS once
+you avoid one Label ergonomic gotcha.
+
+### Status of upstream primitives
+
+| Primitive       | Already worked? | Notes                                               |
+|-----------------|-----------------|-----------------------------------------------------|
+| `Resource`      | ✓               | Tier 2 baseline                                     |
+| `<Suspense>`    | ✓               | Tier 2 baseline                                     |
+| `Suspend::new`  | ✓               | Already re-exported from `leptos::prelude::*`       |
+| `LocalResource` | ✓               | Comes via `leptos_server::*` (no native gating)     |
+| `ErrorBoundary` | ✓               | Works as-is — pure reactive_graph                   |
+| `<Transition>`  | ✓               | Works as-is                                         |
+
+The implementation log's earlier Tier 2 entry flagged `Suspend` as
+"may not be available in a pure-CSR build." Empirically: it is. No
+gating issues.
+
+### One ergonomic gotcha — Label vs Result
+
+`Result<T, E>` flowing into `<ErrorBoundary>` works because
+`Result: Render` (with `Err` calling `throw_error::throw`). On the
+web, `<p>{value}</p>` accepts any Render child including Result.
+
+On macOS, `<label>` has a custom `child<V: IntoMaybeReactive<String>>`
+setter — only String-shaped values fit, not `Result<String, _>`. So
+`<label>{move || some_result}</label>` fails to compile.
+
+**Workaround**: wrap in `<view>` (whose `child<NewCh>` accepts any
+Render type) when the child is a `Result` or other Render-but-not-
+String type:
+
+```rust
+// FAILS: Label::child wants IntoMaybeReactive<String>
+<label>{move || value.parse::<i32>()}</label>
+
+// WORKS: View::child accepts any Render, Result included
+<view>{move || value.parse::<i32>().map(|n| n.to_string())}</view>
+```
+
+A "real" fix would let Label accept arbitrary Render children
+(promoting it from a leaf NSTextField wrapper to a container). Not
+worth doing speculatively — the workaround is one tag substitution
+and the affected pattern is narrow (Result-rendered-as-text inside
+ErrorBoundary).
+
+### Examples added
+
+  * `examples_cocoa/error_boundary` — port of upstream
+    `examples/error_boundary`. Type something into a text_field; a
+    parse error triggers the `<ErrorBoundary fallback=…>`.
+  * `examples_cocoa/transition` — `Transition` + `ErrorBoundary` +
+    `Suspend::new` + `LocalResource`. Fetches N cat facts; while
+    reloading, Transition keeps the previous batch visible (vs
+    Suspense, which would flash to fallback). Count of 0 triggers
+    the error path.
+
+### Tally
+
+Examples now working on macOS: counter, counters, greeter, checkbox,
+settings, login_form, parent_child, persistent_counter, slots,
+stores, fetch, directives, timer, counter_without_macros,
+component_event_test, todomvc, **error_boundary**, **transition**
+(18 total, +2 from this tier).
+
+Unit tests: still 141 passing (this work was example-driven, no new
+unit tests).
+
+---
+
+## 2026-05-04 — Layout cache invalidation on structural mutations
+
+User-reported bug: clicking "Clear completed" in todomvc didn't
+collapse the space the cleared rows had occupied. The surviving
+rows / footer didn't move up.
+
+Root cause: `cocoa_dom::layout::detach_child` and `drop_node`
+mutated the Taffy tree (`tree.remove_child` / `tree.remove`) but
+didn't explicitly `mark_dirty` the parent node. Taffy's structural
+mutations don't always invalidate the parent's cached layout, so
+the dispatched `compute_layout` reused old child positions and
+`apply_layout` kept removed-children's space allocated.
+
+Fix: add `tree.mark_dirty(parent_id)` immediately after
+`remove_child` / `remove`, before scheduling the relayout. Two
+regression tests in `cocoa_dom/tests/layout.rs`.
+
+This is the second time this caching pattern has bitten us — the
+first was Stage-6 content changes (set_text not invalidating Taffy
+measure cache, fixed in `schedule_relayout`). The shape of the bug
+is the same: any tree mutation needs an explicit mark_dirty before
+relayout. Saved a memory note for the next instance.
+
+---
+
+## 2026-05-04 — Tier 1 todomvc complement: keydown/keyup, focus/blur, text_view
+
+Three features and one example port to unblock the todomvc-style
+flow (Enter to commit, Escape to cancel, auto-focus on launch,
+multi-line text editing).
+
+### `on:keydown` / `on:keyup` on text fields
+
+Routed through `NSControlTextEditingDelegate::control:textView:doCommandBySelector:`
+on the existing `TextFieldDelegate`. Each "command key" (Return,
+Escape, Tab, arrow keys, Backspace, Delete) maps to a named
+selector — we translate that selector to a web-shaped
+`KeyEvent { key: String, key_code: u32 }` (matching
+`web_sys::KeyboardEvent::key()` / `.key_code()`) and fan out to
+both keydown- and keyup-handler Vecs.
+
+**Limitation**: AppKit's field-editor command pipeline doesn't
+distinguish keydown from keyup at this layer — both fire on the
+same `doCommandBySelector:` notification. Adequate for TodoMVC
+(`if e.key == "Enter"` works regardless). Printable-character
+keystrokes don't go through `doCommandBySelector:` and are not
+captured. A future "every keystroke" mode would need a custom
+NSResponder subclass with `keyDown:` / `keyUp:` overrides.
+
+The selector → key map covers Enter / Escape / Tab / arrow keys /
+Backspace / Delete. Unknown selectors return `None` from
+`KeyEvent::from_command_selector` and we don't fire — so
+unrelated commands don't trigger spurious handler runs.
+
+### `Element::focus()` / `Element::blur()`
+
+`view.window().makeFirstResponder(view)` — straightforward, with
+two implementation notes:
+
+  * **Returns bool** (web parity: `web_sys::HtmlElement::focus`
+    returns `()`, but our return is more useful — AppKit can
+    decline focus and the caller may want to know).
+  * **`blur()` is window-wide**: `makeFirstResponder(nil)` clears
+    the first responder for the whole window. AppKit doesn't have
+    a "blur this specific view" API; resigning first-responder on
+    a specific view requires the view to accept the resignation,
+    which not all views do. The window-clear is the idiomatic
+    blur primitive.
+
+Tests in `cocoa_dom/tests/focus.rs` use `cocoa_dom::window::open_window`
+directly — no `makeKeyAndOrderFront`, so the windows stay
+off-screen.
+
+### Bug fix: pointer-keyed handler store could go stale
+
+`ensure_text_field_entry` (in `cocoa_dom::event`) was keyed by raw
+`*const NSView` pointer. AppKit can recycle NSTextField memory
+addresses across allocations — when a previously-tested field
+was dropped and a new one happened to land at the same address,
+the cached entry would return the stale handler Vec and the new
+field would get NO delegate set (since the cache hit short-
+circuited the `setDelegate:` call).
+
+Fix: before reusing a cached entry, verify the field's current
+delegate pointer matches the one we stored. If not (recycled
+address, or someone swapped the delegate externally), evict and
+rebuild. Found while writing the new keydown tests — they happen
+to allocate fields at recycled addresses where the previous
+focus/blur tests had registered handlers.
+
+### `<text_view>` — NSScrollView wrapping NSTextView
+
+Tag handler in `cocoa_dom::node::Element::create_with` builds an
+`NSScrollView` (with vertical scroller) whose document view is an
+`NSTextView` (editable, plain text, no rich-text imports). The
+`Element` wraps the scroll view; setters that need to talk to the
+text view (`StringAttr::Value`, `set_text_view_editable`) route
+through `scroll.documentView()` and downcast to `NSTextView`.
+
+Builder `tachys::cocoa::element::TextView<At = ()>` follows the
+existing typed-attribute pattern (`value`, `enabled`, `flex_grow`,
+`node_ref`, `directives`, `attrs`). Macro facade exposes
+`text_view()` at `tachys::html::element::text_view`.
+
+**Limitations**:
+  * No event hooks. NSTextViewDelegate is a separate protocol
+    from NSControlTextEditingDelegate; wiring it would mean
+    another delegate class. Add when an example needs it.
+  * Plain text only (`setRichText(false)`). Rich-text editing
+    needs different attribute-storage semantics.
+
+Tests in `cocoa_dom/tests/element_creation.rs`:
+  * `text_view_is_scroll_view_with_textview_inside`
+  * `text_view_value_round_trips`
+  * `text_view_set_editable_round_trips`
+
+### `TextField::flex_grow` (knock-on)
+
+`TextField` was missing `flex_grow` (the other typed-attribute
+builders all have it). The TodoMVC port wanted a flex-growing
+edit field per row, so added: builder method, struct field,
+`Render::build` wiring, macro field-list update.
+
+### TodoMVC port
+
+`examples_cocoa/todomvc` — single-window port. Differences from
+the upstream web original:
+
+  * No URL/hash routing for filter modes (no in-app concept of
+    URL state on macOS; could add via `NSPopUpButton` later).
+  * No double-click-to-edit; each row's title field is always
+    editable in-place. Enter commits, Escape reverts. Better
+    macOS UX than the web pattern's hidden-edit-input dance.
+  * Uses our `local_storage()` (backed by NSUserDefaults) for
+    persistence — same `Result<Option<Storage>, _>` shape so the
+    serde_json round-trip from the upstream code ports unchanged.
+  * Auto-focus the new-todo field on launch via
+    `node_ref.on_load(|el| el.focus())`.
+
+Verifies the whole keydown/focus/persistence chain end-to-end.
+
+### Tally
+
+Examples now working on macOS: counter, counters, greeter,
+checkbox, settings, login_form, parent_child, persistent_counter,
+slots, stores, fetch, directives, timer, counter_without_macros,
+component_event_test, **todomvc** (16 total, +1 from this tier).
+
+Unit tests: 139 passing (+15 from this tier — keydown × 7,
+focus × 5, text_view × 3).
+
+---
+
 ## 2026-05-03 — Stage 6: dynamic children (counters example)
 
 `examples/counters_macos` works end-to-end: Add/Clear buttons, `<For>`

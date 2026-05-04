@@ -19,9 +19,12 @@
 #![cfg(target_os = "macos")]
 
 pub mod app;
+pub mod color;
+pub mod date;
 pub mod event;
 pub mod flipped_view;
 pub mod interval;
+pub mod key_event;
 pub mod layout;
 pub mod node;
 pub mod renderer;
@@ -29,9 +32,12 @@ pub mod spawner;
 pub mod storage;
 pub mod window;
 
+pub use color::Color;
+pub use date::Date;
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
+pub use key_event::KeyEvent;
 pub use node::{
     BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
 };
@@ -42,4 +48,6 @@ pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElem
 // downstream crates don't have to take a direct objc2 dependency
 // just to interact with our Cocoa façade.
 pub use objc2::{rc::Retained, MainThreadMarker};
-pub use objc2_app_kit::NSView;
+pub use objc2_app_kit::{
+    NSDatePickerStyle, NSSegmentStyle, NSTextAlignment, NSView,
+};

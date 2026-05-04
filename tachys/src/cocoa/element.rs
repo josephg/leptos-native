@@ -13,9 +13,137 @@ use cocoa_dom::{
         set_flex_direction, set_flex_grow, set_gap, set_padding,
         FlexDirection,
     },
-    BoolAttr, Element as CocoaElement, StringAttr, Text as CocoaText,
+    BoolAttr, Element as CocoaElement, StringAttr,
 };
 use reactive_graph::effect::RenderEffect;
+
+/// Apply the static "universal" NSView attributes that nearly
+/// every builder exposes (`alpha`, `tool_tip`). Centralised so
+/// each builder's `build()` can stay terse and we only adjust the
+/// set of universal attrs in one place.
+fn apply_universal(
+    el: &CocoaElement,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(a) = alpha {
+        let el_for = el.clone();
+        if let Some(eff) = install(a, move |v| el_for.set_alpha(v)) {
+            out.push(eff);
+        }
+    }
+    if let Some(t) = tool_tip {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(t, move |s| el_for.set_tool_tip(&s))
+        {
+            out.push(eff);
+        }
+    }
+    out
+}
+
+/// Install the text-styling attributes shared by text-bearing
+/// builders (label, text_field, secure_text_field, text_view —
+/// `text_color` doesn't apply to NSButton). Each attr is
+/// `MaybeReactive<T>`; effects are returned for the caller to
+/// stash in the State.
+fn apply_text_attrs(
+    el: &CocoaElement,
+    text_color: Option<MaybeReactive<cocoa_dom::Color>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(c) = text_color {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(c, move |v| el_for.set_text_color(v))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(a) = alignment {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(a, move |v| el_for.set_text_alignment(v))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(s) = font_size {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(s, move |v| el_for.set_font_size(v))
+        {
+            out.push(eff);
+        }
+    }
+    out
+}
+
+/// Generates `alpha(<reactive f64>)` and
+/// `tool_tip(<reactive String>)` builder methods on
+/// `$builder<At>`. Each accepts either a value or a closure
+/// returning the value (via `IntoMaybeReactive`).
+macro_rules! impl_universal_attrs {
+    ($builder:ident) => {
+        impl<At> $builder<At> {
+            /// View opacity, 0.0..=1.0. Maps to NSView's
+            /// `alphaValue`. Reactive: pass an f64 or a closure.
+            pub fn alpha<V>(mut self, a: V) -> Self
+            where
+                V: IntoMaybeReactive<f64>,
+            {
+                self.alpha = Some(a.into_maybe_reactive());
+                self
+            }
+            /// Tooltip text shown on mouse hover. Empty string
+            /// removes any previous tooltip.
+            pub fn tool_tip<V>(mut self, s: V) -> Self
+            where
+                V: IntoMaybeReactive<String>,
+            {
+                self.tool_tip = Some(s.into_maybe_reactive());
+                self
+            }
+        }
+    };
+}
+
+/// Inherent-method block for text-styling attrs (see
+/// [`apply_text_attrs`]). Same pattern as `impl_universal_attrs!`,
+/// reactive over Color / NSTextAlignment / f64.
+macro_rules! impl_text_attrs {
+    ($builder:ident) => {
+        impl<At> $builder<At> {
+            pub fn text_color<V>(mut self, c: V) -> Self
+            where
+                V: IntoMaybeReactive<cocoa_dom::Color>,
+            {
+                self.text_color = Some(c.into_maybe_reactive());
+                self
+            }
+            /// Text alignment within the control's frame.
+            pub fn alignment<V>(mut self, a: V) -> Self
+            where
+                V: IntoMaybeReactive<cocoa_dom::NSTextAlignment>,
+            {
+                self.alignment = Some(a.into_maybe_reactive());
+                self
+            }
+            /// Font size in points (system font at this size).
+            pub fn font_size<V>(mut self, p: V) -> Self
+            where
+                V: IntoMaybeReactive<f64>,
+            {
+                self.font_size = Some(p.into_maybe_reactive());
+                self
+            }
+        }
+    };
+}
 
 // ---------------------------------------------------------------------
 // Generic State machinery
@@ -86,6 +214,8 @@ pub struct View<Children, At = ()> {
     padding: Option<f32>,
     gap: Option<f32>,
     flex_grow: Option<f32>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
     children: Children,
     attrs: At,
 }
@@ -96,6 +226,8 @@ pub fn view() -> View<(), ()> {
         padding: None,
         gap: None,
         flex_grow: None,
+        alpha: None,
+        tool_tip: None,
         children: (),
         attrs: (),
     }
@@ -125,12 +257,30 @@ impl<Ch, At> View<Ch, At> {
         self
     }
 
+    pub fn alpha<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn tool_tip<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.tool_tip = Some(s.into_maybe_reactive());
+        self
+    }
+
     pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh), At> {
         View {
             flex_direction: self.flex_direction,
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
             children: (self.children, child),
             attrs: self.attrs,
         }
@@ -146,6 +296,7 @@ where
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("view");
+        let mut effects = Vec::new();
 
         if let Some(dir) = self.flex_direction {
             set_flex_direction(el.as_node(), dir);
@@ -159,6 +310,7 @@ where
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         // Build children but DON'T mount them yet. Mounting is
         // deferred until ElementState::mount runs (when self.el has
@@ -170,7 +322,7 @@ where
 
         ElementState {
             el,
-            _effects: Vec::new(),
+            _effects: effects,
             _attrs: attrs,
             children: child_state,
         }
@@ -197,6 +349,8 @@ pub fn vstack() -> View<(), ()> {
         padding: None,
         gap: None,
         flex_grow: None,
+        alpha: None,
+        tool_tip: None,
         children: (),
         attrs: (),
     }
@@ -209,6 +363,8 @@ pub fn hstack() -> View<(), ()> {
         padding: None,
         gap: None,
         flex_grow: None,
+        alpha: None,
+        tool_tip: None,
         children: (),
         attrs: (),
     }
@@ -309,6 +465,15 @@ pub struct Button<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    // Universal NSView attrs.
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    // Text styling.
+    font_size: Option<MaybeReactive<f64>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    // Button-specific.
+    bordered: Option<MaybeReactive<bool>>,
+    key_equivalent: Option<MaybeReactive<String>>,
     /// Type-level attribute tuple accumulated via `add_any_attr`
     /// (the macro's typed-attribute pipeline). Default `()` —
     /// extends to `(NewAttr,)`, `(NewAttr, AnotherAttr)`, … as
@@ -324,6 +489,12 @@ pub fn button() -> Button<()> {
         flex_grow: None,
         node_ref: None,
         directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        font_size: None,
+        alignment: None,
+        bordered: None,
+        key_equivalent: None,
         attrs: (),
     }
 }
@@ -393,6 +564,28 @@ impl<At> Button<At> {
         self
     }
 
+    /// Toggle whether the button draws its bezel. `false` →
+    /// borderless / link-style.
+    pub fn bordered<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.bordered = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Set a keyboard shortcut. `"\r"` (Return) makes this the
+    /// default action button (highlighted, fires on Enter);
+    /// `"\u{1b}"` (Escape) for cancel; any single-character
+    /// string for arbitrary keys.
+    pub fn key_equivalent<V>(mut self, key: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.key_equivalent = Some(key.into_maybe_reactive());
+        self
+    }
+
     /// Sets the button's text. Used by the `view!{}` macro for
     /// `<button>"X"</button>` syntax — the macro emits `.child(value)`
     /// for each child node, and on a button the meaningful "child" is
@@ -432,13 +625,36 @@ impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
 {
 }
 
+impl_universal_attrs!(Button);
+
+// Button-specific text attrs: NSButton supports font_size +
+// alignment but NOT text_color (would need attributedTitle). We
+// invoke a custom inline impl rather than `impl_text_attrs!`.
+impl<At> Button<At> {
+    pub fn alignment<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::NSTextAlignment>,
+    {
+        self.alignment = Some(a.into_maybe_reactive());
+        self
+    }
+    pub fn font_size<V>(mut self, p: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.font_size = Some(p.into_maybe_reactive());
+        self
+    }
+}
+
 // AddAnyAttr — the typed-attribute pipeline. Each call extends
 // `attrs` from `At` to `<At as NextAttribute>::Output<NewAttr>`.
 // At Render::build time, `attrs.build(&el)` walks the resulting
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
 impl_typed_attrs_for!(Button, title, enabled, handlers,
-    flex_grow, node_ref, directives);
+    flex_grow, node_ref, directives, alpha, tool_tip, font_size,
+    alignment, bordered, key_equivalent);
 
 impl<At> Render for Button<At>
 where
@@ -474,6 +690,30 @@ where
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
+        if let Some(b) = self.bordered {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(b, move |v| el_for.set_button_bordered(v))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(k) = self.key_equivalent {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(k, move |v| el_for.set_key_equivalent(&v))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_text_attrs(
+            &el,
+            None,
+            self.alignment,
+            self.font_size,
+        ));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -515,6 +755,11 @@ pub struct Checkbox<At = ()> {
     handlers: Vec<crate::html::event::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    text_color: Option<MaybeReactive<cocoa_dom::Color>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
     attrs: At,
 }
 
@@ -526,6 +771,11 @@ pub fn checkbox() -> Checkbox<()> {
         handlers: Vec::new(),
         node_ref: None,
         directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
         attrs: (),
     }
 }
@@ -600,8 +850,12 @@ impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
 {
 }
 
+impl_universal_attrs!(Checkbox);
+impl_text_attrs!(Checkbox);
+
 impl_typed_attrs_for!(Checkbox, title, checked, pending_bind_checked,
-    handlers, node_ref, directives);
+    handlers, node_ref, directives, alpha, tool_tip, text_color,
+    alignment, font_size);
 
 impl<At> Render for Checkbox<At>
 where
@@ -644,6 +898,14 @@ where
             h.apply_to(&el);
         }
 
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_text_attrs(
+            &el,
+            self.text_color,
+            self.alignment,
+            self.font_size,
+        ));
+
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
@@ -679,6 +941,11 @@ pub struct Slider<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    vertical: Option<MaybeReactive<bool>>,
+    num_tick_marks: Option<MaybeReactive<usize>>,
+    snaps_to_ticks: Option<MaybeReactive<bool>>,
     attrs: At,
 }
 
@@ -691,6 +958,11 @@ pub fn slider() -> Slider<()> {
         pending_bind: None,
         handlers: Vec::new(),
         flex_grow: None,
+        alpha: None,
+        tool_tip: None,
+        vertical: None,
+        num_tick_marks: None,
+        snaps_to_ticks: None,
         node_ref: None,
         directives: Vec::new(),
         attrs: (),
@@ -766,8 +1038,39 @@ impl<At> Slider<At> {
     }
 }
 
+impl_universal_attrs!(Slider);
+
+impl<At> Slider<At> {
+    /// Force vertical orientation. Default (None) lets AppKit
+    /// pick based on the slider's frame ratio.
+    pub fn vertical<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.vertical = Some(b.into_maybe_reactive());
+        self
+    }
+    /// Number of evenly-spaced tick marks. 0 hides them.
+    pub fn num_tick_marks<V>(mut self, n: V) -> Self
+    where
+        V: IntoMaybeReactive<usize>,
+    {
+        self.num_tick_marks = Some(n.into_maybe_reactive());
+        self
+    }
+    /// Snap drag values to the nearest tick mark.
+    pub fn snaps_to_ticks<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.snaps_to_ticks = Some(b.into_maybe_reactive());
+        self
+    }
+}
+
 impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
-    pending_bind, handlers, flex_grow, node_ref, directives);
+    pending_bind, handlers, flex_grow, node_ref, directives, alpha,
+    tool_tip, vertical, num_tick_marks, snaps_to_ticks);
 
 impl<At> Render for Slider<At>
 where
@@ -814,6 +1117,32 @@ where
             set_flex_grow(el.as_node(), g);
         }
 
+        if let Some(v) = self.vertical {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(v, move |x| el_for.set_slider_vertical(x))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(n) = self.num_tick_marks {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(n, move |x| el_for.set_slider_tick_marks(x))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(s) = self.snaps_to_ticks {
+            let el_for = el.clone();
+            if let Some(eff) = install(s, move |x| {
+                el_for.set_slider_snaps_to_ticks(x)
+            }) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
@@ -848,6 +1177,9 @@ pub struct PopUpButton<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    pulls_down: Option<MaybeReactive<bool>>,
     attrs: At,
 }
 
@@ -861,6 +1193,9 @@ pub fn pop_up_button() -> PopUpButton<()> {
         flex_grow: None,
         node_ref: None,
         directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        pulls_down: None,
         attrs: (),
     }
 }
@@ -935,8 +1270,22 @@ impl<At> PopUpButton<At> {
     }
 }
 
+impl_universal_attrs!(PopUpButton);
+
+impl<At> PopUpButton<At> {
+    /// `false` (default) → popup mode; `true` → pull-down menu.
+    pub fn pulls_down<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.pulls_down = Some(b.into_maybe_reactive());
+        self
+    }
+}
+
 impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
-    pending_bind_selection, handlers, flex_grow, node_ref, directives);
+    pending_bind_selection, handlers, flex_grow, node_ref, directives,
+    alpha, tool_tip, pulls_down);
 
 impl<At> Render for PopUpButton<At>
 where
@@ -947,6 +1296,17 @@ where
     fn build(self) -> Self::State {
         let el = CocoaElement::create("pop_up_button");
         let mut effects = Vec::new();
+
+        // pulls_down BEFORE items: NSPopUpButton's mode controls
+        // how items are presented. Set the mode first.
+        if let Some(p) = self.pulls_down {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(p, move |v| el_for.set_pulls_down(v))
+            {
+                effects.push(eff);
+            }
+        }
 
         // Items first (selection is meaningless without items).
         el.set_popup_items(&self.items);
@@ -984,6 +1344,8 @@ where
             set_flex_grow(el.as_node(), g);
         }
 
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
@@ -1008,12 +1370,29 @@ where
 // ---------------------------------------------------------------------
 // label() — static or reactive text
 // ---------------------------------------------------------------------
+//
+// Backed by an Element wrapping a non-editable NSTextField (the
+// "label" tag). Treated as a regular Element rather than a Text so
+// `<label on:click=…>` and `<MyComponent>` returning a bare label
+// can flow attached events / attributes through the standard
+// AddAnyAttr pipeline.
 
-pub struct Label {
+pub struct Label<At = ()> {
     text: MaybeReactive<String>,
+    handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    text_color: Option<MaybeReactive<cocoa_dom::Color>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
+    selectable: Option<MaybeReactive<bool>>,
+    attrs: At,
 }
 
-impl Label {
+impl<At> Label<At> {
     /// Internal: stash a `bind:value=...` (read-direction only) for
     /// installation in `Render::build`. Used by the `BindAttribute`
     /// impl in `crate::cocoa::bind`. Equivalent to `.text(closure)`.
@@ -1025,13 +1404,24 @@ impl Label {
     }
 }
 
-pub fn label() -> Label {
+pub fn label() -> Label<()> {
     Label {
         text: MaybeReactive::Static(String::new()),
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
+        selectable: None,
+        attrs: (),
     }
 }
 
-impl Label {
+impl<At> Label<At> {
     pub fn text<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -1049,59 +1439,137 @@ impl Label {
     {
         self.text(value)
     }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::html::event::SupportsEvent<E>,
+        E: crate::html::event::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
 }
 
-/// Label has its own State because it wraps a `Text` rather than an
-/// `Element`, but the Mountable contract is the same shape.
-pub struct LabelState {
-    /// Pub for test inspection.
-    pub text: CocoaText,
-    _effects: Vec<RenderEffect<()>>,
+// Label is non-editable — treat it as a passive surface for events.
+// Click is the only natural one (a label as part of a tappable
+// "row" pattern). NSTextField *is* an NSControl so the existing
+// on_action / on_click NSButton-downcast path won't fire — labels
+// route Click via on_action instead (same as ColorWell etc.).
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Label<At>
+{
 }
 
-impl Mountable for LabelState {
-    fn unmount(&mut self) {
-        self.text.as_node().teardown();
-    }
+impl_universal_attrs!(Label);
+impl_text_attrs!(Label);
 
-    fn mount(
-        &mut self,
-        parent: &CocoaElement,
-        marker: Option<&cocoa_dom::Node>,
-    ) {
-        parent.insert_node(self.text.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<CocoaElement> {
-        Vec::new()
+impl<At> Label<At> {
+    /// Allow the label's text to be selected (and copied with
+    /// ⌘C). NSTextField labels are non-selectable by default.
+    pub fn selectable<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.selectable = Some(b.into_maybe_reactive());
+        self
     }
 }
 
-impl Render for Label {
-    type State = LabelState;
+impl_typed_attrs_for!(Label, text, handlers, flex_grow, node_ref,
+    directives, alpha, tool_tip, text_color, alignment, font_size,
+    selectable);
+
+impl<At> Render for Label<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
 
     fn build(self) -> Self::State {
-        let text = CocoaText::create("");
+        let el = CocoaElement::create("label");
         let mut effects = Vec::new();
 
-        let text_for_set = text.clone();
+        let el_for_text = el.clone();
         if let Some(eff) = install(self.text, move |s| {
-            text_for_set.set_text(&s);
+            el_for_text.set_string_attribute(StringAttr::Value, &s);
         }) {
             effects.push(eff);
         }
 
-        LabelState {
-            text,
+        for h in self.handlers {
+            // NSTextField (label) is an NSControl but not an
+            // NSButton. Route Click via on_action; other events
+            // fall through to apply_to (no-ops on non-NSTextField
+            // events, which is most of them on a label).
+            match h {
+                crate::html::event::PendingHandler::Click(cb) => {
+                    el.on_action(cb);
+                }
+                other => other.apply_to(&el),
+            }
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(s) = self.selectable {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(s, move |v| el_for.set_selectable(v))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_text_attrs(
+            &el,
+            self.text_color,
+            self.alignment,
+            self.font_size,
+        ));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
             _effects: effects,
+            _attrs: attrs,
+            children: (),
         }
     }
 
-    fn rebuild(self, _state: &mut Self::State) {}
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -1123,8 +1591,16 @@ pub struct TextField<At = ()> {
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    text_color: Option<MaybeReactive<cocoa_dom::Color>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
+    bordered: Option<MaybeReactive<bool>>,
+    bezeled: Option<MaybeReactive<bool>>,
     attrs: At,
 }
 
@@ -1136,8 +1612,16 @@ pub fn text_field() -> TextField<()> {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
+        flex_grow: None,
         node_ref: None,
         directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
+        bordered: None,
+        bezeled: None,
         attrs: (),
     }
 }
@@ -1153,8 +1637,16 @@ pub fn secure_text_field() -> TextField<()> {
         secure: true,
         pending_bind: None,
         handlers: Vec::new(),
+        flex_grow: None,
         node_ref: None,
         directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
+        bordered: None,
+        bezeled: None,
         attrs: (),
     }
 }
@@ -1180,6 +1672,12 @@ impl<At> TextField<At> {
         V: IntoMaybeReactive<bool>,
     {
         self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    /// See [`View::flex_grow`].
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
         self
     }
 
@@ -1247,9 +1745,41 @@ impl<At> crate::html::event::SupportsEvent<crate::html::event::BlurEvent>
     for TextField<At>
 {
 }
+impl<At> crate::html::event::SupportsEvent<crate::html::event::KeyDownEvent>
+    for TextField<At>
+{
+}
+impl<At> crate::html::event::SupportsEvent<crate::html::event::KeyUpEvent>
+    for TextField<At>
+{
+}
+
+impl_universal_attrs!(TextField);
+impl_text_attrs!(TextField);
+
+impl<At> TextField<At> {
+    /// Toggle the field's border. `false` → label-style flat
+    /// appearance even on editable fields.
+    pub fn bordered<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.bordered = Some(b.into_maybe_reactive());
+        self
+    }
+    /// Toggle the field's bezel (the inset 3D look).
+    pub fn bezeled<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.bezeled = Some(b.into_maybe_reactive());
+        self
+    }
+}
 
 impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
-    pending_bind, handlers, node_ref, directives);
+    pending_bind, handlers, flex_grow, node_ref, directives, alpha,
+    tool_tip, text_color, alignment, font_size, bordered, bezeled);
 
 impl<At> Render for TextField<At>
 where
@@ -1299,6 +1829,34 @@ where
             h.apply_to(&el);
         }
 
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(b) = self.bordered {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| {
+                el_for.set_text_field_bordered(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.bezeled {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| {
+                el_for.set_text_field_bezeled(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_text_attrs(
+            &el,
+            self.text_color,
+            self.alignment,
+            self.font_size,
+        ));
+
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
@@ -1320,10 +1878,1515 @@ where
     }
 }
 
-use super::render_html_stub::cocoa_stub_view_impls;
+// ---------------------------------------------------------------------
+// date_picker() — NSDatePicker
+// ---------------------------------------------------------------------
 
-// Builders not yet refactored: combined AddAnyAttr+RenderHtml stub.
-cocoa_stub_view_impls!(Label);
+pub struct DatePicker<At = ()> {
+    value: MaybeReactive<cocoa_dom::Date>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::cocoa::bind::BoundDate>,
+    handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    style: Option<MaybeReactive<cocoa_dom::NSDatePickerStyle>>,
+    min_date: Option<MaybeReactive<cocoa_dom::Date>>,
+    max_date: Option<MaybeReactive<cocoa_dom::Date>>,
+    attrs: At,
+}
+
+pub fn date_picker() -> DatePicker<()> {
+    DatePicker {
+        value: MaybeReactive::Static(cocoa_dom::Date::now()),
+        enabled: None,
+        pending_bind: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        style: None,
+        min_date: None,
+        max_date: None,
+        attrs: (),
+    }
+}
+
+impl<At> DatePicker<At> {
+    pub fn value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::Date>,
+    {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn enabled<V>(mut self, value: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub(crate) fn set_pending_bind_date(
+        &mut self,
+        bound: crate::cocoa::bind::BoundDate,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::html::event::SupportsEvent<E>,
+        E: crate::html::event::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+// NSDatePicker fires target/action when the user changes the date.
+// As with ColorWell, we use the existing Click marker — semantically
+// "change" but that's what the macro emits and the wiring works.
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for DatePicker<At>
+{
+}
+
+impl_universal_attrs!(DatePicker);
+
+impl<At> DatePicker<At> {
+    /// Set the picker's visual style. `Textual`,
+    /// `TextualAndStepper` (default), or `ClockAndCalendar`.
+    pub fn style<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::NSDatePickerStyle>,
+    {
+        self.style = Some(s.into_maybe_reactive());
+        self
+    }
+    /// Earliest selectable date. Builder API doesn't expose a
+    /// "clear" path; use a directive to call
+    /// `Element::set_date_picker_min(None)` if you need that.
+    pub fn min_date<V>(mut self, d: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::Date>,
+    {
+        self.min_date = Some(d.into_maybe_reactive());
+        self
+    }
+    /// Latest selectable date.
+    pub fn max_date<V>(mut self, d: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::Date>,
+    {
+        self.max_date = Some(d.into_maybe_reactive());
+        self
+    }
+}
+
+impl_typed_attrs_for!(DatePicker, value, enabled, pending_bind, handlers,
+    flex_grow, node_ref, directives, alpha, tool_tip, style, min_date,
+    max_date);
+
+impl<At> Render for DatePicker<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("date_picker");
+        let mut effects = Vec::new();
+
+        let el_for_val = el.clone();
+        if let Some(eff) = install(self.value, move |d| {
+            el_for_val.set_date_picker_value(d);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for_enabled = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::cocoa::bind::install_date_picker_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            // Date picker is an NSControl, not an NSButton — route
+            // Click via on_action.
+            match h {
+                crate::html::event::PendingHandler::Click(cb) => {
+                    el.on_action(cb);
+                }
+                other => other.apply_to(&el),
+            }
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(s) = self.style {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(s, move |v| el_for.set_date_picker_style(v))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(d) = self.min_date {
+            let el_for = el.clone();
+            if let Some(eff) = install(d, move |v| {
+                el_for.set_date_picker_min(Some(v))
+            }) {
+                effects.push(eff);
+            }
+        }
+        if let Some(d) = self.max_date {
+            let el_for = el.clone();
+            if let Some(eff) = install(d, move |v| {
+                el_for.set_date_picker_max(Some(v))
+            }) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// stepper() — NSStepper, +/- numeric increment
+// ---------------------------------------------------------------------
+
+pub struct Stepper<At = ()> {
+    value: MaybeReactive<f64>,
+    min_value: f64,
+    max_value: f64,
+    increment: f64,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::cocoa::bind::BoundFloat>,
+    handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    attrs: At,
+}
+
+pub fn stepper() -> Stepper<()> {
+    Stepper {
+        value: MaybeReactive::Static(0.0),
+        min_value: 0.0,
+        max_value: 100.0,
+        increment: 1.0,
+        enabled: None,
+        pending_bind: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        attrs: (),
+    }
+}
+
+impl<At> Stepper<At> {
+    pub fn value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn min_value(mut self, v: f64) -> Self {
+        self.min_value = v;
+        self
+    }
+
+    pub fn max_value(mut self, v: f64) -> Self {
+        self.max_value = v;
+        self
+    }
+
+    pub fn increment(mut self, v: f64) -> Self {
+        self.increment = v;
+        self
+    }
+
+    pub fn enabled<V>(mut self, value: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub(crate) fn set_pending_bind_value(
+        &mut self,
+        bound: crate::cocoa::bind::BoundFloat,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::html::event::SupportsEvent<E>,
+        E: crate::html::event::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for Stepper<At>
+{
+}
+
+impl_universal_attrs!(Stepper);
+
+impl_typed_attrs_for!(Stepper, value, min_value, max_value, increment,
+    enabled, pending_bind, handlers, flex_grow, node_ref, directives,
+    alpha, tool_tip);
+
+impl<At> Render for Stepper<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("stepper");
+        let mut effects = Vec::new();
+
+        // Configure bounds + increment first so the initial
+        // setDoubleValue clamps correctly.
+        el.configure_stepper(
+            self.min_value,
+            self.max_value,
+            self.increment,
+        );
+
+        let el_for_val = el.clone();
+        if let Some(eff) = install(self.value, move |v| {
+            el_for_val.set_stepper_value(v);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for_enabled = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::cocoa::bind::install_stepper_value_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            match h {
+                crate::html::event::PendingHandler::Click(cb) => {
+                    el.on_action(cb);
+                }
+                other => other.apply_to(&el),
+            }
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// progress_indicator() — NSProgressIndicator. Bar (determinate) or
+// spinner (indeterminate). Read-only — `value=` drives the bar but
+// there's no bind here, since user input doesn't reach a progress
+// indicator.
+// ---------------------------------------------------------------------
+
+pub struct ProgressIndicator<At = ()> {
+    value: MaybeReactive<f64>,
+    max_value: f64,
+    indeterminate: bool,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    displayed_when_stopped: Option<MaybeReactive<bool>>,
+    attrs: At,
+}
+
+pub fn progress_indicator() -> ProgressIndicator<()> {
+    ProgressIndicator {
+        value: MaybeReactive::Static(0.0),
+        max_value: 1.0,
+        indeterminate: false,
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        displayed_when_stopped: None,
+        attrs: (),
+    }
+}
+
+impl<At> ProgressIndicator<At> {
+    pub fn value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn max_value(mut self, v: f64) -> Self {
+        self.max_value = v;
+        self
+    }
+
+    /// `true` switches to spinner mode and starts the animation;
+    /// `false` is a determinate progress bar.
+    pub fn indeterminate(mut self, b: bool) -> Self {
+        self.indeterminate = b;
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+impl_universal_attrs!(ProgressIndicator);
+
+impl<At> ProgressIndicator<At> {
+    /// Whether the indicator stays visible while stopped (vs
+    /// hiding itself entirely). Only meaningful in indeterminate
+    /// (spinner) mode.
+    pub fn displayed_when_stopped<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.displayed_when_stopped = Some(b.into_maybe_reactive());
+        self
+    }
+}
+
+impl_typed_attrs_for!(ProgressIndicator, value, max_value, indeterminate,
+    flex_grow, node_ref, directives, alpha, tool_tip, displayed_when_stopped);
+
+impl<At> Render for ProgressIndicator<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("progress_indicator");
+        let mut effects = Vec::new();
+
+        // Order matters: max before value so the value clamps
+        // correctly; indeterminate after both because indeterminate
+        // mode ignores value (and starts the animation).
+        el.set_progress_max(self.max_value);
+
+        let el_for_val = el.clone();
+        if let Some(eff) = install(self.value, move |v| {
+            el_for_val.set_progress_value(v);
+        }) {
+            effects.push(eff);
+        }
+
+        el.set_progress_indeterminate(self.indeterminate);
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(d) = self.displayed_when_stopped {
+            let el_for = el.clone();
+            if let Some(eff) = install(d, move |v| {
+                el_for.set_progress_displayed_when_stopped(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// color_well() — NSColorWell, opens system color picker on click.
+// `value=` for one-way; `bind:value=` for two-way.
+// ---------------------------------------------------------------------
+
+pub struct ColorWell<At = ()> {
+    value: MaybeReactive<cocoa_dom::Color>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::cocoa::bind::BoundColor>,
+    handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    attrs: At,
+}
+
+pub fn color_well() -> ColorWell<()> {
+    ColorWell {
+        value: MaybeReactive::Static(cocoa_dom::Color::WHITE),
+        enabled: None,
+        pending_bind: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        attrs: (),
+    }
+}
+
+impl<At> ColorWell<At> {
+    pub fn value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::Color>,
+    {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn enabled<V>(mut self, value: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub(crate) fn set_pending_bind_color(
+        &mut self,
+        bound: crate::cocoa::bind::BoundColor,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::html::event::SupportsEvent<E>,
+        E: crate::html::event::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+// NSColorWell fires target/action when the user picks a color and
+// dismisses the picker. We use the existing `Click` event marker
+// here because that's what the macro emits for `on:click=…` — but
+// semantically it's a "value committed" event, more like
+// `on:change` would be on the web. Document this divergence
+// rather than introduce a separate Color-payload event for now.
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for ColorWell<At>
+{
+}
+
+impl_universal_attrs!(ColorWell);
+
+impl_typed_attrs_for!(ColorWell, value, enabled, pending_bind, handlers,
+    flex_grow, node_ref, directives, alpha, tool_tip);
+
+impl<At> Render for ColorWell<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("color_well");
+        let mut effects = Vec::new();
+
+        let el_for_val = el.clone();
+        if let Some(eff) = install(self.value, move |c| {
+            el_for_val.set_color_well_value(c);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for_enabled = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::cocoa::bind::install_color_well_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            // ColorWell is an NSControl, not an NSButton — route
+            // Click via on_action so the target/action wiring fires
+            // when the user picks a color.
+            match h {
+                crate::html::event::PendingHandler::Click(cb) => {
+                    el.on_action(cb);
+                }
+                other => other.apply_to(&el),
+            }
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// segmented_control() — NSSegmentedControl with items + bind:selection
+// ---------------------------------------------------------------------
+
+pub struct SegmentedControl<At = ()> {
+    items: Vec<String>,
+    selection: MaybeReactive<usize>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
+    handlers: Vec<crate::html::event::PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    segment_style: Option<MaybeReactive<cocoa_dom::NSSegmentStyle>>,
+    attrs: At,
+}
+
+pub fn segmented_control() -> SegmentedControl<()> {
+    SegmentedControl {
+        items: Vec::new(),
+        selection: MaybeReactive::Static(0),
+        enabled: None,
+        pending_bind_selection: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        segment_style: None,
+        attrs: (),
+    }
+}
+
+impl<At> SegmentedControl<At> {
+    pub fn items<I, S>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.items = items.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub fn selection<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<usize>,
+    {
+        self.selection = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn enabled<V>(mut self, value: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub(crate) fn set_pending_bind_selection(
+        &mut self,
+        bound: crate::cocoa::bind::BoundIndex,
+    ) {
+        self.pending_bind_selection = Some(bound);
+    }
+
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::html::event::SupportsEvent<E>,
+        E: crate::html::event::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+// Click semantics for segmented_control match popup: a "click"
+// is a selection change.
+impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+    for SegmentedControl<At>
+{
+}
+
+impl_universal_attrs!(SegmentedControl);
+
+impl<At> SegmentedControl<At> {
+    /// Visual style: `Rounded`, `RoundRect`, `Capsule`,
+    /// `SmallSquare`, `Separated`, etc. See
+    /// `cocoa_dom::NSSegmentStyle`.
+    pub fn segment_style<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::NSSegmentStyle>,
+    {
+        self.segment_style = Some(s.into_maybe_reactive());
+        self
+    }
+}
+
+impl_typed_attrs_for!(SegmentedControl, items, selection, enabled,
+    pending_bind_selection, handlers, flex_grow, node_ref, directives,
+    alpha, tool_tip, segment_style);
+
+impl<At> Render for SegmentedControl<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("segmented_control");
+        let mut effects = Vec::new();
+
+        el.set_segmented_items(&self.items);
+
+        let el_for_sel = el.clone();
+        if let Some(eff) = install(self.selection, move |i| {
+            el_for_sel.set_segmented_selection(i as isize);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for_enabled = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind_selection {
+            let eff =
+                crate::cocoa::bind::install_segmented_selection_bind(
+                    &el, bound,
+                );
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            // Click on a segmented control is conceptually
+            // "selection changed" — install via on_action (NSControl
+            // path) rather than on_click (NSButton subtree only).
+            match h {
+                crate::html::event::PendingHandler::Click(cb) => {
+                    el.on_action(cb);
+                }
+                other => other.apply_to(&el),
+            }
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(s) = self.segment_style {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(s, move |v| el_for.set_segment_style(v))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// scroll_view() — NSScrollView wrapping arbitrary child content
+// ---------------------------------------------------------------------
+//
+// Same shape as `View<Children, At>` (children + attribute pipeline).
+// The scroll view's documentView is a FlippedView built at construction
+// in `cocoa_dom::node::Element::create_with`; child mounts route there
+// via `Element::subview_parent`. apply_layout special-cases NSScrollView
+// to walk documentView's subviews and size documentView to the union
+// of children's rects (so NSScrollView shows scroll bars when content
+// overflows the viewport).
+
+pub struct ScrollView<Children, At = ()> {
+    flex_grow: Option<f32>,
+    children: Children,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    autohides_scrollers: Option<MaybeReactive<bool>>,
+    has_horizontal_scroller: Option<MaybeReactive<bool>>,
+    has_vertical_scroller: Option<MaybeReactive<bool>>,
+    attrs: At,
+}
+
+pub fn scroll_view() -> ScrollView<(), ()> {
+    ScrollView {
+        flex_grow: None,
+        children: (),
+        alpha: None,
+        tool_tip: None,
+        autohides_scrollers: None,
+        has_horizontal_scroller: None,
+        has_vertical_scroller: None,
+        attrs: (),
+    }
+}
+
+impl<Ch, At> ScrollView<Ch, At> {
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub fn alpha<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn tool_tip<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.tool_tip = Some(s.into_maybe_reactive());
+        self
+    }
+
+    /// Auto-hide the scrollers when not in use (the default
+    /// macOS overlay-scroller behavior).
+    pub fn autohides_scrollers<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.autohides_scrollers = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Show / hide the horizontal scroller. Default at construct
+    /// time is `false`.
+    pub fn has_horizontal_scroller<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.has_horizontal_scroller =
+            Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Show / hide the vertical scroller. Default at construct
+    /// time is `true`.
+    pub fn has_vertical_scroller<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.has_vertical_scroller =
+            Some(b.into_maybe_reactive());
+        self
+    }
+
+    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh), At> {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: (self.children, child),
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
+            autohides_scrollers: self.autohides_scrollers,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: self.attrs,
+        }
+    }
+}
+
+impl<Ch, At> Render for ScrollView<Ch, At>
+where
+    Ch: Render,
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, Ch::State>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("scroll_view");
+        let mut effects = Vec::new();
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(b) = self.autohides_scrollers {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| {
+                el_for.set_autohides_scrollers(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.has_horizontal_scroller {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| {
+                el_for.set_has_horizontal_scroller(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.has_vertical_scroller {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| {
+                el_for.set_has_vertical_scroller(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        // Same cascade pattern as View: defer child mount to
+        // ElementState::mount, so the tree-aware insert_node
+        // registers each descendant in the right Taffy tree.
+        let child_state = self.children.build();
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: child_state,
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+impl<Ch, At> crate::view::add_attr::AddAnyAttr for ScrollView<Ch, At>
+where
+    Ch: Render + Send + 'static + crate::view::RenderHtml,
+    At: crate::html::attribute::Attribute,
+{
+    type Output<NewAttr: crate::html::attribute::Attribute> =
+        ScrollView<Ch, <At as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
+
+    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
+        self,
+        attr: NewAttr,
+    ) -> Self::Output<NewAttr> {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: self.children,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
+            autohides_scrollers: self.autohides_scrollers,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: crate::html::attribute::NextAttribute::add_any_attr(
+                self.attrs, attr,
+            ),
+        }
+    }
+}
+
+impl<Ch, At> crate::view::RenderHtml for ScrollView<Ch, At>
+where
+    Ch: Render + Send + 'static + crate::view::RenderHtml,
+    At: crate::html::attribute::Attribute,
+{
+    type AsyncOutput = ScrollView<Ch::AsyncOutput, At::AsyncOutput>;
+    type Owned = ScrollView<Ch::Owned, At::CloneableOwned>;
+
+    const MIN_LENGTH: usize = 0;
+
+    fn dry_resolve(&mut self) {
+        self.attrs.dry_resolve();
+    }
+
+    async fn resolve(self) -> Self::AsyncOutput {
+        let (children_resolved, attrs_resolved) =
+            futures::join!(self.children.resolve(), self.attrs.resolve());
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: children_resolved,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
+            autohides_scrollers: self.autohides_scrollers,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: attrs_resolved,
+        }
+    }
+
+    fn to_html_with_buf(
+        self,
+        _buf: &mut String,
+        _position: &mut crate::view::Position,
+        _escape: bool,
+        _mark_branches: bool,
+        _extra_attrs: Vec<crate::html::attribute::any_attribute::AnyAttribute>,
+    ) {
+    }
+
+    fn hydrate<const FROM_SERVER: bool>(
+        self,
+        _cursor: &crate::hydration::Cursor,
+        _position: &crate::view::PositionState,
+    ) -> Self::State {
+        <Self as Render>::build(self)
+    }
+
+    fn into_owned(self) -> Self::Owned {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: self.children.into_owned(),
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
+            autohides_scrollers: self.autohides_scrollers,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: self.attrs.into_cloneable_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// image_view() — NSImageView, source from a file path
+// ---------------------------------------------------------------------
+
+pub struct ImageView<At = ()> {
+    source: MaybeReactive<String>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    attrs: At,
+}
+
+pub fn image_view() -> ImageView<()> {
+    ImageView {
+        source: MaybeReactive::Static(String::new()),
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        attrs: (),
+    }
+}
+
+impl<At> ImageView<At> {
+    /// File path to the image. Empty string clears the image.
+    /// Network URLs aren't supported here — fetch them yourself
+    /// (e.g. via reqwest) and write to a temp file, then pass the
+    /// path. NSImage's `initWithContentsOfFile:` handles PNG, JPEG,
+    /// PDF, TIFF, etc.
+    pub fn source<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.source = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+impl_universal_attrs!(ImageView);
+
+impl_typed_attrs_for!(ImageView, source, flex_grow, node_ref, directives,
+    alpha, tool_tip);
+
+impl<At> Render for ImageView<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("image_view");
+        let mut effects = Vec::new();
+
+        let el_for_src = el.clone();
+        if let Some(eff) = install(self.source, move |s| {
+            el_for_src.set_image_view_path(&s);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// text_view() — multi-line plain-text editor (NSScrollView wrapping
+// an NSTextView). No event hooks yet — NSTextViewDelegate is a
+// separate protocol; add when an example needs it.
+// ---------------------------------------------------------------------
+
+pub struct TextView<At = ()> {
+    value: MaybeReactive<String>,
+    enabled: Option<MaybeReactive<bool>>,
+    /// `bind:value=…` two-way binding. Distinct from `.value(...)`
+    /// (one-way: signal → field). Installed at build time via
+    /// `install_text_view_value_bind`.
+    pending_bind: Option<crate::cocoa::bind::BoundValue>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::cocoa::NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    text_color: Option<MaybeReactive<cocoa_dom::Color>>,
+    alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn text_view() -> TextView<()> {
+    TextView {
+        value: MaybeReactive::Static(String::new()),
+        enabled: None,
+        pending_bind: None,
+        flex_grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
+        attrs: (),
+    }
+}
+
+impl<At> TextView<At> {
+    pub fn value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+
+    pub fn enabled<V>(mut self, value: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+
+    /// Internal: stash a `bind:value=…` for installation in
+    /// `Render::build`. Used by the `BindAttribute` impl in
+    /// `crate::cocoa::bind`.
+    pub(crate) fn set_pending_bind_value(
+        &mut self,
+        bound: crate::cocoa::bind::BoundValue,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+
+    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(crate::cocoa::directives::pack(handler, param));
+        self
+    }
+}
+
+impl_universal_attrs!(TextView);
+impl_text_attrs!(TextView);
+
+impl_typed_attrs_for!(TextView, value, enabled, pending_bind, flex_grow,
+    node_ref, directives, alpha, tool_tip, text_color, alignment,
+    font_size);
+
+impl<At> Render for TextView<At>
+where
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, ()>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("text_view");
+        let mut effects = Vec::new();
+
+        // value=… one-way drive. Routes through StringAttr::Value
+        // which knows how to find the inner NSTextView.
+        let el_for_value = el.clone();
+        if let Some(eff) = install(self.value, move |v| {
+            el_for_value.set_string_attribute(StringAttr::Value, &v);
+        }) {
+            effects.push(eff);
+        }
+
+        // enabled=… toggles editability on the inner NSTextView.
+        // NSScrollView/NSTextView aren't NSControls, so the
+        // BoolAttr::Enabled path doesn't apply — we use the
+        // dedicated `set_text_view_editable` method on Element
+        // which routes through the scroll view's documentView.
+        if let Some(enabled) = self.enabled {
+            let el_for_enabled = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for_enabled.set_text_view_editable(b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        // bind:value=… both directions. Wires NSTextView's
+        // `textDidChange:` for write-back and an Effect that
+        // pushes signal → setString.
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::cocoa::bind::install_text_view_value_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_text_attrs(
+            &el,
+            self.text_color,
+            self.alignment,
+            self.font_size,
+        ));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        crate::cocoa::directives::run_all(self.directives, &el);
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// All builders now go through `impl_typed_attrs_for!`; the
+// `render_html_stub` module is vestigial as a result. Keeping it
+// in the source tree (without invocations) so a future builder
+// that doesn't fit the typed-attrs pattern can revive it without
+// re-deriving the stub shape.
 
 // View<Children, At> — refactored to the typed-attribute pipeline.
 impl<Ch, At> crate::view::add_attr::AddAnyAttr for View<Ch, At>
@@ -1343,6 +3406,8 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
             children: self.children,
             attrs: crate::html::attribute::NextAttribute::add_any_attr(
                 self.attrs, attr,
@@ -1373,6 +3438,8 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
             children: children_resolved,
             attrs: attrs_resolved,
         }
@@ -1402,6 +3469,8 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
             children: self.children.into_owned(),
             attrs: self.attrs.into_cloneable_owned(),
         }

@@ -270,6 +270,156 @@ fn zero_children_no_panic() {
     frame_eq(root.ns_view(), 0.0, 0.0, 100.0, 100.0);
 }
 
+fn removing_child_collapses_remaining_layout() {
+    // Regression: when a row was removed via `remove_child` /
+    // teardown, Taffy's cached layout for the parent stayed valid
+    // and the next compute_layout would keep allocating space for
+    // the now-removed children. Fixed in cocoa_dom::layout by
+    // explicitly mark_dirty-ing the parent on remove_child /
+    // drop_node.
+    let _mtm = common::test_mtm();
+    let root = Element::create("view");
+    layout::set_flex_direction(
+        root.as_node(),
+        layout::FlexDirection::Column,
+    );
+    let _tree = fresh_tree(&root);
+
+    let a = Element::create("view");
+    let b = Element::create("view");
+    let c = Element::create("view");
+    layout::set_height(a.as_node(), 50.0);
+    layout::set_height(b.as_node(), 50.0);
+    layout::set_height(c.as_node(), 50.0);
+    root.insert_node(a.as_node(), None);
+    root.insert_node(b.as_node(), None);
+    root.insert_node(c.as_node(), None);
+
+    layout::compute_layout(
+        root.as_node(),
+        NSSize::new(200.0, 200.0),
+    );
+    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 50.0);
+    frame_eq(b.ns_view(), 0.0, 50.0, 200.0, 50.0);
+    frame_eq(c.ns_view(), 0.0, 100.0, 200.0, 50.0);
+
+    // Remove the middle child — `c` should rise to where `b` was.
+    root.remove_child(b.as_node());
+    layout::compute_layout(
+        root.as_node(),
+        NSSize::new(200.0, 200.0),
+    );
+    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 50.0);
+    frame_eq(c.ns_view(), 0.0, 50.0, 200.0, 50.0);
+}
+
+fn scroll_view_bounds_parent_to_viewport() {
+    // Regression for the bug where scroll_view used to inherit its
+    // content's natural height (e.g. 1000) into the layout, forcing
+    // its parent to grow past the window. With flex_basis=0 +
+    // min_size=0 + overflow:Hidden, scroll_view's allocated frame
+    // matches the viewport (its parent's allocated space), and the
+    // second-pass `compute_layout` sets the documentView's frame to
+    // the natural content size for NSScrollView to scroll.
+    let _mtm = common::test_mtm();
+    let root = Element::create("view");
+    layout::set_flex_direction(
+        root.as_node(),
+        layout::FlexDirection::Column,
+    );
+    let _tree = fresh_tree(&root);
+
+    let scroll = Element::create("scroll_view");
+    layout::set_flex_grow(scroll.as_node(), 1.0);
+    root.insert_node(scroll.as_node(), None);
+
+    // Add a single tall child — 30 rows of 16 high each = 480 total
+    // (plus default gap of 0). Without the layout fix this would
+    // bubble up to the root and overflow; with it, scroll_view's
+    // own frame stays at the viewport size (root's allotted space).
+    let inner = Element::create("view");
+    layout::set_flex_direction(
+        inner.as_node(),
+        layout::FlexDirection::Column,
+    );
+    scroll.insert_node(inner.as_node(), None);
+    for _ in 0..30 {
+        let row = Element::create("view");
+        layout::set_height(row.as_node(), 16.0);
+        inner.insert_node(row.as_node(), None);
+    }
+
+    layout::compute_layout(
+        root.as_node(),
+        NSSize::new(200.0, 200.0),
+    );
+
+    // scroll_view's NSView frame = viewport (the 200×200 window
+    // minus zero padding). NOT the natural content height (480).
+    frame_eq(scroll.ns_view(), 0.0, 0.0, 200.0, 200.0);
+    // documentView (an NSScrollView's first subview) is the part
+    // that grows to natural content height. The window's frame
+    // doesn't grow past 200.
+    frame_eq(root.ns_view(), 0.0, 0.0, 200.0, 200.0);
+}
+
+fn nested_vstack_collapses_after_removal() {
+    // Mimics the todomvc layout: outer vstack contains an inner
+    // vstack of "rows" plus a "footer" sibling. Removing rows
+    // should make the footer's y-coordinate move up — the bug
+    // would leave the footer at its original y (because the inner
+    // vstack didn't shrink in the cached layout).
+    let _mtm = common::test_mtm();
+    let outer = Element::create("view");
+    layout::set_flex_direction(
+        outer.as_node(),
+        layout::FlexDirection::Column,
+    );
+    let _tree = fresh_tree(&outer);
+
+    let inner = Element::create("view");
+    layout::set_flex_direction(
+        inner.as_node(),
+        layout::FlexDirection::Column,
+    );
+    let footer = Element::create("view");
+    layout::set_height(footer.as_node(), 30.0);
+
+    // Register parent → child top-down: `attach_child` is a no-op
+    // if the parent isn't in the tree yet, so register the
+    // hierarchy in mount order.
+    outer.insert_node(inner.as_node(), None);
+    outer.insert_node(footer.as_node(), None);
+
+    let row_a = Element::create("view");
+    let row_b = Element::create("view");
+    let row_c = Element::create("view");
+    layout::set_height(row_a.as_node(), 40.0);
+    layout::set_height(row_b.as_node(), 40.0);
+    layout::set_height(row_c.as_node(), 40.0);
+
+    inner.insert_node(row_a.as_node(), None);
+    inner.insert_node(row_b.as_node(), None);
+    inner.insert_node(row_c.as_node(), None);
+
+    layout::compute_layout(
+        outer.as_node(),
+        NSSize::new(300.0, 400.0),
+    );
+    // Inner vstack height = 3 rows × 40 = 120, then footer
+    // immediately below at y=120.
+    frame_eq(footer.ns_view(), 0.0, 120.0, 300.0, 30.0);
+
+    // Remove the middle row — inner should shrink to 80, footer
+    // should slide up to y=80.
+    inner.remove_child(row_b.as_node());
+    layout::compute_layout(
+        outer.as_node(),
+        NSSize::new(300.0, 400.0),
+    );
+    frame_eq(footer.ns_view(), 0.0, 80.0, 300.0, 30.0);
+}
+
 fn zero_size_available_no_panic() {
     let _mtm = common::test_mtm();
     let root = Element::create("view");
@@ -306,6 +456,18 @@ fn main() {
             nested_containers_inner_fits_within_outer,
         ),
         ("zero_children_no_panic", zero_children_no_panic),
+        (
+            "scroll_view_bounds_parent_to_viewport",
+            scroll_view_bounds_parent_to_viewport,
+        ),
+        (
+            "removing_child_collapses_remaining_layout",
+            removing_child_collapses_remaining_layout,
+        ),
+        (
+            "nested_vstack_collapses_after_removal",
+            nested_vstack_collapses_after_removal,
+        ),
         ("zero_size_available_no_panic", zero_size_available_no_panic),
     ]);
 }

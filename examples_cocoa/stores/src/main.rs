@@ -2,7 +2,7 @@
 //! `Store`, `Field`, and sub-field reactivity.
 
 use leptos::prelude::*;
-use reactive_stores::{Field, Patch, Store};
+use reactive_stores::{Patch, Store};
 
 #[derive(Debug, Store, Patch)]
 struct User {

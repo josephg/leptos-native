@@ -13,8 +13,10 @@
 
 // Direct re-exports for tags that map 1:1 to a Cocoa builder.
 pub use crate::cocoa::element::{
-    button, checkbox, hstack, label, pop_up_button, secure_text_field, slider,
-    stack_view, text_field, vstack,
+    button, checkbox, color_well, date_picker, hstack, image_view, label,
+    pop_up_button, progress_indicator, scroll_view, secure_text_field,
+    segmented_control, slider, stack_view, stepper, text_field, text_view,
+    vstack,
 };
 
 // `<div>` aliases the generic flipped container. Common HTML idiom;

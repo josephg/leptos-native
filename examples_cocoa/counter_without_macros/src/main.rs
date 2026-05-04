@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use tachys::{
     cocoa::element::{button, label, vstack},
-    html::event::{click, on},
+    html::event::click,
 };
 
 #[derive(Debug, Clone)]

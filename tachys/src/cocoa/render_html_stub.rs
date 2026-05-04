@@ -9,13 +9,11 @@
 //! `implementation_log.md` (the "stub `hydrate` to delegate to
 //! `build`" entry) for the cleanup story.
 //!
-//! Two macros are exported:
-//!   - `cocoa_stub_view_impls!($ty)` — stubs BOTH `AddAnyAttr`
-//!     (drops attrs) and `RenderHtml`. Use for builders not yet
-//!     refactored to the type-parametric attribute pipeline.
-//!   - `cocoa_stub_render_html!($ty)` — stubs ONLY `RenderHtml`.
-//!     Use after a builder has gained a real `AddAnyAttr` impl
-//!     (the `<At = ()>` type-parametric refactor).
+//! `cocoa_stub_view_impls!($ty)` stubs BOTH `AddAnyAttr` (drops
+//! attrs) and `RenderHtml`. Use for builders not yet refactored to
+//! the type-parametric attribute pipeline. Builders that *have*
+//! been refactored (`<At = ()>` form) get their `RenderHtml` impl
+//! emitted by `impl_typed_attrs_for!` in `element.rs` instead.
 //!
 //! Each stub:
 //!   - `to_html_with_buf`: empty (no SSR — write nothing).
@@ -30,6 +28,11 @@
 
 /// Combined stub: AddAnyAttr (drops attrs) + RenderHtml. Used
 /// for builders not yet refactored to the typed-attribute path.
+///
+/// Currently unused — every cocoa builder goes through
+/// `impl_typed_attrs_for!` now. Keeping for future builders that
+/// don't fit the typed-attrs pattern.
+#[allow(unused_macros)]
 macro_rules! cocoa_stub_view_impls {
     ($ty:ty) => {
         impl $crate::view::add_attr::AddAnyAttr for $ty {
@@ -82,4 +85,5 @@ macro_rules! cocoa_stub_view_impls {
     };
 }
 
+#[allow(unused_imports)]
 pub(super) use cocoa_stub_view_impls;

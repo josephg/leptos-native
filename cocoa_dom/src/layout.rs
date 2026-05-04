@@ -52,6 +52,13 @@ use taffy::{Layout, Point, TaffyTree};
 #[derive(Clone)]
 pub struct NodeContext {
     pub view: SendWrapper<Retained<NSView>>,
+    /// True if this node backs an `<scroll_view>` (NSScrollView).
+    /// Triggers a special second-pass `compute_layout` on this
+    /// subtree with `MaxContent` height so children take their
+    /// natural sizes instead of being compressed to fit the
+    /// viewport — that's what makes the documentView grow past the
+    /// viewport and gives NSScrollView something to scroll.
+    pub is_scroll_view: bool,
 }
 
 /// Owns a Taffy tree plus a slot for the tree's root NodeId. Created
@@ -88,11 +95,15 @@ pub struct NodeLayout {
     pub style: Style,
     /// Set once the node has been registered in a tree.
     pub handle: Option<LayoutHandle>,
+    /// True if this node is an `<scroll_view>`. Triggers a special
+    /// second-pass `compute_layout` on its subtree with MaxContent
+    /// height; see `NodeContext::is_scroll_view`.
+    pub is_scroll_view: bool,
 }
 
 impl NodeLayout {
     pub fn new(style: Style) -> Self {
-        NodeLayout { style, handle: None }
+        NodeLayout { style, handle: None, is_scroll_view: false }
     }
 }
 
@@ -132,6 +143,7 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     let view: Retained<NSView> = node.ns_view().into();
     let context = NodeContext {
         view: SendWrapper::new(view),
+        is_scroll_view: layout.is_scroll_view,
     };
     let node_id = tree
         .tree
@@ -162,6 +174,14 @@ pub fn drop_node(node: &Node) {
         let parent_id = h.tree.tree.borrow().parent(h.node_id);
         let _ = h.tree.tree.borrow_mut().remove(h.node_id);
         if let Some(pid) = parent_id {
+            // Explicitly mark the parent dirty. Taffy's
+            // `remove`/`remove_child` does adjust the tree, but
+            // doesn't always invalidate the parent's cached layout —
+            // and a stale parent layout means the dispatched
+            // `compute_layout` reuses old child positions and
+            // `apply_layout` keeps removed-children's space
+            // allocated.
+            let _ = h.tree.tree.borrow_mut().mark_dirty(pid);
             schedule_relayout_for_tree(&h.tree, pid);
         }
     }
@@ -314,11 +334,13 @@ pub fn detach_child(parent: &Node, child: &Node) {
         Some(h) => h.node_id,
         None => return,
     };
-    let _ = parent_h
-        .tree
-        .tree
-        .borrow_mut()
-        .remove_child(parent_h.node_id, child_id);
+    {
+        let mut tree = parent_h.tree.tree.borrow_mut();
+        let _ = tree.remove_child(parent_h.node_id, child_id);
+        // Mark the parent dirty so its cached layout is
+        // invalidated — see the matching comment in `drop_node`.
+        let _ = tree.mark_dirty(parent_h.node_id);
+    }
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 
@@ -392,15 +414,126 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
     // NSTextField, etc.) get sized to their actual content via
     // `intrinsicContentSize`. Without this, leaves would size to 0
     // (or to a hardcoded placeholder) regardless of their text.
-    tree.compute_layout_with_measure(
+    tree.compute_layout_with_measure(handle.node_id, avail, measure_closure)
+        .expect("taffy: compute_layout failed");
+
+    // Second pass: for each `<scroll_view>` in the tree, recompute
+    // its subtree with the viewport width pinned and height =
+    // MaxContent. This produces natural-size frames for the scroll
+    // view's children — `apply_layout` later sets the documentView
+    // to span them so NSScrollView shows scroll bars when content
+    // overflows.
+    //
+    // Returns a map of `scroll_view NodeId → main-pass Layout`.
+    // `apply_layout` uses these to set each scroll_view's NSView
+    // frame from the *first* pass (the actual viewport size); the
+    // second pass overwrote that with `(viewport_w, content_height)`,
+    // which is the documentView's size, not the scroll view's.
+    let scroll_view_viewports =
+        relayout_scroll_views(&mut tree, handle.node_id);
+
+    apply_layout(
+        &tree,
         handle.node_id,
-        avail,
-        |known, avail_space, _node_id, ctx, _style| {
-            measure_leaf(known, avail_space, ctx)
-        },
-    )
-    .expect("taffy: compute_layout failed");
-    apply_layout(&tree, handle.node_id, root.ns_view());
+        root.ns_view(),
+        &scroll_view_viewports,
+    );
+}
+
+/// Walk `tree` from `node_id`. For each node whose context says
+/// `is_scroll_view`, run a second `compute_layout_with_measure`
+/// rooted at that node with width pinned to the first-pass
+/// viewport and height = MaxContent.
+///
+/// Returns the first-pass layout for each scroll_view encountered,
+/// keyed by NodeId. `apply_layout` reads these instead of calling
+/// `tree.layout(scroll_view_id)` (which now reflects the
+/// second-pass content size, not the viewport).
+fn relayout_scroll_views(
+    tree: &mut TaffyTree<NodeContext>,
+    node_id: NodeId,
+) -> std::collections::HashMap<NodeId, Layout> {
+    let mut viewports = std::collections::HashMap::new();
+    relayout_scroll_views_inner(tree, node_id, &mut viewports);
+    viewports
+}
+
+fn relayout_scroll_views_inner(
+    tree: &mut TaffyTree<NodeContext>,
+    node_id: NodeId,
+    viewports: &mut std::collections::HashMap<NodeId, Layout>,
+) {
+    let is_scroll = tree
+        .get_node_context(node_id)
+        .map(|c| c.is_scroll_view)
+        .unwrap_or(false);
+
+    if is_scroll {
+        // Snapshot the viewport size before the second pass
+        // overwrites it.
+        let main_layout = *tree
+            .layout(node_id)
+            .expect("taffy: layout missing for scroll_view");
+        viewports.insert(node_id, main_layout);
+
+        let viewport_w = main_layout.size.width;
+
+        // Override the scroll_view's style for the second pass so
+        // it stretches to viewport width but is allowed to grow on
+        // the main axis with content. After the pass, restore.
+        let saved_style = tree
+            .style(node_id)
+            .expect("taffy: style missing")
+            .clone();
+        let mut probe_style = saved_style.clone();
+        probe_style.size = Size {
+            width: Dimension::length(viewport_w),
+            height: Dimension::auto(),
+        };
+        let _ = tree.set_style(node_id, probe_style);
+
+        let avail = Size {
+            width: AvailableSpace::Definite(viewport_w),
+            height: AvailableSpace::MaxContent,
+        };
+        let _ = tree.mark_dirty(node_id);
+        tree.compute_layout_with_measure(node_id, avail, measure_closure)
+            .expect("taffy: scroll-view re-layout failed");
+
+        // Restore the original style. (Mark dirty so the next main
+        // pass re-runs against the canonical style — without this,
+        // the cached "second-pass" layout would be reused.)
+        let _ = tree.set_style(node_id, saved_style);
+        let _ = tree.mark_dirty(node_id);
+
+        // Don't recurse — children of a scroll view have been laid
+        // out in the second pass; nested scroll_views inside one
+        // are an unusual case we'd handle by recursing here, but
+        // skipping for now.
+        return;
+    }
+
+    let children: Vec<NodeId> = tree
+        .children(node_id)
+        .map(|cs| cs.into_iter().collect())
+        .unwrap_or_default();
+    for child in children {
+        relayout_scroll_views_inner(tree, child, viewports);
+    }
+}
+
+/// Reusable function-pointer so both `compute_layout_with_measure`
+/// call sites share a single monomorphization. Two identical inline
+/// closures would produce distinct types, doubling the flexbox
+/// engine in the binary.
+fn measure_closure(
+    known: Size<Option<f32>>,
+    avail_space: Size<AvailableSpace>,
+    _node_id: NodeId,
+    ctx: Option<&mut NodeContext>,
+    _style: &Style,
+) -> Size<f32> {
+    measure_leaf(known, avail_space, ctx)
 }
 
 /// Measure callback for leaf Taffy nodes. We ask the underlying
@@ -501,11 +634,22 @@ fn apply_layout(
     tree: &TaffyTree<NodeContext>,
     node_id: NodeId,
     view: &NSView,
+    scroll_viewports: &std::collections::HashMap<NodeId, Layout>,
 ) {
-    let layout: &Layout = tree
-        .layout(node_id)
-        .expect("taffy: layout missing for node");
-    set_frame_from_layout(view, layout);
+    // For scroll views, prefer the cached first-pass viewport
+    // layout — `tree.layout()` would return the second-pass result
+    // (which is the documentView's content size, not the
+    // viewport).
+    let layout: Layout = if let Some(cached) =
+        scroll_viewports.get(&node_id).copied()
+    {
+        cached
+    } else {
+        *tree
+            .layout(node_id)
+            .expect("taffy: layout missing for node")
+    };
+    set_frame_from_layout(view, &layout);
 
     let children = tree
         .children(node_id)
@@ -516,7 +660,62 @@ fn apply_layout(
         return;
     }
 
-    let subviews = view.subviews();
+    // For `<scroll_view>`, our children live inside the documentView
+    // (a FlippedView we install at construction). Walk that view's
+    // subviews, not the scroll view's own (which are AppKit's
+    // clipView + scrollers).
+    //
+    // Gated on `NodeContext::is_scroll_view` rather than a dynamic
+    // NSScrollView class check — `<text_view>` is also backed by an
+    // NSScrollView but its documentView is an opaque NSTextView.
+    // We don't want apply_layout to recurse into NSTextView's
+    // subviews (it has none we own).
+    let scroll_doc: Option<Retained<NSView>> = {
+        let is_ours = tree
+            .get_node_context(node_id)
+            .map(|c| c.is_scroll_view)
+            .unwrap_or(false);
+        if is_ours {
+            use objc2::runtime::AnyObject;
+            use objc2_app_kit::NSScrollView;
+            let any: &AnyObject = view.as_ref();
+            any.downcast_ref::<NSScrollView>()
+                .and_then(|s| s.documentView())
+        } else {
+            None
+        }
+    };
+    if let Some(doc) = scroll_doc.as_ref() {
+        // Compute the union of children's allocated rects. Taffy's
+        // second pass laid them out at natural sizes; we bound the
+        // documentView around them so NSScrollView knows the
+        // scroll content extent.
+        let mut max_x: f32 = 0.0;
+        let mut max_y: f32 = 0.0;
+        for child_id in children.iter() {
+            let child_layout = tree
+                .layout(*child_id)
+                .expect("taffy: child layout missing");
+            let right = child_layout.location.x + child_layout.size.width;
+            let bottom = child_layout.location.y + child_layout.size.height;
+            if right > max_x { max_x = right; }
+            if bottom > max_y { max_y = bottom; }
+        }
+        // Document view at least as wide as the viewport (so the
+        // content fills it horizontally) and at least as tall as
+        // the natural content. Larger-than-viewport heights are
+        // what makes NSScrollView show scroll bars.
+        let doc_width = (max_x as f64).max(layout.size.width as f64);
+        let doc_height = (max_y as f64).max(layout.size.height as f64);
+        doc.setFrame(NSRect::new(
+            NSPoint::new(0.0, 0.0),
+            NSSize::new(doc_width, doc_height),
+        ));
+    }
+
+    let subview_source: &NSView =
+        scroll_doc.as_deref().unwrap_or(view);
+    let subviews = subview_source.subviews();
     let subview_count = subviews.count() as usize;
     // Match Taffy children to subviews by position. Taffy children are
     // mirrored from the NSView subview order via insert_node, so the
@@ -530,7 +729,7 @@ fn apply_layout(
             break;
         }
         let sv = subviews.objectAtIndex(i);
-        apply_layout(tree, *child_id, &sv);
+        apply_layout(tree, *child_id, &sv, scroll_viewports);
     }
 }
 

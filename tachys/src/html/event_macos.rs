@@ -47,6 +47,20 @@ pub const focus: FocusEvent = FocusEvent;
 pub struct BlurEvent;
 pub const blur: BlurEvent = BlurEvent;
 
+/// Marker type for keydown — fires on recognized "command keys"
+/// in a text field's editor (Enter, Escape, Tab, arrows). AppKit
+/// routes these through `control:textView:doCommandBySelector:`;
+/// see [`cocoa_dom::KeyEvent`] for the supported key set. AppKit
+/// doesn't separate keydown from keyup at this layer; both fire
+/// on the same notification.
+pub struct KeyDownEvent;
+pub const keydown: KeyDownEvent = KeyDownEvent;
+
+/// Marker type for keyup — see [`KeyDownEvent`] for coverage and
+/// the keydown/keyup overlap.
+pub struct KeyUpEvent;
+pub const keyup: KeyUpEvent = KeyUpEvent;
+
 /// Each event descriptor knows its payload type ([`EventType`]) and
 /// how to package a user-supplied handler into a [`PendingHandler`]
 /// the element can install in `Render::build`.
@@ -111,6 +125,26 @@ impl EventDescriptor for BlurEvent {
     }
 }
 
+impl EventDescriptor for KeyDownEvent {
+    type EventType = cocoa_dom::KeyEvent;
+    fn into_pending<F>(handler: F) -> PendingHandler
+    where
+        F: FnMut(cocoa_dom::KeyEvent) + Send + 'static,
+    {
+        PendingHandler::KeyDown(Box::new(handler))
+    }
+}
+
+impl EventDescriptor for KeyUpEvent {
+    type EventType = cocoa_dom::KeyEvent;
+    fn into_pending<F>(handler: F) -> PendingHandler
+    where
+        F: FnMut(cocoa_dom::KeyEvent) + Send + 'static,
+    {
+        PendingHandler::KeyUp(Box::new(handler))
+    }
+}
+
 // ---------------------------------------------------------------------
 // Compile-time control/event compatibility
 // ---------------------------------------------------------------------
@@ -154,6 +188,8 @@ pub enum PendingHandler {
     Change(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
+    KeyDown(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
+    KeyUp(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
 }
 
 impl PendingHandler {
@@ -167,6 +203,8 @@ impl PendingHandler {
             PendingHandler::Change(cb) => el.on_text_end_editing(cb),
             PendingHandler::Focus(cb) => el.on_text_focus(cb),
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
+            PendingHandler::KeyDown(cb) => el.on_text_keydown(cb),
+            PendingHandler::KeyUp(cb) => el.on_text_keyup(cb),
         }
     }
 }

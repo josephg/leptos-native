@@ -13,7 +13,10 @@
 
 #![allow(missing_docs)]
 
-use crate::cocoa::element::{Checkbox, Label, PopUpButton, Slider, TextField};
+use crate::cocoa::element::{
+    Checkbox, ColorWell, DatePicker, Label, PopUpButton, SegmentedControl,
+    Slider, Stepper, TextField, TextView,
+};
 use cocoa_dom::{BoolAttr, Element as CocoaElement, StringAttr};
 use reactive_graph::{
     effect::RenderEffect,
@@ -151,6 +154,125 @@ pub(crate) struct BoundFloat {
     pub(crate) setter: Box<dyn FnMut(f64) + Send + 'static>,
 }
 
+// TextView reuses the existing BoundValue — same `String` shape
+// as TextField, just routed through NSTextView's delegate
+// (`textDidChange:`) instead of NSControlTextEditingDelegate.
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextView
+where
+    Sig: IntoSignal<String>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_value(BoundValue { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_text_view_value_bind(
+    el: &CocoaElement,
+    bound: BoundValue,
+) -> RenderEffect<()> {
+    // Outgoing: user types → push to signal.
+    let mut setter = bound.setter;
+    el.on_text_view_change(move |new_value| setter(new_value));
+
+    // Incoming: signal change → set NSTextView's string. Routes
+    // through StringAttr::Value, which on a `<text_view>` finds
+    // the inner NSTextView (via documentView) and calls setString.
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let s = getter();
+        el_for_set.set_string_attribute(
+            cocoa_dom::StringAttr::Value,
+            &s,
+        );
+    })
+}
+
+// Stepper reuses the existing BoundFloat — the value is f64 and
+// the wiring shape (signal ↔ doubleValue + target/action) is
+// identical to slider's.
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Stepper
+where
+    Sig: IntoSignal<f64>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_value(BoundFloat { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_stepper_value_bind(
+    el: &CocoaElement,
+    bound: BoundFloat,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_action(move || {
+        setter(el_for_action.stepper_value());
+    });
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let v = getter();
+        el_for_set.set_stepper_value(v);
+    })
+}
+
+// ---------------------------------------------------------------------
+// DatePicker — bind:value=Date signal
+// ---------------------------------------------------------------------
+
+pub(crate) struct BoundDate {
+    pub(crate) getter: Box<dyn Fn() -> cocoa_dom::Date + Send + 'static>,
+    pub(crate) setter: Box<dyn FnMut(cocoa_dom::Date) + Send + 'static>,
+}
+
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for DatePicker
+where
+    Sig: IntoSignal<cocoa_dom::Date>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_date(BoundDate { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_date_picker_bind(
+    el: &CocoaElement,
+    bound: BoundDate,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_action(move || {
+        setter(el_for_action.date_picker_value());
+    });
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let d = getter();
+        el_for_set.set_date_picker_value(d);
+    })
+}
+
 pub(crate) fn install_slider_value_bind(
     el: &CocoaElement,
     bound: BoundFloat,
@@ -202,6 +324,18 @@ where
     }
 }
 
+impl<Sig> BindAttribute<Selection, Sig> for SegmentedControl
+where
+    Sig: IntoSignal<usize>,
+{
+    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_selection(BoundIndex { getter, setter });
+        self
+    }
+}
+
 pub(crate) struct BoundIndex {
     pub(crate) getter: Box<dyn Fn() -> usize + Send + 'static>,
     pub(crate) setter: Box<dyn FnMut(usize) + Send + 'static>,
@@ -230,6 +364,73 @@ pub(crate) fn install_popup_selection_bind(
     RenderEffect::new(move |_prev| {
         let v = getter();
         el_for_set.set_popup_selection(v as isize);
+    })
+}
+
+// ---------------------------------------------------------------------
+// ColorWell — bind:value=Color signal
+// ---------------------------------------------------------------------
+
+pub(crate) struct BoundColor {
+    pub(crate) getter: Box<dyn Fn() -> cocoa_dom::Color + Send + 'static>,
+    pub(crate) setter: Box<dyn FnMut(cocoa_dom::Color) + Send + 'static>,
+}
+
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for ColorWell
+where
+    Sig: IntoSignal<cocoa_dom::Color>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_color(BoundColor { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_color_well_bind(
+    el: &CocoaElement,
+    bound: BoundColor,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_action(move || {
+        setter(el_for_action.color_well_value());
+    });
+
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let c = getter();
+        el_for_set.set_color_well_value(c);
+    })
+}
+
+pub(crate) fn install_segmented_selection_bind(
+    el: &CocoaElement,
+    bound: BoundIndex,
+) -> RenderEffect<()> {
+    // Outgoing: NSSegmentedControl fires target/action on click.
+    // on_action goes through the NSControl path (segmented control
+    // isn't an NSButton, so on_click would no-op).
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_action(move || {
+        let idx = el_for_action.segmented_selection();
+        if idx >= 0 {
+            setter(idx as usize);
+        }
+    });
+
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let v = getter();
+        el_for_set.set_segmented_selection(v as isize);
     })
 }
 

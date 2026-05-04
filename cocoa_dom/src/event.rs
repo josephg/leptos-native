@@ -15,28 +15,29 @@
 //! `WindowDelegate::windowWillClose:` runs the cleanup closure
 //! that unmounts the window's children.
 
+use crate::KeyEvent;
 use objc2::{
     define_class, msg_send,
     rc::Retained,
-    runtime::{NSObject, ProtocolObject, Sel},
+    runtime::{Bool, NSObject, ProtocolObject, Sel},
     sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
-    NSControl, NSControlTextEditingDelegate, NSTextField,
-    NSTextFieldDelegate, NSView,
+    NSControl, NSControlTextEditingDelegate, NSTextDelegate, NSTextField,
+    NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSView,
 };
 use objc2_foundation::{NSNotification, NSObjectProtocol};
 use std::{cell::RefCell, collections::HashMap};
 
-/// The closure type carried by [`ActionTarget`]. `&mut` so that the
-/// callback can update reactive state. Wrapped in a RefCell so that
-/// the ObjC instance method (which has `&self`) can call it.
+/// The closure carried by [`ActionTarget`]. One per NSControl —
+/// see `on_control_action`'s docstring for why we panic on
+/// duplicate installs rather than fan out.
 type Callback = RefCell<Box<dyn FnMut() + 'static>>;
 
 define_class!(
-    /// ObjC class that holds a single Rust closure and exposes one
-    /// selector, `actionFired:`, that invokes it. Used as the target
-    /// of NSControl target/action wiring.
+    /// ObjC class that holds one Rust closure and exposes one
+    /// selector, `actionFired:`, that invokes it. Used as the
+    /// target of NSControl target/action wiring.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[ivars = Callback]
@@ -45,8 +46,6 @@ define_class!(
     impl ActionTarget {
         #[unsafe(method(actionFired:))]
         fn action_fired(&self, _sender: *mut NSObject) {
-            // Best-effort: if the callback panics, we don't want to
-            // unwind into ObjC. Just log and swallow.
             let mut cb = match self.ivars().try_borrow_mut() {
                 Ok(cb) => cb,
                 Err(_) => {
@@ -61,7 +60,6 @@ define_class!(
                     return;
                 }
             };
-            // The callback is `Box<dyn FnMut()>`; deref then invoke.
             (cb)();
         }
     }
@@ -123,6 +121,9 @@ pub fn drop_handlers_for(view: &NSView) {
     TEXT_FIELD_STORE.with_borrow_mut(|store| {
         store.remove(&key);
     });
+    TEXT_VIEW_STORE.with_borrow_mut(|store| {
+        store.remove(&key);
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -163,6 +164,12 @@ pub struct TextFieldHandlers {
     /// synonymous with end-of-editing). The difference from `change`
     /// is just the payload — blur has none.
     on_blur: Vec<Box<dyn FnMut() + 'static>>,
+    /// Fires on `control:textView:doCommandBySelector:` for
+    /// recognized command keys (Enter, Escape, Tab, arrows). The
+    /// AppKit pipeline doesn't distinguish keydown from keyup —
+    /// both Vecs fire on the same notification.
+    on_keydown: Vec<Box<dyn FnMut(KeyEvent) + 'static>>,
+    on_keyup: Vec<Box<dyn FnMut(KeyEvent) + 'static>>,
 }
 
 type SharedHandlers = std::rc::Rc<RefCell<TextFieldHandlers>>;
@@ -224,6 +231,50 @@ define_class!(
             for cb in handlers.on_input.iter_mut() {
                 cb(value.clone());
             }
+        }
+
+        /// AppKit calls this when the field editor sees a "command
+        /// key" (Return, Escape, Tab, arrow keys, etc.). Each key
+        /// maps to a named selector — we translate that selector to
+        /// a [`KeyEvent`] and fan out to both `on:keydown` and
+        /// `on:keyup` handlers (AppKit doesn't separate down/up at
+        /// this layer).
+        ///
+        /// Return `false` so AppKit performs the default action
+        /// (e.g. Return commits the field, Tab moves focus). Users
+        /// who want to suppress the default should return `true`
+        /// from their handler — but our current shape doesn't
+        /// thread a return back, since web semantics are
+        /// "preventDefault is explicit". Adequate for all known
+        /// callers.
+        #[unsafe(method(control:textView:doCommandBySelector:))]
+        fn control_text_view_do_command(
+            &self,
+            _control: &NSControl,
+            _text_view: &NSTextView,
+            command: Sel,
+        ) -> Bool {
+            let Some(event) = KeyEvent::from_command_selector(command)
+            else {
+                return Bool::NO;
+            };
+            let mut handlers = match self.ivars().try_borrow_mut() {
+                Ok(h) => h,
+                Err(_) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[cocoa_dom] reentrant doCommandBySelector skipped"
+                    );
+                    return Bool::NO;
+                }
+            };
+            for cb in handlers.on_keydown.iter_mut() {
+                cb(event.clone());
+            }
+            for cb in handlers.on_keyup.iter_mut() {
+                cb(event.clone());
+            }
+            Bool::NO
         }
 
         #[unsafe(method(controlTextDidEndEditing:))]
@@ -288,13 +339,34 @@ thread_local! {
 /// Look up (or lazily create) the per-field handler state, ensuring
 /// the field has our `TextFieldDelegate` installed. Returns the
 /// shared handler Vec the caller can append to.
+///
+/// Cache validity: AppKit can recycle NSTextField memory addresses
+/// across allocations. A stale entry would silently misroute
+/// events to a dead field's handlers. Before reusing an entry we
+/// verify the field's current delegate is the one we stored; if
+/// not (recycled address, or someone else swapped the delegate),
+/// we evict and rebuild.
 fn ensure_text_field_entry(field: &NSTextField) -> SharedHandlers {
     let mtm = MainThreadMarker::new()
         .expect("text-field event installs must run on the main thread");
     let key = view_key(field.as_ref());
     TEXT_FIELD_STORE.with_borrow_mut(|store| {
         if let Some(entry) = store.get(&key) {
-            return entry.handlers.clone();
+            let stored_ptr: *const TextFieldDelegate = &*entry._delegate;
+            let current = field.delegate();
+            let still_ours = match current {
+                Some(d) => {
+                    let d_ptr: *const _ = &*d;
+                    let d_addr = d_ptr as usize;
+                    let stored_addr = stored_ptr as usize;
+                    d_addr == stored_addr
+                }
+                None => false,
+            };
+            if still_ours {
+                return entry.handlers.clone();
+            }
+            store.remove(&key);
         }
         let handlers: SharedHandlers = Default::default();
         let delegate = TextFieldDelegate::new(handlers.clone(), mtm);
@@ -357,24 +429,216 @@ pub fn on_text_field_blur(
     handlers.borrow_mut().on_blur.push(Box::new(cb));
 }
 
+/// Append a keydown observer — fires on recognized command keys
+/// (Enter, Escape, Tab, arrows). See [`KeyEvent`] for the
+/// supported keys.
+pub fn on_text_field_keydown(
+    field: &NSTextField,
+    cb: impl FnMut(KeyEvent) + 'static,
+) {
+    let handlers = ensure_text_field_entry(field);
+    handlers.borrow_mut().on_keydown.push(Box::new(cb));
+}
+
+/// Append a keyup observer. AppKit's field-editor command
+/// pipeline doesn't separate down/up — both fire on the same
+/// `doCommandBySelector:` notification. Provided for web-API
+/// parity (`on:keyup=…` in upstream examples works without
+/// substitution).
+pub fn on_text_field_keyup(
+    field: &NSTextField,
+    cb: impl FnMut(KeyEvent) + 'static,
+) {
+    let handlers = ensure_text_field_entry(field);
+    handlers.borrow_mut().on_keyup.push(Box::new(cb));
+}
+
+// ---------------------------------------------------------------------
+// NSTextView delegate (multi-line text — `<text_view>` `bind:value`)
+// ---------------------------------------------------------------------
+//
+// Same fan-out pattern as TextFieldDelegate, but routed through
+// NSTextDelegate (NSTextView's protocol — separate from the
+// NSControlTextEditingDelegate that NSTextField uses) and keyed by
+// the NSTextView pointer. Only `textDidChange:` is wired today —
+// nobody's asked for begin/end editing on the multi-line view yet.
+
+#[derive(Default)]
+pub struct TextViewHandlers {
+    on_change: Vec<Box<dyn FnMut(String) + 'static>>,
+}
+
+type SharedTextViewHandlers = std::rc::Rc<RefCell<TextViewHandlers>>;
+
+define_class!(
+    /// NSTextView delegate that fans `textDidChange:` notifications
+    /// out to all installed callbacks. NSTextView's documented
+    /// delegate protocol is `NSTextViewDelegate`, which inherits
+    /// `NSTextDelegate` — `textDidChange:` is on the latter.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = SharedTextViewHandlers]
+    pub struct TextViewDelegate;
+
+    unsafe impl NSObjectProtocol for TextViewDelegate {}
+
+    unsafe impl NSTextDelegate for TextViewDelegate {
+        #[unsafe(method(textDidChange:))]
+        fn text_did_change(&self, notification: &NSNotification) {
+            let object = notification.object();
+            let Some(object) = object else { return };
+            let any: &objc2::runtime::AnyObject = &*object;
+            let Some(tv) = any.downcast_ref::<NSTextView>() else {
+                return;
+            };
+            let value: String = tv.string().to_string();
+            let mut handlers = match self.ivars().try_borrow_mut() {
+                Ok(h) => h,
+                Err(_) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[cocoa_dom] reentrant textDidChange skipped"
+                    );
+                    return;
+                }
+            };
+            for cb in handlers.on_change.iter_mut() {
+                cb(value.clone());
+            }
+        }
+    }
+
+    unsafe impl NSTextViewDelegate for TextViewDelegate {}
+);
+
+impl TextViewDelegate {
+    fn new(
+        handlers: SharedTextViewHandlers,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let alloc = Self::alloc(mtm);
+        let this = alloc.set_ivars(handlers);
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+struct TextViewEntry {
+    handlers: SharedTextViewHandlers,
+    _delegate: Retained<TextViewDelegate>,
+}
+
+thread_local! {
+    static TEXT_VIEW_STORE: RefCell<HashMap<usize, TextViewEntry>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Look up (or lazily create) the per-text-view handler state,
+/// ensuring the NSTextView has our `TextViewDelegate` installed.
+/// Same recycled-pointer cache-validity check as
+/// `ensure_text_field_entry` — verify the field's current delegate
+/// matches the one we stored before reusing the cache.
+fn ensure_text_view_entry(
+    tv: &NSTextView,
+) -> SharedTextViewHandlers {
+    let mtm = MainThreadMarker::new()
+        .expect("text-view event installs must run on the main thread");
+    let key = view_key(tv.as_ref());
+    TEXT_VIEW_STORE.with_borrow_mut(|store| {
+        if let Some(entry) = store.get(&key) {
+            let stored_ptr: *const TextViewDelegate = &*entry._delegate;
+            let current = tv.delegate();
+            let still_ours = match current {
+                Some(d) => {
+                    let d_ptr: *const _ = &*d;
+                    d_ptr as usize == stored_ptr as usize
+                }
+                None => false,
+            };
+            if still_ours {
+                return entry.handlers.clone();
+            }
+            store.remove(&key);
+        }
+        let handlers: SharedTextViewHandlers = Default::default();
+        let delegate = TextViewDelegate::new(handlers.clone(), mtm);
+        let proto: &ProtocolObject<dyn NSTextViewDelegate> =
+            ProtocolObject::from_ref(&*delegate);
+        tv.setDelegate(Some(proto));
+        store.insert(
+            key,
+            TextViewEntry {
+                handlers: handlers.clone(),
+                _delegate: delegate,
+            },
+        );
+        handlers
+    })
+}
+
+/// Append a change observer on an NSTextView — fires on every
+/// keystroke (it's the multi-line analog of NSTextField's
+/// `controlTextDidChange:`). Stacks: multiple installs on the same
+/// view all fire in install order.
+pub fn on_text_view_change(
+    tv: &NSTextView,
+    cb: impl FnMut(String) + 'static,
+) {
+    let handlers = ensure_text_view_entry(tv);
+    handlers.borrow_mut().on_change.push(Box::new(cb));
+}
+
 /// Wire the given closure to fire when an NSControl's action fires
 /// — clicks for NSButton/NSPopUpButton, value changes for NSSlider,
 /// etc. (NSButton, NSSlider, NSPopUpButton, NSColorWell, ... are
 /// all NSControls — target/action is the unifying mechanism.)
 ///
-/// Multiple handlers per control are supported by retaining all of
-/// them in our store; however, NSControl's target/action only stores
-/// *one* target/action pair, so calling this twice replaces the
-/// previous wiring (the previous handler stays in the retain-store
-/// but never fires again).
+/// **Single handler per control.** NSControl has one target/action
+/// slot; we don't fan out (the alternative would be a Vec or a
+/// shared-target ObjC subclass — both add allocations for the
+/// 99% case where there's only one handler). A second install on
+/// the same control panics rather than silently overwriting.
+///
+/// This means:
+///   * `<MyComponent on:click=outer>` where the inner component
+///     also installs a click handler on its top-level NSControl
+///     panics. Workaround: have the component accept a
+///     `Callback<()>` prop and call it from the inner closure.
+///   * `<checkbox bind:checked=signal on:click=cb>` panics
+///     (bind:checked installs a write-back action; the user's
+///     `on:click=cb` would be the second installer). Workaround:
+///     wire the user logic into a single closure that also calls
+///     the bind setter, or add an `Effect` that watches the
+///     signal.
 pub fn on_control_action(
     control: &NSControl,
     cb: impl FnMut() + 'static,
 ) {
     let mtm = objc2::MainThreadMarker::new()
         .expect("on_control_action must run on the main thread");
-    let target = ActionTarget::new(cb, mtm);
 
+    // Detect duplicate install. A non-nil target after our prior
+    // wiring means someone already installed a handler on this
+    // control — panic rather than silently overwriting.
+    //
+    // We look at the control's CURRENT target rather than at
+    // HANDLER_STORE because HANDLER_STORE entries can be stale
+    // across recycled NSView pointers (the previous owner was torn
+    // down, drop_handlers_for cleared the entry, but if drop was
+    // somehow missed and the pointer got reused, we don't want to
+    // panic here). The control's own target reflects ground truth.
+    if let Some(existing) = control.target() {
+        panic!(
+            "on_control_action called twice on the same NSControl \
+             ({:p}). NSControl has a single target/action slot — \
+             fanning out would silently break the existing handler. \
+             Workaround: combine your handlers into one closure, \
+             or have any component that accepts on:click also \
+             accept a Callback<()> prop. Existing target: {:p}",
+            control, &*existing,
+        );
+    }
+
+    let target = ActionTarget::new(cb, mtm);
     let target_obj: &NSObject = &target;
     unsafe {
         control.setTarget(Some(target_obj));
