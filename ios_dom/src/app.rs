@@ -1,13 +1,25 @@
-//! UIApplication-level setup: AppDelegate, UIApplicationMain entry.
+//! UIApplication-level setup: AppDelegate, SceneDelegate,
+//! RootViewController, UIApplicationMain entry.
 //!
-//! iOS uses UIApplication + UIApplicationDelegate. The app entry
-//! point is `UIApplicationMain()`, which creates the UIApplication
-//! and AppDelegate, then runs the main event loop forever.
+//! iOS 13+ wants window creation to go through a UISceneDelegate.
+//! We declare scene support via Info.plist's
+//! `UIApplicationSceneManifest`, then return a programmatic
+//! `UISceneConfiguration` from
+//! `application:configurationForConnectingSceneSession:options:` —
+//! that lets us point UIKit at our SceneDelegate's runtime-mangled
+//! ObjC class without baking the name into Info.plist.
 //!
-//! The user's view-building closure is stored in a global slot
-//! before calling `UIApplicationMain`. The AppDelegate creates the
-//! UIWindow, then calls the stored closure to build and mount
-//! the view tree.
+//! AppDelegate's role is now slim:
+//!   1. Initialise the spawner.
+//!   2. Hand UIKit a UISceneConfiguration that names SceneDelegate.
+//!
+//! SceneDelegate's `scene:willConnectToSession:options:` does the
+//! actual work: alloc the UIWindow with `init(windowScene:)`, set
+//! up the content root + Taffy tree + RootViewController, run the
+//! user's view-building closure, makeKeyAndVisible.
+//!
+//! The user's view-building closure is stored in a thread-local
+//! before `UIApplicationMain` is called.
 
 use objc2::{
     define_class, msg_send,
@@ -15,8 +27,10 @@ use objc2::{
     ClassType, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_ui_kit::{
-    UIApplication, UIApplicationDelegate, UIEdgeInsets, UIScreen,
-    UIViewController, UIWindow,
+    UIApplication, UIApplicationDelegate, UIEdgeInsets, UIScene,
+    UISceneConfiguration, UISceneConnectionOptions, UISceneDelegate,
+    UISceneSession, UIViewController, UIWindow, UIWindowScene,
+    UIWindowSceneDelegate,
 };
 use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 use send_wrapper::SendWrapper;
@@ -26,61 +40,54 @@ use std::cell::{Cell, RefCell};
 // Global slot for the view-building closure
 // ---------------------------------------------------------------------
 
-/// The user's view builder, stored before UIApplicationMain is called.
-/// The AppDelegate takes it and calls it with the UIWindow and content
-/// root after creating them.
+/// The user's view builder, stored before UIApplicationMain is
+/// called. The SceneDelegate takes it on
+/// `scene:willConnectToSession:` and calls it with the window and
+/// content root after creating them.
 type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element)>;
 
 thread_local! {
     static BUILDER: RefCell<Option<ViewBuilder>> = RefCell::new(None);
 }
 
-/// Store a view builder to be invoked when the app launches.
+/// Store a view builder to be invoked when the first scene connects.
 /// Called by the mount entry point before `uiapplication_main`.
-pub fn store_view_builder(f: impl FnOnce(&UIWindow, &crate::node::Element) + 'static) {
+pub fn store_view_builder(
+    f: impl FnOnce(&UIWindow, &crate::node::Element) + 'static,
+) {
     BUILDER.with_borrow_mut(|slot| {
         *slot = Some(Box::new(f));
     });
 }
 
 // ---------------------------------------------------------------------
-// AppDelegate
+// AppDelegate — slim. Hands UIKit a programmatic scene config.
 // ---------------------------------------------------------------------
 
-pub struct AppDelegateState {
-    pub window: RefCell<Option<Retained<UIWindow>>>,
-    pub content_root: RefCell<Option<crate::node::Element>>,
-    /// Owns the content root's Taffy tree. The `LayoutHandle`
-    /// stored on each registered node clones this `Rc`, so the tree
-    /// would actually stay alive as long as any node references it
-    /// — but rooting it here too means there's an explicit owner
-    /// rather than relying on a `mem::forget`.
-    pub tree: RefCell<Option<crate::layout::TreeRef>>,
-}
-
 define_class!(
-    /// UIApplicationDelegate that creates a UIWindow at launch,
-    /// then calls the stored view builder to populate it.
+    /// `UIApplicationDelegate` that
+    ///   1. initialises the main-thread spawner on launch, and
+    ///   2. returns a `UISceneConfiguration` naming our
+    ///      `SceneDelegate` class so UIKit creates one for the
+    ///      app's window scene.
+    ///
+    /// All real work happens in `SceneDelegate`.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[ivars = AppDelegateState]
+    #[ivars = ()]
     pub struct AppDelegate;
 
     unsafe impl NSObjectProtocol for AppDelegate {}
 
     impl AppDelegate {
-        // Called by UIKit when `UIApplicationMain` does
-        // `[[AppDelegate alloc] init]`. Without this method, the
-        // ObjC-side allocation leaves our Rust ivars uninitialised
-        // and the first `self.ivars()` access panics with
-        // "tried to access uninitialized instance variable".
+        // UIKit alloc-inits the AppDelegate via `[Class alloc] init]`.
+        // Without an explicit init that sets ivars, `self.ivars()`
+        // panics on first access. AppDelegate has zero-sized ivars
+        // (unit), but the `set_ivars` call is still required to
+        // mark the instance initialised.
         #[unsafe(method_id(init))]
         fn init(this: Allocated<Self>) -> Option<Retained<Self>> {
-            let this = this.set_ivars(AppDelegateState {
-                window: RefCell::new(None),
-                content_root: RefCell::new(None),
-                tree: RefCell::new(None),
-            });
+            let this = this.set_ivars(());
             unsafe { msg_send![super(this), init] }
         }
     }
@@ -92,31 +99,134 @@ define_class!(
             _application: &UIApplication,
             _options: Option<&NSObject>,
         ) -> bool {
-            let mtm = MainThreadMarker::new()
-                .expect("didFinishLaunching must run on main thread");
-
             let _ = crate::spawner::init();
+            true
+        }
 
-            // Pre-iOS-13 single-window path. Modern apps create
-            // the window from `UISceneDelegate.scene(_:willConnectTo:)`,
-            // tracked as audit issue 3a — the modern path requires
-            // an Info.plist `UIApplicationSceneManifest`. The old
-            // path still works on iOS 15–18.
-            #[allow(deprecated)]
-            let screen_bounds = UIScreen::mainScreen(mtm).bounds();
-            #[allow(deprecated)]
-            let window = UIWindow::initWithFrame(
+        // Programmatic scene configuration: returned to UIKit when
+        // the system asks for a config for a connecting scene.
+        // Avoids having to bake the runtime-mangled SceneDelegate
+        // class name into Info.plist (which is read before our code
+        // runs).
+        //
+        // method_family = none tells objc2 to convert our `Retained<T>`
+        // into an autoreleased pointer, since this isn't an
+        // init/new/create-family method.
+        #[unsafe(method_id(application:configurationForConnectingSceneSession:options:))]
+        fn configuration_for_connecting_scene_session(
+            &self,
+            _application: &UIApplication,
+            connecting_scene_session: &UISceneSession,
+            _options: &UISceneConnectionOptions,
+        ) -> Retained<UISceneConfiguration> {
+            let mtm = MainThreadMarker::new()
+                .expect("scene config callback runs on main thread");
+            let role = connecting_scene_session.role();
+            let name = NSString::from_str("Default");
+            let config = UISceneConfiguration::initWithName_sessionRole(
+                UISceneConfiguration::alloc(mtm),
+                Some(&name),
+                &role,
+            );
+            unsafe {
+                config.setDelegateClass(Some(SceneDelegate::class()));
+            }
+            config
+        }
+    }
+);
+
+impl AppDelegate {
+    pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let alloc = Self::alloc(mtm).set_ivars(());
+        unsafe { msg_send![super(alloc), init] }
+    }
+}
+
+// ---------------------------------------------------------------------
+// SceneDelegate — owns the UIWindow + content root + Taffy tree.
+// ---------------------------------------------------------------------
+
+pub struct SceneDelegateState {
+    pub window: RefCell<Option<Retained<UIWindow>>>,
+    pub content_root: RefCell<Option<crate::node::Element>>,
+    /// Owns the content root's Taffy tree. Cloned `Rc`s on each
+    /// node's `LayoutHandle` already keep the tree alive, but
+    /// rooting it here too means there's an explicit owner.
+    pub tree: RefCell<Option<crate::layout::TreeRef>>,
+}
+
+define_class!(
+    /// `UIWindowSceneDelegate` that creates the UIWindow when the
+    /// scene connects, sets up the content root + Taffy tree +
+    /// `RootViewController`, and runs the user's stored view
+    /// builder closure to mount the view tree.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = SceneDelegateState]
+    pub struct SceneDelegate;
+
+    unsafe impl NSObjectProtocol for SceneDelegate {}
+
+    impl SceneDelegate {
+        // UIKit allocs SceneDelegate via `[Class alloc] init]` once
+        // the AppDelegate's `configurationForConnectingSceneSession`
+        // names this class. Without an explicit init that calls
+        // set_ivars, the first `self.ivars()` panics.
+        #[unsafe(method_id(init))]
+        fn init(this: Allocated<Self>) -> Option<Retained<Self>> {
+            let this = this.set_ivars(SceneDelegateState {
+                window: RefCell::new(None),
+                content_root: RefCell::new(None),
+                tree: RefCell::new(None),
+            });
+            unsafe { msg_send![super(this), init] }
+        }
+    }
+
+    // `scene:willConnectToSession:options:` is declared on
+    // `UISceneDelegate` (UIWindowSceneDelegate inherits from it),
+    // so the override has to live in the UISceneDelegate impl —
+    // putting it in UIWindowSceneDelegate makes objc2 emit
+    // "method not found" because the selector isn't on that
+    // protocol's method list.
+    unsafe impl UIWindowSceneDelegate for SceneDelegate {}
+
+    unsafe impl UISceneDelegate for SceneDelegate {
+        #[unsafe(method(scene:willConnectToSession:options:))]
+        fn scene_will_connect(
+            &self,
+            scene: &UIScene,
+            _session: &UISceneSession,
+            _options: &UISceneConnectionOptions,
+        ) {
+            let mtm = MainThreadMarker::new()
+                .expect("scene:willConnectToSession: runs on main thread");
+
+            // The scene we get is a UIScene; downcast to UIWindowScene
+            // (which it always is for UIWindowSceneDelegate).
+            let any: &objc2::runtime::AnyObject = scene.as_ref();
+            let Some(window_scene) =
+                any.downcast_ref::<UIWindowScene>()
+            else {
+                eprintln!(
+                    "[ios_dom] expected UIWindowScene, got something else"
+                );
+                return;
+            };
+
+            let window = UIWindow::initWithWindowScene(
                 UIWindow::alloc(mtm),
-                screen_bounds,
+                window_scene,
             );
             window.setBackgroundColor(Some(
                 &objc2_ui_kit::UIColor::systemBackgroundColor(),
             ));
 
             // Content root — a vstack filling the window. The tag
-            // already implies `flex_direction: Column` (see
-            // `Element::create_with`), so no explicit setter call.
-            let content_root = crate::node::Element::create_with("vstack", mtm);
+            // already implies `flex_direction: Column`.
+            let content_root =
+                crate::node::Element::create_with("vstack", mtm);
             let tree = crate::layout::new_tree();
             crate::layout::register_in_tree(content_root.as_node(), &tree);
 
@@ -124,7 +234,6 @@ define_class!(
             root_vc.setView(Some(content_root.ui_view()));
             window.setRootViewController(Some(&root_vc));
 
-            // Call the user's view builder.
             BUILDER.with_borrow_mut(|slot| {
                 if let Some(build) = slot.take() {
                     build(&window, &content_root);
@@ -136,32 +245,31 @@ define_class!(
             *self.ivars().window.borrow_mut() = Some(window);
             *self.ivars().content_root.borrow_mut() = Some(content_root);
             *self.ivars().tree.borrow_mut() = Some(tree);
-
-            true
         }
     }
 );
 
-impl AppDelegate {
+impl SceneDelegate {
     pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let alloc = Self::alloc(mtm).set_ivars(AppDelegateState {
+        let alloc = Self::alloc(mtm).set_ivars(SceneDelegateState {
             window: RefCell::new(None),
             content_root: RefCell::new(None),
             tree: RefCell::new(None),
         });
-        unsafe { objc2::msg_send![super(alloc), init] }
+        unsafe { msg_send![super(alloc), init] }
     }
 }
 
 // ---------------------------------------------------------------------
 // RootViewController — re-runs Taffy layout on bounds changes and
-// applies the view's safeAreaInsets as padding on the content root.
+// applies the view's safeAreaInsets + keyboardLayoutGuide as padding
+// on the content root.
 // ---------------------------------------------------------------------
 
 pub struct RootViewControllerState {
     pub content_root: SendWrapper<crate::node::Element>,
     pub last_insets: Cell<UIEdgeInsets>,
-    /// Extra bottom inset to add for the on-screen keyboard, in
+    /// Extra bottom inset added for the on-screen keyboard, in
     /// view coordinates. Recomputed every layout tick from
     /// `view.keyboardLayoutGuide().layoutFrame()`. Zero when the
     /// keyboard is hidden.
@@ -277,24 +385,30 @@ impl RootViewController {
 /// This function never returns.
 ///
 /// `objc2`'s `define_class!` registers ObjC classes under a *mangled*
-/// name (something like `ios_dom_app_AppDelegate$$...`), not the bare
-/// Rust struct name — so we have to look up the runtime name via
+/// name (e.g. `ios_dom_app_AppDelegate$$...`), not the bare Rust struct
+/// name — so we have to look up the runtime name via
 /// `AppDelegate::class().name()` and pass that to UIApplicationMain.
 /// Hard-coding `"AppDelegate"` makes UIKit fail with
 /// `NSInternalInconsistencyException` before launch.
+///
+/// We also touch `SceneDelegate::class()` here so the runtime has it
+/// registered before `application:configurationForConnectingSceneSession:`
+/// returns a config naming it.
 ///
 /// # Safety
 /// Must be called on the main thread. A view builder must have
 /// been stored via `store_view_builder` before calling this.
 pub fn uiapplication_main() -> ! {
-    // Force ObjC class registration. With objc2's define_class!,
-    // classes are registered lazily on first use. We touch
-    // AppDelegate by allocating a throwaway instance so the runtime
-    // table is populated before UIApplicationMain reads it.
     {
         let mtm = MainThreadMarker::new().expect("main thread");
+        // Force class registration. Without these, the classes are
+        // registered lazily only on first method dispatch — which
+        // for SceneDelegate may not happen until UIKit is already
+        // looking it up.
         let _delegate = AppDelegate::new(mtm);
         std::mem::forget(_delegate);
+        let _scene_delegate = SceneDelegate::new(mtm);
+        std::mem::forget(_scene_delegate);
     }
 
     extern "C" {

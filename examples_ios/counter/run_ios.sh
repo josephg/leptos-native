@@ -49,6 +49,16 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
          no custom launch UI." -->
     <key>UILaunchScreen</key>
     <dict/>
+    <!-- Declare scene support so iOS routes window creation through
+         UIWindowSceneDelegate. We don't list any UISceneConfigurations;
+         AppDelegate.application:configurationForConnectingSceneSession:
+         provides one programmatically (so the runtime-mangled SceneDelegate
+         class name doesn't have to be baked into Info.plist). -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
 </dict>
 </plist>
 PLIST

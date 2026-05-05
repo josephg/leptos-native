@@ -9,7 +9,12 @@
 > — without it iOS runs apps at 320×480 compatibility scaling.
 > Examples shipped: counter, greeter, switch_demo, controls,
 > counters, checkbox, login_form, settings, timer, todomvc — all
-> 10 of the cocoa examples that have iOS analogues. README_ios.md, CLAUDE.md and implementation_ios
+> 10 of the cocoa examples that have iOS analogues. **§3a (modern
+> scene delegate)** is now done — UIWindow is created via
+> `UIWindowSceneDelegate.scene(_:willConnectTo:)` rather than the
+> deprecated `initWithFrame:` path, with the `UISceneConfiguration`
+> registered programmatically so the runtime-mangled `SceneDelegate`
+> class name doesn't have to live in Info.plist. README_ios.md, CLAUDE.md and implementation_ios
 > all updated. §2 closed as match-cocoa behaviour. Still pending:
 > 3a (modern scene delegate), todomvc port, hardware keyboard /
 > accessibility / dark mode (P5 in TODO_ios.md).

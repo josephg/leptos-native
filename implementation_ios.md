@@ -6,6 +6,54 @@ top.
 
 ---
 
+## Modern scene delegate — programmatic UISceneConfiguration
+
+iOS 13+ wants window creation through a `UISceneDelegate`, not the
+legacy `UIApplicationDelegate.window` path. The shape is now:
+
+1. **Info.plist** declares scene support via
+   `UIApplicationSceneManifest = { UIApplicationSupportsMultipleScenes = false }`,
+   with **no** `UISceneConfigurations` entry.
+2. **AppDelegate** implements
+   `application:configurationForConnectingSceneSession:options:`
+   and returns a programmatic `UISceneConfiguration` whose
+   `delegateClass` is `SceneDelegate::class()` — that lets us point
+   UIKit at our objc2-mangled class name without baking it into
+   Info.plist (which is read before our code can run).
+3. **SceneDelegate** implements `UIWindowSceneDelegate`. Its
+   `scene:willConnectToSession:options:` does the work that used to
+   live in AppDelegate's `didFinishLaunchingWithOptions`: alloc the
+   `UIWindow` via `init(windowScene:)`, set up the content root +
+   Taffy tree + `RootViewController`, run the user's stored view
+   builder closure, `makeKeyAndVisible`.
+
+Two objc2 gotchas this surfaces:
+
+- **`scene:willConnectToSession:options:` belongs to `UISceneDelegate`**,
+  not `UIWindowSceneDelegate` (which inherits from it). The override
+  must live in the `unsafe impl UISceneDelegate` block — putting it
+  on the `UIWindowSceneDelegate` impl makes objc2 panic at startup
+  with "failed overriding protocol method ... method not found"
+  because the selector isn't on that specific protocol's method
+  list.
+- The programmatic-config method returns
+  `Retained<UISceneConfiguration>`. That requires
+  `#[unsafe(method_id(...))]` (not `#[unsafe(method(...))]`) so
+  objc2 emits the autorelease bridging. Plain `method` rejects
+  `Retained<T>` returns with `EncodeReturn` errors.
+
+Also: register the SceneDelegate class eagerly at startup
+(`SceneDelegate::class()` or a throwaway alloc) — objc2 registers
+classes lazily, and waiting for first method dispatch is too late
+because UIKit is already trying to look up the class by name from
+the config we returned.
+
+The deprecated `UIWindow::initWithFrame` and
+`UIScreen::mainScreen` calls are gone; the
+`#[allow(deprecated)]` guards with them.
+
+---
+
 ## `UILaunchScreen` is required, or iOS runs at 320×480
 
 Without `UILaunchScreen` (or `UILaunchStoryboardName`) in

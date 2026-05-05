@@ -60,43 +60,23 @@ hides, so the relayout cascade is hands-off. Verify with the
 `greeter` example: focus the text field, watch the label stay
 above the keyboard.
 
-### Modern scene delegate (audit §3a + §6a + §6d)
-Currently uses the deprecated `UIWindow::initWithFrame` path with
-`#[allow(deprecated)]`. iOS 13+ wants `UIWindowScene` /
-`UISceneDelegate`.
-
-- [ ] Define `SceneDelegate` class in `ios_dom/src/app.rs` (or new
-  `ios_dom/src/scene.rs`). Override
-  `scene:willConnectToSession:options:` to create the `UIWindow`
-  from `UIWindowScene`, install `RootViewController`.
-- [ ] Add `UIApplicationSceneManifest` to Info.plist
-  (`run_ios.sh`):
-  ```xml
-  <key>UIApplicationSceneManifest</key>
-  <dict>
-      <key>UIApplicationSupportsMultipleScenes</key>
-      <false/>
-      <key>UISceneConfigurations</key>
-      <dict>
-          <key>UIWindowSceneSessionRoleApplication</key>
-          <array>
-              <dict>
-                  <key>UISceneConfigurationName</key>
-                  <string>Default</string>
-                  <key>UISceneDelegateClassName</key>
-                  <string>MANGLED_NAME</string>
-              </dict>
-          </array>
-      </dict>
-  </dict>
-  ```
-  Class name must be the runtime-mangled name, same trick as
-  `AppDelegate::class().name()`.
-- [ ] Add `MinimumOSVersion` to Info.plist (Apple-required;
-  pick 15.0 to match `objc2-ui-kit` 0.3 minimum).
-- [ ] Move `did_finish_launching` window setup into
-  `scene(_:willConnectTo:options:)`. Keep `did_finish_launching`
-  for non-scene work (spawner init, builder.take()).
+### ~~Modern scene delegate (audit §3a + §6a + §6d)~~ ✅ DONE
+- `UIApplicationSceneManifest` declared in Info.plist
+  (no static `UISceneConfigurations` — config is programmatic).
+- `AppDelegate` is now slim: spawner init +
+  `application:configurationForConnectingSceneSession:options:` that
+  hands UIKit a programmatic `UISceneConfiguration` naming the
+  `SceneDelegate` class.
+- `SceneDelegate` implements `UIWindowSceneDelegate` /
+  `UISceneDelegate`; its `scene:willConnectToSession:options:` does
+  what `didFinishLaunchingWithOptions` used to: alloc the UIWindow
+  via `init(windowScene:)`, set up content_root + Taffy tree +
+  `RootViewController`, run the stored view-builder closure,
+  `makeKeyAndVisible`.
+- Deprecated `UIWindow::initWithFrame` + `UIScreen::mainScreen`
+  calls and their `#[allow(deprecated)]` guards are gone.
+- Required Cargo features added: `UIWindowScene`, `UIScene`,
+  `UISceneSession`, `UISceneConfiguration`, `UISceneOptions`.
 
 ### ~~Run script polish (§6b, §6c, §6d)~~ ✅ DONE
 - `run_ios.sh` (all five examples) now terminates any prior

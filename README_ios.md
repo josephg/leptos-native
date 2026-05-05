@@ -213,12 +213,9 @@ through the same target/action machinery as a button tap. (Or use
 ## Known limitations
 
 - **Single scene only.** iPad multi-window is deferred — would need
-  a `Scene` builder integrated with `UISceneDelegate`.
-- **No modern scene delegate.** Window setup uses the
-  `UIApplicationDelegate.window` path with `#[allow(deprecated)]`.
-  iOS 15–18 still accept it; eventually we should switch to a
-  `UISceneDelegate` registered via `UIApplicationSceneManifest`.
-  Tracked in [TODO_ios.md](TODO_ios.md) (P3 / 3a).
+  a `Scene` builder for declaring multiple scenes at the user/app
+  level. Single-scene apps go through the modern `UISceneDelegate`
+  path already.
 - **No hardware-keyboard events.** `on:keydown` / `on:keyup` on text
   fields are no-ops on iOS; software keyboard captures everything.
   `UIKeyCommand` / `pressesBegan:` integration is a future stage.
