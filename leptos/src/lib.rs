@@ -196,19 +196,24 @@ pub mod prelude {
         pub use crate::mount_gtk::*;
 
         // iOS analog of web's setInterval. Backed by NSTimer.
-        #[cfg(target_os = "ios")]
+        #[cfg(all(target_os = "ios", leptos_native))]
         pub use ios_dom::{
             set_interval, set_interval_with_handle, IntervalError,
             IntervalHandle,
         };
 
         // iOS-flavoured NodeRef.
-        #[cfg(target_os = "ios")]
+        #[cfg(all(target_os = "ios", leptos_native))]
         pub use tachys::ios::NodeRef;
 
         // iOS persistent storage analog (`NSUserDefaults`).
-        #[cfg(target_os = "ios")]
+        #[cfg(all(target_os = "ios", leptos_native))]
         pub use ios_dom::{local_storage, Storage, StorageError};
+
+        // iOS color types — including `Color::SYSTEM_BLUE` /
+        // `Color::LABEL` etc. that adapt automatically to dark mode.
+        #[cfg(all(target_os = "ios", leptos_native))]
+        pub use ios_dom::{Color, SystemColor};
 
         // macOS analog of `leptos_dom::helpers::set_interval_with_handle`
         // (web's setInterval). Backed by NSTimer; same signature so

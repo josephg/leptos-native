@@ -209,6 +209,15 @@ through the same target/action machinery as a button tap. (Or use
 - Rotation / split-view: `viewDidLayoutSubviews` re-runs Taffy on
   every bounds change.
 - Single-fullscreen on iPhone, iPad fullscreen.
+- Dark mode: `Color::SYSTEM_BLUE`, `Color::LABEL`,
+  `Color::SYSTEM_BACKGROUND`, etc. resolve to UIKit's adaptive
+  colours — automatic light/dark switching with no extra plumbing
+  in app code. Default text + background paths already use these,
+  so unstyled UI just works.
+- Tap gestures on any view: `<view on:click=…>` /
+  `<label on:click=…>` / `<image_view on:click=…>` install a
+  `UITapGestureRecognizer` under the hood (button / switch /
+  slider / etc. continue to use UIControl target/action).
 
 ## Known limitations
 
@@ -222,9 +231,6 @@ through the same target/action machinery as a button tap. (Or use
 - **No Dynamic Type / VoiceOver polish.** Defaults work; explicit
   Dynamic Type scaling on `font_size` and richer `accessibilityLabel`
   configuration are deferred.
-- **No dark-mode reactivity.** `UIColor.systemBackgroundColor`
-  adapts to light/dark automatically, but custom colours don't yet
-  re-fire effects on `traitCollectionDidChange:`.
 - **No navigation / tab / list builders.** UINavigationController,
   UITabBarController, UICollectionView aren't wrapped yet.
 - **No `mount_to_window`.** iOS has no user-facing window concept;

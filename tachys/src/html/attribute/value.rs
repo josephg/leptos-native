@@ -53,6 +53,29 @@ impl IntoAttributeValue for Vec<String> {
     }
 }
 
+// iOS Color (and the named system colors). Lets the view! macro
+// pass `text_color=Color::SYSTEM_BLUE` etc. through verbatim to the
+// builder's typed `.text_color()` method (which takes
+// `IntoMaybeReactive<Color>`).
+#[cfg(all(target_os = "ios", leptos_native))]
+impl IntoAttributeValue for ios_dom::Color {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
+// Same for macOS (cocoa_dom::Color), which had the same restriction
+// — kept it from biting future-us if/when a cocoa example uses
+// `text_color=` in a view! macro.
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::Color {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
 /// A possible value for an HTML attribute.
 pub trait AttributeValue: Send {
     /// The state that should be retained between building and rebuilding.

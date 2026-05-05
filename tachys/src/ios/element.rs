@@ -14,7 +14,10 @@ use crate::{
     view::{Mountable, Render, RenderHtml},
 };
 use ios_dom::{
-    layout::{set_flex_direction, set_flex_grow, set_gap, set_padding, FlexDirection},
+    layout::{
+        set_aspect_ratio, set_flex_direction, set_flex_grow, set_gap,
+        set_inset, set_padding, set_position, FlexDirection, Position,
+    },
     BoolAttr, Element as IosElement, StringAttr,
 };
 use reactive_graph::effect::RenderEffect;
@@ -73,6 +76,50 @@ fn apply_text_attrs(
     out
 }
 
+/// Apply chrome attributes — background color, corner radius,
+/// border width + color. All four sit on the underlying UIView
+/// (or its CALayer); each is reactive via `MaybeReactive`.
+fn apply_chrome(
+    el: &IosElement,
+    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    corner_radius: Option<MaybeReactive<f64>>,
+    border_width: Option<MaybeReactive<f64>>,
+    border_color: Option<MaybeReactive<ios_dom::Color>>,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(c) = background_color {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(c, move |v| el_for.set_background_color(Some(v)))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(r) = corner_radius {
+        let el_for = el.clone();
+        if let Some(eff) = install(r, move |v| el_for.set_corner_radius(v))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(w) = border_width {
+        let el_for = el.clone();
+        if let Some(eff) = install(w, move |v| el_for.set_border_width(v))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(c) = border_color {
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(c, move |v| el_for.set_border_color(Some(v)))
+        {
+            out.push(eff);
+        }
+    }
+    out
+}
+
 /// Generates `alpha(<reactive f64>)` builder method on `$builder<At>`.
 /// (No `tool_tip` analogue on iOS — tooltips are a macOS hover concept.)
 macro_rules! impl_universal_attrs {
@@ -117,6 +164,60 @@ macro_rules! impl_text_attrs {
                 V: IntoMaybeReactive<f64>,
             {
                 self.font_size = Some(p.into_maybe_reactive());
+                self
+            }
+        }
+    };
+}
+
+/// Adds `background_color` / `corner_radius` / `border_width` /
+/// `border_color` builder methods. The struct must have those four
+/// fields as `Option<MaybeReactive<...>>`.
+///
+/// Currently `View` wires chrome attrs by hand because of its
+/// `<Children, At>` two-parameter shape. This macro is here for
+/// when chrome lands on Button / Label / etc. Until then, mark
+/// it `unused_macros`-allowed so the warning doesn't drown the
+/// build log.
+#[allow(unused_macros)]
+macro_rules! impl_chrome_attrs {
+    ($builder:ident) => {
+        impl<At> $builder<At> {
+            /// Background fill colour. Pass a `Color` (e.g.
+            /// `Color::SYSTEM_BACKGROUND`) or a closure.
+            pub fn background_color<V>(mut self, c: V) -> Self
+            where
+                V: IntoMaybeReactive<ios_dom::Color>,
+            {
+                self.background_color = Some(c.into_maybe_reactive());
+                self
+            }
+            /// Rounded corners (in points). 0 = square (default).
+            /// Sets `layer.cornerRadius` + `masksToBounds=true` so
+            /// children clip to the rounded shape.
+            pub fn corner_radius<V>(mut self, r: V) -> Self
+            where
+                V: IntoMaybeReactive<f64>,
+            {
+                self.corner_radius = Some(r.into_maybe_reactive());
+                self
+            }
+            /// Border width in points (default 0). Pair with
+            /// `border_color` — a width with no colour shows
+            /// transparent.
+            pub fn border_width<V>(mut self, w: V) -> Self
+            where
+                V: IntoMaybeReactive<f64>,
+            {
+                self.border_width = Some(w.into_maybe_reactive());
+                self
+            }
+            /// Border colour. See `border_width` for thickness.
+            pub fn border_color<V>(mut self, c: V) -> Self
+            where
+                V: IntoMaybeReactive<ios_dom::Color>,
+            {
+                self.border_color = Some(c.into_maybe_reactive());
                 self
             }
         }
@@ -243,7 +344,18 @@ pub struct View<Children, At = ()> {
     padding: Option<f32>,
     gap: Option<f32>,
     flex_grow: Option<f32>,
+    aspect_ratio: Option<f32>,
+    position_absolute: bool,
+    /// Insets used when `position_absolute`. `None` = `auto`.
+    inset_top: Option<f32>,
+    inset_right: Option<f32>,
+    inset_bottom: Option<f32>,
+    inset_left: Option<f32>,
     alpha: Option<MaybeReactive<f64>>,
+    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    corner_radius: Option<MaybeReactive<f64>>,
+    border_width: Option<MaybeReactive<f64>>,
+    border_color: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
     children: Children,
     attrs: At,
@@ -255,7 +367,17 @@ pub fn view() -> View<(), ()> {
         padding: None,
         gap: None,
         flex_grow: None,
+        aspect_ratio: None,
+        position_absolute: false,
+        inset_top: None,
+        inset_right: None,
+        inset_bottom: None,
+        inset_left: None,
         alpha: None,
+        background_color: None,
+        corner_radius: None,
+        border_width: None,
+        border_color: None,
         handlers: Vec::new(),
         children: (),
         attrs: (),
@@ -279,8 +401,65 @@ impl<Ch, A> View<Ch, A> {
         self.flex_grow = Some(g);
         self
     }
+    /// Aspect ratio (width / height). `1.0` makes the view square,
+    /// useful for photo cells in a grid.
+    pub fn aspect_ratio(mut self, r: f32) -> Self {
+        self.aspect_ratio = Some(r);
+        self
+    }
+    /// Take this view out of the parent's flex flow and position
+    /// it absolutely against the parent's content area. Combine
+    /// with `inset_top` / `inset_right` / `inset_bottom` /
+    /// `inset_left` to anchor. Useful for badge overlays — a star
+    /// in the top-right of a photo cell, a "RAW" chip in the
+    /// top-left, etc.
+    ///
+    /// Takes a `bool` so the `view!{}` macro's `attr=value`
+    /// shorthand works: `<vstack position_absolute=true>`.
+    pub fn position_absolute(mut self, abs: bool) -> Self {
+        self.position_absolute = abs;
+        self
+    }
+    pub fn inset_top(mut self, v: f32) -> Self {
+        self.inset_top = Some(v);
+        self
+    }
+    pub fn inset_right(mut self, v: f32) -> Self {
+        self.inset_right = Some(v);
+        self
+    }
+    pub fn inset_bottom(mut self, v: f32) -> Self {
+        self.inset_bottom = Some(v);
+        self
+    }
+    pub fn inset_left(mut self, v: f32) -> Self {
+        self.inset_left = Some(v);
+        self
+    }
     pub fn alpha<V: IntoMaybeReactive<f64>>(mut self, a: V) -> Self {
         self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+    pub fn background_color<V: IntoMaybeReactive<ios_dom::Color>>(
+        mut self,
+        c: V,
+    ) -> Self {
+        self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+    pub fn corner_radius<V: IntoMaybeReactive<f64>>(mut self, r: V) -> Self {
+        self.corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+    pub fn border_width<V: IntoMaybeReactive<f64>>(mut self, w: V) -> Self {
+        self.border_width = Some(w.into_maybe_reactive());
+        self
+    }
+    pub fn border_color<V: IntoMaybeReactive<ios_dom::Color>>(
+        mut self,
+        c: V,
+    ) -> Self {
+        self.border_color = Some(c.into_maybe_reactive());
         self
     }
     pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh), A> {
@@ -289,7 +468,17 @@ impl<Ch, A> View<Ch, A> {
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            aspect_ratio: self.aspect_ratio,
+            position_absolute: self.position_absolute,
+            inset_top: self.inset_top,
+            inset_right: self.inset_right,
+            inset_bottom: self.inset_bottom,
+            inset_left: self.inset_left,
             alpha: self.alpha,
+            background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
             handlers: self.handlers,
             children: (self.children, child),
             attrs: self.attrs,
@@ -305,6 +494,12 @@ impl<Ch, A> View<Ch, A> {
         self
     }
 }
+
+// `<view on:click=...>` works via UITapGestureRecognizer (installed
+// in `Element::on_click` when the underlying view isn't a UIControl).
+// Plain UIView, UILabel, UIImageView etc. all route through that
+// fallback.
+impl<Ch, A> SupportsEvent<crate::html::event::ClickEvent> for View<Ch, A> {}
 
 impl<Ch: Render, A: crate::html::attribute::Attribute> Render for View<Ch, A> {
     type State = ElementState<A::State, Ch::State>;
@@ -323,7 +518,27 @@ impl<Ch: Render, A: crate::html::attribute::Attribute> Render for View<Ch, A> {
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+        if let Some(r) = self.aspect_ratio {
+            set_aspect_ratio(el.as_node(), r);
+        }
+        if self.position_absolute {
+            set_position(el.as_node(), Position::Absolute);
+            set_inset(
+                el.as_node(),
+                self.inset_top,
+                self.inset_right,
+                self.inset_bottom,
+                self.inset_left,
+            );
+        }
         effects.extend(apply_universal(&el, self.alpha));
+        effects.extend(apply_chrome(
+            &el,
+            self.background_color,
+            self.corner_radius,
+            self.border_width,
+            self.border_color,
+        ));
         let child_state = self.children.build();
         let attrs = self.attrs.build(&el);
         for handler in self.handlers {
@@ -357,7 +572,17 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            aspect_ratio: self.aspect_ratio,
+            position_absolute: self.position_absolute,
+            inset_top: self.inset_top,
+            inset_right: self.inset_right,
+            inset_bottom: self.inset_bottom,
+            inset_left: self.inset_left,
             alpha: self.alpha,
+            background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
             handlers: self.handlers,
             children: self.children,
             attrs: crate::html::attribute::NextAttribute::add_any_attr(
@@ -386,7 +611,17 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            aspect_ratio: self.aspect_ratio,
+            position_absolute: self.position_absolute,
+            inset_top: self.inset_top,
+            inset_right: self.inset_right,
+            inset_bottom: self.inset_bottom,
+            inset_left: self.inset_left,
             alpha: self.alpha,
+            background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
             handlers: Vec::new(),
             children: ch.await,
             attrs: a.await,
@@ -416,7 +651,17 @@ where
             padding: self.padding,
             gap: self.gap,
             flex_grow: self.flex_grow,
+            aspect_ratio: self.aspect_ratio,
+            position_absolute: self.position_absolute,
+            inset_top: self.inset_top,
+            inset_right: self.inset_right,
+            inset_bottom: self.inset_bottom,
+            inset_left: self.inset_left,
             alpha: self.alpha,
+            background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
             handlers: self.handlers,
             children: self.children.into_owned(),
             attrs: self.attrs.into_cloneable_owned(),
@@ -1374,6 +1619,7 @@ impl<At: crate::html::attribute::Attribute> Render for ProgressIndicator<At> {
 pub struct ImageView<At = ()> {
     source: MaybeReactive<String>,
     flex_grow: Option<f32>,
+    handlers: Vec<PendingHandler>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
     attrs: At,
@@ -1383,6 +1629,7 @@ pub fn image_view() -> ImageView<()> {
     ImageView {
         source: MaybeReactive::Static(String::new()),
         flex_grow: None,
+        handlers: Vec::new(),
         node_ref: None,
         alpha: None,
         attrs: (),
@@ -1406,11 +1653,24 @@ impl<A> ImageView<A> {
         self.node_ref = Some(r);
         self
     }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
 }
+
+// `<image_view on:click=...>` lands on a UITapGestureRecognizer via
+// the on_click → on_tap_gesture fallback.
+impl<A> SupportsEvent<crate::html::event::ClickEvent> for ImageView<A> {}
 
 impl_universal_attrs!(ImageView);
 
-impl_typed_attrs_for!(ImageView, source, flex_grow, node_ref, alpha);
+impl_typed_attrs_for!(ImageView, source, flex_grow, handlers, node_ref, alpha);
 
 impl<At: crate::html::attribute::Attribute> Render for ImageView<At> {
     type State = ElementState<At::State, ()>;
@@ -1427,6 +1687,10 @@ impl<At: crate::html::attribute::Attribute> Render for ImageView<At> {
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
         }
 
         effects.extend(apply_universal(&el, self.alpha));

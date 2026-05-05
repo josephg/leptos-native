@@ -19,10 +19,58 @@ fn Showcase() -> impl IntoView {
     let style_idx = RwSignal::new(0_usize);
     let notes = RwSignal::new("Multi-line notes here.".to_string());
 
+    let taps = RwSignal::new(0_u32);
+
     view! {
         <scroll_view flex_grow=1.0>
             <vstack padding=20.0 gap=16.0>
-                <label font_size=24.0>{"Controls demo"}</label>
+                // Tappable label — exercises the
+                // `UITapGestureRecognizer` fallback in
+                // `Element::on_click` for non-UIControl views.
+                <label
+                    font_size=24.0
+                    text_color=Color::SYSTEM_BLUE
+                    on:click=move |_| taps.update(|n| *n += 1)>
+                    {move || format!(
+                        "Controls demo — tap me ({} taps)",
+                        taps.get(),
+                    )}
+                </label>
+
+                // (Photo-cell demo removed — `aspect_ratio` +
+                // default `align-items: stretch` made the cell
+                // consume the row's full width and push the title
+                // off-screen. Real photo grids will set explicit
+                // `width=N` + `height=N` per cell once those
+                // builder methods land, OR pass through Taffy's
+                // grid layout once the `grid` feature is enabled.)
+
+                // Chrome demo — a card with rounded corners, fill,
+                // and a coloured outline. Exercises the new
+                // `background_color`/`corner_radius`/`border_width`/
+                // `border_color` builder attributes.
+                //
+                // Note: use `<vstack>` (or `<hstack>`) for chrome
+                // attributes, not `<view>` — the leptos macro lists
+                // "view" as an SVG element, so attrs on `<view>`
+                // route through `.attr(name, value)` instead of
+                // typed builder methods.
+                <vstack
+                    padding=12.0
+                    gap=4.0
+                    corner_radius=16.0
+                    background_color=Color::SECONDARY_LABEL
+                    border_width=1.5
+                    border_color=Color::SYSTEM_BLUE>
+                    <label text_color=Color::SYSTEM_BACKGROUND>
+                        {"Sync pellet"}
+                    </label>
+                    <label
+                        font_size=12.0
+                        text_color=Color::SYSTEM_BACKGROUND>
+                        {"12 unsynced photos · tap to sync"}
+                    </label>
+                </vstack>
 
                 // text fields
                 <label>{"Name"}</label>

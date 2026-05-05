@@ -657,12 +657,15 @@ impl Element {
     /// right `UIControlEvents` mask based on the concrete control
     /// (`TouchUpInside` for `UIButton`, `ValueChanged` for
     /// `UISwitch` / `UISlider` / `UISegmentedControl` /
-    /// `UIDatePicker` / `UIStepper`). For non-`UIControl` views
-    /// (`UILabel`, container `UIView`s) it's a no-op — adding
-    /// `UITapGestureRecognizer`-based fallbacks is deferred.
+    /// `UIDatePicker` / `UIStepper`). For everything else
+    /// (`UILabel`, `UIImageView`, container `UIView`s) we install a
+    /// `UITapGestureRecognizer` so plain views can be tapped too.
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
-        if let Some(c) = downcast::<UIControl>(self.ui_view()) {
+        let view = self.ui_view();
+        if let Some(c) = downcast::<UIControl>(view) {
             crate::event::on_control_action(c, cb);
+        } else {
+            crate::event::on_tap_gesture(view, cb);
         }
     }
 
@@ -814,6 +817,64 @@ impl Element {
         // UIView.alpha is CGFloat (f64 on 64-bit)
         if (v.alpha() - clamped).abs() > f64::EPSILON {
             v.setAlpha(clamped);
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Chrome — background, border, corner radius
+    //
+    // These all sit on UIView itself or its CALayer. We prefer the
+    // UIKit setters where available (`setBackgroundColor` on UIView)
+    // and fall through to the layer for the rest.
+    // -----------------------------------------------------------------
+
+    /// Set the view's background color. Pass `None` to clear (the
+    /// view becomes transparent).
+    pub fn set_background_color(&self, color: Option<crate::Color>) {
+        let v = self.ui_view();
+        match color {
+            Some(c) => v.setBackgroundColor(Some(&c.to_uicolor())),
+            None => v.setBackgroundColor(None),
+        }
+    }
+
+    /// Set the view's corner radius (in points). Sets
+    /// `layer.cornerRadius` and `layer.masksToBounds = true` so the
+    /// rounded corners actually clip subview content. Pass `0.0` to
+    /// disable rounding.
+    pub fn set_corner_radius(&self, radius: f64) {
+        let layer = self.ui_view().layer();
+        if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
+            layer.setCornerRadius(radius);
+            // Without masksToBounds the corners look correct from
+            // afar but subview content (e.g. an image) bleeds past
+            // the rounded edge. Always enable.
+            layer.setMasksToBounds(radius > 0.0);
+        }
+    }
+
+    /// Set the view's border width in points. `0.0` removes the
+    /// border. Combine with [`set_border_color`](Self::set_border_color).
+    pub fn set_border_width(&self, width: f64) {
+        let layer = self.ui_view().layer();
+        if (layer.borderWidth() - width).abs() > f64::EPSILON {
+            layer.setBorderWidth(width);
+        }
+    }
+
+    /// Set the view's border color. Pass `None` to clear.
+    pub fn set_border_color(&self, color: Option<crate::Color>) {
+        let layer = self.ui_view().layer();
+        match color {
+            Some(c) => {
+                // UIColor::CGColor is unsafe in the binding (it
+                // returns a Retained<CGColor> whose lifetime would
+                // outlive the autorelease pool — fine here because
+                // we hand it straight to setBorderColor which retains).
+                let cg = unsafe { c.to_uicolor().CGColor() };
+                layer.setBorderColor(Some(&cg));
+            }
+            None => layer.setBorderColor(None),
         }
     }
 

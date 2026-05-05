@@ -157,11 +157,27 @@ above the keyboard.
   default UIKit but worth verifying with VoiceOver in the
   simulator.
 
-### Dark mode / appearance reactive updates
-- [ ] Subscribe to `traitCollectionDidChange:` on the root view
-  controller. Re-run any color-dependent reactive effects.
-- [ ] Provide a dark/light-aware `Color` constructor that wraps
-  `UIColor.dynamicProvider` so colours adapt automatically.
+### ~~Dark mode / appearance~~ ✅ DONE
+- `Color` is now an enum with `Rgba {…}` and `System(SystemColor)`
+  variants. The `System` variants resolve to UIKit's named adaptive
+  colors (`labelColor`, `systemBackgroundColor`, `systemBlueColor`,
+  …) which return *dynamic* `UIColor`s — they automatically pick
+  the right concrete value for the current
+  `traitCollection.userInterfaceStyle`. UIKit re-resolves on
+  `traitCollectionDidChange:` and re-draws affected views without
+  our reactive effects having to re-fire.
+- Default text + background paths already use system colors
+  (`systemBackgroundColor` on the window in `app.rs`,
+  `labelColor`/`secondaryLabelColor` are UIKit's defaults for
+  `UILabel`/`UITextField` etc.), so the existing examples adapt
+  for free.
+- Custom-colour adaptation: `<label text_color=Color::SYSTEM_BLUE>`
+  is the canonical iOS path. Demonstrated in
+  `examples_ios/controls`.
+- Required adding `IntoAttributeValue` impls for `ios_dom::Color`
+  and `cocoa_dom::Color` so the `view!{}` macro's
+  `into_attribute_value(...)` wrapping passes the value through to
+  the builder's `.text_color(IntoMaybeReactive<Color>)` method.
 
 ### Navigation & lists
 - [ ] `<navigation>` / `<navigation_view>` builder around
@@ -172,9 +188,15 @@ above the keyboard.
   separate stage.
 
 ### Gestures
-- [ ] `on:tap` / `on:long_press` / `on:swipe` / `on:pan` via
-  `UIGestureRecognizer`. Currently we only have UIControl
-  target/action.
+- [x] **`on:click` on non-UIControl views** — `UITapGestureRecognizer`
+  fallback in `Element::on_click`. Plain `<view>`, `<label>`,
+  `<image_view>`, `<hstack>`, `<vstack>` etc. now respond to taps.
+  Sets `userInteractionEnabled=true` on `UILabel`/`UIImageView`
+  (which default to NO and would silently swallow taps otherwise).
+  Demo: tap the title in `examples_ios/controls`. ✅
+- [ ] `on:long_press` / `on:swipe` / `on:pan` — separate gesture
+  recognizers, each behind a typed event. `<view on:long_press=...>`
+  / etc. Wire on demand.
 
 ### iPad multi-window
 - [ ] `Scene` builder integrated with `UISceneDelegate`. Allows

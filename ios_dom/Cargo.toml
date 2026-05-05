@@ -27,6 +27,10 @@ objc2-foundation = { version = "0.3", features = [
     "NSDate",
     "NSUserDefaults",
 ] }
+objc2-quartz-core = { version = "0.3", features = [
+    "CALayer",
+    "objc2-core-foundation",
+] }
 objc2-ui-kit = { version = "0.3", features = [
     "alloc",
     "UIApplication",
@@ -58,6 +62,8 @@ objc2-ui-kit = { version = "0.3", features = [
     "UILayoutGuide",
     "UIKeyboardLayoutGuide",
     "UIGeometry",
+    "UIGestureRecognizer",
+    "UITapGestureRecognizer",
     "UIScreen",
     "NSText",
     "UITextInputTraits",

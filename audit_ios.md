@@ -10,11 +10,16 @@
 > Examples shipped: counter, greeter, switch_demo, controls,
 > counters, checkbox, login_form, settings, timer, todomvc — all
 > 10 of the cocoa examples that have iOS analogues. **§3a (modern
-> scene delegate)** is now done — UIWindow is created via
-> `UIWindowSceneDelegate.scene(_:willConnectTo:)` rather than the
-> deprecated `initWithFrame:` path, with the `UISceneConfiguration`
-> registered programmatically so the runtime-mangled `SceneDelegate`
-> class name doesn't have to live in Info.plist. README_ios.md, CLAUDE.md and implementation_ios
+> scene delegate)** is now done. **Tap gestures** on non-UIControl
+> views work via `UITapGestureRecognizer` fallback in
+> `Element::on_click`. **Dark mode** works through UIKit's named
+> adaptive colours: `Color` is an enum with `Rgba {…}` and
+> `System(SystemColor)` variants, the System variants resolve to
+> dynamic UIColors that auto-adapt — verified visually with
+> `xcrun simctl ui … appearance dark` on the controls demo.
+> **Chrome attrs** (background colour, corner radius, border
+> width + colour) added to the `View` / `vstack` / `hstack`
+> builder — first PhotoSite gap closed (see `photosite_gaps.md`). README_ios.md, CLAUDE.md and implementation_ios
 > all updated. §2 closed as match-cocoa behaviour. Still pending:
 > 3a (modern scene delegate), todomvc port, hardware keyboard /
 > accessibility / dark mode (P5 in TODO_ios.md).

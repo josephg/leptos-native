@@ -628,3 +628,42 @@ pub fn set_margin(node: &Node, all_px: f32) {
         };
     });
 }
+
+/// Force a node's `aspect_ratio` (width / height). Useful for
+/// square photo cells (`aspect_ratio = 1.0`).
+pub fn set_aspect_ratio(node: &Node, ratio: f32) {
+    update_style(node, |s| s.aspect_ratio = Some(ratio));
+}
+
+/// Set Taffy's `position` flag. `Position::Absolute` removes the
+/// node from the parent's flex layout — it positions itself
+/// relative to the parent's content area using `inset_*`. Used
+/// for overlay badges (a star in the top-right of a photo cell,
+/// a "RAW" chip in the top-left, etc.).
+pub fn set_position(node: &Node, position: Position) {
+    update_style(node, |s| s.position = position);
+}
+
+/// Set the four insets at once. Each value is points; `None`
+/// leaves that side as `Auto`. With `Position::Absolute`, an
+/// inset of 0 anchors that edge to the parent's content edge.
+pub fn set_inset(
+    node: &Node,
+    top: Option<f32>,
+    right: Option<f32>,
+    bottom: Option<f32>,
+    left: Option<f32>,
+) {
+    update_style(node, |s| {
+        let to_dim = |v: Option<f32>| match v {
+            Some(px) => LengthPercentageAuto::length(px),
+            None => LengthPercentageAuto::auto(),
+        };
+        s.inset = taffy::Rect {
+            top: to_dim(top),
+            right: to_dim(right),
+            bottom: to_dim(bottom),
+            left: to_dim(left),
+        };
+    });
+}

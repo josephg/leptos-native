@@ -30,7 +30,7 @@ pub mod renderer;
 pub mod spawner;
 pub mod storage;
 
-pub use color::Color;
+pub use color::{Color, SystemColor};
 pub use date::Date;
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,

@@ -6,6 +6,62 @@ top.
 
 ---
 
+## Dark mode — adaptive colors via UIKit's named system colors
+
+`Color` is an enum: `Rgba {…}` for fixed sRGB, `System(SystemColor)`
+for one of UIKit's named adaptive colors (`labelColor`,
+`systemBackgroundColor`, `systemBlueColor`, …). The system
+variants return *dynamic* `UIColor`s that re-resolve on every
+draw against the surrounding view's
+`traitCollection.userInterfaceStyle`. UIKit handles the redraw on
+`traitCollectionDidChange:` automatically — our reactive effects
+don't need to re-fire because `[UILabel setTextColor:]` stores
+the dynamic `UIColor` ref, not the resolved colour, and re-asks
+on every redraw.
+
+So dark-mode adaptation is hands-off as long as the builder
+defaults (which use UIKit's own defaults — `labelColor` etc.) are
+left alone, AND any explicit colors users set go through
+`Color::System(...)` rather than `Color::Rgba {...}`.
+
+The macro tripwire: `view!{}` wraps non-literal attribute values
+through `IntoAttributeValue::into_attribute_value(expr)` (see
+`leptos_macro/src/view/mod.rs`). For `text_color=Color::SYSTEM_BLUE`
+to compile, `Color: IntoAttributeValue<Output=Color>` is needed —
+added in `tachys/src/html/attribute/value.rs` as a native escape
+hatch (mirroring the existing `Vec<&'static str>` /
+`Vec<String>` impls).
+
+Apple's full taxonomy of adaptive colors:
+<https://developer.apple.com/design/human-interface-guidelines/foundations/color>
+
+---
+
+## Tap gestures — `userInteractionEnabled` defaults bite
+
+`Element::on_click` now installs a `UITapGestureRecognizer` for
+non-UIControl views (UIView, UILabel, UIImageView, container
+stacks). The recognizer's target is an `ActionTarget` (same shared
+class as the UIControl path), retained in the per-view
+`HANDLER_STORE`.
+
+Gotcha: `UILabel` and `UIImageView` default to
+`userInteractionEnabled = NO`. Attaching a recognizer to a label
+without flipping that flag silently swallows every tap. We force
+it to `true` in `on_tap_gesture` before adding the recognizer.
+
+The recognizer is retained by the view (`addGestureRecognizer:`
+keeps a strong ref). The view holds a *weak* ref to its target —
+the same shape as UIControl target/action — so the `ActionTarget`
+must live in the handler store independently. Same leak shape
+(entries cleared in `Node::teardown`).
+
+`UITapGestureRecognizer::initWithTarget_action` takes
+`Option<Sel>`, not `Sel` directly — small papercut to remember
+when porting selectors that aren't optional in the docs.
+
+---
+
 ## Modern scene delegate — programmatic UISceneConfiguration
 
 iOS 13+ wants window creation through a `UISceneDelegate`, not the

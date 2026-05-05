@@ -19,8 +19,8 @@ use objc2::{
     sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_ui_kit::{
-    UIControl, UITextField, UITextView, UITextViewDelegate, UIView,
-    UIScrollViewDelegate,
+    UIControl, UITapGestureRecognizer, UITextField, UITextView,
+    UITextViewDelegate, UIView, UIScrollViewDelegate,
 };
 use objc2_foundation::NSObjectProtocol;
 use std::{cell::RefCell, collections::HashMap};
@@ -168,6 +168,43 @@ pub fn on_control_action(
         objc2_ui_kit::UIControlEvents::ValueChanged
     };
     on_control_action_with_events(control, events, cb);
+}
+
+// ---------------------------------------------------------------------
+// Tap-gesture path: lets `<view>` / `<label>` / `<image_view>` / etc.
+// react to taps even though they aren't UIControls. Used by
+// `Element::on_click` as a fallback when the view isn't a UIControl.
+// ---------------------------------------------------------------------
+
+/// Install a `UITapGestureRecognizer` on `view` that calls `cb` on
+/// each recognised tap. The recognizer is retained by the view (via
+/// `addGestureRecognizer:`), and the `ActionTarget` is stashed in
+/// the per-view handler store so it lives until `teardown`.
+///
+/// `userInteractionEnabled` is forced to `true` because
+/// `UILabel` and `UIImageView` default to `NO` — a gesture
+/// recognizer attached to either silently never fires unless
+/// user-interaction is explicitly turned on.
+pub fn on_tap_gesture(view: &UIView, cb: impl FnMut() + 'static) {
+    let mtm = MainThreadMarker::new()
+        .expect("on_tap_gesture must run on the main thread");
+    if !view.isUserInteractionEnabled() {
+        view.setUserInteractionEnabled(true);
+    }
+    let target = ActionTarget::new(cb, mtm);
+    let target_obj: &NSObject = &target;
+    let recognizer = unsafe {
+        UITapGestureRecognizer::initWithTarget_action(
+            UITapGestureRecognizer::alloc(mtm),
+            Some(target_obj),
+            Some(action_fired_sel()),
+        )
+    };
+    view.addGestureRecognizer(&recognizer);
+    // The view retains the recognizer; the recognizer holds its
+    // target weakly. So we must keep the ActionTarget alive
+    // ourselves — same store the UIControl path uses.
+    keep_target_alive(view, target);
 }
 
 // ---------------------------------------------------------------------
