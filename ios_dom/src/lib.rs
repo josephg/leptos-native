@@ -47,5 +47,5 @@ pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElem
 // just to interact with our UIKit façade.
 pub use objc2::{rc::Retained, MainThreadMarker};
 pub use objc2_ui_kit::{
-    UIView, NSTextAlignment,
+    NSTextAlignment, UIDatePickerStyle, UIView,
 };

@@ -4,32 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this fork is
 
-This fork extends Leptos with **two native UI ports** in progress:
+This fork extends Leptos with **three native UI ports** in progress:
 
-- **macOS / AppKit (Cocoa)** — the original, more mature port.
-- **Linux / GTK4** — newer, mirrors the Cocoa port's structure with
+- **macOS / AppKit (Cocoa)** — the original, most mature port.
+- **Linux / GTK4** — mirrors the Cocoa port's structure with
   GTK-specific simplifications (no Taffy bridge, signal-based events
   instead of target/action).
+- **iOS / UIKit** — mirrors the Cocoa port closely (same Taffy
+  bridge, same target/action handler-store pattern). Differs in
+  window/scene model (no user-facing windows; one fullscreen scene),
+  safe-area + keyboard avoidance via `viewDidLayoutSubviews` +
+  `UIKeyboardLayoutGuide`, and per-control name/feature deltas
+  (e.g. `<switch>` instead of `<checkbox>`, no PopUpButton).
 
 The web Leptos framework lives intact on the same branch (web
 examples still build via wasm targets, SSR works against axum/actix).
 The native UI path is **opt-in via the `native-ui` Cargo feature**;
 once enabled, `target_os` picks the backend automatically (macOS →
-Cocoa, Linux → GTK).
+Cocoa, Linux → GTK, iOS → UIKit).
 
 Read these before diving in:
 - `implementation_log.md` — chronological design-decision journal for
   the **macOS** port (newest at top). Critical context for anything
   related to layout, eventing, multi-window, or the macro plumbing.
-- `gtk_implementation_log.md` — same shape, for the **Linux/GTK**
-  port. Read whichever is relevant to what you're touching; both if
-  you're touching shared code.
-- `README_gtk.md` — user-facing overview of the GTK port: status,
-  prerequisites, examples, the `native-ui` feature flag.
+- `gtk_implementation_log.md` — same shape, for the **Linux/GTK** port.
+- `implementation_ios.md` + `audit_ios.md` + `TODO_ios.md` — iOS port
+  design log, running audit, and priority-ordered outstanding work.
+  Read all three when touching iOS code; they're shorter than the
+  macOS log because the port is younger.
+- `README_gtk.md` / `README_macos.md` / `README_ios.md` — user-facing
+  overviews per port: status, prerequisites, examples, the `native-ui`
+  feature flag.
 - `tests.md` — comprehensive test plan for the macOS port
-  (XCUIAutomation harness deferred). GTK has no test plan yet.
+  (XCUIAutomation harness deferred). GTK and iOS have no test plans
+  yet.
 - `ARCHITECTURE.md` — upstream Leptos architecture (web-focused, but
-  explains the reactive system and renderer layering both ports
+  explains the reactive system and renderer layering all ports
   reuse).
 
 ### System documentation
@@ -107,9 +117,33 @@ cargo check -p tachys --features native-ui
 cargo check -p leptos --features native-ui
 ```
 
+### iOS / UIKit
+
+iOS examples each ship a `run_ios.sh` script that builds for the
+simulator, hand-rolls a `.app` bundle, terminates any prior instance,
+then `xcrun simctl install`s + launches. No Xcode project required.
+
+```sh
+# Run an example end-to-end on the booted simulator:
+cd examples_ios/counter && ./run_ios.sh
+cd examples_ios/greeter && ./run_ios.sh
+cd examples_ios/switch_demo && ./run_ios.sh
+cd examples_ios/controls && ./run_ios.sh
+
+# Just typecheck the iOS-target build:
+cargo check -p ios_dom --target aarch64-apple-ios-sim
+cargo check -p tachys --features native-ui --target aarch64-apple-ios-sim
+cargo check -p leptos --features native-ui --target aarch64-apple-ios-sim
+```
+
+Prereqs: Xcode + the iOS Rust targets (`rustup target add
+aarch64-apple-ios-sim` on Apple Silicon, also `x86_64-apple-ios` on
+Intel, and `aarch64-apple-ios` for real devices). The example scripts
+auto-create / boot a simulator if none is running.
+
 The `native-ui` Cargo feature is what tells tachys/leptos to use the
 native renderer. Without it (the default), all crates compile against
-the web/SSR path even on macOS/Linux.
+the web/SSR path even on macOS/Linux/iOS.
 
 ### Workspace / web/SSR
 
@@ -241,6 +275,97 @@ Will provide `run(closure)` and `mount_to_window(app_id, title,
 size, closure)`. Until then, callers handle the `init_app` +
 `connect_activate` boilerplate themselves (see
 `gtk_dom/examples/counter.rs`).
+
+## Architecture of the iOS port
+
+Mirrors the macOS layering one-for-one in shape. The Taffy bridge
+is identical (UIView's intrinsic-size measurement closure + per-window
+TaffyTree), and the target/action handler-store pattern from
+cocoa_dom carries over directly (UIControl is structurally NSControl).
+The big shape changes are at the window/scene boundary: there's no
+NSWindow / NSApplicationDelegate run-loop you can drive yourself —
+UIApplicationMain owns the loop — and there's no menu bar.
+
+### `ios_dom/` — DOM-shaped façade over UIKit
+
+The lowest layer. `Node`, `Element`, `Text`, `Placeholder` types
+loosely mirror their `web_sys` equivalents but are backed by `UIView`
+(and subclasses like `UIButton`, `UITextField`, `UISwitch`,
+`UIScrollView`).
+
+- **Layout** (`layout.rs`): each scene has its own `TaffyTree`. Same
+  manual-relayout pattern as cocoa — `set_attribute` / `set_text` /
+  `attach_child` etc. all call `schedule_relayout` which dedupes via
+  thread-local `PENDING` and dispatches one `compute_layout` per
+  main-loop tick. Always `tree.mark_dirty(node_id)` when content
+  changes.
+- **Events** (`event.rs`): `ActionTarget` ObjC class wraps a Rust
+  closure; `on_control_action` chooses the right `UIControlEvents`
+  mask based on the concrete control (TouchUpInside for UIButton,
+  ValueChanged for UISwitch/UISlider/UISegmentedControl/UIDatePicker/
+  UIStepper, EditingChanged for UITextField input, etc.). Handler
+  retains live in a thread-local `HANDLER_STORE` keyed by view
+  pointer (entries currently leak; same as cocoa). UITextView uses a
+  `UITextViewDelegate` because UITextView isn't a UIControl.
+- **Spawner** (`spawner.rs`): `any_spawner::CustomExecutor` over
+  `dispatch2::DispatchQueue::main()`. Identical to cocoa.
+- **App + RootViewController** (`app.rs`): `AppDelegate` creates the
+  UIWindow on `application:didFinishLaunchingWithOptions:`,
+  `RootViewController` overrides `viewDidLayoutSubviews` to re-run
+  Taffy on every bounds change *and* push `view.safeAreaInsets` +
+  `view.keyboardLayoutGuide().layoutFrame()` derived bottom-inset
+  onto the content root's padding. Both `AppDelegate` and
+  `RootViewController` define an ObjC `-init` so UIKit's own
+  `[Class alloc] init]` lands on initialised ivars (a non-obvious
+  objc2 gotcha — without it the first `self.ivars()` panics).
+- **`uiapplication_main`**: passes the *runtime-mangled* class name
+  via `AppDelegate::class().name()`, not the literal `"AppDelegate"`
+  string. The mangled name is what objc2's `define_class!` actually
+  registers.
+
+### `tachys/src/ios/` — bridges ios_dom to tachys' `Render`/`Mountable` traits
+
+Same shape as `tachys/src/cocoa/`. `element.rs` defines the builders;
+`bind.rs` defines `IntoSignal` / `BindAttribute<Key, Sig>` impls
+(with cocoa-port-style `BoundValue`/`BoundFloat`/`BoundChecked`/
+`BoundDate`/`BoundIndex` payloads). The same
+`apply_universal` / `apply_text_attrs` helpers and
+`impl_universal_attrs!` / `impl_text_attrs!` /
+`impl_typed_attrs_for!` macros that DRY out cocoa's element.rs are
+ported here.
+
+Builders implemented: `Button`, `Label`, `TextField` /
+`SecureTextField`, `Switch`, `Slider`, `Stepper`, `SegmentedControl`,
+`DatePicker`, `ProgressIndicator` (UIProgressView under the hood,
+named for cocoa parity), `ImageView`, `ScrollView`, `TextView`,
+`View` / `vstack` / `hstack`. `bind:value`, `bind:checked`,
+`bind:selection` all wired.
+
+Not implemented (no native UIKit equivalent):
+- **PopUpButton** — UIMenu / UIPickerView, both quite different from
+  NSPopUpButton.
+- **ColorWell** — UIColorPickerViewController is a modal sheet, not
+  inline.
+
+### `tachys/src/html/element_ios.rs` + `event_ios.rs` + `tachys/src/svg_ios.rs`
+
+Macro facades. `<switch>` is in the leptos-macro SVG list, so the
+macro emits `tachys::svg::switch()` — `svg_ios.rs` defines that as
+a raw-identifier `r#switch` function delegating to
+`tachys::ios::element::switch_()`. (Same pattern the web port uses
+for `r#use`.)
+
+### `leptos/src/mount_ios.rs` — entry point
+
+Single entry point: `run(closure)`. Stores the user closure in a
+thread-local, calls `UIApplicationMain` (which never returns).
+`AppDelegate::application:didFinishLaunchingWithOptions:` invokes
+the stored closure inside a fresh `Owner` scope, builds the view,
+mounts it under the content root.
+
+There's no `mount_to_window` builder. iPhone apps run as a single
+fullscreen scene; iPad multi-window is scene-based, not
+window-builder-based.
 
 ## Conventions and gotchas
 

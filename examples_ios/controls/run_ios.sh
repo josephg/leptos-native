@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/target/aarch64-apple-ios-sim/debug/greeter"
-BUNDLE_DIR="$SCRIPT_DIR/target/Greeter.app"
-BUNDLE_ID="com.example.greeter"
+BINARY="$SCRIPT_DIR/target/aarch64-apple-ios-sim/debug/controls"
+BUNDLE_DIR="$SCRIPT_DIR/target/Controls.app"
+BUNDLE_ID="com.example.controls"
 
 # 1. Build
 echo "==> Building for aarch64-apple-ios-sim..."
@@ -14,7 +14,7 @@ cargo build --manifest-path "$SCRIPT_DIR/Cargo.toml" --target aarch64-apple-ios-
 echo "==> Creating app bundle..."
 rm -rf "$BUNDLE_DIR"
 mkdir -p "$BUNDLE_DIR"
-cp "$BINARY" "$BUNDLE_DIR/Greeter"
+cp "$BINARY" "$BUNDLE_DIR/Controls"
 
 cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,11 +22,11 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>Greeter</string>
+    <string>Controls</string>
     <key>CFBundleIdentifier</key>
-    <string>com.example.greeter</string>
+    <string>com.example.controls</string>
     <key>CFBundleName</key>
-    <string>Greeter</string>
+    <string>Controls</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
@@ -62,7 +62,7 @@ if [ -z "$DEVICE_ID" ]; then
     EXISTING=$(xcrun simctl list devices | grep -E 'iPhone.*Shutdown' | head -1 | sed -n 's/.*(\([A-F0-9-]*\)).*/\1/p' || true)
     if [ -z "$EXISTING" ]; then
         echo "==> Creating new iPhone simulator..."
-        EXISTING=$(xcrun simctl create "tmp-greeter-$$" "iPhone 16" 2>/dev/null || xcrun simctl create "tmp-greeter-$$" com.apple.CoreSimulator.SimDeviceType.iPhone-16)
+        EXISTING=$(xcrun simctl create "tmp-controls-$$" "iPhone 16" 2>/dev/null || xcrun simctl create "tmp-controls-$$" com.apple.CoreSimulator.SimDeviceType.iPhone-16)
     fi
     echo "==> Booting simulator $EXISTING..."
     xcrun simctl boot "$EXISTING" || true
@@ -100,4 +100,4 @@ echo "==> Launching app..."
 xcrun simctl launch --console "$DEVICE_ID" "$BUNDLE_ID" || xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
 
 echo "==> App launched. If it crashed, check logs with:"
-echo "    xcrun simctl spawn $DEVICE_ID log stream --predicate 'process contains \"Greeter\"'"
+echo "    xcrun simctl spawn $DEVICE_ID log stream --predicate 'process contains \"Controls\"'"

@@ -1,11 +1,11 @@
 [package]
-name = "counter"
+name = "settings_ios"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "counter"
+name = "settings"
 path = "src/main.rs"
 
 [dependencies]

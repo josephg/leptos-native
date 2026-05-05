@@ -27,6 +27,9 @@ pub use crate::cocoa::bind::Selection;
 // Same for Linux/GTK — the Selection key lives in tachys::gtk::bind.
 #[cfg(all(target_os = "linux", leptos_native, feature = "reactive_graph"))]
 pub use crate::gtk::bind::Selection;
+// iOS — Selection key for <segmented_control bind:selection=…>.
+#[cfg(all(target_os = "ios", leptos_native, feature = "reactive_graph"))]
+pub use crate::ios::bind::Selection;
 use maybe_next_attr_erasure_macros::{
     next_attr_combine, next_attr_output_type,
 };

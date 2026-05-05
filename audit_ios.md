@@ -1,23 +1,18 @@
 # Audit: iOS / UIKit port
 
-> **Status:** Items 1a, 1b, 3b, 3c, 3d, 4a, 4b, 4f, 4g, 4j, 4k, 4l, 5b,
-> 5c, 5g and the `Button`/`Label` `child` routing bug are fixed. The
-> first vertical slice of §1c is done — `TextField`, `SecureTextField`,
-> `Switch`, `Slider` builders are ported with the cocoa pattern
-> (`apply_universal` / `apply_text_attrs` helpers,
-> `impl_universal_attrs!` / `impl_text_attrs!` /
-> `impl_typed_attrs_for!` macros). `bind:value` works for `TextField`,
-> `Slider`, `Label`; `bind:checked` works for `Switch`. `NodeRef`
-> ported to the reactive shape from cocoa. `<switch>` resolves through
-> `tachys::svg::r#switch` (it's an SVG-list tag in the macro). The
-> `Window` builder and `mount_to_window` entry point have been
-> removed — iOS has no user-facing window concept. Examples added:
-> `examples_ios/greeter` (text field bind:value),
-> `examples_ios/switch_demo` (switch + slider bind). Still pending:
-> remaining controls in §1c (DatePicker, Stepper, SegmentedControl,
-> ScrollView, TextView, ProgressView, ImageView), §2 (Change/Focus/
-> Blur fanout for non-text controls — currently only Click is shared),
-> 3a (modern scene delegate).
+> **Status:** §1c (all builders) complete. `bind:value`,
+> `bind:checked`, `bind:selection` all work. NodeRef is reactive.
+> Audit-fixed items: 1a, 1b, 3b, 3c, 3d, 4a, 4b, 4f, 4g, 4j, 4k,
+> 4l, 5b, 5c, 5g, 6b, 6c, 6d and the Button/Label `child` routing
+> bug. Keyboard avoidance done via `keyboardLayoutGuide`.
+> **Letterboxing**: Info.plist now declares `UILaunchScreen=<dict/>`
+> — without it iOS runs apps at 320×480 compatibility scaling.
+> Examples shipped: counter, greeter, switch_demo, controls,
+> counters, checkbox, login_form, settings, timer, todomvc — all
+> 10 of the cocoa examples that have iOS analogues. README_ios.md, CLAUDE.md and implementation_ios
+> all updated. §2 closed as match-cocoa behaviour. Still pending:
+> 3a (modern scene delegate), todomvc port, hardware keyboard /
+> accessibility / dark mode (P5 in TODO_ios.md).
 
 I built the counter example (compiles cleanly with warnings), then ran it on
 the booted simulator. It crashes immediately at launch with:

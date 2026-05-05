@@ -15,7 +15,10 @@
 
 #![allow(missing_docs)]
 
-use crate::ios::element::{Label, Slider, Switch, TextField};
+use crate::ios::element::{
+    DatePicker, Label, SegmentedControl, Slider, Stepper, Switch,
+    TextField, TextView,
+};
 use ios_dom::{BoolAttr, Element as IosElement, StringAttr};
 use reactive_graph::{
     effect::RenderEffect,
@@ -83,6 +86,18 @@ pub(crate) struct BoundFloat {
 pub(crate) struct BoundChecked {
     pub(crate) getter: Box<dyn Fn() -> bool + Send + 'static>,
     pub(crate) setter: Box<dyn FnMut(bool) + Send + 'static>,
+}
+
+pub(crate) struct BoundDate {
+    pub(crate) getter:
+        Box<dyn Fn() -> ios_dom::Date + Send + 'static>,
+    pub(crate) setter:
+        Box<dyn FnMut(ios_dom::Date) + Send + 'static>,
+}
+
+pub(crate) struct BoundIndex {
+    pub(crate) getter: Box<dyn Fn() -> usize + Send + 'static>,
+    pub(crate) setter: Box<dyn FnMut(usize) + Send + 'static>,
 }
 
 // ---------------------------------------------------------------------
@@ -206,6 +221,165 @@ pub(crate) fn install_slider_value_bind(
     RenderEffect::new(move |_prev| {
         let v = getter();
         el_for_set.set_double_value(v);
+    })
+}
+
+// ---------------------------------------------------------------------
+// Stepper — bind:value=f64 signal
+// ---------------------------------------------------------------------
+
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Stepper
+where
+    Sig: IntoSignal<f64>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_value(BoundFloat { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_stepper_value_bind(
+    el: &IosElement,
+    bound: BoundFloat,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_click(move || {
+        setter(el_for_action.stepper_value());
+    });
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let v = getter();
+        el_for_set.set_stepper_value(v);
+    })
+}
+
+// ---------------------------------------------------------------------
+// DatePicker — bind:value=Date signal
+// ---------------------------------------------------------------------
+
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for DatePicker
+where
+    Sig: IntoSignal<ios_dom::Date>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_date(BoundDate { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_date_picker_bind(
+    el: &IosElement,
+    bound: BoundDate,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_click(move || {
+        setter(el_for_action.date_picker_value());
+    });
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let d = getter();
+        el_for_set.set_date_picker_value(d);
+    })
+}
+
+// ---------------------------------------------------------------------
+// SegmentedControl — bind:selection=usize signal
+// ---------------------------------------------------------------------
+
+/// Custom `selection` AttributeKey — not an HTML attribute, only
+/// used to drive `bind:selection=` from the macro. Mirrors the
+/// cocoa port's `Selection` key.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Selection;
+
+impl crate::html::attribute::AttributeKey for Selection {
+    const KEY: &'static str = "selection";
+}
+
+impl<Sig> BindAttribute<Selection, Sig> for SegmentedControl
+where
+    Sig: IntoSignal<usize>,
+{
+    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_selection(BoundIndex { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_segmented_selection_bind(
+    el: &IosElement,
+    bound: BoundIndex,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    let el_for_action = el.clone();
+    el.on_click(move || {
+        let idx = el_for_action.segmented_selection();
+        if idx >= 0 {
+            setter(idx as usize);
+        }
+    });
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let v = getter();
+        el_for_set.set_segmented_selection(v as isize);
+    })
+}
+
+// ---------------------------------------------------------------------
+// TextView — bind:value=String-ish signal
+//
+// UITextView is a UIScrollView subclass, NOT a UIControl, so the
+// outgoing leg uses the UITextViewDelegate's `textViewDidChange:`
+// fan-out (see `ios_dom::event::on_text_view_change`).
+// ---------------------------------------------------------------------
+
+impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextView
+where
+    Sig: IntoSignal<String>,
+{
+    fn bind(
+        mut self,
+        _key: crate::html::attribute::Value,
+        signal: Sig,
+    ) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_value(BoundValue { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_text_view_value_bind(
+    el: &IosElement,
+    bound: BoundValue,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    el.on_text_view_change(move |new_value| setter(new_value));
+
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let s = getter();
+        el_for_set.set_string_attribute(StringAttr::Value, &s);
     })
 }
 

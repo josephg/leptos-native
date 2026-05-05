@@ -41,6 +41,14 @@ cat > "$BUNDLE_DIR/Info.plist" << 'PLIST'
     <array><string>UIInterfaceOrientationPortrait</string></array>
     <key>UIStatusBarHidden</key>
     <false/>
+    <key>MinimumOSVersion</key>
+    <string>15.0</string>
+    <!-- Without UILaunchScreen, iOS runs the app in 320x480
+         compatibility scaling and the UI gets letterboxed into a
+         centered card. Empty dict = "I support modern device sizes,
+         no custom launch UI." -->
+    <key>UILaunchScreen</key>
+    <dict/>
 </dict>
 </plist>
 PLIST
@@ -70,6 +78,9 @@ if [ -z "$DEVICE_ID" ]; then
 fi
 
 echo "==> Using device: $DEVICE_ID"
+
+# Terminate any prior instance so we don't end up debugging a stale build.
+xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
 
 # 4. Install
 echo "==> Installing app..."

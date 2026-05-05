@@ -6,8 +6,9 @@
 #![allow(missing_docs)]
 
 pub use crate::ios::element::{
-    button, hstack, label, secure_text_field, slider, switch_,
-    text_field, vstack,
+    button, date_picker, hstack, image_view, label, progress_indicator,
+    scroll_view, secure_text_field, segmented_control, slider, stepper,
+    switch_, text_field, text_view, vstack,
 };
 
 // `<div>` aliases the generic UIView container.

@@ -71,6 +71,16 @@ impl IntoMaybeReactive<ios_dom::NSTextAlignment>
     }
 }
 
+impl IntoMaybeReactive<ios_dom::UIDatePickerStyle>
+    for ios_dom::UIDatePickerStyle
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<ios_dom::UIDatePickerStyle> {
+        MaybeReactive::Static(self)
+    }
+}
+
 // Closure impls — one per concrete output type.
 impl<F> IntoMaybeReactive<String> for F
 where
@@ -133,6 +143,17 @@ where
     fn into_maybe_reactive(
         self,
     ) -> MaybeReactive<ios_dom::NSTextAlignment> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<ios_dom::UIDatePickerStyle> for F
+where
+    F: Fn() -> ios_dom::UIDatePickerStyle + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<ios_dom::UIDatePickerStyle> {
         MaybeReactive::Reactive(Box::new(self))
     }
 }

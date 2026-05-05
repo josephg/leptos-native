@@ -1,11 +1,11 @@
 [package]
-name = "counter"
+name = "checkbox_ios"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "counter"
+name = "checkbox"
 path = "src/main.rs"
 
 [dependencies]

@@ -17,10 +17,11 @@ pub mod node_ref;
 mod render_html_stub;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
-pub use bind::{BindAttribute, IntoSignal};
+pub use bind::{BindAttribute, IntoSignal, Selection};
 pub use element::{
-    button, hstack, label, secure_text_field, slider, switch_,
-    text_field, view, vstack,
+    button, date_picker, hstack, image_view, label, progress_indicator,
+    scroll_view, secure_text_field, segmented_control, slider, stepper,
+    switch_, text_field, text_view, view, vstack,
 };
 pub use node_ref::NodeRef;
 

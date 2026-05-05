@@ -4,6 +4,118 @@ A running record of design decisions made during the iOS/UIKit port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
+---
+
+## `UILaunchScreen` is required, or iOS runs at 320×480
+
+Without `UILaunchScreen` (or `UILaunchStoryboardName`) in
+`Info.plist`, iOS runs the app in legacy **320×480 compatibility
+scaling mode** — the original iPhone 1 screen size — regardless of
+the actual device. On a modern iPhone the app then renders into a
+centered ~70% card, which looks like a sheet/modal but isn't.
+
+Symptom: `view.bounds` reads `(0,0 320x480)` even on iPhone 16
+(should be `393x852`). Window bounds match.
+
+Fix: add an empty dict for `UILaunchScreen` to the bundled
+Info.plist:
+```xml
+<key>UILaunchScreen</key>
+<dict/>
+```
+Empty dict = "I support modern device sizes, no custom launch
+UI." Required even when the app has no real launch screen
+artwork.
+
+Also add `MinimumOSVersion` (Apple-required for App Store
+submissions). Both keys are now in every `examples_ios/*/run_ios.sh`.
+
+---
+
+## Keyboard avoidance — guard against unresolved `keyboardLayoutGuide`
+
+`RootViewController::viewDidLayoutSubviews` reads
+`view.keyboardLayoutGuide().layoutFrame()` to compute how much the
+on-screen keyboard intrudes into the safe area, then adds that to
+the content root's bottom padding so input fields stay visible
+above the keyboard.
+
+On the very first layout pass, UIKit hasn't resolved the keyboard
+layout guide's constraints yet — `layoutFrame` returns
+`CGRect.zero`. Without a guard, that gives
+`raw_kb_bottom = bounds.height - 0 = bounds.height`, which gets
+applied as bottom padding and crushes the entire app into a tiny
+strip at the top. (Symptom: app appears "letterboxed into a small
+square in the centre" on first display.)
+
+Guard: if the resolved frame's `size.width <= 0`, treat the
+keyboard as hidden (extra inset = 0). A resolved guide always has
+the view's full width; an unresolved one has zeros.
+
+Notification-based approaches (observing
+`UIKeyboardWillShowNotification` etc.) avoid this entirely, but
+require pulling `NSNotification` / `NSDictionary` features back
+into `objc2-foundation` plus an Objective-C selector for the
+observer. The guide-based path is much smaller; keep it with the
+guard.
+
+---
+
+## Builders ported in cocoa-style — keep the macros DRY
+
+`tachys/src/ios/element.rs` mirrors the cocoa structure: each
+builder defines a struct with all attributes as fields, plus
+`apply_universal` / `apply_text_attrs` helpers + the macros
+`impl_universal_attrs!` / `impl_text_attrs!` /
+`impl_typed_attrs_for!`. The first builder is slow; subsequent ones
+fall to mostly-mechanical content.
+
+iOS-specific deltas vs cocoa:
+- No `tool_tip` (macOS hover concept). `apply_universal` is just
+  `alpha`.
+- `Switch` (UISwitch) replaces cocoa's `Checkbox` (NSButton-as-switch
+  bezel). UISwitch has no title and no text styling — just on/off.
+- `ProgressIndicator` is named for cocoa cross-port parity but is
+  determinate-only (UIProgressView). Indeterminate spinners would be
+  a separate `UIActivityIndicatorView` builder; deferred.
+- No `PopUpButton` — UIMenu / UIPickerView are quite different from
+  NSPopUpButton. Deferred.
+- No `ColorWell` — UIColorPickerViewController is a modal sheet, not
+  inline. Deferred.
+
+---
+
+## `<switch>` is an SVG-list tag in the macro — `r#switch` raw ident
+
+leptos_macro's `is_svg_element` includes "switch" (it's a real SVG
+tag in the web spec). So the macro emits `tachys::svg::switch()`
+for `<switch>` — but `switch` is a Rust keyword. Solution: define
+`pub fn r#switch()` in `tachys/src/svg_ios.rs`, delegating to
+`tachys::ios::element::switch_()`. Same trick the web port already
+uses for `r#use` / `<use>`.
+
+---
+
+## `objc2`'s `define_class!` mangles class names; UIKit allocs need init
+
+`UIApplicationMain` looks up the AppDelegate by its registered
+ObjC class name. With objc2's `define_class!`, the actual name is
+mangled (something like `ios_dom_app_AppDelegate$$...`). Hard-coding
+`"AppDelegate"` makes UIKit raise
+`NSInternalInconsistencyException` before launch.
+
+Fix: pass `AppDelegate::class().name()` (a `&CStr` from
+`ClassType`) — that's the runtime-registered name. See
+`uiapplication_main` in `ios_dom/src/app.rs`.
+
+The trick has a sibling: when UIKit allocates the AppDelegate via
+`[Class alloc] init]`, our Rust ivars come back uninitialised.
+First `self.ivars()` access then panics with "tried to access
+uninitialized instance variable". Fix: define an `-init` method
+inside `define_class!` that calls `set_ivars` before forwarding to
+super's init. The same pattern is needed for `RootViewController`
+(also instantiable from outside Rust if iOS ever decides to).
+
 For the macOS sibling port (which this one mirrors), see
 [`implementation_log.md`](./implementation_log.md). The macOS log is
 the canonical reference for Taffy bridging, event-handler storage,

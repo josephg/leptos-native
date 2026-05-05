@@ -161,6 +161,11 @@ impl AppDelegate {
 pub struct RootViewControllerState {
     pub content_root: SendWrapper<crate::node::Element>,
     pub last_insets: Cell<UIEdgeInsets>,
+    /// Extra bottom inset to add for the on-screen keyboard, in
+    /// view coordinates. Recomputed every layout tick from
+    /// `view.keyboardLayoutGuide().layoutFrame()`. Zero when the
+    /// keyboard is hidden.
+    pub last_keyboard_inset: Cell<f64>,
 }
 
 define_class!(
@@ -192,23 +197,48 @@ define_class!(
             let bounds = view.bounds();
             let insets = view.safeAreaInsets();
 
+            // Keyboard inset: distance from the keyboard's top edge
+            // (per `keyboardLayoutGuide.layoutFrame.origin.y`) to the
+            // view's bottom, minus the safe-area bottom we already
+            // account for via `insets`.
+            //
+            // On the very first layout pass UIKit hasn't resolved the
+            // keyboardLayoutGuide's constraints yet, so layoutFrame
+            // comes back as `CGRect.zero`. Treat that as
+            // keyboard-hidden — otherwise `bounds.height - 0` would
+            // crush the entire content into a tiny rect at the top.
+            // Sanity-check via `size.width`: a resolved guide always
+            // has the view's full width.
+            let kb_layout = view.keyboardLayoutGuide().layoutFrame();
+            let kb_bottom_extra = if kb_layout.size.width <= 0.0 {
+                0.0
+            } else {
+                let raw = bounds.size.height - kb_layout.origin.y;
+                (raw - insets.bottom).max(0.0)
+            };
+
             let state = self.ivars();
             let content_root: &crate::node::Element = &state.content_root;
 
-            // Push safeAreaInsets onto the content root's padding,
-            // but only when they actually change — applying every
-            // tick would dirty the tree on every layout pass.
+            // Push insets + keyboard inset onto the content root's
+            // padding, but only when they actually change — applying
+            // every tick would dirty the tree on every layout pass.
             let last = state.last_insets.get();
-            if last.top != insets.top
+            let last_kb = state.last_keyboard_inset.get();
+            let insets_changed = last.top != insets.top
                 || last.bottom != insets.bottom
                 || last.left != insets.left
                 || last.right != insets.right
-            {
+                || last_kb != kb_bottom_extra;
+            if insets_changed {
                 state.last_insets.set(insets);
+                state.last_keyboard_inset.set(kb_bottom_extra);
                 crate::layout::update_style(content_root.as_node(), |s| {
                     s.padding = taffy::Rect {
                         top: taffy::LengthPercentage::length(insets.top as f32),
-                        bottom: taffy::LengthPercentage::length(insets.bottom as f32),
+                        bottom: taffy::LengthPercentage::length(
+                            (insets.bottom + kb_bottom_extra) as f32,
+                        ),
                         left: taffy::LengthPercentage::length(insets.left as f32),
                         right: taffy::LengthPercentage::length(insets.right as f32),
                     };
@@ -233,6 +263,7 @@ impl RootViewController {
                 left: 0.0,
                 right: 0.0,
             }),
+            last_keyboard_inset: Cell::new(0.0),
         });
         unsafe { msg_send![super(alloc), init] }
     }

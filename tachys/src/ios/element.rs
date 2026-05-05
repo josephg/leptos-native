@@ -1135,3 +1135,948 @@ impl<At: crate::html::attribute::Attribute> Render for Slider<At> {
         self.attrs.rebuild(&mut state._attrs);
     }
 }
+
+// ---------------------------------------------------------------------
+// stepper() — UIStepper (+/-)
+// ---------------------------------------------------------------------
+
+pub struct Stepper<At = ()> {
+    value: MaybeReactive<f64>,
+    min_value: f64,
+    max_value: f64,
+    increment: f64,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::ios::bind::BoundFloat>,
+    handlers: Vec<PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn stepper() -> Stepper<()> {
+    Stepper {
+        value: MaybeReactive::Static(0.0),
+        min_value: 0.0,
+        max_value: 100.0,
+        increment: 1.0,
+        enabled: None,
+        pending_bind: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        attrs: (),
+    }
+}
+
+impl<A> Stepper<A> {
+    pub fn value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+    pub fn min_value(mut self, v: f64) -> Self {
+        self.min_value = v;
+        self
+    }
+    pub fn max_value(mut self, v: f64) -> Self {
+        self.max_value = v;
+        self
+    }
+    pub fn increment(mut self, v: f64) -> Self {
+        self.increment = v;
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_value(
+        &mut self,
+        bound: crate::ios::bind::BoundFloat,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl<At> SupportsEvent<crate::html::event::ClickEvent> for Stepper<At> {}
+
+impl_universal_attrs!(Stepper);
+
+impl_typed_attrs_for!(
+    Stepper, value, min_value, max_value, increment, enabled,
+    pending_bind, handlers, flex_grow, node_ref, alpha,
+);
+
+impl<At: crate::html::attribute::Attribute> Render for Stepper<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("stepper");
+        let mut effects = Vec::new();
+
+        // Bounds + increment first so the initial value clamps.
+        el.configure_stepper(self.min_value, self.max_value, self.increment);
+
+        let el_for_val = el.clone();
+        if let Some(eff) =
+            install(self.value, move |v| el_for_val.set_stepper_value(v))
+        {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::ios::bind::install_stepper_value_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// progress_indicator() — UIProgressIndicator (determinate bar, 0..1)
+//
+// iOS doesn't ship an indeterminate progress bar — that's
+// `UIActivityIndicatorView`, a separate builder. So the
+// `indeterminate` field from cocoa's `ProgressIndicator` doesn't
+// carry over. Tagged `progress_indicator` for cross-port name parity.
+// ---------------------------------------------------------------------
+
+pub struct ProgressIndicator<At = ()> {
+    value: MaybeReactive<f64>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn progress_indicator() -> ProgressIndicator<()> {
+    ProgressIndicator {
+        value: MaybeReactive::Static(0.0),
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        attrs: (),
+    }
+}
+
+impl<A> ProgressIndicator<A> {
+    pub fn value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+}
+
+impl_universal_attrs!(ProgressIndicator);
+
+impl_typed_attrs_for!(ProgressIndicator, value, flex_grow, node_ref, alpha);
+
+impl<At: crate::html::attribute::Attribute> Render for ProgressIndicator<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("progress_indicator");
+        let mut effects = Vec::new();
+
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(self.value, move |v| el_for.set_progress_value(v))
+        {
+            effects.push(eff);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// image_view() — UIImageView, source from a file path
+// ---------------------------------------------------------------------
+
+pub struct ImageView<At = ()> {
+    source: MaybeReactive<String>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn image_view() -> ImageView<()> {
+    ImageView {
+        source: MaybeReactive::Static(String::new()),
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        attrs: (),
+    }
+}
+
+impl<A> ImageView<A> {
+    /// File path to the image. Empty string clears the image.
+    /// Network URLs aren't supported here — fetch them yourself
+    /// and pass the local path. `UIImage::imageWithContentsOfFile:`
+    /// handles PNG, JPEG, PDF, etc.
+    pub fn source<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
+        self.source = v.into_maybe_reactive();
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+}
+
+impl_universal_attrs!(ImageView);
+
+impl_typed_attrs_for!(ImageView, source, flex_grow, node_ref, alpha);
+
+impl<At: crate::html::attribute::Attribute> Render for ImageView<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("image_view");
+        let mut effects = Vec::new();
+
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(self.source, move |s| el_for.set_image_view_path(&s))
+        {
+            effects.push(eff);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// segmented_control() — UISegmentedControl
+// ---------------------------------------------------------------------
+
+pub struct SegmentedControl<At = ()> {
+    items: Vec<String>,
+    selection: MaybeReactive<usize>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
+    handlers: Vec<PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn segmented_control() -> SegmentedControl<()> {
+    SegmentedControl {
+        items: Vec::new(),
+        selection: MaybeReactive::Static(0),
+        enabled: None,
+        pending_bind_selection: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        attrs: (),
+    }
+}
+
+impl<A> SegmentedControl<A> {
+    pub fn items<I, S>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.items = items.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn selection<V: IntoMaybeReactive<usize>>(mut self, v: V) -> Self {
+        self.selection = v.into_maybe_reactive();
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_selection(
+        &mut self,
+        bound: crate::ios::bind::BoundIndex,
+    ) {
+        self.pending_bind_selection = Some(bound);
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl<At> SupportsEvent<crate::html::event::ClickEvent> for SegmentedControl<At> {}
+
+impl_universal_attrs!(SegmentedControl);
+
+impl_typed_attrs_for!(
+    SegmentedControl, items, selection, enabled,
+    pending_bind_selection, handlers, flex_grow, node_ref, alpha,
+);
+
+impl<At: crate::html::attribute::Attribute> Render for SegmentedControl<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("segmented_control");
+        let mut effects = Vec::new();
+
+        el.set_segmented_items(&self.items);
+
+        let el_for = el.clone();
+        if let Some(eff) = install(self.selection, move |i| {
+            el_for.set_segmented_selection(i as isize);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind_selection {
+            let eff = crate::ios::bind::install_segmented_selection_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// date_picker() — UIDatePicker
+// ---------------------------------------------------------------------
+
+pub struct DatePicker<At = ()> {
+    value: MaybeReactive<ios_dom::Date>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::ios::bind::BoundDate>,
+    handlers: Vec<PendingHandler>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    style: Option<MaybeReactive<ios_dom::UIDatePickerStyle>>,
+    min_date: Option<MaybeReactive<ios_dom::Date>>,
+    max_date: Option<MaybeReactive<ios_dom::Date>>,
+    attrs: At,
+}
+
+pub fn date_picker() -> DatePicker<()> {
+    DatePicker {
+        value: MaybeReactive::Static(ios_dom::Date::now()),
+        enabled: None,
+        pending_bind: None,
+        handlers: Vec::new(),
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        style: None,
+        min_date: None,
+        max_date: None,
+        attrs: (),
+    }
+}
+
+impl<A> DatePicker<A> {
+    pub fn value<V: IntoMaybeReactive<ios_dom::Date>>(mut self, v: V) -> Self {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_date(
+        &mut self,
+        bound: crate::ios::bind::BoundDate,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+    /// Visual style: `Wheels`, `Compact` (default), `Inline`,
+    /// `Automatic`. See `ios_dom::UIDatePickerStyle`.
+    pub fn style<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<ios_dom::UIDatePickerStyle>,
+    {
+        self.style = Some(s.into_maybe_reactive());
+        self
+    }
+    pub fn min_date<V: IntoMaybeReactive<ios_dom::Date>>(mut self, d: V) -> Self {
+        self.min_date = Some(d.into_maybe_reactive());
+        self
+    }
+    pub fn max_date<V: IntoMaybeReactive<ios_dom::Date>>(mut self, d: V) -> Self {
+        self.max_date = Some(d.into_maybe_reactive());
+        self
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl<At> SupportsEvent<crate::html::event::ClickEvent> for DatePicker<At> {}
+
+impl_universal_attrs!(DatePicker);
+
+impl_typed_attrs_for!(
+    DatePicker, value, enabled, pending_bind, handlers, flex_grow,
+    node_ref, alpha, style, min_date, max_date,
+);
+
+impl<At: crate::html::attribute::Attribute> Render for DatePicker<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("date_picker");
+        let mut effects = Vec::new();
+
+        let el_for = el.clone();
+        if let Some(eff) =
+            install(self.value, move |d| el_for.set_date_picker_value(d))
+        {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff = crate::ios::bind::install_date_picker_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(s) = self.style {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(s, move |v| el_for.set_date_picker_style(v))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(d) = self.min_date {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(d, move |v| el_for.set_date_picker_min(Some(v)))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(d) = self.max_date {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(d, move |v| el_for.set_date_picker_max(Some(v)))
+            {
+                effects.push(eff);
+            }
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+// ---------------------------------------------------------------------
+// scroll_view() — UIScrollView wrapping arbitrary child content
+//
+// The scroll view's content `UIView` is created at construction time
+// in `ios_dom::Element::create_with` (it's the first subview of the
+// `UIScrollView`); child mounts route there via
+// `Element::subview_parent`. `apply_layout` special-cases scroll
+// views: a second-pass relayout with `MaxContent` height lets
+// children take their natural sizes, and `contentSize` is set to
+// the union of children's rects so UIScrollView shows scroll bars.
+// ---------------------------------------------------------------------
+
+pub struct ScrollView<Children, At = ()> {
+    flex_grow: Option<f32>,
+    children: Children,
+    alpha: Option<MaybeReactive<f64>>,
+    has_horizontal_scroller: Option<MaybeReactive<bool>>,
+    has_vertical_scroller: Option<MaybeReactive<bool>>,
+    attrs: At,
+}
+
+pub fn scroll_view() -> ScrollView<(), ()> {
+    ScrollView {
+        flex_grow: None,
+        children: (),
+        alpha: None,
+        has_horizontal_scroller: None,
+        has_vertical_scroller: None,
+        attrs: (),
+    }
+}
+
+impl<Ch, A> ScrollView<Ch, A> {
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn alpha<V: IntoMaybeReactive<f64>>(mut self, a: V) -> Self {
+        self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+    pub fn has_horizontal_scroller<V: IntoMaybeReactive<bool>>(
+        mut self,
+        b: V,
+    ) -> Self {
+        self.has_horizontal_scroller = Some(b.into_maybe_reactive());
+        self
+    }
+    pub fn has_vertical_scroller<V: IntoMaybeReactive<bool>>(
+        mut self,
+        b: V,
+    ) -> Self {
+        self.has_vertical_scroller = Some(b.into_maybe_reactive());
+        self
+    }
+    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh), A> {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: (self.children, child),
+            alpha: self.alpha,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: self.attrs,
+        }
+    }
+}
+
+impl<Ch: Render, A: crate::html::attribute::Attribute> Render
+    for ScrollView<Ch, A>
+{
+    type State = ElementState<A::State, Ch::State>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("scroll_view");
+        let mut effects = Vec::new();
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        if let Some(b) = self.has_horizontal_scroller {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(b, move |v| el_for.set_has_horizontal_scroller(v))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.has_vertical_scroller {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(b, move |v| el_for.set_has_vertical_scroller(v))
+            {
+                effects.push(eff);
+            }
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+
+        let child_state = self.children.build();
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: child_state,
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}
+
+impl<Ch, A> crate::view::add_attr::AddAnyAttr for ScrollView<Ch, A>
+where
+    Ch: Render + Send + 'static + RenderHtml,
+    A: crate::html::attribute::Attribute,
+{
+    type Output<NewAttr: crate::html::attribute::Attribute> =
+        ScrollView<Ch, <A as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
+    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
+        self,
+        attr: NewAttr,
+    ) -> Self::Output<NewAttr> {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: self.children,
+            alpha: self.alpha,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: crate::html::attribute::NextAttribute::add_any_attr(
+                self.attrs, attr,
+            ),
+        }
+    }
+}
+
+impl<Ch, A> RenderHtml for ScrollView<Ch, A>
+where
+    Ch: Render + Send + 'static + RenderHtml,
+    A: crate::html::attribute::Attribute,
+{
+    type AsyncOutput = ScrollView<Ch::AsyncOutput, A::AsyncOutput>;
+    type Owned = ScrollView<Ch::Owned, A::CloneableOwned>;
+    const MIN_LENGTH: usize = 0;
+    fn dry_resolve(&mut self) {
+        self.attrs.dry_resolve();
+    }
+    async fn resolve(self) -> Self::AsyncOutput {
+        let (ch, a) =
+            futures::join!(self.children.resolve(), self.attrs.resolve());
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: ch,
+            alpha: self.alpha,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: a,
+        }
+    }
+    fn to_html_with_buf(
+        self,
+        _buf: &mut String,
+        _position: &mut crate::view::Position,
+        _escape: bool,
+        _mark_branches: bool,
+        _extra_attrs: Vec<
+            crate::html::attribute::any_attribute::AnyAttribute,
+        >,
+    ) {
+    }
+    fn hydrate<const FROM_SERVER: bool>(
+        self,
+        _cursor: &crate::hydration::Cursor,
+        _position: &crate::view::PositionState,
+    ) -> Self::State {
+        <Self as Render>::build(self)
+    }
+    fn into_owned(self) -> Self::Owned {
+        ScrollView {
+            flex_grow: self.flex_grow,
+            children: self.children.into_owned(),
+            alpha: self.alpha,
+            has_horizontal_scroller: self.has_horizontal_scroller,
+            has_vertical_scroller: self.has_vertical_scroller,
+            attrs: self.attrs.into_cloneable_owned(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// text_view() — UITextView (multi-line plain-text editor)
+//
+// UITextView IS already a UIScrollView subclass — it scrolls itself,
+// no wrapper needed. `bind:value` goes through UITextViewDelegate's
+// `textViewDidChange:` instead of UIControl target/action.
+// ---------------------------------------------------------------------
+
+pub struct TextView<At = ()> {
+    value: MaybeReactive<String>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind: Option<crate::ios::bind::BoundValue>,
+    flex_grow: Option<f32>,
+    node_ref: Option<crate::ios::NodeRef>,
+    alpha: Option<MaybeReactive<f64>>,
+    text_color: Option<MaybeReactive<ios_dom::Color>>,
+    alignment: Option<MaybeReactive<ios_dom::NSTextAlignment>>,
+    font_size: Option<MaybeReactive<f64>>,
+    attrs: At,
+}
+
+pub fn text_view() -> TextView<()> {
+    TextView {
+        value: MaybeReactive::Static(String::new()),
+        enabled: None,
+        pending_bind: None,
+        flex_grow: None,
+        node_ref: None,
+        alpha: None,
+        text_color: None,
+        alignment: None,
+        font_size: None,
+        attrs: (),
+    }
+}
+
+impl<A> TextView<A> {
+    pub fn value<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn flex_grow(mut self, g: f32) -> Self {
+        self.flex_grow = Some(g);
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_value(
+        &mut self,
+        bound: crate::ios::bind::BoundValue,
+    ) {
+        self.pending_bind = Some(bound);
+    }
+}
+
+impl_universal_attrs!(TextView);
+impl_text_attrs!(TextView);
+
+impl_typed_attrs_for!(
+    TextView, value, enabled, pending_bind, flex_grow, node_ref,
+    alpha, text_color, alignment, font_size,
+);
+
+impl<At: crate::html::attribute::Attribute> Render for TextView<At> {
+    type State = ElementState<At::State, ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("text_view");
+        let mut effects = Vec::new();
+
+        let el_for_value = el.clone();
+        if let Some(eff) = install(self.value, move |v| {
+            el_for_value.set_string_attribute(StringAttr::Value, &v);
+        }) {
+            effects.push(eff);
+        }
+
+        // `enabled=…` toggles editability — UITextView isn't a
+        // UIControl so BoolAttr::Enabled doesn't apply; use the
+        // dedicated setter.
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(enabled, move |b| el_for.set_text_view_editable(b))
+            {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind {
+            let eff =
+                crate::ios::bind::install_text_view_value_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        if let Some(g) = self.flex_grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha));
+        effects.extend(apply_text_attrs(
+            &el,
+            self.text_color,
+            self.alignment,
+            self.font_size,
+        ));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        let attrs = self.attrs.build(&el);
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: (),
+        }
+    }
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
+    }
+}

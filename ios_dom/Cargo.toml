@@ -50,6 +50,8 @@ objc2-ui-kit = { version = "0.3", features = [
     "UIViewController",
     "UIEvent",
     "UIImage",
+    "UILayoutGuide",
+    "UIKeyboardLayoutGuide",
     "UIGeometry",
     "UIScreen",
     "NSText",

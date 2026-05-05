@@ -1,11 +1,11 @@
 [package]
-name = "counter"
+name = "controls_demo"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [[bin]]
-name = "counter"
+name = "controls"
 path = "src/main.rs"
 
 [dependencies]
