@@ -53,6 +53,9 @@ pub mod prelude {
     // module isn't compiled).
     #[cfg(all(target_os = "macos", leptos_native))]
     pub use crate::renderer::cocoa::Dom;
+    // Same for iOS — the UIKit renderer alias is also `Dom`.
+    #[cfg(all(target_os = "ios", leptos_native))]
+    pub use crate::renderer::ios::Dom;
     // Same for Linux — the GTK renderer alias is also `Dom`.
     #[cfg(all(target_os = "linux", leptos_native))]
     pub use crate::renderer::gtk::Dom;
@@ -74,6 +77,10 @@ use web_sys::Node;
 #[cfg(all(target_os = "macos", leptos_native, feature = "reactive_graph"))]
 pub mod cocoa;
 
+/// UIKit-flavoured element builders (iOS only). Same shape as
+/// [`cocoa`]; see that module's docs.
+#[cfg(all(target_os = "ios", leptos_native, feature = "reactive_graph"))]
+pub mod ios;
 /// GTK-flavoured element builders (Linux only). Same shape as
 /// [`cocoa`]; see that module's docs.
 #[cfg(all(target_os = "linux", leptos_native, feature = "reactive_graph"))]
@@ -110,6 +117,20 @@ pub mod svg_macos;
     feature = "reactive_graph"
 ))]
 pub use svg_macos as svg;
+/// Same pattern for iOS — the `<view>` SVG tag resolves to our
+/// UIView container.
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod svg_ios;
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use svg_ios as svg;
 /// Same pattern for GTK/Linux — the `<view>` SVG tag resolves to
 /// our GTK box container.
 #[cfg(all(

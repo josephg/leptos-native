@@ -1,0 +1,15 @@
+[package]
+name = "greeter_ios"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "greeter"
+path = "src/main.rs"
+
+[dependencies]
+leptos = { path = "../../leptos", features = ["native-ui"] }
+
+[profile.dev]
+panic = "abort"

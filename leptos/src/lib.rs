@@ -181,6 +181,11 @@ pub mod prelude {
         #[cfg(not(leptos_native))]
         pub use crate::{form::*, hydration::*, mount::*};
 
+        // The iOS-side mount entry point. Lives in the same module
+        // namespace so user code can write `use leptos::prelude::*;
+        // mount_to_window(...)`. Requires the `native-ui` feature.
+        #[cfg(all(target_os = "ios", leptos_native))]
+        pub use crate::mount_ios::*;
         // The macOS-side mount entry point. Lives in the same module
         // namespace so user code can write `use leptos::prelude::*;
         // mount_to_window(...)`. Requires the `native-ui` feature.
@@ -189,6 +194,21 @@ pub mod prelude {
         // The Linux-side mount entry point — same shape.
         #[cfg(all(target_os = "linux", leptos_native))]
         pub use crate::mount_gtk::*;
+
+        // iOS analog of web's setInterval. Backed by NSTimer.
+        #[cfg(target_os = "ios")]
+        pub use ios_dom::{
+            set_interval, set_interval_with_handle, IntervalError,
+            IntervalHandle,
+        };
+
+        // iOS-flavoured NodeRef.
+        #[cfg(target_os = "ios")]
+        pub use tachys::ios::NodeRef;
+
+        // iOS persistent storage analog (`NSUserDefaults`).
+        #[cfg(target_os = "ios")]
+        pub use ios_dom::{local_storage, Storage, StorageError};
 
         // macOS analog of `leptos_dom::helpers::set_interval_with_handle`
         // (web's setInterval). Backed by NSTimer; same signature so
@@ -238,6 +258,10 @@ pub mod prelude {
         #[cfg(not(leptos_native))]
         pub use tachys::reactive_graph::{
             bind::BindAttribute, node_ref::*, Suspend,
+        };
+        #[cfg(all(target_os = "ios", leptos_native))]
+        pub use tachys::{
+            ios::BindAttribute, reactive_graph::Suspend,
         };
         #[cfg(all(target_os = "macos", leptos_native))]
         pub use tachys::{
@@ -337,6 +361,11 @@ pub use tachys;
 /// Tools to mount an application to the DOM, or to hydrate it from server-rendered HTML.
 #[cfg(not(leptos_native))]
 pub mod mount;
+/// Tools to mount an application to a native iOS window. The
+/// UIKit-flavoured analogue of [`mount`](self::mount); see
+/// `mount_to_window`. Requires the `native-ui` feature.
+#[cfg(all(target_os = "ios", leptos_native))]
+pub mod mount_ios;
 /// Tools to mount an application to a native macOS window. The
 /// AppKit-flavoured analogue of [`mount`](self::mount); see
 /// `mount_to_window`. Requires the `native-ui` feature.
@@ -373,6 +402,11 @@ pub use tachys::html::attribute as attr;
 #[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::html::element as html;
+/// UIKit-flavoured element builders (iOS analogue of `html`).
+/// Requires the `native-ui` feature.
+#[cfg(all(target_os = "ios", leptos_native))]
+#[doc(inline)]
+pub use tachys::ios as ios;
 /// Cocoa-flavoured element builders (macOS analogue of `html`).
 /// Requires the `native-ui` feature.
 #[cfg(all(target_os = "macos", leptos_native))]

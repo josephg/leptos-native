@@ -28,6 +28,7 @@ members = [
   # native ports
   "cocoa_dom",
   "gtk_dom",
+  "ios_dom",
 
   # integrations
   "integrations/actix",
@@ -40,7 +41,7 @@ members = [
   "router_macro",
   "any_error",
 ]
-exclude = ["benchmarks", "examples", "examples_cocoa", "examples_gtk", "projects"]
+exclude = ["benchmarks", "examples", "examples_cocoa", "examples_gtk", "examples_ios", "projects"]
 
 [workspace.package]
 edition = "2021"

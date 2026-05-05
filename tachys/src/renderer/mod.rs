@@ -16,6 +16,10 @@ pub mod dom;
 #[cfg(all(target_os = "macos", leptos_native))]
 pub mod cocoa;
 
+/// A UIKit renderer (iOS target). Requires the `native-ui` feature.
+#[cfg(all(target_os = "ios", leptos_native))]
+pub mod ios;
+
 /// A GTK4 renderer (Linux target). Requires the `native-ui` feature;
 /// otherwise tachys uses the web renderer even on Linux.
 #[cfg(all(target_os = "linux", leptos_native))]
@@ -38,6 +42,9 @@ pub type Rndr = dom::Dom;
 /// Renderer alias for the macOS target — points at the Cocoa/AppKit backend.
 #[cfg(all(target_os = "macos", leptos_native))]
 pub type Rndr = cocoa::Dom;
+/// Renderer alias for the iOS target — points at the UIKit backend.
+#[cfg(all(target_os = "ios", leptos_native))]
+pub type Rndr = ios::Dom;
 /// Renderer alias for the Linux target — points at the GTK4 backend.
 #[cfg(all(target_os = "linux", leptos_native))]
 pub type Rndr = gtk::Dom;
@@ -58,6 +65,11 @@ pub mod types {
     };
     #[cfg(all(target_os = "linux", leptos_native))]
     pub use super::gtk::{
+        ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
+        TemplateElement, Text,
+    };
+    #[cfg(all(target_os = "ios", leptos_native))]
+    pub use super::ios::{
         ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
         TemplateElement, Text,
     };

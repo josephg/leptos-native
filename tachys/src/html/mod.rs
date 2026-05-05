@@ -62,6 +62,20 @@ pub mod element_macos;
     feature = "reactive_graph"
 ))]
 pub use element_macos as element;
+/// On iOS native, same role — re-exports the UIKit builders at the
+/// path the macro expects.
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod element_ios;
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use element_ios as element;
 /// On Linux native, same role — re-exports the GTK builders at the
 /// path the macro expects.
 #[cfg(all(
@@ -96,6 +110,20 @@ pub mod event_macos;
     feature = "reactive_graph"
 ))]
 pub use event_macos as event;
+/// On iOS native, same role — event descriptors and the
+/// `on(event, handler)` wrapper mapping to UIKit actions.
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub mod event_ios;
+#[cfg(all(
+    target_os = "ios",
+    leptos_native,
+    feature = "reactive_graph"
+))]
+pub use event_ios as event;
 /// On Linux native, same role — event descriptors and the
 /// `on(event, handler)` wrapper mapping to GTK signals.
 #[cfg(all(
