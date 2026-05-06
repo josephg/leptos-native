@@ -915,6 +915,18 @@ pub fn set_background_color(node: &Node, color: crate::Color) {
     }
 }
 
+/// Clip subviews to the view's bounds — equivalent to CSS
+/// `overflow: hidden`. Layout still places children at their
+/// computed sizes; rendering clips them at the parent's edge.
+/// Switches the view to layer-backed mode (idempotent).
+pub fn set_clip(node: &Node, clip: bool) {
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        layer.setMasksToBounds(clip);
+    }
+}
+
 pub fn set_margin(node: &Node, all_px: f32) {
     update_style(node, |s| {
         s.margin = taffy::Rect {

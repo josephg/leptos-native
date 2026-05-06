@@ -85,6 +85,16 @@ impl IntoAttributeValue for cocoa_dom::NSTextAlignment {
     }
 }
 
+// Sizing dimension type used by `width=` / `min_width=` / etc.
+// Allows percentages and `Auto` alongside the f32 px form.
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for crate::cocoa::attr::Dim {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
 // Taffy enums used as `<stack>` / `<block>` attribute values
 // (`direction`, `justify_content`, `align`, `wrap`). The `view!`
 // macro wraps non-literal values through `into_attribute_value`,

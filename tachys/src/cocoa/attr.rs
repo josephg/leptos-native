@@ -34,6 +34,50 @@ pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
 }
 
+/// A dimension value for sizing (`width`, `height`, `min_width`,
+/// `max_width`, `min_height`, `max_height`). Mirrors Taffy's
+/// `Dimension` but with a more compact constructor surface.
+///
+/// - `Px(v)` — fixed length in points.
+/// - `Pct(v)` — fraction of the parent's content width/height,
+///   `0.0..=1.0`. (`Pct(1.0)` = 100%.)
+/// - `Auto` — let the layout engine decide (Taffy's default).
+///
+/// `From<f32>` constructs a `Px` so existing call sites that pass
+/// raw floats keep working — `width(520.0)` and `width(Dim::pct(0.5))`
+/// are both valid.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dim {
+    Px(f32),
+    Pct(f32),
+    Auto,
+}
+
+impl Dim {
+    pub const fn px(v: f32) -> Self {
+        Self::Px(v)
+    }
+    pub const fn pct(v: f32) -> Self {
+        Self::Pct(v)
+    }
+    pub const AUTO: Self = Self::Auto;
+
+    pub fn to_dimension(self) -> cocoa_dom::layout::Dimension {
+        use cocoa_dom::layout::Dimension as D;
+        match self {
+            Self::Px(v) => D::length(v),
+            Self::Pct(v) => D::percent(v),
+            Self::Auto => D::auto(),
+        }
+    }
+}
+
+impl From<f32> for Dim {
+    fn from(v: f32) -> Self {
+        Self::Px(v)
+    }
+}
+
 // Static-value impls. `&str` and `String` have explicit impls so
 // callers can pass them without `.to_string()`.
 impl IntoMaybeReactive<String> for String {
@@ -69,6 +113,27 @@ impl IntoMaybeReactive<f64> for f64 {
 impl IntoMaybeReactive<f32> for f32 {
     fn into_maybe_reactive(self) -> MaybeReactive<f32> {
         MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<Dim> for Dim {
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<Dim> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Static(Dim::Px(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<Dim> for F
+where
+    F: Fn() -> Dim + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Reactive(Box::new(self))
     }
 }
 

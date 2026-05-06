@@ -6,15 +6,14 @@
 //! signal-driven values), recursively builds children, and mounts
 //! them.
 
-use super::attr::{install, IntoMaybeReactive, MaybeReactive};
+use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
 use crate::view::{Mountable, Render};
 use cocoa_dom::{
     layout::{
-        set_align_items, set_background_color, set_flex_basis,
-        set_flex_direction, set_flex_grow, set_flex_shrink, set_flex_wrap,
-        set_gap, set_height, set_justify_content, set_max_height,
-        set_max_width, set_min_height, set_min_width, set_padding,
-        set_width, AlignItems, FlexDirection, FlexWrap, JustifyContent,
+        schedule_relayout, set_align_items, set_background_color, set_clip,
+        set_flex_basis, set_flex_direction, set_flex_grow, set_flex_shrink,
+        set_flex_wrap, set_gap, set_justify_content, set_padding,
+        update_style, AlignItems, FlexDirection, FlexWrap, JustifyContent,
     },
     BoolAttr, Color, Element as CocoaElement, StringAttr,
 };
@@ -222,12 +221,12 @@ fn apply_flex_item_attrs(
     grow: Option<MaybeReactive<f32>>,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
-    width: Option<MaybeReactive<f32>>,
-    min_width: Option<MaybeReactive<f32>>,
-    max_width: Option<MaybeReactive<f32>>,
-    height: Option<MaybeReactive<f32>>,
-    min_height: Option<MaybeReactive<f32>>,
-    max_height: Option<MaybeReactive<f32>>,
+    width: Option<MaybeReactive<Dim>>,
+    min_width: Option<MaybeReactive<Dim>>,
+    max_width: Option<MaybeReactive<Dim>>,
+    height: Option<MaybeReactive<Dim>>,
+    min_height: Option<MaybeReactive<Dim>>,
+    max_height: Option<MaybeReactive<Dim>>,
 ) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(v) = grow {
@@ -250,45 +249,61 @@ fn apply_flex_item_attrs(
     }
     if let Some(v) = width {
         let e = el.clone();
-        if let Some(eff) = install(v, move |w| set_width(e.as_node(), w)) {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
     if let Some(v) = min_width {
         let e = el.clone();
-        if let Some(eff) =
-            install(v, move |w| set_min_width(e.as_node(), w))
-        {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
     if let Some(v) = max_width {
         let e = el.clone();
-        if let Some(eff) =
-            install(v, move |w| set_max_width(e.as_node(), w))
-        {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
     if let Some(v) = height {
         let e = el.clone();
-        if let Some(eff) = install(v, move |h| set_height(e.as_node(), h)) {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
     if let Some(v) = min_height {
         let e = el.clone();
-        if let Some(eff) =
-            install(v, move |h| set_min_height(e.as_node(), h))
-        {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
     if let Some(v) = max_height {
         let e = el.clone();
-        if let Some(eff) =
-            install(v, move |h| set_max_height(e.as_node(), h))
-        {
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
             out.push(eff);
         }
     }
@@ -305,13 +320,14 @@ pub struct Stack<Children, At = ()> {
     grow:             Option<MaybeReactive<f32>>,
     shrink:           Option<MaybeReactive<f32>>,
     basis:            Option<MaybeReactive<f32>>,
-    width:            Option<MaybeReactive<f32>>,
-    min_width:        Option<MaybeReactive<f32>>,
-    max_width:        Option<MaybeReactive<f32>>,
-    height:           Option<MaybeReactive<f32>>,
-    min_height:       Option<MaybeReactive<f32>>,
-    max_height:       Option<MaybeReactive<f32>>,
+    width:            Option<MaybeReactive<Dim>>,
+    min_width:        Option<MaybeReactive<Dim>>,
+    max_width:        Option<MaybeReactive<Dim>>,
+    height:           Option<MaybeReactive<Dim>>,
+    min_height:       Option<MaybeReactive<Dim>>,
+    max_height:       Option<MaybeReactive<Dim>>,
     background_color: Option<MaybeReactive<Color>>,
+    clip:             Option<MaybeReactive<bool>>,
     alpha:            Option<MaybeReactive<f64>>,
     tool_tip:         Option<MaybeReactive<String>>,
     children:         Children,
@@ -336,6 +352,7 @@ fn empty_stack() -> Stack<(), ()> {
         min_height: None,
         max_height: None,
         background_color: None,
+        clip: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -454,7 +471,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.width = Some(w.into_maybe_reactive());
         self
@@ -462,7 +479,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn min_width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.min_width = Some(w.into_maybe_reactive());
         self
@@ -470,7 +487,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn max_width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.max_width = Some(w.into_maybe_reactive());
         self
@@ -478,7 +495,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.height = Some(h.into_maybe_reactive());
         self
@@ -486,7 +503,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn min_height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.min_height = Some(h.into_maybe_reactive());
         self
@@ -494,7 +511,7 @@ impl<Ch, At> Stack<Ch, At> {
 
     pub fn max_height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.max_height = Some(h.into_maybe_reactive());
         self
@@ -507,6 +524,17 @@ impl<Ch, At> Stack<Ch, At> {
         V: IntoMaybeReactive<Color>,
     {
         self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Equivalent of CSS `overflow: hidden`. Children that extend
+    /// past this stack's bounds are clipped at draw time. Layout
+    /// still positions them at their full computed sizes.
+    pub fn clip<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.clip = Some(c.into_maybe_reactive());
         self
     }
 
@@ -544,6 +572,7 @@ impl<Ch, At> Stack<Ch, At> {
             min_height: self.min_height,
             max_height: self.max_height,
             background_color: self.background_color,
+            clip: self.clip,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
@@ -631,6 +660,12 @@ where
                 effects.push(eff);
             }
         }
+        if let Some(v) = self.clip {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |c| set_clip(e.as_node(), c)) {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         // Build children but DON'T mount them yet. Mounting is
@@ -664,13 +699,14 @@ pub struct Block<Children, At = ()> {
     grow:             Option<MaybeReactive<f32>>,
     shrink:           Option<MaybeReactive<f32>>,
     basis:            Option<MaybeReactive<f32>>,
-    width:            Option<MaybeReactive<f32>>,
-    min_width:        Option<MaybeReactive<f32>>,
-    max_width:        Option<MaybeReactive<f32>>,
-    height:           Option<MaybeReactive<f32>>,
-    min_height:       Option<MaybeReactive<f32>>,
-    max_height:       Option<MaybeReactive<f32>>,
+    width:            Option<MaybeReactive<Dim>>,
+    min_width:        Option<MaybeReactive<Dim>>,
+    max_width:        Option<MaybeReactive<Dim>>,
+    height:           Option<MaybeReactive<Dim>>,
+    min_height:       Option<MaybeReactive<Dim>>,
+    max_height:       Option<MaybeReactive<Dim>>,
     background_color: Option<MaybeReactive<Color>>,
+    clip:             Option<MaybeReactive<bool>>,
     alpha:            Option<MaybeReactive<f64>>,
     tool_tip:         Option<MaybeReactive<String>>,
     children:         Children,
@@ -691,6 +727,7 @@ pub fn block() -> Block<(), ()> {
         min_height: None,
         max_height: None,
         background_color: None,
+        clip: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -730,42 +767,42 @@ impl<Ch, At> Block<Ch, At> {
     }
     pub fn width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.width = Some(w.into_maybe_reactive());
         self
     }
     pub fn min_width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.min_width = Some(w.into_maybe_reactive());
         self
     }
     pub fn max_width<V>(mut self, w: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.max_width = Some(w.into_maybe_reactive());
         self
     }
     pub fn height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.height = Some(h.into_maybe_reactive());
         self
     }
     pub fn min_height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.min_height = Some(h.into_maybe_reactive());
         self
     }
     pub fn max_height<V>(mut self, h: V) -> Self
     where
-        V: IntoMaybeReactive<f32>,
+        V: IntoMaybeReactive<Dim>,
     {
         self.max_height = Some(h.into_maybe_reactive());
         self
@@ -775,6 +812,14 @@ impl<Ch, At> Block<Ch, At> {
         V: IntoMaybeReactive<Color>,
     {
         self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+    /// CSS `overflow: hidden` equivalent — see [`Stack::clip`].
+    pub fn clip<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.clip = Some(c.into_maybe_reactive());
         self
     }
     pub fn alpha<V>(mut self, a: V) -> Self
@@ -805,6 +850,7 @@ impl<Ch, At> Block<Ch, At> {
             min_height: self.min_height,
             max_height: self.max_height,
             background_color: self.background_color,
+            clip: self.clip,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
@@ -848,6 +894,12 @@ where
             if let Some(eff) =
                 install(v, move |c| set_background_color(e.as_node(), c))
             {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.clip {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |c| set_clip(e.as_node(), c)) {
                 effects.push(eff);
             }
         }
@@ -3990,6 +4042,7 @@ impl_container_typed_attrs!(
     min_height,
     max_height,
     background_color,
+    clip,
     alpha,
     tool_tip
 );
@@ -4008,6 +4061,7 @@ impl_container_typed_attrs!(
     min_height,
     max_height,
     background_color,
+    clip,
     alpha,
     tool_tip
 );
