@@ -1,7 +1,5 @@
-#[cfg(feature = "web")]
-use crate::view_prelude::*;
 use crate::{prelude::Suspend, suspense_component::Suspense, IntoView};
-use leptos_macro::{component, view};
+use leptos_macro::component;
 use leptos_server::ArcOnceResource;
 use reactive_graph::prelude::ReadUntracked;
 use serde::{de::DeserializeOwned, Serialize};

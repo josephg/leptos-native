@@ -1,5 +1,3 @@
-#[cfg(feature = "web")]
-use crate::view_prelude::*;
 use crate::attr::{
     any_attribute::{AnyAttribute, IntoAnyAttribute},
     Attribute, NextAttribute,

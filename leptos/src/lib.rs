@@ -172,12 +172,63 @@ compile_error!(
 
 extern crate self as leptos;
 
-/// Provides `__leptos_view`, the namespace the `view!{}` macro
-/// expands to. `use leptos::view_prelude::*;` brings it into scope.
-/// On web targets it re-exports `tachys::html::*`; on native targets
-/// (transitional — Phase 5 moves this to the glue crate) it
-/// re-exports the appropriate `tachys::{cocoa,ios,gtk}` modules.
-pub mod view_prelude;
+/// The renderer-toolkit namespace the `view!{}` macro routes through
+/// on web. The `view!` `macro_rules!` defined just below pre-supplies
+/// this path to `leptos_macro::raw_view!`, which aliases it as
+/// `__leptos_view` inside the generated block. Users don't import
+/// from this module — `view! { ... }` "just works" once `leptos` is
+/// in scope.
+///
+/// Native renderers (`leptos_cocoa`, `leptos_ios`, `leptos_gtk`)
+/// expose their own `__view_namespace` of the same shape and ship
+/// their own `view!` wrapper. See `ARCHITECTURE.md` in the
+/// leptos-native repo for the contract.
+#[cfg(feature = "web")]
+#[doc(hidden)]
+#[allow(non_camel_case_types, missing_docs)]
+pub mod __view_namespace {
+    pub mod elements {
+        pub use ::tachys::html::doctype;
+        pub use ::tachys::html::element::*;
+        pub use ::tachys::html::InertElement;
+    }
+    pub mod svg {
+        pub use ::tachys::svg::*;
+    }
+    pub mod mathml {
+        pub use ::tachys::mathml::*;
+    }
+    pub mod events {
+        pub use ::tachys::html::event::*;
+    }
+    pub mod attrs {
+        pub use ::tachys::html::attribute::custom::custom_attribute;
+        pub use ::tachys::html::attribute::*;
+        pub use ::tachys::html::class::class;
+        pub use ::tachys::html::directive::directive;
+        pub use ::tachys::html::node_ref::node_ref;
+        pub use ::tachys::html::property::prop;
+        pub use ::tachys::html::style::style;
+    }
+    pub mod bind {
+        pub use ::tachys::html::attribute::*;
+        pub use ::tachys::reactive_graph::bind::Group;
+    }
+}
+
+/// The web `view!{}` macro — the one you've been using since 0.x.
+/// Wraps `leptos_macro::raw_view!` with the web renderer namespace
+/// pre-supplied, so existing code keeps working unchanged.
+///
+/// On native targets, use the equivalent `view!` exported by your
+/// renderer crate (`leptos_cocoa::view!`, etc.).
+#[cfg(feature = "web")]
+#[macro_export]
+macro_rules! view {
+    ($($t:tt)*) => {
+        $crate::raw_view!($crate::__view_namespace, $($t)*)
+    };
+}
 
 /// Exports all the core types of the library.
 pub mod prelude {
@@ -215,6 +266,13 @@ pub mod prelude {
         #[cfg(feature = "web")]
         pub use leptos_dom::helpers::*;
         pub use leptos_macro::*;
+        // The web `view!` `macro_rules!` lives at the leptos crate
+        // root (macro namespace, via #[macro_export]). Re-export it
+        // through the prelude so `use leptos::prelude::*` brings it
+        // into scope alongside `raw_view!`. Web-only — native users
+        // get their `view!` from `leptos_<backend>::prelude::*`.
+        #[cfg(feature = "web")]
+        pub use crate::view;
         pub use leptos_server::*;
         pub use oco_ref::*;
         pub use reactive_graph::{
@@ -236,11 +294,10 @@ pub mod prelude {
         pub use tachys::reactive_graph::{
             bind::BindAttribute, node_ref::*, Suspend,
         };
-        // The view! macro expands to paths rooted at `__leptos_view`,
-        // which `view_prelude` exposes (different module tree per
-        // backend). Glob-import it here so users get the macro-needed
-        // namespace via `use leptos::prelude::*;`.
-        pub use crate::view_prelude::*;
+        // The web `view!` `macro_rules!` is defined at the crate root
+        // (with `#[macro_export]`) so users get it via the
+        // `pub use leptos_macro::*` glob below — it lives in the same
+        // macro namespace.
         #[cfg(all(target_os = "ios", feature = "native-ui"))]
         pub use tachys::reactive_graph::Suspend;
         #[cfg(all(target_os = "macos", feature = "native-ui"))]
@@ -284,12 +341,19 @@ pub mod error {
 pub mod control_flow {
     #[cfg(feature = "web")]
     pub use crate::animated_show::*;
-    pub use crate::{await_::*, for_loop::*, show::*, show_let::*};
+    #[cfg(feature = "web")]
+    pub use crate::await_::*;
+    pub use crate::{for_loop::*, show::*, show_let::*};
 }
 // `animated_show` uses leptos_dom::helpers::set_timeout_with_handle
 // which is web-only.
 #[cfg(feature = "web")]
 mod animated_show;
+// `<Await>` ships a `view!{<Suspense>...</Suspense>}` invocation,
+// which depends on `leptos::view!` being defined. The wrapper macro
+// is web-only (native users get their own from
+// `leptos_<backend>::view!`), so this module is web-only too.
+#[cfg(feature = "web")]
 mod await_;
 mod for_loop;
 mod show;
@@ -368,15 +432,11 @@ pub use tachys::html::attribute as attr;
 #[cfg(feature = "web")]
 #[doc(inline)]
 pub use tachys::html::element as html;
-// UIKit-flavoured element builders moved to the `leptos_ios` crate
-// in Phase 5; users do `use leptos_ios::elements::*;` (or
-// `use leptos_ios::view_prelude::*;` for the macro to find them).
-// Cocoa-flavoured element builders moved to the `leptos_cocoa`
-// crate in Phase 5; users do `use leptos_cocoa::elements::*;` (or
-// `use leptos_cocoa::view_prelude::*;` for the macro to find them).
-// GTK-flavoured element builders moved to the `leptos_gtk` crate
-// in Phase 5; users do `use leptos_gtk::elements::*;` (or
-// `use leptos_gtk::view_prelude::*;` for the macro to find them).
+// Native element builders + their `view!` wrapper macros live in the
+// per-renderer glue crates: `leptos_cocoa` (macOS), `leptos_ios`
+// (iOS), `leptos_gtk` (Linux). Users `use leptos_<backend>::prelude::*;`
+// to get the right `view!`, element builders, mount entry points,
+// etc.
 /// HTML event types.
 #[cfg(feature = "web")]
 #[doc(no_inline)]

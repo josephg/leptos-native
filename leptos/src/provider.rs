@@ -1,5 +1,3 @@
-#[cfg(feature = "web")]
-use crate::view_prelude::*;
 use crate::{children::TypedChildren, component, IntoView};
 use reactive_graph::owner::{provide_context, Owner};
 use tachys::reactive_graph::OwnedView;
