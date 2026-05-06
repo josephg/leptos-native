@@ -5,6 +5,112 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-06 — Layout primitives: `<stack>` and `<block>`
+
+Replaced the generic `<view>` flex container with two explicit
+layout primitives, plus reshaped how stacks expose flex attributes.
+The motivation and platform precedent is captured in
+`flex-and-block-deep-research.md` (the user fed in cross-platform
+research from AppKit/UIKit/GTK/WinUI/WPF/Qt/Flutter/RN); short
+version: every native UI framework consistently exposes named
+layout primitives — `<div>`-style mode-switched containers are an
+HTML-ism that doesn't transfer cleanly when the underlying engine
+(Taffy) implements multiple layout algorithms.
+
+### Surface
+
+```rust
+<stack direction=FlexDirection::Row gap=8 justify_content=JustifyContent::SpaceBetween>...
+<vstack gap=12 padding=16 align=AlignItems::Center>...
+<hstack wrap=FlexWrap::Wrap>...
+<block padding=16>...   // gated on the `block_layout` feature
+```
+
+`Stack` (replaces the old `View` struct) carries the full flex
+attribute set: `direction`, `gap`, `padding`, `justify_content`,
+`align`, `wrap`, `grow`, `shrink`, `basis`, `width`, `height` —
+all reactive via `Option<MaybeReactive<T>>`. `<vstack>` /
+`<hstack>` are constructors that preset `direction`. Bare
+`stack()` defaults to `FlexDirection::Column` at build time
+(intentionally diverging from Taffy's own `Row` default — "a
+stack" reads more naturally as a vertical pile, and the previous
+`view()` constructor's silent-Row default had been a frequent
+surprise).
+
+`Block` is a separate, smaller builder: `padding`, `grow`,
+`shrink`, `basis`, `width`, `height` only. No `direction` /
+`gap` / `justify_content` / `align` / `wrap` because Taffy's
+block algorithm doesn't honor them — making them type-level
+errors is more honest than silently no-op'ing.
+
+### Attribute naming
+
+Builder method names drop Taffy's `flex_` prefix: `direction`,
+`grow`, `shrink`, `basis`, `wrap`, `align`. We keep `padding`,
+`gap`, `justify_content`, `width`, `height` verbatim. The
+underlying Taffy field names + the `set_*` helpers in
+`cocoa_dom::layout` keep the prefixed names (`set_flex_direction`,
+`set_flex_grow`, …) — only the public builder API is shorter.
+
+The rename also propagated to existing controls: `Button`,
+`Slider`, `Label`, etc. now expose `.grow(...)` instead of
+`.flex_grow(...)`. Mechanical replace via `perl -pe 's/(?<!set_)
+\bflex_grow\b/grow/g'` (negative lookbehind keeps the
+cocoa_dom helper name untouched). Examples updated too.
+
+### `block_layout` feature flag
+
+Behind a Cargo feature in both `cocoa_dom` (gates Taffy's own
+`block_layout` feature) and `tachys` (passthrough). Default
+**off** — apps that only use flex don't pay the binary-size cost
+of the second layout algorithm. The Block builder + `"block"`
+tag handler in `Element::create_with` are both gated on this
+feature.
+
+### Reactive layout attrs (departure from prior policy)
+
+Earlier work kept layout attrs static (the comment in
+`element.rs` was: "reactive layout would need a bigger
+debounce/scheduling story"). Revisited: every `set_*` helper in
+`cocoa_dom::layout` now also calls `schedule_relayout`, which
+already dedupes via the thread-local `PENDING` set — so multiple
+reactive layout writes in one tick coalesce into a single
+`compute_layout` pass. This makes layout reactivity essentially
+free at the call site; no debouncing layer required.
+
+### `<view>` is preserved (SVG routing)
+
+Dropped the public `<div>` alias (no examples used it; the
+research doc made the case against making `<div>` a canonical
+native tag). Kept `<view>` as a constructor that aliases
+`stack()` because the leptos `view!{}` macro routes `<view>`
+through `tachys::svg::view` — `view` is a real SVG tag and the
+macro's tag-table emits the SVG path.
+
+### IntoMaybeReactive widening
+
+Added impls for `f32` (literal floats default to `f64` in Rust;
+without the `f32` impl, `padding=16.0` failed to infer as
+`f32`) and for the four new Taffy enum types
+(`FlexDirection`, `JustifyContent`, `AlignItems`, `FlexWrap`),
+both static and closure variants.
+
+### Deferred
+
+- `<grid>` — needs its own design pass for child attached props
+  (`row`, `column`, `row_span`, `column_span`).
+- `margin` builder — block-layout's natural sibling spacing.
+  `set_margin` exists in `cocoa_dom::layout` but no builder
+  surface yet.
+- Per-child attached layout props (`.frame(...)`-style).
+- Reverse axes — `FlexDirection::RowReverse` /
+  `ColumnReverse` are accepted (Taffy's enum unchanged) but
+  `<vstack>` / `<hstack>` only preset the non-reversed
+  variants and there's no design pass on what reversed-axis
+  semantics should mean.
+
+---
+
 ## 2026-05-05 — Reactive variants for the new attributes
 
 Followed up the missing-attribute pass by converting all 21 newly-

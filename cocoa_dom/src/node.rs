@@ -631,6 +631,25 @@ impl Element {
                 s.flex_direction = FlexDirection::Column;
                 (v, s)
             }
+            "stack" => {
+                // Canonical linear-layout primitive — flexbox with no
+                // axis preset (the builder layer chooses Row/Column).
+                let v: Retained<NSView> = unsafe {
+                    Retained::cast_unchecked(FlippedView::new(mtm))
+                };
+                (v, Style::default())
+            }
+            #[cfg(feature = "block_layout")]
+            "block" => {
+                // Block-layout container — children stack vertically and
+                // fill container width by default.
+                let v: Retained<NSView> = unsafe {
+                    Retained::cast_unchecked(FlippedView::new(mtm))
+                };
+                let mut s = Style::default();
+                s.display = crate::layout::Display::Block;
+                (v, s)
+            }
             // "view" or anything unknown → generic flipped container
             _ => {
                 let v: Retained<NSView> = unsafe {

@@ -36,7 +36,7 @@ fn App() -> impl IntoView {
     let themes = vec!["Light", "Dark", "Auto"];
 
     view! {
-        <scroll_view flex_grow=1.0>
+        <scroll_view grow=1.0>
             <vstack padding=20.0 gap=20.0>
                 <label>{"Leptos macOS — control showcase"}</label>
 
@@ -125,7 +125,7 @@ fn App() -> impl IntoView {
                 </Section>
 
                 <Section title="Multi-line text — bind:value">
-                    <text_view bind:value=notes flex_grow=1.0 />
+                    <text_view bind:value=notes grow=1.0 />
                     <label>{move || format!("{} chars", notes.get().len())}</label>
                 </Section>
             </vstack>

@@ -7,12 +7,19 @@ description = "DOM-shaped façade over Cocoa/AppKit, used by tachys/leptos to re
 rust-version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+# Enables Taffy's `block_layout` algorithm and the `<block>` tag in
+# `Element::create_with`. Off by default to keep binary size down
+# for apps that only need flex.
+block_layout = ["taffy/block_layout"]
+
 [dependencies]
 send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
-tachys = { workspace = true, features = ["reactive_graph", "native-ui"] }
+tachys = { workspace = true, features = ["reactive_graph", "native-ui", "block_layout"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

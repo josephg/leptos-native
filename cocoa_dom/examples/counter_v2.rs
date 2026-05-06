@@ -46,24 +46,24 @@ fn main() {
                 }))
                 .child(
                     view()
-                        .flex_direction(FlexDirection::Row)
+                        .direction(FlexDirection::Row)
                         .gap(8.0)
                         .child(
                             button()
                                 .title("-1")
-                                .flex_grow(1.0)
+                                .grow(1.0)
                                 .on_click(move || count.update(|n| *n -= 1)),
                         )
                         .child(
                             button()
                                 .title("Reset")
-                                .flex_grow(1.0)
+                                .grow(1.0)
                                 .on_click(move || count.set(0)),
                         )
                         .child(
                             button()
                                 .title("+1")
-                                .flex_grow(1.0)
+                                .grow(1.0)
                                 .on_click(move || count.update(|n| *n += 1)),
                         ),
                 ),

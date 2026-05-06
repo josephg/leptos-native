@@ -10,8 +10,10 @@ use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::view::{Mountable, Render};
 use cocoa_dom::{
     layout::{
-        set_flex_direction, set_flex_grow, set_gap, set_padding,
-        FlexDirection,
+        set_align_items, set_flex_basis, set_flex_direction, set_flex_grow,
+        set_flex_shrink, set_flex_wrap, set_gap, set_height,
+        set_justify_content, set_padding, set_width, AlignItems,
+        FlexDirection, FlexWrap, JustifyContent,
     },
     BoolAttr, Element as CocoaElement, StringAttr,
 };
@@ -206,26 +208,85 @@ impl<AttrState, ChildState: Mountable> Mountable
 }
 
 // ---------------------------------------------------------------------
-// view() — generic flipped container
+// stack() — Taffy flexbox container (canonical linear layout primitive)
 // ---------------------------------------------------------------------
 
-pub struct View<Children, At = ()> {
-    flex_direction: Option<FlexDirection>,
-    padding: Option<f32>,
-    gap: Option<f32>,
-    flex_grow: Option<f32>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
-    children: Children,
-    attrs: At,
+/// Apply the flex-item style attrs (`grow`, `shrink`, `basis`, `width`,
+/// `height`) — meaningful on any element that participates in a flex
+/// parent's layout. Used by both `Stack` and `Block`.
+fn apply_flex_item_attrs(
+    el: &CocoaElement,
+    grow: Option<MaybeReactive<f32>>,
+    shrink: Option<MaybeReactive<f32>>,
+    basis: Option<MaybeReactive<f32>>,
+    width: Option<MaybeReactive<f32>>,
+    height: Option<MaybeReactive<f32>>,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(v) = grow {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = shrink {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |s| set_flex_shrink(e.as_node(), s)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = basis {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |b| set_flex_basis(e.as_node(), b)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |w| set_width(e.as_node(), w)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |h| set_height(e.as_node(), h)) {
+            out.push(eff);
+        }
+    }
+    out
 }
 
-pub fn view() -> View<(), ()> {
-    View {
-        flex_direction: None,
-        padding: None,
+pub struct Stack<Children, At = ()> {
+    direction:       Option<MaybeReactive<FlexDirection>>,
+    gap:             Option<MaybeReactive<f32>>,
+    padding:         Option<MaybeReactive<f32>>,
+    justify_content: Option<MaybeReactive<JustifyContent>>,
+    align:           Option<MaybeReactive<AlignItems>>,
+    wrap:            Option<MaybeReactive<FlexWrap>>,
+    grow:            Option<MaybeReactive<f32>>,
+    shrink:          Option<MaybeReactive<f32>>,
+    basis:           Option<MaybeReactive<f32>>,
+    width:           Option<MaybeReactive<f32>>,
+    height:          Option<MaybeReactive<f32>>,
+    alpha:           Option<MaybeReactive<f64>>,
+    tool_tip:        Option<MaybeReactive<String>>,
+    children:        Children,
+    attrs:           At,
+}
+
+fn empty_stack() -> Stack<(), ()> {
+    Stack {
+        direction: None,
         gap: None,
-        flex_grow: None,
+        padding: None,
+        justify_content: None,
+        align: None,
+        wrap: None,
+        grow: None,
+        shrink: None,
+        basis: None,
+        width: None,
+        height: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -233,27 +294,128 @@ pub fn view() -> View<(), ()> {
     }
 }
 
-impl<Ch, At> View<Ch, At> {
-    pub fn flex_direction(mut self, dir: FlexDirection) -> Self {
-        self.flex_direction = Some(dir);
+/// Linear layout container backed by Taffy flexbox. `direction`
+/// defaults to `Column` if unset.
+pub fn stack() -> Stack<(), ()> {
+    empty_stack()
+}
+
+/// Vertical stack — `direction = Column`.
+pub fn vstack() -> Stack<(), ()> {
+    Stack {
+        direction: Some(MaybeReactive::Static(FlexDirection::Column)),
+        ..empty_stack()
+    }
+}
+
+/// Horizontal stack — `direction = Row`.
+pub fn hstack() -> Stack<(), ()> {
+    Stack {
+        direction: Some(MaybeReactive::Static(FlexDirection::Row)),
+        ..empty_stack()
+    }
+}
+
+/// Legacy alias of `vstack()` — kept for source-compatibility.
+pub fn stack_view() -> Stack<(), ()> {
+    vstack()
+}
+
+/// Legacy alias of `stack()` (default Column). Preserved because the
+/// leptos `view!{}` macro emits `<view>` through its SVG-tag path
+/// (`tachys::svg::view`).
+pub fn view() -> Stack<(), ()> {
+    empty_stack()
+}
+
+impl<Ch, At> Stack<Ch, At> {
+    pub fn direction<V>(mut self, d: V) -> Self
+    where
+        V: IntoMaybeReactive<FlexDirection>,
+    {
+        self.direction = Some(d.into_maybe_reactive());
         self
     }
 
-    pub fn padding(mut self, p: f32) -> Self {
-        self.padding = Some(p);
+    pub fn padding<V>(mut self, p: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.padding = Some(p.into_maybe_reactive());
         self
     }
 
-    pub fn gap(mut self, g: f32) -> Self {
-        self.gap = Some(g);
+    pub fn gap<V>(mut self, g: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.gap = Some(g.into_maybe_reactive());
         self
     }
 
-    /// Flexbox grow factor — 0 (default) means don't grow into extra
-    /// space; 1+ means take a share of extra space along the parent's
-    /// main axis.
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn justify_content<V>(mut self, j: V) -> Self
+    where
+        V: IntoMaybeReactive<JustifyContent>,
+    {
+        self.justify_content = Some(j.into_maybe_reactive());
+        self
+    }
+
+    pub fn align<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<AlignItems>,
+    {
+        self.align = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn wrap<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<FlexWrap>,
+    {
+        self.wrap = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Flex grow factor along the parent's main axis. 0 (default)
+    /// means don't grow into extra space; 1+ means take a share.
+    pub fn grow<V>(mut self, g: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.grow = Some(g.into_maybe_reactive());
+        self
+    }
+
+    pub fn shrink<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.shrink = Some(s.into_maybe_reactive());
+        self
+    }
+
+    pub fn basis<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.basis = Some(b.into_maybe_reactive());
+        self
+    }
+
+    pub fn width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.height = Some(h.into_maybe_reactive());
         self
     }
 
@@ -273,12 +435,19 @@ impl<Ch, At> View<Ch, At> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh), At> {
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
+    pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh), At> {
+        Stack {
+            direction: self.direction,
             gap: self.gap,
-            flex_grow: self.flex_grow,
+            padding: self.padding,
+            justify_content: self.justify_content,
+            align: self.align,
+            wrap: self.wrap,
+            grow: self.grow,
+            shrink: self.shrink,
+            basis: self.basis,
+            width: self.width,
+            height: self.height,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
@@ -287,7 +456,7 @@ impl<Ch, At> View<Ch, At> {
     }
 }
 
-impl<Ch, At> Render for View<Ch, At>
+impl<Ch, At> Render for Stack<Ch, At>
 where
     Ch: Render,
     At: crate::html::attribute::Attribute,
@@ -295,21 +464,65 @@ where
     type State = ElementState<At::State, Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = CocoaElement::create("view");
+        let el = CocoaElement::create("stack");
         let mut effects = Vec::new();
 
-        if let Some(dir) = self.flex_direction {
-            set_flex_direction(el.as_node(), dir);
+        // Default direction = Column when caller didn't specify (the
+        // bare `stack()` constructor). vstack/hstack pre-fill Some.
+        let direction = self
+            .direction
+            .unwrap_or(MaybeReactive::Static(FlexDirection::Column));
+        {
+            let e = el.clone();
+            if let Some(eff) = install(direction, move |d| {
+                set_flex_direction(e.as_node(), d)
+            }) {
+                effects.push(eff);
+            }
         }
-        if let Some(p) = self.padding {
-            set_padding(el.as_node(), p);
+        if let Some(v) = self.padding {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p)) {
+                effects.push(eff);
+            }
         }
-        if let Some(g) = self.gap {
-            set_gap(el.as_node(), g);
+        if let Some(v) = self.gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
         }
-        if let Some(g) = self.flex_grow {
-            set_flex_grow(el.as_node(), g);
+        if let Some(v) = self.justify_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_content(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
         }
+        if let Some(v) = self.align {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_items(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.wrap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |w| set_flex_wrap(e.as_node(), w))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_flex_item_attrs(
+            &el,
+            self.grow,
+            self.shrink,
+            self.basis,
+            self.width,
+            self.height,
+        ));
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         // Build children but DON'T mount them yet. Mounting is
@@ -330,25 +543,36 @@ where
 
     fn rebuild(self, state: &mut Self::State) {
         self.attrs.rebuild(&mut state._attrs);
-        // Stage 5 part 1: attribute changes on a View aren't expected
-        // (they're set once at build time). When we add reactive
-        // styles, this needs proper diffing.
     }
 }
 
-// `stack_view` is just a `view` whose default flex direction is column.
-pub fn stack_view() -> View<(), ()> {
-    vstack()
+// ---------------------------------------------------------------------
+// block() — Taffy block_layout container (vertical document flow)
+// ---------------------------------------------------------------------
+
+#[cfg(feature = "block_layout")]
+pub struct Block<Children, At = ()> {
+    padding:  Option<MaybeReactive<f32>>,
+    grow:     Option<MaybeReactive<f32>>,
+    shrink:   Option<MaybeReactive<f32>>,
+    basis:    Option<MaybeReactive<f32>>,
+    width:    Option<MaybeReactive<f32>>,
+    height:   Option<MaybeReactive<f32>>,
+    alpha:    Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
+    children: Children,
+    attrs:    At,
 }
 
-/// Vertical stack — a flipped container with `flex_direction: Column`.
-/// SwiftUI-flavoured shorthand for the common case.
-pub fn vstack() -> View<(), ()> {
-    View {
-        flex_direction: Some(FlexDirection::Column),
+#[cfg(feature = "block_layout")]
+pub fn block() -> Block<(), ()> {
+    Block {
         padding: None,
-        gap: None,
-        flex_grow: None,
+        grow: None,
+        shrink: None,
+        basis: None,
+        width: None,
+        height: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -356,17 +580,121 @@ pub fn vstack() -> View<(), ()> {
     }
 }
 
-/// Horizontal stack — a flipped container with `flex_direction: Row`.
-pub fn hstack() -> View<(), ()> {
-    View {
-        flex_direction: Some(FlexDirection::Row),
-        padding: None,
-        gap: None,
-        flex_grow: None,
-        alpha: None,
-        tool_tip: None,
-        children: (),
-        attrs: (),
+#[cfg(feature = "block_layout")]
+impl<Ch, At> Block<Ch, At> {
+    pub fn padding<V>(mut self, p: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.padding = Some(p.into_maybe_reactive());
+        self
+    }
+    pub fn grow<V>(mut self, g: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.grow = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn shrink<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.shrink = Some(s.into_maybe_reactive());
+        self
+    }
+    pub fn basis<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.basis = Some(b.into_maybe_reactive());
+        self
+    }
+    pub fn width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.width = Some(w.into_maybe_reactive());
+        self
+    }
+    pub fn height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.height = Some(h.into_maybe_reactive());
+        self
+    }
+    pub fn alpha<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+    pub fn tool_tip<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.tool_tip = Some(s.into_maybe_reactive());
+        self
+    }
+
+    pub fn child<NewCh>(self, child: NewCh) -> Block<(Ch, NewCh), At> {
+        Block {
+            padding: self.padding,
+            grow: self.grow,
+            shrink: self.shrink,
+            basis: self.basis,
+            width: self.width,
+            height: self.height,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
+            children: (self.children, child),
+            attrs: self.attrs,
+        }
+    }
+}
+
+#[cfg(feature = "block_layout")]
+impl<Ch, At> Render for Block<Ch, At>
+where
+    Ch: Render,
+    At: crate::html::attribute::Attribute,
+{
+    type State = ElementState<At::State, Ch::State>;
+
+    fn build(self) -> Self::State {
+        let el = CocoaElement::create("block");
+        let mut effects = Vec::new();
+
+        if let Some(v) = self.padding {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p)) {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_flex_item_attrs(
+            &el,
+            self.grow,
+            self.shrink,
+            self.basis,
+            self.width,
+            self.height,
+        ));
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        let child_state = self.children.build();
+        let attrs = self.attrs.build(&el);
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: attrs,
+            children: child_state,
+        }
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.attrs.rebuild(&mut state._attrs);
     }
 }
 
@@ -462,7 +790,7 @@ pub struct Button<At = ()> {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     // Universal NSView attrs.
@@ -486,7 +814,7 @@ pub fn button() -> Button<()> {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -558,9 +886,9 @@ impl<At> Button<At> {
         self
     }
 
-    /// See [`View::flex_grow`].
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    /// See [`View::grow`].
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -653,7 +981,7 @@ impl<At> Button<At> {
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
 impl_typed_attrs_for!(Button, title, enabled, handlers,
-    flex_grow, node_ref, directives, alpha, tool_tip, font_size,
+    grow, node_ref, directives, alpha, tool_tip, font_size,
     alignment, bordered, key_equivalent);
 
 impl<At> Render for Button<At>
@@ -687,7 +1015,7 @@ where
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -938,7 +1266,7 @@ pub struct Slider<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -957,7 +1285,7 @@ pub fn slider() -> Slider<()> {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         alpha: None,
         tool_tip: None,
         vertical: None,
@@ -996,8 +1324,8 @@ impl<At> Slider<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -1069,7 +1397,7 @@ impl<At> Slider<At> {
 }
 
 impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
-    pending_bind, handlers, flex_grow, node_ref, directives, alpha,
+    pending_bind, handlers, grow, node_ref, directives, alpha,
     tool_tip, vertical, num_tick_marks, snaps_to_ticks);
 
 impl<At> Render for Slider<At>
@@ -1113,7 +1441,7 @@ where
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -1174,7 +1502,7 @@ pub struct PopUpButton<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1190,7 +1518,7 @@ pub fn pop_up_button() -> PopUpButton<()> {
         enabled: None,
         pending_bind_selection: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1228,8 +1556,8 @@ impl<At> PopUpButton<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -1284,7 +1612,7 @@ impl<At> PopUpButton<At> {
 }
 
 impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
-    pending_bind_selection, handlers, flex_grow, node_ref, directives,
+    pending_bind_selection, handlers, grow, node_ref, directives,
     alpha, tool_tip, pulls_down);
 
 impl<At> Render for PopUpButton<At>
@@ -1340,7 +1668,7 @@ where
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -1380,7 +1708,7 @@ where
 pub struct Label<At = ()> {
     text: MaybeReactive<String>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1408,7 +1736,7 @@ pub fn label() -> Label<()> {
     Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1440,8 +1768,8 @@ impl<At> Label<At> {
         self.text(value)
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -1497,7 +1825,7 @@ impl<At> Label<At> {
     }
 }
 
-impl_typed_attrs_for!(Label, text, handlers, flex_grow, node_ref,
+impl_typed_attrs_for!(Label, text, handlers, grow, node_ref,
     directives, alpha, tool_tip, text_color, alignment, font_size,
     selectable);
 
@@ -1531,7 +1859,7 @@ where
             }
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -1591,7 +1919,7 @@ pub struct TextField<At = ()> {
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1612,7 +1940,7 @@ pub fn text_field() -> TextField<()> {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1637,7 +1965,7 @@ pub fn secure_text_field() -> TextField<()> {
         secure: true,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1675,9 +2003,9 @@ impl<At> TextField<At> {
         self
     }
 
-    /// See [`View::flex_grow`].
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    /// See [`View::grow`].
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -1778,7 +2106,7 @@ impl<At> TextField<At> {
 }
 
 impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
-    pending_bind, handlers, flex_grow, node_ref, directives, alpha,
+    pending_bind, handlers, grow, node_ref, directives, alpha,
     tool_tip, text_color, alignment, font_size, bordered, bezeled);
 
 impl<At> Render for TextField<At>
@@ -1829,7 +2157,7 @@ where
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -1887,7 +2215,7 @@ pub struct DatePicker<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1904,7 +2232,7 @@ pub fn date_picker() -> DatePicker<()> {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1933,8 +2261,8 @@ impl<At> DatePicker<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2013,7 +2341,7 @@ impl<At> DatePicker<At> {
 }
 
 impl_typed_attrs_for!(DatePicker, value, enabled, pending_bind, handlers,
-    flex_grow, node_ref, directives, alpha, tool_tip, style, min_date,
+    grow, node_ref, directives, alpha, tool_tip, style, min_date,
     max_date);
 
 impl<At> Render for DatePicker<At>
@@ -2059,7 +2387,7 @@ where
             }
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -2122,7 +2450,7 @@ pub struct Stepper<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -2139,7 +2467,7 @@ pub fn stepper() -> Stepper<()> {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -2180,8 +2508,8 @@ impl<At> Stepper<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2227,7 +2555,7 @@ impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
 impl_universal_attrs!(Stepper);
 
 impl_typed_attrs_for!(Stepper, value, min_value, max_value, increment,
-    enabled, pending_bind, handlers, flex_grow, node_ref, directives,
+    enabled, pending_bind, handlers, grow, node_ref, directives,
     alpha, tool_tip);
 
 impl<At> Render for Stepper<At>
@@ -2279,7 +2607,7 @@ where
             }
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -2317,7 +2645,7 @@ pub struct ProgressIndicator<At = ()> {
     value: MaybeReactive<f64>,
     max_value: f64,
     indeterminate: bool,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -2331,7 +2659,7 @@ pub fn progress_indicator() -> ProgressIndicator<()> {
         value: MaybeReactive::Static(0.0),
         max_value: 1.0,
         indeterminate: false,
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -2362,8 +2690,8 @@ impl<At> ProgressIndicator<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2400,7 +2728,7 @@ impl<At> ProgressIndicator<At> {
 }
 
 impl_typed_attrs_for!(ProgressIndicator, value, max_value, indeterminate,
-    flex_grow, node_ref, directives, alpha, tool_tip, displayed_when_stopped);
+    grow, node_ref, directives, alpha, tool_tip, displayed_when_stopped);
 
 impl<At> Render for ProgressIndicator<At>
 where
@@ -2426,7 +2754,7 @@ where
 
         el.set_progress_indeterminate(self.indeterminate);
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -2471,7 +2799,7 @@ pub struct ColorWell<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -2485,7 +2813,7 @@ pub fn color_well() -> ColorWell<()> {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -2511,8 +2839,8 @@ impl<At> ColorWell<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2564,7 +2892,7 @@ impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
 impl_universal_attrs!(ColorWell);
 
 impl_typed_attrs_for!(ColorWell, value, enabled, pending_bind, handlers,
-    flex_grow, node_ref, directives, alpha, tool_tip);
+    grow, node_ref, directives, alpha, tool_tip);
 
 impl<At> Render for ColorWell<At>
 where
@@ -2610,7 +2938,7 @@ where
             }
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -2647,7 +2975,7 @@ pub struct SegmentedControl<At = ()> {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -2663,7 +2991,7 @@ pub fn segmented_control() -> SegmentedControl<()> {
         enabled: None,
         pending_bind_selection: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -2699,8 +3027,8 @@ impl<At> SegmentedControl<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2761,7 +3089,7 @@ impl<At> SegmentedControl<At> {
 }
 
 impl_typed_attrs_for!(SegmentedControl, items, selection, enabled,
-    pending_bind_selection, handlers, flex_grow, node_ref, directives,
+    pending_bind_selection, handlers, grow, node_ref, directives,
     alpha, tool_tip, segment_style);
 
 impl<At> Render for SegmentedControl<At>
@@ -2812,7 +3140,7 @@ where
             }
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -2860,7 +3188,7 @@ where
 // overflows the viewport).
 
 pub struct ScrollView<Children, At = ()> {
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     children: Children,
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
@@ -2872,7 +3200,7 @@ pub struct ScrollView<Children, At = ()> {
 
 pub fn scroll_view() -> ScrollView<(), ()> {
     ScrollView {
-        flex_grow: None,
+        grow: None,
         children: (),
         alpha: None,
         tool_tip: None,
@@ -2884,8 +3212,8 @@ pub fn scroll_view() -> ScrollView<(), ()> {
 }
 
 impl<Ch, At> ScrollView<Ch, At> {
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -2939,7 +3267,7 @@ impl<Ch, At> ScrollView<Ch, At> {
 
     pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh), At> {
         ScrollView {
-            flex_grow: self.flex_grow,
+            grow: self.grow,
             children: (self.children, child),
             alpha: self.alpha,
             tool_tip: self.tool_tip,
@@ -2962,7 +3290,7 @@ where
         let el = CocoaElement::create("scroll_view");
         let mut effects = Vec::new();
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -3024,7 +3352,7 @@ where
         attr: NewAttr,
     ) -> Self::Output<NewAttr> {
         ScrollView {
-            flex_grow: self.flex_grow,
+            grow: self.grow,
             children: self.children,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
@@ -3056,7 +3384,7 @@ where
         let (children_resolved, attrs_resolved) =
             futures::join!(self.children.resolve(), self.attrs.resolve());
         ScrollView {
-            flex_grow: self.flex_grow,
+            grow: self.grow,
             children: children_resolved,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
@@ -3087,7 +3415,7 @@ where
 
     fn into_owned(self) -> Self::Owned {
         ScrollView {
-            flex_grow: self.flex_grow,
+            grow: self.grow,
             children: self.children.into_owned(),
             alpha: self.alpha,
             tool_tip: self.tool_tip,
@@ -3105,7 +3433,7 @@ where
 
 pub struct ImageView<At = ()> {
     source: MaybeReactive<String>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -3116,7 +3444,7 @@ pub struct ImageView<At = ()> {
 pub fn image_view() -> ImageView<()> {
     ImageView {
         source: MaybeReactive::Static(String::new()),
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -3139,8 +3467,8 @@ impl<At> ImageView<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -3163,7 +3491,7 @@ impl<At> ImageView<At> {
 
 impl_universal_attrs!(ImageView);
 
-impl_typed_attrs_for!(ImageView, source, flex_grow, node_ref, directives,
+impl_typed_attrs_for!(ImageView, source, grow, node_ref, directives,
     alpha, tool_tip);
 
 impl<At> Render for ImageView<At>
@@ -3183,7 +3511,7 @@ where
             effects.push(eff);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -3223,7 +3551,7 @@ pub struct TextView<At = ()> {
     /// (one-way: signal → field). Installed at build time via
     /// `install_text_view_value_bind`.
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
-    flex_grow: Option<f32>,
+    grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -3239,7 +3567,7 @@ pub fn text_view() -> TextView<()> {
         value: MaybeReactive::Static(String::new()),
         enabled: None,
         pending_bind: None,
-        flex_grow: None,
+        grow: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -3268,8 +3596,8 @@ impl<At> TextView<At> {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -3303,7 +3631,7 @@ impl<At> TextView<At> {
 impl_universal_attrs!(TextView);
 impl_text_attrs!(TextView);
 
-impl_typed_attrs_for!(TextView, value, enabled, pending_bind, flex_grow,
+impl_typed_attrs_for!(TextView, value, enabled, pending_bind, grow,
     node_ref, directives, alpha, tool_tip, text_color, alignment,
     font_size);
 
@@ -3349,7 +3677,7 @@ where
             effects.push(eff);
         }
 
-        if let Some(g) = self.flex_grow {
+        if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
         }
 
@@ -3388,91 +3716,110 @@ where
 // that doesn't fit the typed-attrs pattern can revive it without
 // re-deriving the stub shape.
 
-// View<Children, At> — refactored to the typed-attribute pipeline.
-impl<Ch, At> crate::view::add_attr::AddAnyAttr for View<Ch, At>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-    At: crate::html::attribute::Attribute,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> =
-        View<Ch, <At as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
+// Macro that emits the same AddAnyAttr + RenderHtml shape for our
+// container builders that carry both `Children` and `At` generics
+// (Stack and Block).
+macro_rules! impl_container_typed_attrs {
+    ($builder:ident, $( $field:ident ),+ $(,)?) => {
+        impl<Ch, At> crate::view::add_attr::AddAnyAttr for $builder<Ch, At>
+        where
+            Ch: Render + Send + 'static + crate::view::RenderHtml,
+            At: crate::html::attribute::Attribute,
+        {
+            type Output<NewAttr: crate::html::attribute::Attribute> = $builder<
+                Ch,
+                <At as crate::html::attribute::NextAttribute>::Output<NewAttr>,
+            >;
 
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            children: self.children,
-            attrs: crate::html::attribute::NextAttribute::add_any_attr(
-                self.attrs, attr,
-            ),
+            fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
+                self,
+                attr: NewAttr,
+            ) -> Self::Output<NewAttr> {
+                $builder {
+                    $( $field: self.$field, )+
+                    children: self.children,
+                    attrs: crate::html::attribute::NextAttribute::add_any_attr(
+                        self.attrs, attr,
+                    ),
+                }
+            }
         }
-    }
+
+        impl<Ch, At> crate::view::RenderHtml for $builder<Ch, At>
+        where
+            Ch: Render + Send + 'static + crate::view::RenderHtml,
+            At: crate::html::attribute::Attribute,
+        {
+            type AsyncOutput = $builder<Ch::AsyncOutput, At::AsyncOutput>;
+            type Owned = $builder<Ch::Owned, At::CloneableOwned>;
+
+            const MIN_LENGTH: usize = 0;
+
+            fn dry_resolve(&mut self) {
+                self.attrs.dry_resolve();
+            }
+
+            async fn resolve(self) -> Self::AsyncOutput {
+                let (children_resolved, attrs_resolved) = futures::join!(
+                    self.children.resolve(),
+                    self.attrs.resolve()
+                );
+                $builder {
+                    $( $field: self.$field, )+
+                    children: children_resolved,
+                    attrs: attrs_resolved,
+                }
+            }
+
+            fn to_html_with_buf(
+                self,
+                _buf: &mut String,
+                _position: &mut crate::view::Position,
+                _escape: bool,
+                _mark_branches: bool,
+                _extra_attrs: Vec<
+                    crate::html::attribute::any_attribute::AnyAttribute,
+                >,
+            ) {
+            }
+
+            fn hydrate<const FROM_SERVER: bool>(
+                self,
+                _cursor: &crate::hydration::Cursor,
+                _position: &crate::view::PositionState,
+            ) -> Self::State {
+                <Self as Render>::build(self)
+            }
+
+            fn into_owned(self) -> Self::Owned {
+                $builder {
+                    $( $field: self.$field, )+
+                    children: self.children.into_owned(),
+                    attrs: self.attrs.into_cloneable_owned(),
+                }
+            }
+        }
+    };
 }
 
-impl<Ch, At> crate::view::RenderHtml for View<Ch, At>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-    At: crate::html::attribute::Attribute,
-{
-    type AsyncOutput = View<Ch::AsyncOutput, At::AsyncOutput>;
-    type Owned = View<Ch::Owned, At::CloneableOwned>;
+impl_container_typed_attrs!(
+    Stack,
+    direction,
+    gap,
+    padding,
+    justify_content,
+    align,
+    wrap,
+    grow,
+    shrink,
+    basis,
+    width,
+    height,
+    alpha,
+    tool_tip
+);
 
-    const MIN_LENGTH: usize = 0;
-
-    fn dry_resolve(&mut self) {
-        self.attrs.dry_resolve();
-    }
-
-    async fn resolve(self) -> Self::AsyncOutput {
-        let (children_resolved, attrs_resolved) =
-            futures::join!(self.children.resolve(), self.attrs.resolve());
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            children: children_resolved,
-            attrs: attrs_resolved,
-        }
-    }
-
-    fn to_html_with_buf(
-        self,
-        _buf: &mut String,
-        _position: &mut crate::view::Position,
-        _escape: bool,
-        _mark_branches: bool,
-        _extra_attrs: Vec<crate::html::attribute::any_attribute::AnyAttribute>,
-    ) {
-    }
-
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        _cursor: &crate::hydration::Cursor,
-        _position: &crate::view::PositionState,
-    ) -> Self::State {
-        <Self as Render>::build(self)
-    }
-
-    fn into_owned(self) -> Self::Owned {
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            children: self.children.into_owned(),
-            attrs: self.attrs.into_cloneable_owned(),
-        }
-    }
-}
+#[cfg(feature = "block_layout")]
+impl_container_typed_attrs!(
+    Block, padding, grow, shrink, basis, width, height, alpha, tool_tip
+);

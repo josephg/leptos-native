@@ -216,6 +216,9 @@ mark_branches = []
 # silently no-ops the activation, so this works correctly on any
 # target.
 native-ui = ["dep:cocoa_dom", "dep:gtk_dom", "dep:ios_dom"]
+# Enables Taffy's block_layout algorithm + the `<block>` tag/builder.
+# Off by default to keep file size down for apps that only need flex.
+block_layout = ["cocoa_dom?/block_layout"]
 
 [package.metadata.cargo-all-features]
 denylist = ["tracing", "sledgehammer"]

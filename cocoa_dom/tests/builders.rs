@@ -18,9 +18,9 @@ use tachys::{
     cocoa::{
         bind::{BindAttribute, Selection},
         element::{
-            button, checkbox, color_well, date_picker, image_view, label,
-            pop_up_button, progress_indicator, scroll_view,
-            secure_text_field, segmented_control, slider, stepper,
+            button, checkbox, color_well, date_picker, hstack, image_view,
+            label, pop_up_button, progress_indicator, scroll_view,
+            secure_text_field, segmented_control, slider, stack, stepper,
             text_field, text_view, vstack,
         },
         NodeRef,
@@ -272,6 +272,102 @@ fn vstack_default_flex_direction_column() {
         // A vstack is an Element. Just check the underlying NSView
         // exists; layout details get exercised in layout.rs.
         let _ = st.el.ns_view();
+        // Pre-built direction = Column.
+        assert_eq!(
+            st.el.as_node().layout_slot().borrow().style.flex_direction,
+            cocoa_dom::layout::FlexDirection::Column,
+        );
+    });
+}
+
+fn hstack_presets_direction_row() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let st = hstack().build();
+        assert_eq!(
+            st.el.as_node().layout_slot().borrow().style.flex_direction,
+            cocoa_dom::layout::FlexDirection::Row,
+        );
+    });
+}
+
+fn stack_default_direction_is_column() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        // Bare `stack()` with no axis explicitly set defaults to
+        // Column at build time.
+        let st = stack().build();
+        assert_eq!(
+            st.el.as_node().layout_slot().borrow().style.flex_direction,
+            cocoa_dom::layout::FlexDirection::Column,
+        );
+    });
+}
+
+fn stack_direction_reactive_updates() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use cocoa_dom::layout::FlexDirection;
+        let dir = RwSignal::new(FlexDirection::Row);
+        let st = stack().direction(move || dir.get()).build();
+        assert_eq!(
+            st.el.as_node().layout_slot().borrow().style.flex_direction,
+            FlexDirection::Row,
+        );
+        dir.set(FlexDirection::Column);
+        common::pump_run_loop(0.1);
+        assert_eq!(
+            st.el.as_node().layout_slot().borrow().style.flex_direction,
+            FlexDirection::Column,
+        );
+    });
+}
+
+fn stack_justify_align_wrap_static() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        use cocoa_dom::layout::{AlignItems, FlexWrap, JustifyContent};
+        let st = stack()
+            .justify_content(JustifyContent::SpaceBetween)
+            .align(AlignItems::Center)
+            .wrap(FlexWrap::Wrap)
+            .build();
+        let style = st.el.as_node().layout_slot().borrow().style.clone();
+        assert_eq!(style.justify_content, Some(JustifyContent::SpaceBetween));
+        assert_eq!(style.align_items, Some(AlignItems::Center));
+        assert_eq!(style.flex_wrap, FlexWrap::Wrap);
+    });
+}
+
+fn stack_grow_shrink_basis_round_trip() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let st = stack().grow(2.0).shrink(0.5).basis(120.0).build();
+        let style = st.el.as_node().layout_slot().borrow().style.clone();
+        assert_eq!(style.flex_grow, 2.0);
+        assert_eq!(style.flex_shrink, 0.5);
+        // flex_basis is a Dimension::length(120.0)
+        assert_eq!(
+            style.flex_basis,
+            cocoa_dom::layout::Dimension::length(120.0)
+        );
+    });
+}
+
+#[cfg(feature = "block_layout")]
+fn block_creates_with_block_display() {
+    use tachys::cocoa::element::block;
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let st = block().padding(16.0).build();
+        let style = st.el.as_node().layout_slot().borrow().style.clone();
+        assert_eq!(style.display, cocoa_dom::layout::Display::Block);
+        // padding rect components are LengthPercentage::length(16.0)
+        let p = cocoa_dom::layout::LengthPercentage::length(16.0);
+        assert_eq!(style.padding.left, p);
+        assert_eq!(style.padding.right, p);
+        assert_eq!(style.padding.top, p);
+        assert_eq!(style.padding.bottom, p);
     });
 }
 
@@ -1046,11 +1142,11 @@ fn date_picker_min_date_reactive_updates() {
 fn text_field_flex_grow_round_trip() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        // flex_grow doesn't have a direct AppKit-side observable;
+        // grow doesn't have a direct AppKit-side observable;
         // just verify the builder accepts it and Render::build
         // doesn't panic. A Taffy-side test would require setting
         // up a tree, which is out of scope here.
-        let _st = text_field().flex_grow(1.0).build();
+        let _st = text_field().grow(1.0).build();
     });
 }
 
@@ -1145,8 +1241,15 @@ fn main() {
             "progress_displayed_when_stopped_via_builder",
             progress_displayed_when_stopped_via_builder,
         ),
-        // View
+        // Stack / Block
         ("vstack_default_flex_direction_column", vstack_default_flex_direction_column),
+        ("hstack_presets_direction_row", hstack_presets_direction_row),
+        ("stack_default_direction_is_column", stack_default_direction_is_column),
+        ("stack_direction_reactive_updates", stack_direction_reactive_updates),
+        ("stack_justify_align_wrap_static", stack_justify_align_wrap_static),
+        ("stack_grow_shrink_basis_round_trip", stack_grow_shrink_basis_round_trip),
+        #[cfg(feature = "block_layout")]
+        ("block_creates_with_block_display", block_creates_with_block_display),
         // Lifecycle
         ("dropping_state_unsubscribes_effect", dropping_state_unsubscribes_effect),
         // Idempotence

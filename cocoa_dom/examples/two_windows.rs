@@ -49,12 +49,12 @@ fn main() {
                     }))
                     .child(
                         view()
-                            .flex_direction(FlexDirection::Row)
+                            .direction(FlexDirection::Row)
                             .gap(8.0)
                             .child(
                                 button()
                                     .title("-1")
-                                    .flex_grow(1.0)
+                                    .grow(1.0)
                                     .on_click(move || {
                                         main_count.update(|n| *n -= 1)
                                     }),
@@ -62,7 +62,7 @@ fn main() {
                             .child(
                                 button()
                                     .title("+1")
-                                    .flex_grow(1.0)
+                                    .grow(1.0)
                                     .on_click(move || {
                                         main_count.update(|n| *n += 1)
                                     }),
@@ -83,13 +83,13 @@ fn main() {
                     .child(
                         button()
                             .title("Reset to 100")
-                            .flex_grow(1.0)
+                            .grow(1.0)
                             .on_click(move || inspector_count.set(100)),
                     )
                     .child(
                         button()
                             .title("Add 10")
-                            .flex_grow(1.0)
+                            .grow(1.0)
                             .on_click(move || {
                                 inspector_count.update(|n| *n += 10)
                             }),

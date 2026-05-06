@@ -35,9 +35,12 @@ fn layout_debug_enabled() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("COCOA_DOM_LAYOUT_DEBUG").is_some())
 }
 pub use taffy::{
-    AvailableSpace, Dimension, FlexDirection, JustifyContent, LengthPercentage,
-    LengthPercentageAuto, NodeId, Position, Size, Style,
+    AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
+    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId,
+    Position, Size, Style,
 };
+#[cfg(feature = "block_layout")]
+pub use taffy::Display;
 use taffy::{Layout, Point, TaffyTree};
 
 /// Per-Taffy-node user data. We attach the underlying NSView so the
@@ -752,20 +755,29 @@ fn set_frame_from_layout(view: &NSView, layout: &Layout) {
 // Convenience setters for common style properties.
 // ---------------------------------------------------------------------
 
+// All `set_*` style setters mutate the cached style + the Taffy
+// tree (via `update_style`) and then `schedule_relayout`. Scheduling
+// is a no-op when the node isn't registered in a tree yet, so it's
+// safe at static-build time. For reactive callers, scheduling is
+// what makes Taffy notice the change and recompute on the next tick.
+
 pub fn set_width(node: &Node, width_px: f32) {
     update_style(node, |s| {
         s.size.width = Dimension::length(width_px);
     });
+    schedule_relayout(node);
 }
 
 pub fn set_height(node: &Node, height_px: f32) {
     update_style(node, |s| {
         s.size.height = Dimension::length(height_px);
     });
+    schedule_relayout(node);
 }
 
 pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
     update_style(node, |s| s.flex_direction = dir);
+    schedule_relayout(node);
 }
 
 pub fn set_padding(node: &Node, all_px: f32) {
@@ -777,6 +789,7 @@ pub fn set_padding(node: &Node, all_px: f32) {
             bottom: LengthPercentage::length(all_px),
         };
     });
+    schedule_relayout(node);
 }
 
 pub fn set_gap(node: &Node, gap_px: f32) {
@@ -786,14 +799,37 @@ pub fn set_gap(node: &Node, gap_px: f32) {
             height: LengthPercentage::length(gap_px),
         };
     });
+    schedule_relayout(node);
 }
 
 pub fn set_justify_content(node: &Node, jc: JustifyContent) {
     update_style(node, |s| s.justify_content = Some(jc));
+    schedule_relayout(node);
 }
 
 pub fn set_flex_grow(node: &Node, grow: f32) {
     update_style(node, |s| s.flex_grow = grow);
+    schedule_relayout(node);
+}
+
+pub fn set_flex_shrink(node: &Node, shrink: f32) {
+    update_style(node, |s| s.flex_shrink = shrink);
+    schedule_relayout(node);
+}
+
+pub fn set_flex_basis(node: &Node, basis_px: f32) {
+    update_style(node, |s| s.flex_basis = Dimension::length(basis_px));
+    schedule_relayout(node);
+}
+
+pub fn set_align_items(node: &Node, ai: AlignItems) {
+    update_style(node, |s| s.align_items = Some(ai));
+    schedule_relayout(node);
+}
+
+pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
+    update_style(node, |s| s.flex_wrap = fw);
+    schedule_relayout(node);
 }
 
 pub fn set_margin(node: &Node, all_px: f32) {
@@ -805,4 +841,5 @@ pub fn set_margin(node: &Node, all_px: f32) {
             bottom: LengthPercentageAuto::length(all_px),
         };
     });
+    schedule_relayout(node);
 }

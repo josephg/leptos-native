@@ -15,14 +15,12 @@
 pub use crate::cocoa::element::{
     button, checkbox, color_well, date_picker, hstack, image_view, label,
     pop_up_button, progress_indicator, scroll_view, secure_text_field,
-    segmented_control, slider, stack_view, stepper, text_field, text_view,
-    vstack,
+    segmented_control, slider, stack, stack_view, stepper, text_field,
+    text_view, vstack,
 };
 
-// `<div>` aliases the generic flipped container. Common HTML idiom;
-// keeping it lets users coming from web code reach for what they
-// know.
-pub use crate::cocoa::element::view as div;
+#[cfg(feature = "block_layout")]
+pub use crate::cocoa::element::block;
 
 // Note: `<view>` itself is special-cased in the macro as an SVG
 // element (`view` is a real SVG tag), so the macro emits

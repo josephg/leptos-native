@@ -66,8 +66,52 @@ impl IntoMaybeReactive<f64> for f64 {
     }
 }
 
+impl IntoMaybeReactive<f32> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<f32> {
+        MaybeReactive::Static(self)
+    }
+}
+
 impl IntoMaybeReactive<usize> for usize {
     fn into_maybe_reactive(self) -> MaybeReactive<usize> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::layout::FlexDirection>
+    for cocoa_dom::layout::FlexDirection
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::FlexDirection> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::layout::JustifyContent>
+    for cocoa_dom::layout::JustifyContent
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::JustifyContent> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::layout::AlignItems>
+    for cocoa_dom::layout::AlignItems
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::AlignItems> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<cocoa_dom::layout::FlexWrap>
+    for cocoa_dom::layout::FlexWrap
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::layout::FlexWrap> {
         MaybeReactive::Static(self)
     }
 }
@@ -143,6 +187,57 @@ where
     F: Fn() -> f64 + Send + 'static,
 {
     fn into_maybe_reactive(self) -> MaybeReactive<f64> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<f32> for F
+where
+    F: Fn() -> f32 + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<f32> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::layout::FlexDirection> for F
+where
+    F: Fn() -> cocoa_dom::layout::FlexDirection + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::FlexDirection> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::layout::JustifyContent> for F
+where
+    F: Fn() -> cocoa_dom::layout::JustifyContent + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::JustifyContent> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::layout::AlignItems> for F
+where
+    F: Fn() -> cocoa_dom::layout::AlignItems + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<cocoa_dom::layout::AlignItems> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<cocoa_dom::layout::FlexWrap> for F
+where
+    F: Fn() -> cocoa_dom::layout::FlexWrap + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<cocoa_dom::layout::FlexWrap> {
         MaybeReactive::Reactive(Box::new(self))
     }
 }
