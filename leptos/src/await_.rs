@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::{prelude::Suspend, suspense_component::Suspense, IntoView};
 use leptos_macro::{component, view};
 use leptos_server::ArcOnceResource;

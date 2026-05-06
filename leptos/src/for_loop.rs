@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::into_view::IntoView;
 use leptos_macro::component;
 use reactive_graph::{

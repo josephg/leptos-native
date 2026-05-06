@@ -1,11 +1,7 @@
-// leptos_router targets the browser DOM (uses `web_sys::window`,
-// `tachys::dom`, `tachys::html::element`, etc.). On native UI
-// targets — macOS (Cocoa) and Linux (GTK) — there is no DOM and the
-// crate has no useful surface, so we compile it to an empty rlib
-// rather than tracking down every offending import. The
-// `leptos_native` cfg is emitted by `build.rs`; see
-// ../../tachys/build.rs for the rationale.
-#![cfg(not(leptos_native))]
+// leptos_router is web-only: it depends on browser DOM APIs
+// (`web_sys::window`, `tachys::dom`, `tachys::html::element`, etc.)
+// that have no analogue on native UI targets. Don't depend on this
+// crate from a native-ui build.
 
 //! # Leptos Router
 //!

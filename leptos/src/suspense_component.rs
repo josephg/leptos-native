@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::{
     children::{TypedChildren, ViewFnOnce},
     error::ErrorBoundarySuspendedChildren,

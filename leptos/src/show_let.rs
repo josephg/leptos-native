@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::{children::ViewFn, IntoView};
 use leptos_macro::component;
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]

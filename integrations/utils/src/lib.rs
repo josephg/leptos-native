@@ -1,8 +1,6 @@
 // Server-side rendering integration helper — depends on leptos_meta
-// and leptos_router, both of which are web-only. Compile to an
-// empty rlib on native UI targets. See ../../tachys/build.rs for
-// the `leptos_native` rationale.
-#![cfg(not(leptos_native))]
+// and leptos_router, both of which are web-only. Don't depend on
+// this crate from a native-ui build.
 #![allow(clippy::type_complexity)]
 
 use futures::{stream::once, Stream, StreamExt};

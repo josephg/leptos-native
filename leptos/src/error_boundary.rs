@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::{children::TypedChildren, IntoView};
 use futures::{channel::oneshot, future::join_all};
 use hydration_context::{SerializedDataId, SharedContext};

@@ -1,3 +1,5 @@
+#[cfg(feature = "web")]
+use crate::view_prelude::*;
 use crate::{children::Children, component, prelude::*, IntoView};
 use leptos_dom::helpers::window;
 use leptos_server::{ServerAction, ServerMultiAction};

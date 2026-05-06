@@ -37,7 +37,7 @@ where
 // literal attribute value through `into_attribute_value`, so we
 // need direct `IntoAttributeValue` impls for these types whose
 // Output is the type itself.
-#[cfg(leptos_native)]
+#[cfg(feature = "native-ui")]
 impl IntoAttributeValue for Vec<&'static str> {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
@@ -45,7 +45,7 @@ impl IntoAttributeValue for Vec<&'static str> {
     }
 }
 
-#[cfg(leptos_native)]
+#[cfg(feature = "native-ui")]
 impl IntoAttributeValue for Vec<String> {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
@@ -57,7 +57,7 @@ impl IntoAttributeValue for Vec<String> {
 // pass `text_color=Color::SYSTEM_BLUE` etc. through verbatim to the
 // builder's typed `.text_color()` method (which takes
 // `IntoMaybeReactive<Color>`).
-#[cfg(all(target_os = "ios", leptos_native))]
+#[cfg(all(target_os = "ios", feature = "native-ui"))]
 impl IntoAttributeValue for ios_dom::Color {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
@@ -68,7 +68,7 @@ impl IntoAttributeValue for ios_dom::Color {
 // Same for macOS (cocoa_dom::Color), which had the same restriction
 // — kept it from biting future-us if/when a cocoa example uses
 // `text_color=` in a view! macro.
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::Color {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
@@ -77,7 +77,7 @@ impl IntoAttributeValue for cocoa_dom::Color {
 }
 
 // AppKit text-alignment enum, used as a label `alignment=` value.
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::NSTextAlignment {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
@@ -85,43 +85,41 @@ impl IntoAttributeValue for cocoa_dom::NSTextAlignment {
     }
 }
 
-// Sizing dimension type used by `width=` / `min_width=` / etc.
-// Allows percentages and `Auto` alongside the f32 px form.
-#[cfg(all(target_os = "macos", leptos_native))]
-impl IntoAttributeValue for crate::cocoa::attr::Dim {
-    type Output = Self;
-    fn into_attribute_value(self) -> Self::Output {
-        self
-    }
-}
+// Sizing dimension type (`Dim`) and other native-only attribute
+// value types that lived in `tachys::cocoa::attr` moved to
+// `leptos_cocoa::attrs` in Phase 5; their `IntoAttributeValue` impls
+// move with them, but only after the G-refactor (skipping
+// `into_attribute_value` for typed builder methods) lands. For now
+// `Dim`-typed attributes can't be used through the `view!` macro on
+// native; they work via the direct builder API.
 
 // Taffy enums used as `<stack>` / `<block>` attribute values
 // (`direction`, `justify_content`, `align`, `wrap`). The `view!`
 // macro wraps non-literal values through `into_attribute_value`,
 // so without these impls a Path expression like
 // `align=AlignItems::Center` fails to type-check.
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::layout::FlexDirection {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
         self
     }
 }
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::layout::JustifyContent {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
         self
     }
 }
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::layout::AlignItems {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {
         self
     }
 }
-#[cfg(all(target_os = "macos", leptos_native))]
+#[cfg(all(target_os = "macos", feature = "native-ui"))]
 impl IntoAttributeValue for cocoa_dom::layout::FlexWrap {
     type Output = Self;
     fn into_attribute_value(self) -> Self::Output {

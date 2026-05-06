@@ -266,10 +266,28 @@ mod slot;
 ///     }
 /// }
 /// ```
+/// The pluggable form of [`view!`]. Same syntax, but takes a leading
+/// **namespace path** argument that selects the renderer toolkit:
+///
+/// ```text
+/// raw_view!(<namespace>, <view-body>)
+/// raw_view!(<namespace>, class = "scope-class", <view-body>)
+/// ```
+///
+/// `<namespace>` is a module path containing four submodules
+/// (`elements`, `events`, `attrs`, `bind`) — see the docs on
+/// `leptos::__view_namespace` and the per-renderer
+/// `leptos_<backend>::__view_namespace` for the contract.
+///
+/// Day-to-day, you don't call this directly. Each renderer crate
+/// (`leptos` for web, `leptos_cocoa` / `leptos_ios` / `leptos_gtk`
+/// for native) ships its own `view!` `macro_rules!` that wraps
+/// `raw_view!` with its own namespace pre-supplied. That way
+/// `view!{}` keeps its existing ergonomics across renderers.
 #[proc_macro_error2::proc_macro_error]
 #[proc_macro]
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
-pub fn view(tokens: TokenStream) -> TokenStream {
+pub fn raw_view(tokens: TokenStream) -> TokenStream {
     view_macro_impl(tokens, false)
 }
 
@@ -282,7 +300,7 @@ pub fn view(tokens: TokenStream) -> TokenStream {
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
 pub fn template(tokens: TokenStream) -> TokenStream {
     if cfg!(feature = "__internal_erase_components") {
-        view(tokens)
+        raw_view(tokens)
     } else {
         view_macro_impl(tokens, true)
     }

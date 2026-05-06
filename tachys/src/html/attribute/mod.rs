@@ -1,14 +1,14 @@
 /// A type-erased `AnyAttribute`.
 pub mod any_attribute;
 /// Types for ARIA attributes (web only — uses HTML element types).
-#[cfg(not(leptos_native))]
+#[cfg(feature = "web")]
 pub mod aria;
 /// Types for custom attributes (web only).
-#[cfg(not(leptos_native))]
+#[cfg(feature = "web")]
 pub mod custom;
 /// Traits to define global attribute methods on all HTML elements
 /// (web only — uses HTML element types).
-#[cfg(not(leptos_native))]
+#[cfg(feature = "web")]
 pub mod global;
 mod key;
 pub(crate) mod maybe_next_attr_erasure_macros;
@@ -17,19 +17,12 @@ mod value;
 use crate::view::{Position, ToTemplate};
 pub use key::*;
 
-// macOS: bind:selection=signal on <pop_up_button> emits
-// `.bind(::leptos::attr::Selection, signal)`. The Selection key
-// is defined in `tachys::cocoa::bind`; re-export it here so the
-// macro's path resolves. Requires `native-ui` + `reactive_graph`
-// (the same gate `tachys::cocoa` itself sits behind in lib.rs).
-#[cfg(all(target_os = "macos", leptos_native, feature = "reactive_graph"))]
-pub use crate::cocoa::bind::Selection;
-// Same for Linux/GTK — the Selection key lives in tachys::gtk::bind.
-#[cfg(all(target_os = "linux", leptos_native, feature = "reactive_graph"))]
-pub use crate::gtk::bind::Selection;
-// iOS — Selection key for <segmented_control bind:selection=…>.
-#[cfg(all(target_os = "ios", leptos_native, feature = "reactive_graph"))]
-pub use crate::ios::bind::Selection;
+// `bind:` keys (Selection, Value, Checked, Date, Index, Group, …)
+// are now resolved by the macro through `__leptos_view::bind::*`,
+// not via `::leptos::attr::*`. The per-OS glue crates own the
+// native variants of these keys; the web variant lives in
+// `tachys::reactive_graph::bind` (re-exported via leptos's
+// `view_prelude::__leptos_view::bind`).
 use maybe_next_attr_erasure_macros::{
     next_attr_combine, next_attr_output_type,
 };

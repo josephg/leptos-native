@@ -1,6 +1,6 @@
 //! Utilities for simple isomorphic logging to the console or terminal.
 
-#[cfg(not(leptos_native))]
+#[cfg(feature = "web")]
 use wasm_bindgen::JsValue;
 
 /// Uses `println!()`-style formatting to log something to the console (in the browser)
@@ -77,7 +77,7 @@ pub fn console_log(s: &str) {
     if log_to_stdout() {
         println!("{s}");
     } else {
-        #[cfg(not(leptos_native))]
+        #[cfg(feature = "web")]
         web_sys::console::log_1(&JsValue::from_str(s));
     }
 }
@@ -88,7 +88,7 @@ pub fn console_warn(s: &str) {
     if log_to_stdout() {
         eprintln!("{s}");
     } else {
-        #[cfg(not(leptos_native))]
+        #[cfg(feature = "web")]
         web_sys::console::warn_1(&JsValue::from_str(s));
     }
 }
@@ -100,7 +100,7 @@ pub fn console_error(s: &str) {
     if log_to_stdout() {
         eprintln!("{s}");
     } else {
-        #[cfg(not(leptos_native))]
+        #[cfg(feature = "web")]
         web_sys::console::error_1(&JsValue::from_str(s));
     }
 }

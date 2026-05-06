@@ -16,7 +16,7 @@ any_spawner = { workspace = true }
 either_of = { workspace = true }
 or_poisoned = { workspace = true }
 reactive_graph = { workspace = true }
-tachys = { workspace = true, features = ["reactive_graph"] }
+tachys = { workspace = true, default-features = false, features = ["web", "reactive_graph"] }
 futures = { workspace = true, default-features = true }
 url = { workspace = true, default-features = true }
 js-sys = { workspace = true, default-features = true }
@@ -63,9 +63,6 @@ rustc_version = { workspace = true, default-features = true }
 tracing = ["dep:tracing"]
 ssr = ["dep:percent-encoding"]
 nightly = []
-# Defensive: when native-ui is enabled in a build that happens to
-# include this crate, lib.rs is gated to empty (it's web-only).
-native-ui = []
 
 [package.metadata.docs.rs]
 all-features = true

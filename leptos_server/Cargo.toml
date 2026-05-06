@@ -20,7 +20,7 @@ futures = { workspace = true, default-features = true }
 
 any_spawner = { workspace = true }
 or_poisoned = { workspace = true }
-tachys = { workspace = true, optional = true, features = ["reactive_graph"] }
+tachys = { workspace = true, default-features = false, optional = true, features = ["reactive_graph"] }
 send_wrapper = { workspace = true, default-features = true }
 
 # serialization formats

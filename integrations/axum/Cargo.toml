@@ -21,7 +21,7 @@ leptos_macro = { workspace = true, features = ["axum"] }
 leptos_meta = { workspace = true, features = ["ssr", "nonce"] }
 leptos_router = { workspace = true, features = ["ssr"] }
 leptos_integration_utils = { workspace = true }
-tachys = { workspace = true }
+tachys = { workspace = true, default-features = false, features = ["web"] }
 tokio = { default-features = false, workspace = true }
 tower = { features = ["util"], workspace = true, default-features = true }
 tower-http = { workspace = true, default-features = true }
@@ -52,10 +52,6 @@ default = [
 ]
 islands-router = ["tachys/islands"]
 tracing = ["dep:tracing"]
-# Defensive: when native-ui is enabled in a build that happens to
-# include this crate, lib.rs is gated to empty (it's web-only — an
-# Axum SSR integration).
-native-ui = []
 
 [package.metadata.docs.rs]
 all-features = true

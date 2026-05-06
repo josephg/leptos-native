@@ -767,9 +767,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-quartz-core",
- "reactive_graph",
  "send_wrapper",
- "tachys",
  "taffy",
 ]
 
@@ -1804,9 +1802,7 @@ dependencies = [
  "gio",
  "glib",
  "gtk4",
- "reactive_graph",
  "send_wrapper",
- "tachys",
 ]
 
 [[package]]
@@ -2220,9 +2216,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "objc2-ui-kit",
- "reactive_graph",
  "send_wrapper",
- "tachys",
  "taffy",
 ]
 

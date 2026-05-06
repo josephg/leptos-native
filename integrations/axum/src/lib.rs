@@ -1,7 +1,5 @@
 // Web-only — the Axum integration ties leptos to axum for HTTP
-// serving. Compile to an empty rlib on native UI targets. See
-// ../../tachys/build.rs for the `leptos_native` rationale.
-#![cfg(not(leptos_native))]
+// serving. Don't depend on this crate from a native-ui build.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 #![allow(clippy::type_complexity)]
