@@ -572,11 +572,63 @@ fn measure_leaf(
     // `intrinsicContentSize` alone returns cell content only (no
     // bezel padding) so text gets clipped inside the rendered chrome.
     //
+    // Special case: a wrapping NSTextField (label with
+    // `cell.wraps == true`) needs its height computed for the
+    // *width Taffy will give it*. That width can come either from
+    // `known.width` (parent has already pinned it — flex stretch,
+    // explicit width, etc.) or from a `Definite` `_avail.width`
+    // (block-layout content area, or a flex parent's available
+    // cross-axis space). Without consulting `_avail`, block-layout
+    // labels measure at single-line natural width — which leaves
+    // their reported height at one-line — and any text past the
+    // container's edge ends up clipped instead of wrapping.
+    //
     // For non-control views (FlippedView containers, Placeholder),
     // fall back to intrinsicContentSize (NSViewNoIntrinsicMetric on
     // each axis, mapped to 0).
     let any: &AnyObject = view.as_ref();
-    let mut measured: NSSize = if let Some(control) = any.downcast_ref::<NSControl>() {
+    let mut measured: NSSize = if let Some(field) =
+        any.downcast_ref::<NSTextField>()
+    {
+        let wrapping = field.cell().is_some_and(|c| c.wraps());
+        let constraint_w: Option<f32> = if let Some(w) = known.width {
+            Some(w)
+        } else if let AvailableSpace::Definite(w) = _avail.width {
+            Some(w)
+        } else {
+            None
+        };
+        if wrapping && known.height.is_none() && constraint_w.is_some() {
+            // AppKit's idiomatic recipe for multiline-label sizing:
+            // set `preferredMaxLayoutWidth` to the width the parent
+            // is going to give us, then read `intrinsicContentSize`.
+            // Per the docs:
+            //
+            //   "If the text field wraps, the intrinsic height is
+            //    large enough to show the entire text contents at
+            //    that width."
+            //
+            // This is what AppKit's own Auto Layout uses internally
+            // for wrapping labels and produces stable, properly
+            // rounded sizes (vs. `cellSizeForBounds:`, which can
+            // disagree with intrinsic size by a pixel and cause
+            // last-word flicker on resize).
+            let w = constraint_w.unwrap() as f64;
+            if (field.preferredMaxLayoutWidth() - w).abs() > f64::EPSILON {
+                field.setPreferredMaxLayoutWidth(w);
+            }
+            view.intrinsicContentSize()
+        } else {
+            // Fallback: sizeToFit + frame round-trip (preserves the
+            // existing single-line / bezel-inclusive measurement
+            // behaviour for buttons, non-wrapping fields, etc.).
+            let original = view.frame();
+            (field as &NSControl).sizeToFit();
+            let fit = view.frame().size;
+            view.setFrame(original);
+            fit
+        }
+    } else if let Some(control) = any.downcast_ref::<NSControl>() {
         let original = view.frame();
         control.sizeToFit();
         let fit = view.frame().size;
@@ -775,6 +827,26 @@ pub fn set_height(node: &Node, height_px: f32) {
     schedule_relayout(node);
 }
 
+pub fn set_min_width(node: &Node, px: f32) {
+    update_style(node, |s| s.min_size.width = Dimension::length(px));
+    schedule_relayout(node);
+}
+
+pub fn set_max_width(node: &Node, px: f32) {
+    update_style(node, |s| s.max_size.width = Dimension::length(px));
+    schedule_relayout(node);
+}
+
+pub fn set_min_height(node: &Node, px: f32) {
+    update_style(node, |s| s.min_size.height = Dimension::length(px));
+    schedule_relayout(node);
+}
+
+pub fn set_max_height(node: &Node, px: f32) {
+    update_style(node, |s| s.max_size.height = Dimension::length(px));
+    schedule_relayout(node);
+}
+
 pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
     update_style(node, |s| s.flex_direction = dir);
     schedule_relayout(node);
@@ -830,6 +902,17 @@ pub fn set_align_items(node: &Node, ai: AlignItems) {
 pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
     update_style(node, |s| s.flex_wrap = fw);
     schedule_relayout(node);
+}
+
+/// Tint the underlying NSView with a solid background color via
+/// CALayer. Switches the view to layer-backed mode (idempotent).
+pub fn set_background_color(node: &Node, color: crate::Color) {
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        let ns_color = color.to_nscolor();
+        layer.setBackgroundColor(Some(&ns_color.CGColor()));
+    }
 }
 
 pub fn set_margin(node: &Node, all_px: f32) {

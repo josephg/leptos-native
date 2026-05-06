@@ -133,6 +133,9 @@ native-ui = [
   "dep:gtk_dom",
   "dep:ios_dom",
 ]
+# Passthrough for `tachys`'s `block_layout` feature — enables the
+# `<block>` tag/builder. Off by default to keep binary size down.
+block_layout = ["tachys/block_layout"]
 subsecond = [
   "reactive_graph/subsecond",
   "dep:subsecond",

@@ -366,7 +366,14 @@ impl Element {
                 (v, s)
             }
             "label" => {
-                let l = NSTextField::labelWithString(
+                // `wrappingLabelWithString:` is AppKit's dedicated
+                // multiline-label initializer (10.12+). It pre-
+                // configures the cell for word-wrapping; combined
+                // with `preferredMaxLayoutWidth` set during measure
+                // (see `cocoa_dom::layout::measure_leaf`) the field
+                // reports a wrapped intrinsic content size for
+                // whatever width the parent gives it.
+                let l = NSTextField::wrappingLabelWithString(
                     &NSString::from_str(""),
                     mtm,
                 );

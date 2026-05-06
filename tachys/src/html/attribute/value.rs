@@ -76,6 +76,49 @@ impl IntoAttributeValue for cocoa_dom::Color {
     }
 }
 
+// AppKit text-alignment enum, used as a label `alignment=` value.
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::NSTextAlignment {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
+// Taffy enums used as `<stack>` / `<block>` attribute values
+// (`direction`, `justify_content`, `align`, `wrap`). The `view!`
+// macro wraps non-literal values through `into_attribute_value`,
+// so without these impls a Path expression like
+// `align=AlignItems::Center` fails to type-check.
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::layout::FlexDirection {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::layout::JustifyContent {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::layout::AlignItems {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+#[cfg(all(target_os = "macos", leptos_native))]
+impl IntoAttributeValue for cocoa_dom::layout::FlexWrap {
+    type Output = Self;
+    fn into_attribute_value(self) -> Self::Output {
+        self
+    }
+}
+
 /// A possible value for an HTML attribute.
 pub trait AttributeValue: Send {
     /// The state that should be retained between building and rebuilding.

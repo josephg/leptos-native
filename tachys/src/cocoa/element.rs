@@ -10,12 +10,13 @@ use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::view::{Mountable, Render};
 use cocoa_dom::{
     layout::{
-        set_align_items, set_flex_basis, set_flex_direction, set_flex_grow,
-        set_flex_shrink, set_flex_wrap, set_gap, set_height,
-        set_justify_content, set_padding, set_width, AlignItems,
-        FlexDirection, FlexWrap, JustifyContent,
+        set_align_items, set_background_color, set_flex_basis,
+        set_flex_direction, set_flex_grow, set_flex_shrink, set_flex_wrap,
+        set_gap, set_height, set_justify_content, set_max_height,
+        set_max_width, set_min_height, set_min_width, set_padding,
+        set_width, AlignItems, FlexDirection, FlexWrap, JustifyContent,
     },
-    BoolAttr, Element as CocoaElement, StringAttr,
+    BoolAttr, Color, Element as CocoaElement, StringAttr,
 };
 use reactive_graph::effect::RenderEffect;
 
@@ -211,16 +212,22 @@ impl<AttrState, ChildState: Mountable> Mountable
 // stack() — Taffy flexbox container (canonical linear layout primitive)
 // ---------------------------------------------------------------------
 
-/// Apply the flex-item style attrs (`grow`, `shrink`, `basis`, `width`,
-/// `height`) — meaningful on any element that participates in a flex
-/// parent's layout. Used by both `Stack` and `Block`.
+/// Apply the flex-item style attrs (`grow`, `shrink`, `basis`,
+/// `width` / `min_width` / `max_width`, `height` / `min_height` /
+/// `max_height`) — meaningful on any element that participates in a
+/// flex parent's layout. Used by both `Stack` and `Block`.
+#[allow(clippy::too_many_arguments)]
 fn apply_flex_item_attrs(
     el: &CocoaElement,
     grow: Option<MaybeReactive<f32>>,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
     width: Option<MaybeReactive<f32>>,
+    min_width: Option<MaybeReactive<f32>>,
+    max_width: Option<MaybeReactive<f32>>,
     height: Option<MaybeReactive<f32>>,
+    min_height: Option<MaybeReactive<f32>>,
+    max_height: Option<MaybeReactive<f32>>,
 ) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(v) = grow {
@@ -247,9 +254,41 @@ fn apply_flex_item_attrs(
             out.push(eff);
         }
     }
+    if let Some(v) = min_width {
+        let e = el.clone();
+        if let Some(eff) =
+            install(v, move |w| set_min_width(e.as_node(), w))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = max_width {
+        let e = el.clone();
+        if let Some(eff) =
+            install(v, move |w| set_max_width(e.as_node(), w))
+        {
+            out.push(eff);
+        }
+    }
     if let Some(v) = height {
         let e = el.clone();
         if let Some(eff) = install(v, move |h| set_height(e.as_node(), h)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = min_height {
+        let e = el.clone();
+        if let Some(eff) =
+            install(v, move |h| set_min_height(e.as_node(), h))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = max_height {
+        let e = el.clone();
+        if let Some(eff) =
+            install(v, move |h| set_max_height(e.as_node(), h))
+        {
             out.push(eff);
         }
     }
@@ -257,21 +296,26 @@ fn apply_flex_item_attrs(
 }
 
 pub struct Stack<Children, At = ()> {
-    direction:       Option<MaybeReactive<FlexDirection>>,
-    gap:             Option<MaybeReactive<f32>>,
-    padding:         Option<MaybeReactive<f32>>,
-    justify_content: Option<MaybeReactive<JustifyContent>>,
-    align:           Option<MaybeReactive<AlignItems>>,
-    wrap:            Option<MaybeReactive<FlexWrap>>,
-    grow:            Option<MaybeReactive<f32>>,
-    shrink:          Option<MaybeReactive<f32>>,
-    basis:           Option<MaybeReactive<f32>>,
-    width:           Option<MaybeReactive<f32>>,
-    height:          Option<MaybeReactive<f32>>,
-    alpha:           Option<MaybeReactive<f64>>,
-    tool_tip:        Option<MaybeReactive<String>>,
-    children:        Children,
-    attrs:           At,
+    direction:        Option<MaybeReactive<FlexDirection>>,
+    gap:              Option<MaybeReactive<f32>>,
+    padding:          Option<MaybeReactive<f32>>,
+    justify_content:  Option<MaybeReactive<JustifyContent>>,
+    align:            Option<MaybeReactive<AlignItems>>,
+    wrap:             Option<MaybeReactive<FlexWrap>>,
+    grow:             Option<MaybeReactive<f32>>,
+    shrink:           Option<MaybeReactive<f32>>,
+    basis:            Option<MaybeReactive<f32>>,
+    width:            Option<MaybeReactive<f32>>,
+    min_width:        Option<MaybeReactive<f32>>,
+    max_width:        Option<MaybeReactive<f32>>,
+    height:           Option<MaybeReactive<f32>>,
+    min_height:       Option<MaybeReactive<f32>>,
+    max_height:       Option<MaybeReactive<f32>>,
+    background_color: Option<MaybeReactive<Color>>,
+    alpha:            Option<MaybeReactive<f64>>,
+    tool_tip:         Option<MaybeReactive<String>>,
+    children:         Children,
+    attrs:            At,
 }
 
 fn empty_stack() -> Stack<(), ()> {
@@ -286,7 +330,12 @@ fn empty_stack() -> Stack<(), ()> {
         shrink: None,
         basis: None,
         width: None,
+        min_width: None,
+        max_width: None,
         height: None,
+        min_height: None,
+        max_height: None,
+        background_color: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -411,11 +460,53 @@ impl<Ch, At> Stack<Ch, At> {
         self
     }
 
+    pub fn min_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.min_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn max_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.max_width = Some(w.into_maybe_reactive());
+        self
+    }
+
     pub fn height<V>(mut self, h: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
     {
         self.height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    pub fn min_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.min_height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    pub fn max_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.max_height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    /// Solid background fill via CALayer. Switches the stack's
+    /// underlying NSView to layer-backed.
+    pub fn background_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.background_color = Some(c.into_maybe_reactive());
         self
     }
 
@@ -447,7 +538,12 @@ impl<Ch, At> Stack<Ch, At> {
             shrink: self.shrink,
             basis: self.basis,
             width: self.width,
+            min_width: self.min_width,
+            max_width: self.max_width,
             height: self.height,
+            min_height: self.min_height,
+            max_height: self.max_height,
+            background_color: self.background_color,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
@@ -521,8 +617,20 @@ where
             self.shrink,
             self.basis,
             self.width,
+            self.min_width,
+            self.max_width,
             self.height,
+            self.min_height,
+            self.max_height,
         ));
+        if let Some(v) = self.background_color {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |c| set_background_color(e.as_node(), c))
+            {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         // Build children but DON'T mount them yet. Mounting is
@@ -552,16 +660,21 @@ where
 
 #[cfg(feature = "block_layout")]
 pub struct Block<Children, At = ()> {
-    padding:  Option<MaybeReactive<f32>>,
-    grow:     Option<MaybeReactive<f32>>,
-    shrink:   Option<MaybeReactive<f32>>,
-    basis:    Option<MaybeReactive<f32>>,
-    width:    Option<MaybeReactive<f32>>,
-    height:   Option<MaybeReactive<f32>>,
-    alpha:    Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
-    children: Children,
-    attrs:    At,
+    padding:          Option<MaybeReactive<f32>>,
+    grow:             Option<MaybeReactive<f32>>,
+    shrink:           Option<MaybeReactive<f32>>,
+    basis:            Option<MaybeReactive<f32>>,
+    width:            Option<MaybeReactive<f32>>,
+    min_width:        Option<MaybeReactive<f32>>,
+    max_width:        Option<MaybeReactive<f32>>,
+    height:           Option<MaybeReactive<f32>>,
+    min_height:       Option<MaybeReactive<f32>>,
+    max_height:       Option<MaybeReactive<f32>>,
+    background_color: Option<MaybeReactive<Color>>,
+    alpha:            Option<MaybeReactive<f64>>,
+    tool_tip:         Option<MaybeReactive<String>>,
+    children:         Children,
+    attrs:            At,
 }
 
 #[cfg(feature = "block_layout")]
@@ -572,7 +685,12 @@ pub fn block() -> Block<(), ()> {
         shrink: None,
         basis: None,
         width: None,
+        min_width: None,
+        max_width: None,
         height: None,
+        min_height: None,
+        max_height: None,
+        background_color: None,
         alpha: None,
         tool_tip: None,
         children: (),
@@ -617,11 +735,46 @@ impl<Ch, At> Block<Ch, At> {
         self.width = Some(w.into_maybe_reactive());
         self
     }
+    pub fn min_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.min_width = Some(w.into_maybe_reactive());
+        self
+    }
+    pub fn max_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.max_width = Some(w.into_maybe_reactive());
+        self
+    }
     pub fn height<V>(mut self, h: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
     {
         self.height = Some(h.into_maybe_reactive());
+        self
+    }
+    pub fn min_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.min_height = Some(h.into_maybe_reactive());
+        self
+    }
+    pub fn max_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.max_height = Some(h.into_maybe_reactive());
+        self
+    }
+    pub fn background_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.background_color = Some(c.into_maybe_reactive());
         self
     }
     pub fn alpha<V>(mut self, a: V) -> Self
@@ -646,7 +799,12 @@ impl<Ch, At> Block<Ch, At> {
             shrink: self.shrink,
             basis: self.basis,
             width: self.width,
+            min_width: self.min_width,
+            max_width: self.max_width,
             height: self.height,
+            min_height: self.min_height,
+            max_height: self.max_height,
+            background_color: self.background_color,
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
@@ -679,8 +837,20 @@ where
             self.shrink,
             self.basis,
             self.width,
+            self.min_width,
+            self.max_width,
             self.height,
+            self.min_height,
+            self.max_height,
         ));
+        if let Some(v) = self.background_color {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |c| set_background_color(e.as_node(), c))
+            {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         let child_state = self.children.build();
@@ -3814,12 +3984,30 @@ impl_container_typed_attrs!(
     shrink,
     basis,
     width,
+    min_width,
+    max_width,
     height,
+    min_height,
+    max_height,
+    background_color,
     alpha,
     tool_tip
 );
 
 #[cfg(feature = "block_layout")]
 impl_container_typed_attrs!(
-    Block, padding, grow, shrink, basis, width, height, alpha, tool_tip
+    Block,
+    padding,
+    grow,
+    shrink,
+    basis,
+    width,
+    min_width,
+    max_width,
+    height,
+    min_height,
+    max_height,
+    background_color,
+    alpha,
+    tool_tip
 );

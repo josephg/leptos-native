@@ -39,6 +39,7 @@ objc2-foundation = { version = "0.3", features = [
     "NSLocale",
     "NSTimeZone",
 ] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
 objc2-app-kit = { version = "0.3", features = [
     "NSApplication",
     "NSWindow",
@@ -54,6 +55,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSSlider",
     "NSPopUpButton",
     "NSCell",
+    "NSParagraphStyle",
     "NSColor",
     "NSGraphics",
     "NSEvent",

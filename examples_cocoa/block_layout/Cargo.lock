@@ -134,6 +134,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "block_layout"
+version = "0.1.0"
+dependencies = [
+ "cocoa_dom",
+ "leptos",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1914,14 +1922,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
-]
-
-[[package]]
-name = "showcase_macos"
-version = "0.1.0"
-dependencies = [
- "cocoa_dom",
- "leptos",
 ]
 
 [[package]]
