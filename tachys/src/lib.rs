@@ -15,18 +15,6 @@
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(adt_const_params))]
 #![deny(missing_docs)]
 
-// `web` and `native-ui` are mutually exclusive — exactly one must
-// be enabled. This check mirrors the one in leptos/src/lib.rs and
-// fires earlier in the build (before any tachys source compiles).
-#[cfg(all(feature = "web", feature = "native-ui"))]
-compile_error!(
-    "tachys: features `web` and `native-ui` are mutually exclusive."
-);
-#[cfg(not(any(feature = "web", feature = "native-ui")))]
-compile_error!(
-    "tachys: exactly one of `web` or `native-ui` must be enabled."
-);
-
 /// Commonly-used traits.
 pub mod prelude {
     #[cfg(feature = "web")]
@@ -93,14 +81,20 @@ use web_sys::Node;
 pub mod dom;
 /// Types for building a statically-typed HTML view tree.
 pub mod html;
-/// Supports adding interactivity to HTML.
+/// Supports adding interactivity to HTML. The bulk of this module
+/// is web-only (DOM cursor traversal), but a handful of native-side
+/// stubs and the `Cursor` type are referenced by the trait surface
+/// (`RenderHtml`), so the module compiles unconditionally — its
+/// web-only contents are gated internally on `feature = "web"`.
 pub mod hydration;
 /// Types for MathML (web only).
 #[cfg(feature = "web")]
 pub mod mathml;
 /// Defines various backends that can render views.
 pub mod renderer;
-/// Rendering views to HTML.
+/// Rendering views to HTML. The trait surface (`StreamBuilder`,
+/// `RenderHtml::to_html_*`) is referenced unconditionally; web-only
+/// internals are gated on `feature = "web"` within the module.
 pub mod ssr;
 /// Types for SVG (web only). Native targets get their `<view>` etc.
 /// element constructors from the per-renderer glue crate's

@@ -153,23 +153,6 @@
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(fn_traits))]
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(unboxed_closures))]
 
-// `web` and `native-ui` are mutually exclusive — exactly one must
-// be enabled. `web` is the default; native-UI builds opt out via
-// `default-features = false, features = ["native-ui"]`. The
-// csr/hydrate/ssr features each implicitly activate `web`.
-#[cfg(all(feature = "web", feature = "native-ui"))]
-compile_error!(
-    "leptos: features `web` and `native-ui` are mutually exclusive. \
-     Disable one of them — for native-UI builds, use \
-     `default-features = false, features = [\"native-ui\"]`."
-);
-#[cfg(not(any(feature = "web", feature = "native-ui")))]
-compile_error!(
-    "leptos: exactly one of `web` or `native-ui` must be enabled. \
-     The default feature `web` is enabled normally; if you disabled \
-     defaults, re-enable `web` or pick `native-ui`."
-);
-
 extern crate self as leptos;
 
 /// The renderer-toolkit namespace the `view!{}` macro routes through
@@ -216,7 +199,7 @@ pub mod __view_namespace {
     }
 }
 
-/// The web `view!{}` macro — the one you've been using since 0.x.
+/// The web `view!{}` macro.
 /// Wraps `leptos_macro::raw_view!` with the web renderer namespace
 /// pre-supplied, so existing code keeps working unchanged.
 ///
@@ -292,18 +275,13 @@ pub mod prelude {
         // native targets; only re-export them on the web target.
         #[cfg(feature = "web")]
         pub use tachys::reactive_graph::{
-            bind::BindAttribute, node_ref::*, Suspend,
+            bind::BindAttribute, node_ref::*,
         };
+        pub use tachys::reactive_graph::Suspend;
         // The web `view!` `macro_rules!` is defined at the crate root
         // (with `#[macro_export]`) so users get it via the
         // `pub use leptos_macro::*` glob below — it lives in the same
         // macro namespace.
-        #[cfg(all(target_os = "ios", feature = "native-ui"))]
-        pub use tachys::reactive_graph::Suspend;
-        #[cfg(all(target_os = "macos", feature = "native-ui"))]
-        pub use tachys::reactive_graph::Suspend;
-        #[cfg(all(target_os = "linux", feature = "native-ui"))]
-        pub use tachys::reactive_graph::Suspend;
         pub use tachys::view::{
             fragment::Fragment, template::ViewTemplate,
         };
