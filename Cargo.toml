@@ -5,6 +5,7 @@ members = [
   "common/reactive_graph",
   "common/reactive_stores",
   "common/reactive_stores_macro",
+  "common/renderer",
 
   # native ports
   "cocoa/dom",
@@ -18,15 +19,11 @@ exclude = [
   "gtk/examples",
   "uikit/examples",
   "uikit/xcuitests",
-  # Excluded until they're cleaned up + moved into common/ in
-  # Phases 5 (tachys -> common/renderer), 6 (leptos_macro -> common),
-  # 7 (leptos -> common/leptos). Their current Cargo.tomls reference
-  # deleted crates (hydration_context, leptos_dom, server_fn, etc.)
-  # via workspace.dependencies and would block workspace metadata
-  # resolution.
+  # Excluded until cleaned up + moved into common/ in
+  # Phase 6 (leptos_macro -> common/leptos_macro) and
+  # Phase 7 (leptos -> common/leptos).
   "web/leptos",
   "web/leptos_macro",
-  "web/tachys",
 ]
 
 [workspace.package]
@@ -35,12 +32,10 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 # --- workspace member crates (path-pinned) ---
-leptos = { path = "./web/leptos", version = "0.8.19" }
-leptos_macro = { path = "./web/leptos_macro", version = "0.8.16" }
+renderer = { path = "./common/renderer", version = "0.1.0" }
 reactive_graph = { path = "./common/reactive_graph", version = "0.2.14" }
 reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
 reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
-tachys = { path = "./web/tachys", version = "0.2.15" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---
 throw_error = { default-features = false, version = "0.3.1" }

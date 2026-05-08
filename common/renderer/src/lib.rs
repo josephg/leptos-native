@@ -33,5 +33,3 @@ pub use either_of as either;
 #[cfg(feature = "reactive_graph")]
 pub mod reactive_graph;
 
-/// A type-erased container.
-pub mod erased;

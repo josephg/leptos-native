@@ -1,0 +1,32 @@
+[package]
+name = "renderer"
+version = "0.1.0"
+authors = ["Seph Gentle", "Greg Johnston (original tachys)"]
+license = "MIT"
+description = "Renderer-agnostic view tree (Render<R>, Mountable<R>, Renderer trait). Forked from leptos's tachys; native-only."
+rust-version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "renderer"
+
+[dependencies]
+either_of = { workspace = true }
+or_poisoned = { workspace = true }
+futures = { workspace = true, default-features = true }
+send_wrapper = { workspace = true, default-features = true }
+reactive_graph = { workspace = true, optional = true }
+
+[features]
+default = ["reactive_graph"]
+nightly = ["reactive_graph?/nightly"]
+reactive_graph = ["dep:reactive_graph"]
+
+[build-dependencies]
+rustc_version = { workspace = true, default-features = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+  'cfg(rustc_nightly)',
+] }

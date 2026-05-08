@@ -1,0 +1,58 @@
+//! `Render<R>` for `Option<T>`. State is wrapped in `Either<T::State, ()>`
+//! semantics implicitly: when `Some`, the inner T's State; when `None`, no
+//! state.
+
+use super::{Mountable, Render};
+use crate::renderer::Renderer;
+
+impl<R, T> Render<R> for Option<T>
+where
+    R: Renderer,
+    T: Render<R>,
+{
+    type State = Option<T::State>;
+
+    fn build(self) -> Self::State {
+        self.map(Render::build)
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        match (self, state.as_mut()) {
+            (Some(new), Some(s)) => new.rebuild(s),
+            (Some(new), None) => *state = Some(new.build()),
+            (None, Some(s)) => {
+                s.unmount();
+                *state = None;
+            }
+            (None, None) => {}
+        }
+    }
+}
+
+impl<R, T> Mountable<R> for Option<T>
+where
+    R: Renderer,
+    T: Mountable<R>,
+{
+    fn unmount(&mut self) {
+        if let Some(inner) = self {
+            inner.unmount();
+        }
+    }
+
+    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+        if let Some(inner) = self {
+            inner.mount(parent, marker);
+        }
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
+        self.as_ref()
+            .map(|inner| inner.insert_before_this(child))
+            .unwrap_or(false)
+    }
+
+    fn elements(&self) -> Vec<R::Element> {
+        self.as_ref().map(Mountable::elements).unwrap_or_default()
+    }
+}
