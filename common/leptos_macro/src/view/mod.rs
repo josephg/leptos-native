@@ -699,7 +699,16 @@ fn node_to_tokens(
             disable_inert_html,
         ),
         Node::Block(block) => {
-            Some(quote! { ::leptos::prelude::IntoRender::into_render(#block) })
+            // Phase 8: native fork — emit the bare block. Upstream
+            // wrapped this in `IntoRender::into_render(...)` to
+            // normalize the value into Render<R>, but on native that
+            // adds an R type parameter the surrounding context often
+            // can't infer (e.g. <label>{closure}</label> where label's
+            // .child() takes IntoMaybeReactive<String>, not Render).
+            // The blanket `impl<R, T: Render<R>> IntoRender<R> for T`
+            // is identity anyway, so dropping the wrap is type-equivalent
+            // for paths that ARE generic in R.
+            Some(quote! { (#block) })
         }
         Node::Text(text) => Some(text_to_tokens(&text.value)),
         Node::RawText(raw) => {
