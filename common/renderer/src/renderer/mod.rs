@@ -82,6 +82,24 @@ pub trait Renderer: Send + Sized + Debug + 'static {
 
     /// Logs a node in a platform-appropriate way (used for debugging).
     fn log_node(node: &Self::Node);
+
+    /// Mounts `new_child` into the parent of `before`, immediately before
+    /// `before`. Returns `false` if `before` has no parent (in which case
+    /// the caller is responsible for finding a different mount point).
+    #[track_caller]
+    fn try_mount_before<M>(new_child: &mut M, before: &Self::Node) -> bool
+    where
+        M: Mountable<Self>,
+    {
+        if let Some(parent) =
+            Self::get_parent(before).and_then(Self::Element::cast_from)
+        {
+            new_child.mount(&parent, Some(before));
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Attempts to cast from one type to another.
