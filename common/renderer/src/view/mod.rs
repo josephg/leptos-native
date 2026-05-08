@@ -11,6 +11,7 @@ mod either;
 mod iterators;
 mod option;
 mod primitives;
+mod result;
 mod strings;
 mod tuples;
 

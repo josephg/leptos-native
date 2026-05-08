@@ -11,6 +11,7 @@ edition.workspace = true
 either_of = { workspace = true }
 or_poisoned = { workspace = true }
 oco_ref = { workspace = true }
+throw_error = { workspace = true }
 any_spawner = { workspace = true, features = ["futures-executor"] }
 leptos_macro = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }

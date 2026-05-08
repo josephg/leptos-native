@@ -447,6 +447,7 @@ dependencies = [
  "serde_json",
  "slotmap",
  "thiserror",
+ "throw_error",
  "typed-builder",
  "typed-builder-macro",
 ]
@@ -870,6 +871,7 @@ dependencies = [
  "reactive_graph",
  "rustc_version",
  "send_wrapper",
+ "throw_error",
 ]
 
 [[package]]
@@ -1040,6 +1042,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "throw_error"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0ed6038fcbc0795aca7c92963ddda636573b956679204e044492d2b13c8f64"
+dependencies = [
+ "pin-project-lite",
 ]
 
 [[package]]

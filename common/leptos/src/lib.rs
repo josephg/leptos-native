@@ -41,7 +41,7 @@ pub mod prelude {
     pub use renderer::prelude::*;
 
     pub use crate::{
-        children::*, component::*, control_flow::*, into_view::*,
+        children::*, component::*, control_flow::*, error::*, into_view::*,
         text_prop::*,
     };
 
@@ -67,6 +67,15 @@ pub mod component;
 
 /// Types that can be passed as the `children` prop of a component.
 pub mod children;
+
+/// `<ErrorBoundary>` component + the `Errors` map type.
+pub mod error_boundary;
+
+/// Tools for handling errors.
+pub mod error {
+    pub use crate::error_boundary::*;
+    pub use throw_error::*;
+}
 
 /// Control-flow components like `<Show>`, `<ShowLet>`, `<For>`.
 pub mod control_flow {
