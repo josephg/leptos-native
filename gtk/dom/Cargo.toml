@@ -12,7 +12,6 @@ send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
-tachys = { workspace = true, features = ["reactive_graph"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk4 = { workspace = true, default-features = true }

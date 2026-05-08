@@ -13,7 +13,6 @@ edition.workspace = true
 any_spawner = { workspace = true }
 or_poisoned = { workspace = true }
 futures = { workspace = true, default-features = true }
-hydration_context = { workspace = true, optional = true }
 pin-project-lite = { workspace = true, default-features = true }
 rustc-hash = { workspace = true, default-features = true }
 serde = { features = [
@@ -50,7 +49,6 @@ rustc_version = { workspace = true, default-features = true }
 nightly = []
 serde = ["dep:serde"]
 tracing = ["dep:tracing"]
-hydration = ["dep:hydration_context"]
 effects = [
 ] # whether to run effects: should be disabled for something like server rendering
 sandboxed-arenas = []

@@ -1,6 +1,0 @@
-{
-  "name": "axum_js_ssr",
-  "dependencies": {
-    "@highlightjs/cdn-assets": "^11.10.0"
-  }
-}

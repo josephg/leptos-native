@@ -1,9 +1,0 @@
-[tasks.cargo-all-features]
-install_script = '''
-cargo install cargo-all-features
-'''
-
-[tasks.build]
-dependencies = ["cargo-all-features"]
-command = "cargo"
-args = ["all-features", "build"]

@@ -1,4 +1,0 @@
-extend = [{ path = "../cargo-make/playwright.toml" }]
-
-[tasks.integration-test]
-dependencies = ["test-playwright-autostart"]

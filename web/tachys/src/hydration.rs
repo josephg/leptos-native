@@ -5,7 +5,6 @@ use crate::{
 #[cfg(any(debug_assertions, leptos_debuginfo))]
 use std::cell::Cell;
 use std::{cell::RefCell, panic::Location, rc::Rc};
-#[cfg(not(leptos_native))]
 use web_sys::{Comment, Element, Node, Text};
 
 #[cfg(feature = "mark_branches")]
@@ -144,7 +143,6 @@ thread_local! {
     static CURRENTLY_HYDRATING: Cell<Option<&'static Location<'static>>> = const { Cell::new(None) };
 }
 
-#[cfg(not(leptos_native))]
 pub(crate) fn set_currently_hydrating(
     location: Option<&'static Location<'static>>,
 ) {
@@ -158,7 +156,6 @@ pub(crate) fn set_currently_hydrating(
     }
 }
 
-#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_element(tag_name: &str, node: Node) -> Element {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {
@@ -191,7 +188,6 @@ pub(crate) fn failed_to_cast_element(tag_name: &str, node: Node) -> Element {
     }
 }
 
-#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_marker_node(node: Node) -> Comment {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {
@@ -264,7 +260,6 @@ pub(crate) fn failed_to_cast_element(
     );
 }
 
-#[cfg(not(leptos_native))]
 pub(crate) fn failed_to_cast_text_node(node: Node) -> Text {
     #[cfg(not(any(debug_assertions, leptos_debuginfo)))]
     {

@@ -1,8 +1,0 @@
-extend = [
-  { path = "../cargo-make/playwright.toml" },
-  { path = "../cargo-make/trunk_server.toml" },
-]
-
-[tasks.integration-test]
-dependencies = ["build", "start-client", "test-playwright"]
-description = "Run integration test with automated start and stop of processes"

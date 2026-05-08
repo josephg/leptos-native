@@ -1,14 +1,11 @@
 /// A type-erased `AnyAttribute`.
 pub mod any_attribute;
 /// Types for ARIA attributes (web only — uses HTML element types).
-#[cfg(not(leptos_native))]
 pub mod aria;
 /// Types for custom attributes (web only).
-#[cfg(not(leptos_native))]
 pub mod custom;
 /// Traits to define global attribute methods on all HTML elements
 /// (web only — uses HTML element types).
-#[cfg(not(leptos_native))]
 pub mod global;
 mod key;
 pub(crate) mod maybe_next_attr_erasure_macros;

@@ -17,19 +17,13 @@ use std::{
 
 /// Types for two way data binding (web only — tied to HTML form
 /// elements; not reachable on the macOS target).
-#[cfg(not(leptos_native))]
 pub mod bind;
-#[cfg(not(leptos_native))]
 mod class;
-#[cfg(not(leptos_native))]
 mod inner_html;
 /// Provides a reactive [`NodeRef`](node_ref::NodeRef) type (web only).
-#[cfg(not(leptos_native))]
 pub mod node_ref;
 mod owned;
-#[cfg(not(leptos_native))]
 mod property;
-#[cfg(not(leptos_native))]
 mod style;
 mod suspense;
 

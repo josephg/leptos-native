@@ -35,7 +35,6 @@ tokio = { features = [
 tokio-test = { workspace = true, default-features = true }
 any_spawner = { workspace = true, features = ["futures-executor", "tokio"] }
 reactive_graph = { workspace = true, features = ["effects"] }
-leptos = { path = "../../web/leptos", features = ["csr"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(leptos_debuginfo)'] }

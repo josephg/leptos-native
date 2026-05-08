@@ -286,7 +286,6 @@ pub mod prelude {
 /// Components used for working with HTML forms, like `<ActionForm>`.
 /// Web-only — AppKit form controls are wired through the Cocoa
 /// element module instead.
-#[cfg(not(leptos_native))]
 pub mod form;
 
 /// A standard way to wrap functions and closures to pass them to components.
@@ -317,7 +316,6 @@ pub mod control_flow {
 }
 // `animated_show` uses leptos_dom::helpers::set_timeout_with_handle
 // which is web-only.
-#[cfg(not(leptos_native))]
 mod animated_show;
 mod await_;
 mod for_loop;
@@ -326,12 +324,10 @@ mod show_let;
 
 /// A component that allows rendering a component somewhere else.
 /// Web-only — uses `leptos_dom::helpers::document()`.
-#[cfg(not(leptos_native))]
 pub mod portal;
 
 /// Components to enable server-side rendering and client-side
 /// hydration. Web-only.
-#[cfg(not(leptos_native))]
 pub mod hydration;
 
 /// Utilities for exporting nonces to be used for a Content Security Policy.
@@ -364,7 +360,6 @@ mod provider;
 #[doc(inline)]
 pub use tachys;
 /// Tools to mount an application to the DOM, or to hydrate it from server-rendered HTML.
-#[cfg(not(leptos_native))]
 pub mod mount;
 /// Tools to mount an application to a native iOS window. The
 /// UIKit-flavoured analogue of [`mount`](self::mount); see
@@ -404,7 +399,6 @@ pub use tachys::html::attribute as attr;
 /// HTML element types. Web-only — on macOS the parallel Cocoa
 /// element builders live in `tachys::cocoa`; on Linux in
 /// `tachys::gtk`.
-#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::html::element as html;
 /// UIKit-flavoured element builders (iOS analogue of `html`).
@@ -423,15 +417,12 @@ pub use tachys::cocoa as cocoa;
 #[doc(inline)]
 pub use tachys::gtk as gtk;
 /// HTML event types.
-#[cfg(not(leptos_native))]
 #[doc(no_inline)]
 pub use tachys::html::event as ev;
 /// MathML element types.
-#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::mathml as math;
 /// SVG element types.
-#[cfg(not(leptos_native))]
 #[doc(inline)]
 pub use tachys::svg;
 
