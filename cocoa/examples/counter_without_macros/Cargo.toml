@@ -9,5 +9,5 @@ name = "counter_without_macros"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui"] }
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 tachys = { path = "../../../web/tachys", features = ["native-ui"] }

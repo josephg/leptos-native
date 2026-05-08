@@ -21,6 +21,13 @@ pub mod svg_macos;
 
 pub use renderer_cocoa::Dom;
 
+/// Bind/attribute keys re-exported under the `leptos::attr` path the
+/// `bind:foo=value` macro syntax expands to (`::leptos::attr::Value`,
+/// `::leptos::attr::Checked`).
+pub mod attr {
+    pub use crate::keys::*;
+}
+
 // ---------------------------------------------------------------------
 // User-facing surface
 //
@@ -104,9 +111,11 @@ pub mod prelude {
     // directly (instead of via the `view!{}` macro) just works.
     pub use crate::cocoa::{
         attr::{IntoMaybeReactive, MaybeReactive},
+        bind::{BindAttribute, IntoSignal},
         element::{
             button, hstack, label, stack_view, text_field, view, vstack,
         },
+        node_ref::NodeRef,
         FlexDirection, JustifyContent,
     };
     pub use crate::Dom;

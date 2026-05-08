@@ -9,5 +9,5 @@ name = "stores"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui"] }
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 reactive_stores = { path = "../../../common/reactive_stores" }

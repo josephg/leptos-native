@@ -9,5 +9,5 @@ name = "directives"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui"] }
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 cocoa_dom = { path = "../../dom" }
