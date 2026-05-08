@@ -8,6 +8,7 @@ members = [
   "common/renderer",
   "common/leptos_macro",
   "common/leptos",
+  "cocoa/leptos_cocoa",
 
   # native ports
   "cocoa/dom",

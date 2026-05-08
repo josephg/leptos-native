@@ -15,6 +15,7 @@ default = []
 block_layout = ["taffy/block_layout"]
 
 [dependencies]
+renderer = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]

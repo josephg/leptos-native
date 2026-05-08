@@ -173,6 +173,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "reactive_graph",
+ "renderer",
  "send_wrapper",
  "taffy",
 ]
@@ -881,6 +882,24 @@ dependencies = [
  "tracing",
  "typed-builder",
  "typed-builder-macro",
+]
+
+[[package]]
+name = "leptos_cocoa"
+version = "0.1.0"
+dependencies = [
+ "any_spawner",
+ "cocoa_dom",
+ "either_of",
+ "leptos",
+ "leptos_macro",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "oco_ref",
+ "reactive_graph",
+ "renderer",
+ "send_wrapper",
 ]
 
 [[package]]
