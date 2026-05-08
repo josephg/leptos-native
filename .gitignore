@@ -16,3 +16,4 @@ blob.rs
 .vscode
 vendor
 hash.txt
+.REFACTOR.md.swp
