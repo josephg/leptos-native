@@ -68,10 +68,11 @@ pub mod component;
 /// Types that can be passed as the `children` prop of a component.
 pub mod children;
 
-/// Control-flow components like `<Show>` and `<ShowLet>`.
+/// Control-flow components like `<Show>`, `<ShowLet>`, `<For>`.
 pub mod control_flow {
-    pub use crate::{show::*, show_let::*};
+    pub use crate::{for_loop::*, show::*, show_let::*};
 }
+mod for_loop;
 mod show;
 mod show_let;
 
