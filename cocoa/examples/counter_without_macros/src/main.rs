@@ -1,7 +1,7 @@
 //! Builder-style API (no `view!` macro) on macOS.
 
 use leptos::prelude::*;
-use tachys::{
+use leptos::tachys::{
     cocoa::element::{button, label, vstack},
     html::event::click,
 };
@@ -18,7 +18,7 @@ fn main() {
     let view = vstack().padding(16.0).gap(12.0).child((
         label().child(move || format!("Count: {}", count.get().value())),
         // hstack-equivalent via tachys builder — use flex direction
-        tachys::cocoa::element::hstack().gap(8.0).child((
+        leptos::tachys::cocoa::element::hstack().gap(8.0).child((
             button()
                 .on(click, move |_| count.update(Count::clear))
                 .child("Clear"),

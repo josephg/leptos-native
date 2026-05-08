@@ -10,4 +10,3 @@ path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
-tachys = { path = "../../../web/tachys", features = ["native-ui"] }

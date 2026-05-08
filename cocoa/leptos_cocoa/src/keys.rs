@@ -32,3 +32,9 @@ pub struct Checked;
 impl AttributeKey for Checked {
     const KEY: &'static str = "checked";
 }
+
+/// `bind:selection` key — re-exported from `crate::cocoa::bind` so that
+/// the macro path `::leptos::attr::Selection` resolves. Defined as a
+/// const so it's usable both as a value (`Selection`) and as a type
+/// (the BindAttribute<Selection, ...> impls).
+pub use crate::cocoa::bind::Selection;
