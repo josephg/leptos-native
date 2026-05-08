@@ -91,23 +91,39 @@ leptos-mac/
 | 6 (finish) | `5ad6f535` | Added `common/leptos_macro` to workspace members + workspace.dependencies. `is_wasm = false` hardcoded in `lazy.rs` (csr/hydrate features removed). `cargo build -p leptos_macro` clean. Macro emit paths still reference `::leptos::tachys::*` / `::leptos::prelude::*` and resolve at expansion-time inside user code, so they won't fail until consumers (cocoa/gtk/uikit examples) hit them in Phase 9-10. |
 | 7 (part A) | `THIS commit` | `git mv web/leptos common/leptos`. Cargo.toml rewritten to depend only on native-side crates (`renderer`, `leptos_macro`, `reactive_graph`, utilities). `lib.rs` slashed to native-only essentials. `into_view.rs` rewritten — `IntoView<R: Renderer>: Render<R> + Send`, no more `RenderHtml`/`AddAnyAttr`/`ToTemplate`. Web-only files deleted: `mount.rs`, `form.rs`, `await_.rs`, `nonce.rs`, `subsecond.rs`, `attribute_interceptor.rs`, `from_form_data.rs`, `hydration/`. `web/` directory empty and gone. **Components currently shipped: `component`, `into_view`, `text_prop`, `logging`** — see Phase 7B for the deferred ones. cargo build --workspace clean. |
 
-### 🚧 IN PROGRESS — Phase 7 part B
+### ✅ DONE — Phase 7 part B (substantive)
 
-`Show`, `ShowLet`, `For`, `children`, `provider`, `error_boundary`,
-`portal`, `animated_show`, `suspense_component`, `transition` all need
-R-genericization against the new `Render<R>` core. The first four files
-are still on disk (under their original names, not `mod`-declared in
-`lib.rs`) waiting for surgery; the others were deleted from
-`common/leptos/src/` in Phase 7A and will be ported back from
-`/Users/seph/src/leptos-upstream/leptos/src/` against the new shape.
-`provider.rs` is a stub explaining what's deferred.
+| Commit | What |
+|--------|------|
+| `7d00becc` | OwnedView<R> + OwnedViewState<T, R> re-added to common/renderer (renderer-agnostic — was deleted in Phase 5 only because of RenderHtml-coupled neighbours, the concept itself is not web-specific). |
+| `afaaa097` | Show, Provider, children ported. children pared to ToChildren + TypedChildren<T, R> / TypedChildrenMut<T, R> / TypedChildrenFn<T, R>; AnyView-erased variants (Children, ChildrenFn, ChildrenFragment, etc.) dropped — native binaries have one renderer, no erasure needed. |
+| `e19006d1` | ShowLet ported (same fallback-dropped tradeoff as Show). |
+| `0f52f38a` | Vec<T>: Render<R> ported to common/renderer/src/view/iterators.rs. Renderer::try_mount_before added as a default method on the trait. |
+| `f3852bb9` | <For> ported (unkeyed). Same prop signature as upstream so cocoa/examples/{counters, todomvc, scroll_view} won't need edits. `key` arg accepted-but-ignored until keyed diff lands. |
 
-The blocker is partly a missing `OwnedView` (was in
-`tachys::reactive_graph::OwnedView`, deleted in Phase 5 because of
-RenderHtml coupling — but the *concept* is renderer-agnostic) and partly
-the lack of a renderer-agnostic `Either` (the deleted `tachys::either::Either`
-was just a re-export of `either_of::Either`, so `use either_of::Either as
-Either` is a one-line fix in each file).
+### ⚠️ Phase 7B caveats
+
+- **Show / ShowLet**: `fallback` prop is dropped. Upstream used `ViewFn`
+  backed by `AnyView` to allow arbitrary fallback types. To re-add,
+  introduce a typed `FallbackFn<F, R>` (closure returning a single
+  concrete view type) — Phase 8.
+- **For**: unkeyed. Position-based diff. If lists reorder, signal-keyed
+  children re-read from wrong rows. Track row-stability in user code
+  until keyed `<For>` lands (port `keyed.rs` ~959 lines from upstream).
+- **AnyView is gone for good.** Components that wanted dynamic-typed
+  children must instead use a concrete type or build the type-erasure
+  themselves. This was a deliberate native-fork simplification.
+
+### ⏳ STILL ON THE PHASE 7B / 8 PUNCH LIST
+
+- `error_boundary`, `portal`, `animated_show`, `suspense_component`,
+  `transition` — all deleted in Phase 7A. Port-vs-delete TBD per file.
+  `error_boundary` and `suspense_component` had heavy hydration coupling;
+  `portal` used `leptos_dom::helpers::document()` (web-only); `animated_show`
+  used `leptos_dom::helpers::set_timeout_with_handle`. The animations and
+  suspense story for native is genuinely different — these may want
+  rewriting rather than porting.
+- `view/keyed.rs` (~959 lines) for keyed `<For>` diffing.
 
 ### ⏳ PENDING
 - **Phase 8**: The big mechanical refactor. Across `common/{renderer,leptos,
