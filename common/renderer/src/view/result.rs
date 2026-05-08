@@ -51,7 +51,10 @@ where
         let (state, error) = match self {
             Ok(view) => (Either::Left(view.build()), None),
             Err(e) => (
-                Either::Right(<() as Render<R>>::build(())),
+                // Need a real placeholder here so the slot in the tree
+                // is preserved while the error is showing — Render for
+                // `()` is now a no-op (see view::tuples).
+                Either::Right(UnitState::new()),
                 Some(throw_error::throw(e.into())),
             ),
         };
@@ -74,7 +77,7 @@ where
             }
             // Ok -> Err: unmount old, mount placeholder, throw error
             (Either::Left(old), Err(err)) => {
-                let mut new_state = <() as Render<R>>::build(());
+                let mut new_state = UnitState::<R>::new();
                 old.insert_before_this(&mut new_state);
                 old.unmount();
                 state.state = Either::Right(new_state);

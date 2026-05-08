@@ -1135,7 +1135,7 @@ impl_typed_attrs_for!(Button, title, enabled, handlers,
 impl<At> Render<Dom> for Button<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("button");
@@ -1204,7 +1204,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -1335,7 +1335,7 @@ impl_typed_attrs_for!(Checkbox, title, checked, pending_bind_checked,
 impl<At> Render<Dom> for Checkbox<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("checkbox");
@@ -1392,7 +1392,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -1549,7 +1549,7 @@ impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
 impl<At> Render<Dom> for Slider<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("slider");
@@ -1628,7 +1628,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -1763,7 +1763,7 @@ impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
 impl<At> Render<Dom> for PopUpButton<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("pop_up_button");
@@ -1830,7 +1830,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -1976,7 +1976,7 @@ impl_typed_attrs_for!(Label, text, handlers, grow, node_ref,
 impl<At> Render<Dom> for Label<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("label");
@@ -2034,7 +2034,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -2255,7 +2255,7 @@ impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
 impl<At> Render<Dom> for TextField<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
@@ -2339,7 +2339,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -2489,7 +2489,7 @@ impl_typed_attrs_for!(DatePicker, value, enabled, pending_bind, handlers,
 impl<At> Render<Dom> for DatePicker<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("date_picker");
@@ -2570,7 +2570,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -2702,7 +2702,7 @@ impl_typed_attrs_for!(Stepper, value, min_value, max_value, increment,
 impl<At> Render<Dom> for Stepper<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("stepper");
@@ -2765,7 +2765,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -2873,7 +2873,7 @@ impl_typed_attrs_for!(ProgressIndicator, value, max_value, indeterminate,
 impl<At> Render<Dom> for ProgressIndicator<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("progress_indicator");
@@ -2919,7 +2919,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -3036,7 +3036,7 @@ impl_typed_attrs_for!(ColorWell, value, enabled, pending_bind, handlers,
 impl<At> Render<Dom> for ColorWell<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("color_well");
@@ -3094,7 +3094,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -3233,7 +3233,7 @@ impl_typed_attrs_for!(SegmentedControl, items, selection, enabled,
 impl<At> Render<Dom> for SegmentedControl<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("segmented_control");
@@ -3303,7 +3303,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -3546,7 +3546,7 @@ impl_typed_attrs_for!(ImageView, source, grow, node_ref, directives,
 impl<At> Render<Dom> for ImageView<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("image_view");
@@ -3577,7 +3577,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 
@@ -3686,7 +3686,7 @@ impl_typed_attrs_for!(TextView, value, enabled, pending_bind, grow,
 impl<At> Render<Dom> for TextView<At>
 where
 {
-    type State = ElementState<(), UnitState<Dom>>;
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("text_view");
@@ -3748,7 +3748,7 @@ where
             el,
             _effects: effects,
             _attrs: std::marker::PhantomData,
-            children: <() as Render<Dom>>::build(()),
+            children: (),
         }
     }
 

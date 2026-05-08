@@ -31,6 +31,14 @@ default = []
 # Enables Taffy's `block_layout` algorithm and the `<block>` builder.
 block_layout = ["cocoa_dom/block_layout"]
 
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+reactive_graph = { workspace = true, features = ["effects"] }
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',

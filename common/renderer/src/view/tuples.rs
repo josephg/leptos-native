@@ -3,20 +3,57 @@
 use super::{Mountable, Render};
 use crate::renderer::{CastFrom, Renderer};
 
-/// Retained state for `()` — a placeholder node so insertion points stay
-/// stable when an Option/Either branch flips between content and empty.
+/// Retained state for an `Option`/`Either` empty branch — a real
+/// placeholder node so insertion points stay stable when the branch
+/// flips between content and empty. Constructed explicitly by callers
+/// that need a placeholder (see `view::result`); not emitted by
+/// `() : Render<R>` itself, which is a no-op.
 pub struct UnitState<R: Renderer> {
     placeholder: R::Placeholder,
 }
 
-impl<R: Renderer> Render<R> for () {
-    type State = UnitState<R>;
-
-    fn build(self) -> Self::State {
+impl<R: Renderer> UnitState<R> {
+    /// Build a fresh placeholder-backed unit state.
+    pub fn new() -> Self {
         UnitState { placeholder: R::create_placeholder() }
     }
+}
 
+impl<R: Renderer> Default for UnitState<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// `() : Render<R>` is a NO-OP — building it yields `()` (which is
+/// itself `Mountable<R>` as a no-op below) and produces no platform
+/// nodes.
+///
+/// This matters because builder containers (e.g. `vstack().child(c1)`)
+/// seed their child accumulator with `()`. If `Render::build` for `()`
+/// produced a `UnitState` placeholder, every container in the tree
+/// would acquire an extra placeholder NSView underneath it — turning
+/// every leaf control (`button`, `label`, etc.) into a non-leaf in
+/// Taffy and breaking intrinsic-size measurement.
+impl<R: Renderer> Render<R> for () {
+    type State = ();
+    fn build(self) -> Self::State {}
     fn rebuild(self, _state: &mut Self::State) {}
+}
+
+/// `Mountable<R> for ()` — no-op. Used as the `ChildState` for leaf
+/// controls (Button, Label, …) that don't have any children. See the
+/// comment on `Render for ()` above for why a real placeholder there
+/// would break intrinsic-size measurement on the parent control.
+impl<R: Renderer> Mountable<R> for () {
+    fn unmount(&mut self) {}
+    fn mount(&mut self, _parent: &R::Element, _marker: Option<&R::Node>) {}
+    fn insert_before_this(&self, _child: &mut dyn Mountable<R>) -> bool {
+        false
+    }
+    fn elements(&self) -> Vec<R::Element> {
+        Vec::new()
+    }
 }
 
 impl<R: Renderer> Mountable<R> for UnitState<R> {
