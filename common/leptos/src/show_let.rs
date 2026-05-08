@@ -1,119 +1,46 @@
-use crate::{children::ViewFn, IntoView};
+use crate::into_view::IntoView;
+use either_of::Either;
 use leptos_macro::component;
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]
 use reactive_graph::traits::Get;
+use renderer::renderer::Renderer;
 use std::{marker::PhantomData, sync::Arc};
-use tachys::either::Either;
 
-/// Like `<Show>` but for `Option`. This is a shortcut for
+/// Like `<Show>`, but for `Option`. Shows children when `some` returns `Some`.
 ///
-/// ```ignore
-/// value.map(|value| {
-///     view! { ... }
-/// })
-/// ```
-///
-/// If you specify a `fallback` it is equvalent to
-///
-/// ```ignore
-/// value
-///     .map(
-///         |value| children(value),
-///     )
-///     .unwrap_or_else(fallback)
-/// ```
-///
-/// ## Example
-///
-/// ```
-/// # use leptos::prelude::*;
-/// #
-/// # #[component]
-/// # pub fn Example() -> impl IntoView {
-/// let (opt_value, set_opt_value) = signal(None::<i32>);
-///
-/// view! {
-///     <ShowLet some=opt_value let:value>
-///         "We have a value: " {value}
-///     </ShowLet>
-/// }
-/// # }
-/// ```
-///
-/// You can also specify a fallback:
-/// ```
-/// # use leptos::prelude::*;
-/// #
-/// # #[component]
-/// # pub fn Example() -> impl IntoView {
-/// let (opt_value, set_opt_value) = signal(None::<i32>);
-///
-/// view! {
-///     <ShowLet some=opt_value let:value fallback=|| "Got nothing">
-///         "We have a value: " {value}
-///     </ShowLet>
-/// }
-/// # }
-/// ```
-///
-/// In addition to signals you can also use a closure that returns an `Option`:
-///
-/// ```
-/// # use leptos::prelude::*;
-/// #
-/// # #[component]
-/// # pub fn Example() -> impl IntoView {
-/// let (opt_value, set_opt_value) = signal(None::<i32>);
-///
-/// view! {
-///     <ShowLet some=move || opt_value.get().map(|v| v * 2) let:value>
-///         "We have a value: " {value}
-///     </ShowLet>
-/// }
-/// # }
-/// ```
+/// Phase 7B: the `fallback` prop from upstream's `<ShowLet>` is dropped
+/// (it used `ViewFn`/`AnyView`); see `Show` doc for context.
 #[component(transparent)]
-pub fn ShowLet<T, ChFn, V, M>(
-    /// The children will be shown whenever `value` is `Some`.
-    ///
-    /// They take the inner value as an argument. Use `let:` to bind the value to a variable.
+pub fn ShowLet<T, ChFn, V, M, R>(
+    /// Rendered when `some` returns `Some(t)`. Receives `t` as its argument.
     children: ChFn,
 
-    /// A signal of type `Option` or a closure that returns an `Option`.
-    /// If the value is `Some`, the children will be shown.
-    /// Otherwise the fallback will be shown, if present.
+    /// A signal or closure that returns an `Option`.
     some: impl IntoOptionGetter<T, M>,
-
-    /// A closure that returns what gets rendered when the value is `None`.
-    /// By default this is the empty view.
-    ///
-    /// You can think of it as the closure inside `.unwrap_or_else(|| fallback())`.
-    #[prop(optional, into)]
-    fallback: ViewFn,
 
     /// Marker for generic parameters. Ignore this.
     #[prop(optional)]
-    _marker: PhantomData<(T, M)>,
-) -> impl IntoView
+    _marker: PhantomData<(T, M, R)>,
+) -> impl IntoView<R>
 where
+    R: Renderer,
     ChFn: Fn(T) -> V + Send + Clone + 'static,
-    V: IntoView + 'static,
+    V: IntoView<R> + 'static,
     T: 'static,
 {
     let getter = some.into_option_getter();
 
     move || {
         let children = children.clone();
-        let fallback = fallback.clone();
 
         getter
             .run()
             .map(move |t| Either::Left(children(t)))
-            .unwrap_or_else(move || Either::Right(fallback.run()))
+            .unwrap_or(Either::Right(()))
     }
 }
 
-/// Servers as a wrapper for both, an `Option` signal or a closure that returns an `Option`.
+/// Wrapper around an `Option`-producing closure or signal.
 pub struct OptionGetter<T>(Arc<dyn Fn() -> Option<T> + Send + Sync + 'static>);
 
 impl<T> Clone for OptionGetter<T> {
@@ -129,14 +56,13 @@ impl<T> OptionGetter<T> {
     }
 }
 
-/// Conversion trait for creating an `OptionGetter` from a closure or a signal.
+/// Conversion trait for creating an `OptionGetter` from a closure or signal.
 pub trait IntoOptionGetter<T, M> {
     /// Converts the given value into an `OptionGetter`.
     fn into_option_getter(self) -> OptionGetter<T>;
 }
 
-/// Marker type for creating an `OptionGetter` from a closure.
-/// Used so that the compiler doesn't complain about double implementations of the trait `IntoOptionGetter`.
+/// Marker type for the closure impl of `IntoOptionGetter`.
 pub struct FunctionMarker;
 
 impl<T, F> IntoOptionGetter<T, FunctionMarker> for F
@@ -148,12 +74,10 @@ where
     }
 }
 
-/// Marker type for creating an `OptionGetter` from a signal.
-/// Used so that the compiler doesn't complain about double implementations of the trait `IntoOptionGetter`.
+/// Marker type for the signal impl of `IntoOptionGetter`.
 ///
 /// On nightly, signal types implement `Fn() -> T` directly, so they go through
-/// the `FunctionMarker` impl instead. This impl is only needed on stable where
-/// signals don't implement `Fn()`.
+/// the `FunctionMarker` impl instead. This impl is only needed on stable.
 pub struct SignalMarker;
 
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]
@@ -167,8 +91,7 @@ where
     }
 }
 
-/// Marker type for creating an `OptionGetter` from a static value.
-/// Used so that the compiler doesn't complain about double implementations of the trait `IntoOptionGetter`.
+/// Marker type for the `Option<T>` static-value impl of `IntoOptionGetter`.
 pub struct StaticMarker;
 
 impl<T> IntoOptionGetter<T, StaticMarker> for Option<T>
