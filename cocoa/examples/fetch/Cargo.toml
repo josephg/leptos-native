@@ -9,7 +9,7 @@ name = "fetch"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { path = "../../../web/leptos", features = ["native-ui"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
 serde = { version = "1.0", features = ["derive"] }

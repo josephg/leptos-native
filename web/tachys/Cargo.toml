@@ -42,17 +42,17 @@ serde_json = { optional = true, workspace = true, default-features = true }
 # is on; otherwise the cocoa renderer modules in src/ are cfg'd out
 # and cocoa_dom isn't pulled into the build).
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa_dom = { path = "../cocoa_dom", version = "0.1.0", optional = true }
+cocoa_dom = { path = "../../cocoa/dom", version = "0.1.0", optional = true }
 
 # iOS-native renderer (activated only when the `native-ui` feature
 # is on; same shape as cocoa_dom above).
 [target.'cfg(target_os = "ios")'.dependencies]
-ios_dom = { path = "../ios_dom", version = "0.1.0", optional = true }
+ios_dom = { path = "../../uikit/dom", version = "0.1.0", optional = true }
 
 # Linux-native renderer (activated only when the `native-ui` feature
 # is on; same shape as cocoa_dom above).
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk_dom = { path = "../gtk_dom", version = "0.1.0", optional = true }
+gtk_dom = { path = "../../gtk/dom", version = "0.1.0", optional = true }
 
 # Web-only deps. On macOS we swap the renderer for cocoa_dom; these
 # crates would either fail to compile or pull in unwanted JS-side

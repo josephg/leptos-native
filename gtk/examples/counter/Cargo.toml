@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { path = "../../../web/leptos", features = ["native-ui"] }

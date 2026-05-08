@@ -9,7 +9,7 @@ name = "greeter"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { path = "../../../web/leptos", features = ["native-ui"] }
 
 [profile.dev]
 panic = "abort"

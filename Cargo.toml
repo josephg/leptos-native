@@ -1,81 +1,80 @@
 [workspace]
 resolver = "2"
 members = [
-  # utilities
-  "any_spawner",
-  "const_str_slice_concat",
-  "either_of",
-  "next_tuple",
-  "oco",
-  "or_poisoned",
+  # common
+  "common/reactive_graph",
+  "common/reactive_stores",
+  "common/reactive_stores_macro",
 
-  # core
-  "hydration_context",
-  "leptos",
-  "leptos_dom",
-  "leptos_config",
-  "leptos_hot_reload",
-  "leptos_macro",
-  "leptos_server",
-  "reactive_graph",
-  "reactive_stores",
-  "reactive_stores_macro",
-  "server_fn",
-  "server_fn_macro",
-  "server_fn/server_fn_macro_default",
-  "tachys",
+  # web
+  "web/hydration_context",
+  "web/leptos",
+  "web/leptos_dom",
+  "web/leptos_config",
+  "web/leptos_hot_reload",
+  "web/leptos_macro",
+  "web/leptos_server",
+  "web/server_fn",
+  "web/server_fn_macro",
+  "web/server_fn/server_fn_macro_default",
+  "web/tachys",
+  "web/integrations/actix",
+  "web/integrations/axum",
+  "web/integrations/utils",
+  "web/meta",
+  "web/router",
+  "web/router_macro",
 
   # native ports
-  "cocoa_dom",
-  "gtk_dom",
-  "ios_dom",
-
-  # integrations
-  "integrations/actix",
-  "integrations/axum",
-  "integrations/utils",
-
-  # libraries
-  "meta",
-  "router",
-  "router_macro",
-  "any_error",
+  "cocoa/dom",
+  "gtk/dom",
+  "uikit/dom",
 ]
-exclude = ["benchmarks", "examples", "examples_cocoa", "examples_gtk", "examples_ios", "projects"]
+exclude = [
+  "benchmarks",
+  "projects",
+  "web/examples",
+  "cocoa/examples",
+  "gtk/examples",
+  "uikit/examples",
+  "uikit/xcuitests",
+]
 
 [workspace.package]
 edition = "2021"
 rust-version = "1.88"
 
 [workspace.dependencies]
-# members
-throw_error = { path = "./any_error/", version = "0.3.1" }
-any_spawner = { path = "./any_spawner/", version = "0.3.0" }
-const_str_slice_concat = { path = "./const_str_slice_concat", version = "0.1" }
-either_of = { path = "./either_of/", version = "0.1.9" }
-hydration_context = { path = "./hydration_context", version = "0.3.0" }
-leptos = { path = "./leptos", version = "0.8.19" }
-leptos_config = { path = "./leptos_config", version = "0.8.10" }
-leptos_dom = { path = "./leptos_dom", version = "0.8.8" }
-leptos_hot_reload = { path = "./leptos_hot_reload", version = "0.8.6" }
-leptos_integration_utils = { path = "./integrations/utils", version = "0.8.8" }
-leptos_macro = { path = "./leptos_macro", version = "0.8.16" }
-leptos_router = { path = "./router", version = "0.8.12" }
-leptos_router_macro = { path = "./router_macro", version = "0.8.6" }
-leptos_server = { path = "./leptos_server", version = "0.8.7" }
-leptos_meta = { path = "./meta", version = "0.8.6" }
-next_tuple = { path = "./next_tuple", version = "0.1.0" }
-oco_ref = { path = "./oco", version = "0.2.1" }
-or_poisoned = { path = "./or_poisoned", version = "0.1.0" }
-reactive_graph = { path = "./reactive_graph", version = "0.2.14" }
-reactive_stores = { path = "./reactive_stores", version = "0.4.3" }
-reactive_stores_macro = { path = "./reactive_stores_macro", version = "0.4.2" }
-server_fn = { path = "./server_fn", version = "0.8.12" }
-server_fn_macro = { path = "./server_fn_macro", version = "0.8.10" }
-server_fn_macro_default = { path = "./server_fn/server_fn_macro_default", version = "0.8.5" }
-tachys = { path = "./tachys", version = "0.2.15" }
+# --- workspace member crates (path-pinned) ---
+hydration_context = { path = "./web/hydration_context", version = "0.3.0" }
+leptos = { path = "./web/leptos", version = "0.8.19" }
+leptos_config = { path = "./web/leptos_config", version = "0.8.10" }
+leptos_dom = { path = "./web/leptos_dom", version = "0.8.8" }
+leptos_hot_reload = { path = "./web/leptos_hot_reload", version = "0.8.6" }
+leptos_integration_utils = { path = "./web/integrations/utils", version = "0.8.8" }
+leptos_macro = { path = "./web/leptos_macro", version = "0.8.16" }
+leptos_router = { path = "./web/router", version = "0.8.12" }
+leptos_router_macro = { path = "./web/router_macro", version = "0.8.6" }
+leptos_server = { path = "./web/leptos_server", version = "0.8.7" }
+leptos_meta = { path = "./web/meta", version = "0.8.6" }
+reactive_graph = { path = "./common/reactive_graph", version = "0.2.14" }
+reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
+reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
+server_fn = { path = "./web/server_fn", version = "0.8.12" }
+server_fn_macro = { path = "./web/server_fn_macro", version = "0.8.10" }
+server_fn_macro_default = { path = "./web/server_fn/server_fn_macro_default", version = "0.8.5" }
+tachys = { path = "./web/tachys", version = "0.2.15" }
 
-# members deps
+# --- crates.io utility deps (formerly vendored, unmodified) ---
+throw_error = { default-features = false, version = "0.3.1" }
+any_spawner = { default-features = false, version = "0.3.0" }
+const_str_slice_concat = { default-features = false, version = "0.1" }
+either_of = { default-features = false, version = "0.1.9" }
+next_tuple = { default-features = false, version = "0.1.0" }
+oco_ref = { default-features = false, version = "0.2.1" }
+or_poisoned = { default-features = false, version = "0.1.0" }
+
+# --- third-party deps ---
 async-once-cell = { default-features = false, version = "0.5" }
 itertools = { default-features = false, version = "0.14" }
 convert_case = { default-features = false, version = "0.11" }

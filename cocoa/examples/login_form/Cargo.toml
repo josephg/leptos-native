@@ -9,4 +9,4 @@ name = "login_form"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { path = "../../../web/leptos", features = ["native-ui"] }

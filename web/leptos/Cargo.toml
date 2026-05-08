@@ -169,17 +169,17 @@ leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
 
 # iOS-native deps used by `mount_ios` (same pattern as cocoa_dom).
 [target.'cfg(target_os = "ios")'.dependencies]
-ios_dom = { path = "../ios_dom", version = "0.1.0", optional = true }
+ios_dom = { path = "../../uikit/dom", version = "0.1.0", optional = true }
 
 # macOS-native deps used by `mount_macos` (activated only when the
 # `native-ui` feature is on; otherwise `mount_macos` is cfg'd out
 # and cocoa_dom isn't pulled into the build).
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa_dom = { path = "../cocoa_dom", version = "0.1.0", optional = true }
+cocoa_dom = { path = "../../cocoa/dom", version = "0.1.0", optional = true }
 
 # Linux-native deps used by `mount_gtk` (same pattern as cocoa_dom).
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk_dom = { path = "../gtk_dom", version = "0.1.0", optional = true }
+gtk_dom = { path = "../../gtk/dom", version = "0.1.0", optional = true }
 
 [package.metadata.cargo-all-features]
 denylist = [
