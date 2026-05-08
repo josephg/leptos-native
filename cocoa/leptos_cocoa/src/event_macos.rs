@@ -254,103 +254,11 @@ impl OnAttribute {
     }
 }
 
-// ---------------------------------------------------------------------
-// Attribute trait impl — lets OnAttribute flow through the upstream
-// AddAnyAttr / NextAttribute machinery, so `<Component on:click=…>`
-// reaches our element builders' typed-attribute pipeline.
-// ---------------------------------------------------------------------
-
-use crate::html::attribute::{
-    Attribute, NamedAttributeKey, NextAttribute,
-};
-
-impl Attribute for OnAttribute {
-    const MIN_LENGTH: usize = 0;
-
-    type State = ();
-    type AsyncOutput = Self;
-    /// Cloneable variant is `()` — a deliberate no-op. The
-    /// cloneable / cloneable-owned path is used for spreading the
-    /// same attribute across multiple elements (`{..attrs}` on a
-    /// fragment, etc.). For `<Component on:event=…>` (the
-    /// motivating case) it's not invoked. If real example code
-    /// ever spreads an `on:` attribute across N elements we'll
-    /// need a `SharedOnAttribute` with `Arc<Mutex<…>>`-shared
-    /// closures; until then, silent no-op is the cheap path.
-    type Cloneable = ();
-    type CloneableOwned = ();
-
-    fn html_len(&self) -> usize {
-        0
-    }
-
-    fn to_html(
-        self,
-        _buf: &mut String,
-        _class: &mut String,
-        _style: &mut String,
-        _inner_html: &mut String,
-    ) {
-        // No SSR on macOS.
-    }
-
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        el: &cocoa_dom::Element,
-    ) -> Self::State {
-        self.apply(el);
-    }
-
-    fn build(self, el: &cocoa_dom::Element) -> Self::State {
-        self.apply(el);
-    }
-
-    fn rebuild(self, _state: &mut Self::State) {
-        // No-op rebuild. Re-installing target/action with a new
-        // closure each rebuild is doable but rarely useful at
-        // this granularity — the inline `.on()` path is what the
-        // happy case uses, and that's a build-time install.
-    }
-
-    fn into_cloneable(self) -> Self::Cloneable {
-        // See `Cloneable` doc above — silent drop.
-    }
-
-    fn into_cloneable_owned(self) -> Self::CloneableOwned {
-        // See `Cloneable` doc above — silent drop.
-    }
-
-    fn dry_resolve(&mut self) {}
-
-    async fn resolve(self) -> Self::AsyncOutput {
-        self
-    }
-
-    fn keys(&self) -> Vec<NamedAttributeKey> {
-        Vec::new()
-    }
-}
-
-impl NextAttribute for OnAttribute {
-    type Output<NewAttr: Attribute> = (Self, NewAttr);
-
-    fn add_any_attr<NewAttr: Attribute>(
-        self,
-        new_attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        (self, new_attr)
-    }
-}
-
-// ToTemplate is required for some upstream paths that bound on
-// `Attribute: ToTemplate`. Empty for non-SSR.
-impl crate::view::ToTemplate for OnAttribute {
-    fn to_template(
-        _buf: &mut String,
-        _class: &mut String,
-        _style: &mut String,
-        _inner_html: &mut String,
-        _position: &mut crate::view::Position,
-    ) {
-    }
-}
+// Phase 8: dropped the upstream Attribute/NextAttribute/ToTemplate
+// impls that previously lived here. They were SSR-coupled machinery
+// from tachys::html::attribute::* + tachys::view::ToTemplate, none of
+// which exists in this fork. The native cocoa port doesn't need
+// `<Component on:click=...>` spread routing — inline `.on()` on the
+// element builder is the only path examples use, and it goes through
+// `OnAttribute::apply` directly without any AddAnyAttr / NextAttribute
+// machinery.

@@ -14,7 +14,7 @@
 
 use cocoa_dom::Element;
 
-use crate::html::directive::IntoDirective;
+use crate::directive::IntoDirective;
 
 /// Pack a `(handler, param)` directive into the `FnOnce(&Element)`
 /// boxed shape that builders' `directives: Vec<...>` field
@@ -26,12 +26,11 @@ pub(crate) fn pack<D, T, P>(
 where
     D: IntoDirective<T, P> + Send + 'static,
     P: Send + 'static,
-    T: 'static,
+    T: ?Sized + 'static,
 {
     Box::new(move |el: &Element| {
-        // `IntoDirective::run(&self, el, param)` — handler is
-        // borrowed, param is owned. Cloning the Element passes a
-        // shared retain to the directive body.
+        // Phase 8: `IntoDirective::run` consumes self now (no
+        // Cloneable). Element is cloned into the directive body.
         handler.run(el.clone(), param);
     })
 }

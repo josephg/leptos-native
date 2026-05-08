@@ -82,13 +82,13 @@ pub trait BindAttribute<Key, Sig> {
 // TextField — bind:value=String-ish signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextField
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for TextField
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         // Stash the wiring instructions on the builder; actual
@@ -133,13 +133,13 @@ pub(crate) fn install_text_field_value_bind(
 // Slider — bind:value=f64 signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Slider
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Slider
 where
     Sig: IntoSignal<f64>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -157,13 +157,13 @@ pub(crate) struct BoundFloat {
 // TextView reuses the existing BoundValue — same `String` shape
 // as TextField, just routed through NSTextView's delegate
 // (`textDidChange:`) instead of NSControlTextEditingDelegate.
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextView
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for TextView
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -198,13 +198,13 @@ pub(crate) fn install_text_view_value_bind(
 // Stepper reuses the existing BoundFloat — the value is f64 and
 // the wiring shape (signal ↔ doubleValue + target/action) is
 // identical to slider's.
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Stepper
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Stepper
 where
     Sig: IntoSignal<f64>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -240,13 +240,13 @@ pub(crate) struct BoundDate {
     pub(crate) setter: Box<dyn FnMut(cocoa_dom::Date) + Send + 'static>,
 }
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for DatePicker
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for DatePicker
 where
     Sig: IntoSignal<cocoa_dom::Date>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -308,7 +308,7 @@ pub(crate) fn install_slider_value_bind(
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Selection;
 
-impl crate::html::attribute::AttributeKey for Selection {
+impl crate::keys::AttributeKey for Selection {
     const KEY: &'static str = "selection";
 }
 
@@ -376,13 +376,13 @@ pub(crate) struct BoundColor {
     pub(crate) setter: Box<dyn FnMut(cocoa_dom::Color) + Send + 'static>,
 }
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for ColorWell
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for ColorWell
 where
     Sig: IntoSignal<cocoa_dom::Color>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -438,13 +438,13 @@ pub(crate) fn install_segmented_selection_bind(
 // Checkbox — bind:checked=bool signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Checked, Sig> for Checkbox
+impl<Sig> BindAttribute<crate::keys::Checked, Sig> for Checkbox
 where
     Sig: IntoSignal<bool>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Checked,
+        _key: crate::keys::Checked,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -494,13 +494,13 @@ pub(crate) fn install_checkbox_checked_bind(
 // for symmetry).
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Label
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Label
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         // For a label, only the get-direction is meaningful.

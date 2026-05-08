@@ -7,7 +7,8 @@
 //! them.
 
 use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
-use crate::view::{Mountable, Render};
+use renderer::view::{Mountable, Render, UnitState};
+use crate::Dom;
 use cocoa_dom::{
     layout::{
         schedule_relayout, set_align_items, set_background_color, set_clip,
@@ -164,13 +165,15 @@ pub struct ElementState<AttrState, ChildState> {
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    /// State for the dynamic attribute tuple installed via
-    /// `add_any_attr`. `()` for the empty-tuple default.
-    pub(crate) _attrs: AttrState,
+    /// Phase 8: previously the state for the dynamic attribute tuple
+    /// installed via `add_any_attr`. The fork dropped that machinery
+    /// (no SSR, no spread); kept as a phantom slot so existing builder
+    /// code that passes a unit `()` through the type still type-checks.
+    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
 
-impl<AttrState, ChildState: Mountable> Mountable
+impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
     for ElementState<AttrState, ChildState>
 {
     fn unmount(&mut self) {
@@ -198,7 +201,7 @@ impl<AttrState, ChildState: Mountable> Mountable
         self.children.mount(&self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -581,12 +584,11 @@ impl<Ch, At> Stack<Ch, At> {
     }
 }
 
-impl<Ch, At> Render for Stack<Ch, At>
+impl<Ch, At> Render<Dom> for Stack<Ch, At>
 where
-    Ch: Render,
-    At: crate::html::attribute::Attribute,
+    Ch: Render<Dom>,
 {
-    type State = ElementState<At::State, Ch::State>;
+    type State = ElementState<(), Ch::State>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("stack");
@@ -674,18 +676,18 @@ where
         // every descendant in the right Taffy tree.
         let child_state = self.children.build();
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -860,12 +862,11 @@ impl<Ch, At> Block<Ch, At> {
 }
 
 #[cfg(feature = "block_layout")]
-impl<Ch, At> Render for Block<Ch, At>
+impl<Ch, At> Render<Dom> for Block<Ch, At>
 where
-    Ch: Render,
-    At: crate::html::attribute::Attribute,
+    Ch: Render<Dom>,
 {
-    type State = ElementState<At::State, Ch::State>;
+    type State = ElementState<(), Ch::State>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("block");
@@ -906,102 +907,27 @@ where
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         let child_state = self.children.build();
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
-// ---------------------------------------------------------------------
-// impl_typed_attrs_for! — macro-ify the AddAnyAttr + RenderHtml
-// boilerplate shared by every <At = ()> builder. Invoke once per
-// builder; cuts ~350 LOC of near-duplicate impls.
-// ---------------------------------------------------------------------
-
-/// Emit `impl AddAnyAttr + impl RenderHtml` for a cocoa element
-/// builder that is generic over a single type parameter `<At = ()>`.
+// Phase 8: impl_typed_attrs_for! used to emit AddAnyAttr + RenderHtml
+// impls for every `<At>`-generic builder. Both traits are gone in this
+// fork (no SSR; no attribute-spread machinery). The macro is now a
+// no-op so we don't have to delete each `impl_typed_attrs_for!(...)`
+// invocation site below.
 macro_rules! impl_typed_attrs_for {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {
-        #[allow(clippy::type_complexity)]
-        impl<At> $crate::view::add_attr::AddAnyAttr for $builder<At>
-        where
-            At: $crate::html::attribute::Attribute,
-        {
-            type Output<NewAttr: $crate::html::attribute::Attribute> =
-                $builder<<At as $crate::html::attribute::NextAttribute>::Output<NewAttr>>;
-
-            fn add_any_attr<NewAttr: $crate::html::attribute::Attribute>(
-                self,
-                attr: NewAttr,
-            ) -> Self::Output<NewAttr> {
-                $builder {
-                    $($field: self.$field,)+
-                    attrs: $crate::html::attribute::NextAttribute::add_any_attr(
-                        self.attrs, attr,
-                    ),
-                }
-            }
-        }
-
-        impl<At> $crate::view::RenderHtml for $builder<At>
-        where
-            At: $crate::html::attribute::Attribute,
-        {
-            type AsyncOutput = $builder<At::AsyncOutput>;
-            type Owned = $builder<At::CloneableOwned>;
-
-            const MIN_LENGTH: usize = 0;
-
-            fn dry_resolve(&mut self) {
-                self.attrs.dry_resolve();
-            }
-
-            async fn resolve(self) -> Self::AsyncOutput {
-                // Destructure so we can move `attrs` through
-                // `.resolve().await` without partially-moving
-                // `self`. The other fields are preserved inside
-                // the destructured bindings and then used to
-                // reconstruct the struct.
-                let $builder { $($field,)+ attrs } = self;
-                let attrs = attrs.resolve().await;
-                $builder { $($field,)+ attrs }
-            }
-
-            fn to_html_with_buf(
-                self,
-                _buf: &mut String,
-                _position: &mut $crate::view::Position,
-                _escape: bool,
-                _mark_branches: bool,
-                _extra_attrs: Vec<
-                    $crate::html::attribute::any_attribute::AnyAttribute,
-                >,
-            ) {
-            }
-
-            fn hydrate<const FROM_SERVER: bool>(
-                self,
-                _cursor: &$crate::hydration::Cursor,
-                _position: &$crate::view::PositionState,
-            ) -> Self::State {
-                <Self as $crate::view::Render>::build(self)
-            }
-
-            fn into_owned(self) -> Self::Owned {
-                let $builder { $($field,)+ attrs } = self;
-                let attrs = attrs.into_cloneable_owned();
-                $builder { $($field,)+ attrs }
-            }
-        }
-    };
+    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
 }
 
 // ---------------------------------------------------------------------
@@ -1011,7 +937,7 @@ macro_rules! impl_typed_attrs_for {
 pub struct Button<At = ()> {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -1070,7 +996,7 @@ impl<At> Button<At> {
 
     pub fn on_click(mut self, mut cb: impl FnMut() + Send + 'static) -> Self {
         self.handlers
-            .push(crate::html::event::PendingHandler::Click(Box::new(
+            .push(crate::event_macos::PendingHandler::Click(Box::new(
                 move || cb(),
             )));
         self
@@ -1099,7 +1025,7 @@ impl<At> Button<At> {
     /// fact that our `AddAnyAttr` stub drops attributes.
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1149,7 +1075,7 @@ impl<At> Button<At> {
 
     /// Method called by the `view!{}` macro for the standard
     /// `on:event=handler` syntax. Defers installation: the
-    /// [`PendingHandler`](crate::html::event::PendingHandler) is
+    /// [`PendingHandler`](crate::event_macos::PendingHandler) is
     /// pushed onto a Vec and applied during `Render::build` once
     /// the underlying NSView exists.
     ///
@@ -1158,8 +1084,8 @@ impl<At> Button<At> {
     /// compile.
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -1170,7 +1096,7 @@ impl<At> Button<At> {
 // Buttons fire on click (NSButton target/action). Generic over
 // At because every type-level attribute extension still describes
 // the same control kind.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for Button<At>
 {
 }
@@ -1206,11 +1132,10 @@ impl_typed_attrs_for!(Button, title, enabled, handlers,
     grow, node_ref, directives, alpha, tool_tip, font_size,
     alignment, bordered, key_equivalent);
 
-impl<At> Render for Button<At>
+impl<At> Render<Dom> for Button<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("button");
@@ -1273,13 +1198,13 @@ where
 
         // Run the typed-attribute pipeline. For the empty-tuple
         // default this is `().build(&el)` — a no-op.
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
@@ -1287,7 +1212,7 @@ where
         // Reactive attrs already update themselves via their Effects.
         // The typed-attribute pipeline rebuilds against its
         // accumulated state.
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1302,7 +1227,7 @@ pub struct Checkbox<At = ()> {
     /// which sets `pending_bind_checked`.
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<crate::cocoa::bind::BoundChecked>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1366,8 +1291,8 @@ impl<At> Checkbox<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -1384,7 +1309,7 @@ impl<At> Checkbox<At> {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1395,7 +1320,7 @@ impl<At> Checkbox<At> {
 }
 
 // A checkbox toggles on click.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for Checkbox<At>
 {
 }
@@ -1407,11 +1332,10 @@ impl_typed_attrs_for!(Checkbox, title, checked, pending_bind_checked,
     handlers, node_ref, directives, alpha, tool_tip, text_color,
     alignment, font_size);
 
-impl<At> Render for Checkbox<At>
+impl<At> Render<Dom> for Checkbox<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("checkbox");
@@ -1462,18 +1386,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1487,7 +1411,7 @@ pub struct Slider<At = ()> {
     max_value: f64,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -1560,8 +1484,8 @@ impl<At> Slider<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -1578,7 +1502,7 @@ impl<At> Slider<At> {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1622,11 +1546,10 @@ impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
     pending_bind, handlers, grow, node_ref, directives, alpha,
     tool_tip, vertical, num_tick_marks, snaps_to_ticks);
 
-impl<At> Render for Slider<At>
+impl<At> Render<Dom> for Slider<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("slider");
@@ -1699,18 +1622,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1723,7 +1646,7 @@ pub struct PopUpButton<At = ()> {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -1792,8 +1715,8 @@ impl<At> PopUpButton<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -1810,7 +1733,7 @@ impl<At> PopUpButton<At> {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1837,11 +1760,10 @@ impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
     pending_bind_selection, handlers, grow, node_ref, directives,
     alpha, tool_tip, pulls_down);
 
-impl<At> Render for PopUpButton<At>
+impl<At> Render<Dom> for PopUpButton<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("pop_up_button");
@@ -1902,18 +1824,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1929,7 +1851,7 @@ where
 
 pub struct Label<At = ()> {
     text: MaybeReactive<String>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -2002,8 +1924,8 @@ impl<At> Label<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -2012,7 +1934,7 @@ impl<At> Label<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2027,7 +1949,7 @@ impl<At> Label<At> {
 // "row" pattern). NSTextField *is* an NSControl so the existing
 // on_action / on_click NSButton-downcast path won't fire — labels
 // route Click via on_action instead (same as ColorWell etc.).
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for Label<At>
 {
 }
@@ -2051,11 +1973,10 @@ impl_typed_attrs_for!(Label, text, handlers, grow, node_ref,
     directives, alpha, tool_tip, text_color, alignment, font_size,
     selectable);
 
-impl<At> Render for Label<At>
+impl<At> Render<Dom> for Label<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("label");
@@ -2074,7 +1995,7 @@ where
             // fall through to apply_to (no-ops on non-NSTextField
             // events, which is most of them on a label).
             match h {
-                crate::html::event::PendingHandler::Click(cb) => {
+                crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
                 other => other.apply_to(&el),
@@ -2107,18 +2028,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -2140,7 +2061,7 @@ pub struct TextField<At = ()> {
     /// `install_text_field_value_bind`. Distinct from `.value(...)`
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -2246,8 +2167,8 @@ impl<At> TextField<At> {
     /// dropped (the underlying cocoa_dom call no-ops).
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -2264,7 +2185,7 @@ impl<At> TextField<At> {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2279,27 +2200,27 @@ impl<At> TextField<At> {
 // non-event: clicking inside the field places the caret, no
 // "click" semantic equivalent. Focus/blur are AppKit's begin/end
 // editing notifications.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::InputEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::InputEvent>
     for TextField<At>
 {
 }
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ChangeEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for TextField<At>
 {
 }
-impl<At> crate::html::event::SupportsEvent<crate::html::event::FocusEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::FocusEvent>
     for TextField<At>
 {
 }
-impl<At> crate::html::event::SupportsEvent<crate::html::event::BlurEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::BlurEvent>
     for TextField<At>
 {
 }
-impl<At> crate::html::event::SupportsEvent<crate::html::event::KeyDownEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::KeyDownEvent>
     for TextField<At>
 {
 }
-impl<At> crate::html::event::SupportsEvent<crate::html::event::KeyUpEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::KeyUpEvent>
     for TextField<At>
 {
 }
@@ -2331,11 +2252,10 @@ impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
     pending_bind, handlers, grow, node_ref, directives, alpha,
     tool_tip, text_color, alignment, font_size, bordered, bezeled);
 
-impl<At> Render for TextField<At>
+impl<At> Render<Dom> for TextField<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
@@ -2413,18 +2333,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -2436,7 +2356,7 @@ pub struct DatePicker<At = ()> {
     value: MaybeReactive<cocoa_dom::Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -2497,8 +2417,8 @@ impl<At> DatePicker<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -2512,7 +2432,7 @@ impl<At> DatePicker<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2525,7 +2445,7 @@ impl<At> DatePicker<At> {
 // NSDatePicker fires target/action when the user changes the date.
 // As with ColorWell, we use the existing Click marker — semantically
 // "change" but that's what the macro emits and the wiring works.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for DatePicker<At>
 {
 }
@@ -2566,11 +2486,10 @@ impl_typed_attrs_for!(DatePicker, value, enabled, pending_bind, handlers,
     grow, node_ref, directives, alpha, tool_tip, style, min_date,
     max_date);
 
-impl<At> Render for DatePicker<At>
+impl<At> Render<Dom> for DatePicker<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("date_picker");
@@ -2602,7 +2521,7 @@ where
             // Date picker is an NSControl, not an NSButton — route
             // Click via on_action.
             match h {
-                crate::html::event::PendingHandler::Click(cb) => {
+                crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
                 other => other.apply_to(&el),
@@ -2645,18 +2564,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -2671,7 +2590,7 @@ pub struct Stepper<At = ()> {
     increment: f64,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -2744,8 +2663,8 @@ impl<At> Stepper<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -2759,7 +2678,7 @@ impl<At> Stepper<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2769,7 +2688,7 @@ impl<At> Stepper<At> {
     }
 }
 
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for Stepper<At>
 {
 }
@@ -2780,11 +2699,10 @@ impl_typed_attrs_for!(Stepper, value, min_value, max_value, increment,
     enabled, pending_bind, handlers, grow, node_ref, directives,
     alpha, tool_tip);
 
-impl<At> Render for Stepper<At>
+impl<At> Render<Dom> for Stepper<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("stepper");
@@ -2822,7 +2740,7 @@ where
 
         for h in self.handlers {
             match h {
-                crate::html::event::PendingHandler::Click(cb) => {
+                crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
                 other => other.apply_to(&el),
@@ -2841,18 +2759,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -2924,7 +2842,7 @@ impl<At> ProgressIndicator<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2952,11 +2870,10 @@ impl<At> ProgressIndicator<At> {
 impl_typed_attrs_for!(ProgressIndicator, value, max_value, indeterminate,
     grow, node_ref, directives, alpha, tool_tip, displayed_when_stopped);
 
-impl<At> Render for ProgressIndicator<At>
+impl<At> Render<Dom> for ProgressIndicator<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("progress_indicator");
@@ -2996,18 +2913,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -3020,7 +2937,7 @@ pub struct ColorWell<At = ()> {
     value: MaybeReactive<cocoa_dom::Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -3075,8 +2992,8 @@ impl<At> ColorWell<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -3090,7 +3007,7 @@ impl<At> ColorWell<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3106,7 +3023,7 @@ impl<At> ColorWell<At> {
 // semantically it's a "value committed" event, more like
 // `on:change` would be on the web. Document this divergence
 // rather than introduce a separate Color-payload event for now.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for ColorWell<At>
 {
 }
@@ -3116,11 +3033,10 @@ impl_universal_attrs!(ColorWell);
 impl_typed_attrs_for!(ColorWell, value, enabled, pending_bind, handlers,
     grow, node_ref, directives, alpha, tool_tip);
 
-impl<At> Render for ColorWell<At>
+impl<At> Render<Dom> for ColorWell<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("color_well");
@@ -3153,7 +3069,7 @@ where
             // Click via on_action so the target/action wiring fires
             // when the user picks a color.
             match h {
-                crate::html::event::PendingHandler::Click(cb) => {
+                crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
                 other => other.apply_to(&el),
@@ -3172,18 +3088,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -3196,7 +3112,7 @@ pub struct SegmentedControl<At = ()> {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -3263,8 +3179,8 @@ impl<At> SegmentedControl<At> {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        Self: crate::html::event::SupportsEvent<E>,
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_macos::SupportsEvent<E>,
+        E: crate::event_macos::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -3278,7 +3194,7 @@ impl<At> SegmentedControl<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3290,7 +3206,7 @@ impl<At> SegmentedControl<At> {
 
 // Click semantics for segmented_control match popup: a "click"
 // is a selection change.
-impl<At> crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for SegmentedControl<At>
 {
 }
@@ -3314,11 +3230,10 @@ impl_typed_attrs_for!(SegmentedControl, items, selection, enabled,
     pending_bind_selection, handlers, grow, node_ref, directives,
     alpha, tool_tip, segment_style);
 
-impl<At> Render for SegmentedControl<At>
+impl<At> Render<Dom> for SegmentedControl<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("segmented_control");
@@ -3355,7 +3270,7 @@ where
             // "selection changed" — install via on_action (NSControl
             // path) rather than on_click (NSButton subtree only).
             match h {
-                crate::html::event::PendingHandler::Click(cb) => {
+                crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
                 other => other.apply_to(&el),
@@ -3382,18 +3297,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -3501,12 +3416,11 @@ impl<Ch, At> ScrollView<Ch, At> {
     }
 }
 
-impl<Ch, At> Render for ScrollView<Ch, At>
+impl<Ch, At> Render<Dom> for ScrollView<Ch, At>
 where
-    Ch: Render,
-    At: crate::html::attribute::Attribute,
+    Ch: Render<Dom>,
 {
-    type State = ElementState<At::State, Ch::State>;
+    type State = ElementState<(), Ch::State>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("scroll_view");
@@ -3546,108 +3460,21 @@ where
         // ElementState::mount, so the tree-aware insert_node
         // registers each descendant in the right Taffy tree.
         let child_state = self.children.build();
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
-impl<Ch, At> crate::view::add_attr::AddAnyAttr for ScrollView<Ch, At>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-    At: crate::html::attribute::Attribute,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> =
-        ScrollView<Ch, <At as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
-
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        ScrollView {
-            grow: self.grow,
-            children: self.children,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            autohides_scrollers: self.autohides_scrollers,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: crate::html::attribute::NextAttribute::add_any_attr(
-                self.attrs, attr,
-            ),
-        }
-    }
-}
-
-impl<Ch, At> crate::view::RenderHtml for ScrollView<Ch, At>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-    At: crate::html::attribute::Attribute,
-{
-    type AsyncOutput = ScrollView<Ch::AsyncOutput, At::AsyncOutput>;
-    type Owned = ScrollView<Ch::Owned, At::CloneableOwned>;
-
-    const MIN_LENGTH: usize = 0;
-
-    fn dry_resolve(&mut self) {
-        self.attrs.dry_resolve();
-    }
-
-    async fn resolve(self) -> Self::AsyncOutput {
-        let (children_resolved, attrs_resolved) =
-            futures::join!(self.children.resolve(), self.attrs.resolve());
-        ScrollView {
-            grow: self.grow,
-            children: children_resolved,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            autohides_scrollers: self.autohides_scrollers,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: attrs_resolved,
-        }
-    }
-
-    fn to_html_with_buf(
-        self,
-        _buf: &mut String,
-        _position: &mut crate::view::Position,
-        _escape: bool,
-        _mark_branches: bool,
-        _extra_attrs: Vec<crate::html::attribute::any_attribute::AnyAttribute>,
-    ) {
-    }
-
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        _cursor: &crate::hydration::Cursor,
-        _position: &crate::view::PositionState,
-    ) -> Self::State {
-        <Self as Render>::build(self)
-    }
-
-    fn into_owned(self) -> Self::Owned {
-        ScrollView {
-            grow: self.grow,
-            children: self.children.into_owned(),
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
-            autohides_scrollers: self.autohides_scrollers,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: self.attrs.into_cloneable_owned(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------
 // image_view() — NSImageView, source from a file path
@@ -3701,7 +3528,7 @@ impl<At> ImageView<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3716,11 +3543,10 @@ impl_universal_attrs!(ImageView);
 impl_typed_attrs_for!(ImageView, source, grow, node_ref, directives,
     alpha, tool_tip);
 
-impl<At> Render for ImageView<At>
+impl<At> Render<Dom> for ImageView<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("image_view");
@@ -3745,18 +3571,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -3840,7 +3666,7 @@ impl<At> TextView<At> {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::html::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3857,11 +3683,10 @@ impl_typed_attrs_for!(TextView, value, enabled, pending_bind, grow,
     node_ref, directives, alpha, tool_tip, text_color, alignment,
     font_size);
 
-impl<At> Render for TextView<At>
+impl<At> Render<Dom> for TextView<At>
 where
-    At: crate::html::attribute::Attribute,
 {
-    type State = ElementState<At::State, ()>;
+    type State = ElementState<(), UnitState<Dom>>;
 
     fn build(self) -> Self::State {
         let el = CocoaElement::create("text_view");
@@ -3917,18 +3742,18 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = self.attrs.build(&el);
+        let attrs = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
-            children: (),
+            _attrs: std::marker::PhantomData,
+            children: <() as Render<Dom>>::build(()),
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -3938,90 +3763,11 @@ where
 // that doesn't fit the typed-attrs pattern can revive it without
 // re-deriving the stub shape.
 
-// Macro that emits the same AddAnyAttr + RenderHtml shape for our
-// container builders that carry both `Children` and `At` generics
-// (Stack and Block).
+// Phase 8: impl_container_typed_attrs! used to emit AddAnyAttr +
+// RenderHtml for `<Ch, At>` container builders (Stack, Block). Both
+// traits are gone (see comment on impl_typed_attrs_for!). No-op macro.
 macro_rules! impl_container_typed_attrs {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {
-        impl<Ch, At> crate::view::add_attr::AddAnyAttr for $builder<Ch, At>
-        where
-            Ch: Render + Send + 'static + crate::view::RenderHtml,
-            At: crate::html::attribute::Attribute,
-        {
-            type Output<NewAttr: crate::html::attribute::Attribute> = $builder<
-                Ch,
-                <At as crate::html::attribute::NextAttribute>::Output<NewAttr>,
-            >;
-
-            fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-                self,
-                attr: NewAttr,
-            ) -> Self::Output<NewAttr> {
-                $builder {
-                    $( $field: self.$field, )+
-                    children: self.children,
-                    attrs: crate::html::attribute::NextAttribute::add_any_attr(
-                        self.attrs, attr,
-                    ),
-                }
-            }
-        }
-
-        impl<Ch, At> crate::view::RenderHtml for $builder<Ch, At>
-        where
-            Ch: Render + Send + 'static + crate::view::RenderHtml,
-            At: crate::html::attribute::Attribute,
-        {
-            type AsyncOutput = $builder<Ch::AsyncOutput, At::AsyncOutput>;
-            type Owned = $builder<Ch::Owned, At::CloneableOwned>;
-
-            const MIN_LENGTH: usize = 0;
-
-            fn dry_resolve(&mut self) {
-                self.attrs.dry_resolve();
-            }
-
-            async fn resolve(self) -> Self::AsyncOutput {
-                let (children_resolved, attrs_resolved) = futures::join!(
-                    self.children.resolve(),
-                    self.attrs.resolve()
-                );
-                $builder {
-                    $( $field: self.$field, )+
-                    children: children_resolved,
-                    attrs: attrs_resolved,
-                }
-            }
-
-            fn to_html_with_buf(
-                self,
-                _buf: &mut String,
-                _position: &mut crate::view::Position,
-                _escape: bool,
-                _mark_branches: bool,
-                _extra_attrs: Vec<
-                    crate::html::attribute::any_attribute::AnyAttribute,
-                >,
-            ) {
-            }
-
-            fn hydrate<const FROM_SERVER: bool>(
-                self,
-                _cursor: &crate::hydration::Cursor,
-                _position: &crate::view::PositionState,
-            ) -> Self::State {
-                <Self as Render>::build(self)
-            }
-
-            fn into_owned(self) -> Self::Owned {
-                $builder {
-                    $( $field: self.$field, )+
-                    children: self.children.into_owned(),
-                    attrs: self.attrs.into_cloneable_owned(),
-                }
-            }
-        }
-    };
+    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
 }
 
 impl_container_typed_attrs!(

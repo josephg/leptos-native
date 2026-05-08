@@ -23,7 +23,8 @@ use cocoa_dom::{
     MainThreadMarker,
 };
 use reactive_graph::owner::Owner;
-use tachys::{cocoa::window::window, view::Render};
+use crate::{cocoa::window::window, Dom};
+use renderer::view::Render;
 
 /// Run an AppKit application whose root view is built by `f`.
 ///
@@ -46,7 +47,7 @@ use tachys::{cocoa::window::window, view::Render};
 pub fn run<F, V>(f: F)
 where
     F: FnOnce() -> V + 'static,
-    V: Render + 'static,
+    V: Render<Dom> + 'static,
 {
     let mtm = MainThreadMarker::new()
         .expect("leptos::mount::run must be called from the main thread");
@@ -78,7 +79,7 @@ where
 pub fn mount_to_window<F, V>(title: &str, size: (f64, f64), f: F)
 where
     F: FnOnce() -> V + 'static,
-    V: Render + 'static,
+    V: Render<Dom> + 'static,
 {
     let title = title.to_owned();
     run(move || window().title(title).size(size.0, size.1).child(f()));

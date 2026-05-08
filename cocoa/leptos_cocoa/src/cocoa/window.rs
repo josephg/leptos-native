@@ -13,7 +13,8 @@
 //! delegate, shutdown) live in `cocoa_dom::window`; this module is
 //! just the tachys-side `Render`/`Mountable` glue.
 
-use crate::view::{Mountable, Render};
+use renderer::view::{Mountable, Render};
+use crate::Dom;
 use cocoa_dom::{
     layout,
     window::{open_window, OpenedWindow},
@@ -71,7 +72,7 @@ pub struct WindowState {
     opened: OpenedWindow,
 }
 
-impl<Ch: Render> Render for Window<Ch>
+impl<Ch: Render<Dom>> Render<Dom> for Window<Ch>
 where
     Ch::State: 'static,
 {
@@ -120,7 +121,7 @@ where
     }
 }
 
-impl Mountable for WindowState {
+impl Mountable<Dom> for WindowState {
     fn unmount(&mut self) {
         // Programmatic close → AppKit fires windowWillClose: →
         // delegate runs the cleanup closure (idempotent: it Option-
@@ -137,7 +138,7 @@ impl Mountable for WindowState {
         // Element. The NSWindow was opened in `build()`.
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
