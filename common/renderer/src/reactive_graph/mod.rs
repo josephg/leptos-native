@@ -3,6 +3,9 @@
 //! happens inside a `RenderEffect`, and the effect re-runs when any signal
 //! the closure read changes.
 
+mod owned;
+pub use owned::{OwnedView, OwnedViewState};
+
 use crate::{
     renderer::Renderer,
     view::{Mountable, Render},
