@@ -37,27 +37,6 @@ sledgehammer_utils = { optional = true, workspace = true, default-features = tru
 tracing = { optional = true, workspace = true, default-features = true }
 serde = { optional = true, workspace = true, default-features = true }
 serde_json = { optional = true, workspace = true, default-features = true }
-
-# macOS-native renderer (activated only when the `native-ui` feature
-# is on; otherwise the cocoa renderer modules in src/ are cfg'd out
-# and cocoa_dom isn't pulled into the build).
-[target.'cfg(target_os = "macos")'.dependencies]
-cocoa_dom = { path = "../../cocoa/dom", version = "0.1.0", optional = true }
-
-# iOS-native renderer (activated only when the `native-ui` feature
-# is on; same shape as cocoa_dom above).
-[target.'cfg(target_os = "ios")'.dependencies]
-ios_dom = { path = "../../uikit/dom", version = "0.1.0", optional = true }
-
-# Linux-native renderer (activated only when the `native-ui` feature
-# is on; same shape as cocoa_dom above).
-[target.'cfg(target_os = "linux")'.dependencies]
-gtk_dom = { path = "../../gtk/dom", version = "0.1.0", optional = true }
-
-# Web-only deps. On macOS we swap the renderer for cocoa_dom; these
-# crates would either fail to compile or pull in unwanted JS-side
-# machinery, so they're gated out of the macOS build entirely.
-[target.'cfg(not(target_os = "macos"))'.dependencies]
 wasm-bindgen = { workspace = true, default-features = true }
 js-sys = { workspace = true, default-features = true }
 web-sys = { features = [
@@ -208,17 +187,6 @@ reactive_stores = ["reactive_graph", "dep:reactive_stores"]
 sledgehammer = ["dep:sledgehammer_bindgen", "dep:sledgehammer_utils"]
 tracing = ["dep:tracing"]
 mark_branches = []
-# Activates the native UI rendering backends. The specific backend
-# (Cocoa on macOS, GTK on Linux) is chosen by target_os at compile
-# time. `dep:cocoa_dom` and `dep:gtk_dom` activate the optional
-# native-renderer dependencies; if a target_os doesn't have one of
-# them declared (e.g. there's no gtk_dom dep on macOS), Cargo
-# silently no-ops the activation, so this works correctly on any
-# target.
-native-ui = ["dep:cocoa_dom", "dep:gtk_dom", "dep:ios_dom"]
-# Enables Taffy's block_layout algorithm + the `<block>` tag/builder.
-# Off by default to keep file size down for apps that only need flex.
-block_layout = ["cocoa_dom?/block_layout"]
 
 [package.metadata.cargo-all-features]
 denylist = ["tracing", "sledgehammer"]
