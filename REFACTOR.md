@@ -114,6 +114,36 @@ leptos-mac/
   children must instead use a concrete type or build the type-erasure
   themselves. This was a deliberate native-fork simplification.
 
+### 🚧 IN PROGRESS — Phase 8 (the big mechanical refactor)
+
+| Commit | What |
+|--------|------|
+| `f7bc25af` | Foundation: `cocoa/leptos_cocoa/{Cargo.toml, src/lib.rs, src/renderer_cocoa.rs}`. `pub struct Dom; impl renderer::Renderer for Dom`. `impl Mountable<Dom>` for cocoa_dom's Node/Element/Text/Placeholder. `try_mount_before` overrides the trait default for cocoa Taffy-tree-aware parent synthesis. CastFrom impls had to move to `cocoa_dom::renderer` (orphan rule); `cocoa_dom` now depends on `renderer`. cargo build --workspace clean. |
+
+The element.rs (4067 lines, 13 builders), attr.rs (394), bind.rs (512),
+event_macos.rs (356), mount.rs (85), node_ref.rs (101), window.rs (149),
+directives.rs (49), render_html_stub.rs (89), element_macos.rs (29),
+event_macos.rs (356), svg_macos.rs (16) all still reference the old
+non-generic `tachys::view::Render` shape and are *not yet `mod`-declared*
+in `cocoa/leptos_cocoa/src/lib.rs`. Each will need:
+
+- `use crate::view::{Mountable, Render}` → `use renderer::view::{Mountable, Render}`
+- `impl Render for X { ... }` → `impl Render<crate::Dom> for X { ... }`
+- `impl<...generics...> Render for X` → `impl<...generics...> Render<crate::Dom> for X`
+- `Mountable` (as a trait bound on State types) → `Mountable<crate::Dom>`
+- `crate::renderer::types::Element` etc. → `cocoa_dom::Element` (and Node/Text/Placeholder)
+- `crate::reactive_graph::*` (signal/effect bridges) → `renderer::reactive_graph::*`
+  (or just `reactive_graph::*` for the parts that aren't view bridges)
+- `Rndr::method(...)` → `<Dom as Renderer>::method(...)` or `Dom::method(...)`
+
+These are mostly mechanical and should be sed-able; verify each
+`impl Render` site by hand because the trait-impl-generics ordering
+matters when bounds are involved.
+
+After cocoa/leptos_cocoa is compiling, **the same surgery for
+gtk/leptos_gtk and uikit/leptos_uikit** (extracted in Phase 3a, never
+compiled).
+
 ### ⏳ STILL ON THE PHASE 7B / 8 PUNCH LIST
 
 - `error_boundary`, `portal`, `animated_show`, `suspense_component`,
