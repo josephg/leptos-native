@@ -41,7 +41,8 @@ pub mod prelude {
     pub use renderer::prelude::*;
 
     pub use crate::{
-        component::*, into_view::*, text_prop::*,
+        children::*, component::*, control_flow::*, into_view::*,
+        text_prop::*,
     };
 
     pub use leptos_macro::*;
@@ -63,6 +64,15 @@ pub use reactive_graph::callback;
 #[doc(hidden)]
 /// Traits used to implement component constructors.
 pub mod component;
+
+/// Types that can be passed as the `children` prop of a component.
+pub mod children;
+
+/// Control-flow components like `<Show>`.
+pub mod control_flow {
+    pub use crate::show::*;
+}
+mod show;
 
 /// Types for reactive string properties for components.
 pub mod text_prop;
@@ -88,10 +98,8 @@ pub use renderer;
 pub use oco_ref as oco;
 
 /// Provide and access data along the reactive graph, sharing data without directly passing arguments.
-///
-/// Note: the `<Provider>` component is deferred to Phase 8; for now this
-/// only re-exports the underlying `provide_context` / `use_context` functions.
 pub mod context {
+    pub use crate::provider::*;
     pub use reactive_graph::owner::{provide_context, use_context};
 }
 

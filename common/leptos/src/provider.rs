@@ -1,13 +1,31 @@
-//! Phase 7 stub. The original `Provider` component used `TypedChildren`
-//! (from the deferred `children` module) and `OwnedView` (from
-//! `tachys::reactive_graph::OwnedView`, which was deleted in Phase 5
-//! along with the heavily-RenderHtml-coupled `tachys` modules).
-//!
-//! Phase 8 will:
-//! - Re-add a renderer-agnostic `OwnedView` wrapper to `common/renderer`
-//!   (it sets the reactive `Owner` per `build`/`rebuild`, no web specifics).
-//! - Re-add `TypedChildren` to a Phase-8 children module against
-//!   `IntoView<R>`.
-//! - Restore `Provider` here against the new shape.
+use crate::{children::TypedChildren, into_view::IntoView};
+use leptos_macro::component;
+use reactive_graph::owner::{provide_context, Owner};
+use renderer::{reactive_graph::OwnedView, renderer::Renderer};
 
-// Intentionally empty pending Phase 8.
+/// Uses the context API to [`provide_context`] to its children and
+/// descendants, without overwriting any contexts of the same type in
+/// its own reactive scope.
+///
+/// This prevents issues related to "context shadowing."
+#[component]
+pub fn Provider<T, Chil, R>(
+    /// The value to be provided via context.
+    value: T,
+    children: TypedChildren<Chil, R>,
+) -> impl IntoView<R>
+where
+    R: Renderer,
+    T: Send + Sync + 'static,
+    Chil: IntoView<R> + 'static,
+{
+    let owner = Owner::current()
+        .expect("no current reactive Owner found")
+        .child();
+    let children = children.into_inner();
+    let children = owner.with(|| {
+        provide_context(value);
+        children()
+    });
+    OwnedView::new_with_owner(children, owner)
+}
