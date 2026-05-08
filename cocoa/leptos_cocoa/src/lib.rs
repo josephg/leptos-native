@@ -61,6 +61,13 @@ pub use leptos::callback;
 pub mod tachys {
     pub use ::renderer::view;
 
+    /// Re-export of the cocoa builders/window/etc., for the
+    /// `::leptos::tachys::cocoa::*` paths some examples reference
+    /// directly (e.g. block_layout uses `tachys::cocoa::FlexDirection`).
+    pub mod cocoa {
+        pub use crate::cocoa::*;
+    }
+
     pub mod html {
         pub mod element {
             //! Cocoa-flavoured element builders (button, vstack, label, ...).
@@ -94,6 +101,23 @@ pub mod tachys {
 pub trait IntoView: leptos::IntoView<Dom> {}
 impl<T: leptos::IntoView<Dom>> IntoView for T {}
 
+/// Identity trait the leptos_macro view!{} expansion emits as
+/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
+/// around attribute values. Upstream this normalised values into a
+/// SSR-friendly `AttributeValue` shape; on native the value is
+/// already the right type so the trait is a no-op identity.
+pub trait IntoAttributeValue {
+    type Output;
+    fn into_attribute_value(self) -> Self::Output;
+}
+
+impl<T> IntoAttributeValue for T {
+    type Output = T;
+    fn into_attribute_value(self) -> Self {
+        self
+    }
+}
+
 /// User prelude — the items end-user examples bring into scope.
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our cocoa-specialized
@@ -101,7 +125,7 @@ pub mod prelude {
     pub use crate::core::prelude::*;
 
     // Cocoa-specialized IntoView (pinned to Dom; no R param).
-    pub use crate::IntoView;
+    pub use crate::{IntoAttributeValue, IntoView};
 
     // Mounting
     pub use crate::mount::{mount_to_window, run};
@@ -117,6 +141,13 @@ pub mod prelude {
         },
         node_ref::NodeRef,
         FlexDirection, JustifyContent,
+    };
+
+    // cocoa_dom helpers commonly used by examples (timers, persistent
+    // storage, native colour types, key events).
+    pub use cocoa_dom::{
+        local_storage, set_interval, set_interval_with_handle, Color,
+        IntervalError, IntervalHandle, KeyEvent, Storage, StorageError,
     };
     pub use crate::Dom;
 }

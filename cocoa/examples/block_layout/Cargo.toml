@@ -9,5 +9,5 @@ name = "block_layout"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui", "block_layout"] }
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa", features = ["block_layout"] }
 cocoa_dom = { path = "../../dom" }

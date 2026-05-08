@@ -114,7 +114,28 @@ leptos-mac/
   children must instead use a concrete type or build the type-erasure
   themselves. This was a deliberate native-fork simplification.
 
-### 🚧 IN PROGRESS — Phase 8 (the big mechanical refactor)
+### ✅ DONE — Phase 8 (mostly) + Phase 9 (cocoa examples partially)
+
+| Commit | What |
+|--------|------|
+| `514b7bb3` | The big Phase 8 surgery: `cocoa/leptos_cocoa` compiles end-to-end. New `keys`/`directive` modules vendoring the AttributeKey markers + minimal IntoDirective. event_macos's Attribute/NextAttribute/ToTemplate impls dropped. element.rs (4067 lines) bulk-updated: Render→Render<Dom>, Mountable→Mountable<Dom>, html::* paths→local paths, At: Attribute bounds removed, `impl_typed_attrs_for!`/`impl_container_typed_attrs!` macros stubbed to no-ops, ScrollView's manual AddAnyAttr+RenderHtml impls deleted. ElementState's `_attrs: AttrState` field became `PhantomData`. Leaf builders' `type State = ElementState<(), ()>` became `ElementState<(), UnitState<Dom>>`. |
+| `319e3d49` | Phase 9 / counter example: `leptos_cocoa` is the user-facing entry point (examples write `leptos = { package = "leptos_cocoa" }`). Cocoa-specialized `IntoView: leptos::IntoView<Dom>` + blanket impl shadows the R-generic core in the prelude. Tachys-shaped re-export tree (`crate::tachys::html::element::*` etc.) so `view!{}` macro emits resolve. Macro emit fix: `IntoRender::into_render(#block)` → bare `(#block)` (the wrapping introduced an unbindable R type parameter that broke text children of native builders like Label). Counter compiles AND RUNS. |
+| `40e1ab1a` | More examples: counter, counters, checkbox, directives, greeter, scroll_view all compile. Added `leptos_cocoa::attr` re-export of keys (for `bind:foo` macro syntax), added BindAttribute/IntoSignal/NodeRef to the prelude. |
+
+### Cocoa examples status (post-Phase 9)
+
+| ✓ | counter, counters, checkbox, directives, greeter, scroll_view |
+| ✗ | block_layout, component_event_test, counter_without_macros, error_boundary, fetch, login_form, parent_child, persistent_counter, settings, showcase, slots, stores, timer, todomvc, transition |
+
+The failing examples generally hit features we dropped:
+- `<Component on:click=...>` (event-on-component spread): needs AddAnyAttr machinery, deliberately dropped in Phase 8.
+- `<ErrorBoundary>` / `<Slots>` / `<Transition>`: components deferred in Phase 7B.
+- Attribute spread paths (`<Button {..attrs}/>`): same Phase 8 drop.
+- todomvc uses `local_storage` re-export, attr module access, etc.
+
+These examples can be ported case-by-case as user-code rewrites, OR the feature gaps can be filled. Document the user-facing tradeoffs and let app authors pick.
+
+### 🚧 IN PROGRESS — Phase 8 (gtk + uikit)
 
 | Commit | What |
 |--------|------|

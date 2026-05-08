@@ -26,6 +26,11 @@ objc2-foundation = "0.3"
 objc2-app-kit = "0.3"
 any_spawner = { workspace = true }
 
+[features]
+default = []
+# Enables Taffy's `block_layout` algorithm and the `<block>` builder.
+block_layout = ["cocoa_dom/block_layout"]
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
