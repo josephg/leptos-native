@@ -1,6 +1,5 @@
 use oco_ref::Oco;
 use std::sync::Arc;
-use tachys::prelude::IntoAttributeValue;
 
 /// Describes a value that is either a static or a reactive string, i.e.,
 /// a [`String`], a [`&str`], a `Signal` or a reactive `Fn() -> String`.
@@ -75,13 +74,9 @@ impl Default for TextProp {
     }
 }
 
-impl IntoAttributeValue for TextProp {
-    type Output = Arc<dyn Fn() -> Oco<'static, str> + Send + Sync>;
-
-    fn into_attribute_value(self) -> Self::Output {
-        self.0
-    }
-}
+// `IntoAttributeValue` impl deferred to Phase 8 (the trait is on
+// platform `leptos_<X>` element/attr modules, not the renderer-agnostic
+// `common/renderer` crate).
 
 #[allow(unused)]
 macro_rules! textprop_reactive {

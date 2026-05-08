@@ -87,28 +87,29 @@ leptos-mac/
 | 3b | `dcb0c8ad` | Stripped `cfg(leptos_native)` + `native-ui` from `web/tachys/{lib.rs, html/mod.rs, renderer/mod.rs, Cargo.toml}`. (Superseded by Phase 5.) |
 | 4 | `c981ad31` (approx) | **Deleted 12 web-only crates wholesale.** Updated root `Cargo.toml` to drop them from members + workspace.dependencies. Cleaned up `common/reactive_graph/Cargo.toml` (dropped `hydration_context` optional dep + `hydration` feature) and `common/reactive_stores/Cargo.toml` (dropped `leptos = path` dev-dep) and `cocoa/dom/`, `gtk/dom/`, `uikit/dom/` Cargo.toml's (dropped `tachys = workspace` dev-dep). cargo build --workspace clean. |
 | 5 | `a4defc87` | **`web/tachys` → `common/renderer` with generic `Render<R: Renderer>`**. The architectural milestone. See "Phase 5 detail" below. |
-| 6 (partial) | `last commit` | `git mv web/leptos_macro common/leptos_macro`. Cargo.toml cleaned. `parsing.rs` inlined from leptos_hot_reload. `mod parsing` declared. `leptos_hot_reload::*` → `crate::parsing::*` via sed. `#[server]` proc macro deleted. **Not yet added back to workspace members** — see "Phase 6 finish" below. |
+| 6 (partial) | `87e4b241` | `git mv web/leptos_macro common/leptos_macro`. Cargo.toml cleaned. `parsing.rs` inlined from leptos_hot_reload. `mod parsing` declared. `leptos_hot_reload::*` → `crate::parsing::*` via sed. `#[server]` proc macro deleted. **Not yet added back to workspace members** — see "Phase 6 finish". |
+| 6 (finish) | `5ad6f535` | Added `common/leptos_macro` to workspace members + workspace.dependencies. `is_wasm = false` hardcoded in `lazy.rs` (csr/hydrate features removed). `cargo build -p leptos_macro` clean. Macro emit paths still reference `::leptos::tachys::*` / `::leptos::prelude::*` and resolve at expansion-time inside user code, so they won't fail until consumers (cocoa/gtk/uikit examples) hit them in Phase 9-10. |
+| 7 (part A) | `THIS commit` | `git mv web/leptos common/leptos`. Cargo.toml rewritten to depend only on native-side crates (`renderer`, `leptos_macro`, `reactive_graph`, utilities). `lib.rs` slashed to native-only essentials. `into_view.rs` rewritten — `IntoView<R: Renderer>: Render<R> + Send`, no more `RenderHtml`/`AddAnyAttr`/`ToTemplate`. Web-only files deleted: `mount.rs`, `form.rs`, `await_.rs`, `nonce.rs`, `subsecond.rs`, `attribute_interceptor.rs`, `from_form_data.rs`, `hydration/`. `web/` directory empty and gone. **Components currently shipped: `component`, `into_view`, `text_prop`, `logging`** — see Phase 7B for the deferred ones. cargo build --workspace clean. |
 
-### 🚧 IN PROGRESS — Phase 6
+### 🚧 IN PROGRESS — Phase 7 part B
 
-Currently committed: leptos_macro is at `common/leptos_macro/`, builds in
-isolation but isn't in workspace members. Macro emit paths still say
-`::leptos::tachys::*` and `::leptos::prelude::*` — those references can't
-resolve until Phase 7 lands `common/leptos`.
+`Show`, `ShowLet`, `For`, `children`, `provider`, `error_boundary`,
+`portal`, `animated_show`, `suspense_component`, `transition` all need
+R-genericization against the new `Render<R>` core. The first four files
+are still on disk (under their original names, not `mod`-declared in
+`lib.rs`) waiting for surgery; the others were deleted from
+`common/leptos/src/` in Phase 7A and will be ported back from
+`/Users/seph/src/leptos-upstream/leptos/src/` against the new shape.
+`provider.rs` is a stub explaining what's deferred.
+
+The blocker is partly a missing `OwnedView` (was in
+`tachys::reactive_graph::OwnedView`, deleted in Phase 5 because of
+RenderHtml coupling — but the *concept* is renderer-agnostic) and partly
+the lack of a renderer-agnostic `Either` (the deleted `tachys::either::Either`
+was just a re-export of `either_of::Either`, so `use either_of::Either as
+Either` is a one-line fix in each file).
 
 ### ⏳ PENDING
-
-- **Phase 6 finish** (small):
-  - Add `"common/leptos_macro"` to root Cargo.toml `[workspace] members`.
-  - `cargo build -p leptos_macro` — fix any remaining compile errors. Some
-    will be macro-emit-path issues; defer those to Phase 7.
-- **Phase 7**: Move `web/leptos` → `common/leptos`, cut to native essentials.
-  Drop `mount.rs` (web), `from_form_data.rs`, `form.rs`, `await_.rs`,
-  `hydration/`, `nonce.rs`, `subsecond.rs`, `attribute_interceptor.rs`. Keep
-  `into_view.rs` (drop `RenderHtml` bound), `children.rs`, `component.rs`,
-  `text_prop.rs`, `provider.rs`, `portal.rs`, `error_boundary.rs`, `show.rs`,
-  `show_let.rs`, `for_loop.rs`, `suspense_component.rs`, `transition.rs`,
-  `animated_show.rs`, `logging.rs`. Each gets refactored against `Render<R>`.
 - **Phase 8**: The big mechanical refactor. Across `common/{renderer,leptos,
   leptos_macro}/`, `cocoa/leptos_cocoa/`, `gtk/leptos_gtk/`, `uikit/leptos_uikit/`,
   every `impl Render for X` → `impl Render<Dom> for X` (where `Dom` is the

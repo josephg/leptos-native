@@ -1,0 +1,105 @@
+use renderer::{
+    renderer::Renderer,
+    view::Render,
+};
+use std::borrow::Cow;
+
+/// A wrapper for any kind of view.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct View<T>
+where
+    T: Sized,
+{
+    inner: T,
+    #[cfg(debug_assertions)]
+    view_marker: Option<Cow<'static, str>>,
+}
+
+impl<T> View<T> {
+    /// Wraps the view.
+    pub fn new(inner: T) -> Self {
+        Self {
+            inner,
+            #[cfg(debug_assertions)]
+            view_marker: None,
+        }
+    }
+
+    /// Unwraps the view, returning the inner type.
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+
+    /// Adds a view marker, used for hot-reloading and debug purposes.
+    #[inline(always)]
+    pub fn with_view_marker(
+        #[allow(unused_mut)] mut self,
+        #[allow(unused_variables)] view_marker: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        #[cfg(debug_assertions)]
+        {
+            self.view_marker = Some(view_marker.into());
+        }
+        self
+    }
+}
+
+/// A trait that is implemented for types that can be rendered.
+///
+/// Generic over the renderer backend `R`. Each platform's `leptos_<platform>`
+/// crate uses this with its own `Renderer` impl.
+pub trait IntoView<R: Renderer>
+where
+    Self: Sized + Render<R> + Send,
+{
+    /// Wraps the inner type.
+    fn into_view(self) -> View<Self>;
+}
+
+impl<R, T> IntoView<R> for T
+where
+    R: Renderer,
+    T: Sized + Render<R> + Send,
+{
+    fn into_view(self) -> View<Self> {
+        View {
+            inner: self,
+            #[cfg(debug_assertions)]
+            view_marker: None,
+        }
+    }
+}
+
+impl<R: Renderer, T: Render<R>> Render<R> for View<T> {
+    type State = T::State;
+
+    fn build(self) -> Self::State {
+        self.inner.build()
+    }
+
+    fn rebuild(self, state: &mut Self::State) {
+        self.inner.rebuild(state)
+    }
+}
+
+/// Collects some iterator of views into a list, so they can be rendered.
+pub trait CollectView<R: Renderer> {
+    /// The inner view type.
+    type View: IntoView<R>;
+
+    /// Collects the iterator into a list of views.
+    fn collect_view(self) -> Vec<Self::View>;
+}
+
+impl<R, It, V> CollectView<R> for It
+where
+    R: Renderer,
+    It: IntoIterator<Item = V>,
+    V: IntoView<R>,
+{
+    type View = V;
+
+    fn collect_view(self) -> Vec<Self::View> {
+        self.into_iter().collect()
+    }
+}

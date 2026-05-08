@@ -7,6 +7,7 @@ members = [
   "common/reactive_stores_macro",
   "common/renderer",
   "common/leptos_macro",
+  "common/leptos",
 
   # native ports
   "cocoa/dom",
@@ -23,7 +24,6 @@ exclude = [
   # Excluded until cleaned up + moved into common/ in
   # Phase 6 (leptos_macro -> common/leptos_macro) and
   # Phase 7 (leptos -> common/leptos).
-  "web/leptos",
 ]
 
 [workspace.package]
@@ -37,6 +37,7 @@ reactive_graph = { path = "./common/reactive_graph", version = "0.2.14" }
 reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
 reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
+leptos = { path = "./common/leptos", version = "0.1.0" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---
 throw_error = { default-features = false, version = "0.3.1" }

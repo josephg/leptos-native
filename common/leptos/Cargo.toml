@@ -1,0 +1,52 @@
+[package]
+name = "leptos"
+version = "0.1.0"
+authors = ["Greg Johnston", "Seph Gentle"]
+license = "MIT"
+description = "Native UI port of Leptos. Renderer-agnostic core."
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+either_of = { workspace = true }
+or_poisoned = { workspace = true }
+oco_ref = { workspace = true }
+any_spawner = { workspace = true, features = ["futures-executor"] }
+leptos_macro = { workspace = true }
+reactive_graph = { workspace = true, features = ["effects"] }
+renderer = { workspace = true }
+futures = { workspace = true, default-features = true }
+send_wrapper = { workspace = true, default-features = true }
+serde = { workspace = true, default-features = true }
+serde_json = { workspace = true, default-features = true }
+paste = { workspace = true, default-features = true }
+rustc-hash = { workspace = true, default-features = true }
+slotmap = { workspace = true, default-features = true }
+tracing = { optional = true, workspace = true, default-features = true }
+typed-builder = { workspace = true, default-features = true }
+typed-builder-macro = { workspace = true, default-features = true }
+thiserror = { workspace = true, default-features = true }
+
+[features]
+default = []
+nightly = ["leptos_macro/nightly", "reactive_graph/nightly"]
+tracing = [
+  "dep:tracing",
+  "reactive_graph/tracing",
+  "leptos_macro/tracing",
+]
+
+[build-dependencies]
+rustc_version = { workspace = true, default-features = true }
+
+# See note in upstream Cargo.toml — proc macros don't see RUSTFLAGS
+# when --target is specified, so the erasure feature is enabled via
+# this normal-crate dependency rather than a cfg.
+[target.'cfg(erase_components)'.dependencies]
+leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+  'cfg(rustc_nightly)',
+] }

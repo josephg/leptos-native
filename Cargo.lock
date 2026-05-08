@@ -859,8 +859,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
+name = "leptos"
+version = "0.1.0"
+dependencies = [
+ "any_spawner",
+ "either_of",
+ "futures",
+ "leptos_macro",
+ "oco_ref",
+ "or_poisoned",
+ "paste",
+ "reactive_graph",
+ "renderer",
+ "rustc-hash",
+ "rustc_version",
+ "send_wrapper",
+ "serde",
+ "serde_json",
+ "slotmap",
+ "thiserror",
+ "tracing",
+ "typed-builder",
+ "typed-builder-macro",
+]
+
+[[package]]
 name = "leptos_macro"
-version = "0.8.16"
+version = "0.1.0"
 dependencies = [
  "attribute-derive",
  "cfg-if",
@@ -1181,6 +1206,16 @@ checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
 dependencies = [
  "objc2",
  "objc2-foundation",
+]
+
+[[package]]
+name = "oco_ref"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed0423ff9973dea4d6bd075934fdda86ebb8c05bdf9d6b0507067d4a1226371d"
+dependencies = [
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
