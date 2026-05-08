@@ -1,0 +1,42 @@
+[package]
+name = "leptos_macro"
+version = "0.8.16"
+authors = ["Greg Johnston", "Seph Gentle"]
+license = "MIT"
+description = "view! / component! macros for the leptos-mac native UI fork."
+rust-version.workspace = true
+edition.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+attribute-derive = { features = ["syn-full"], workspace = true, default-features = true }
+cfg-if = { workspace = true, default-features = true }
+html-escape = { workspace = true, default-features = true }
+itertools = { workspace = true, default-features = true }
+prettyplease = { workspace = true, default-features = true }
+proc-macro-error2 = { default-features = false, workspace = true }
+proc-macro2 = { workspace = true, default-features = true }
+quote = { workspace = true, default-features = true }
+syn = { features = ["full"], workspace = true, default-features = true }
+rstml = { workspace = true, default-features = true }
+convert_case = { workspace = true, default-features = true }
+convert_case_extras = { workspace = true, default-features = true }
+uuid = { features = ["v4"], workspace = true, default-features = true }
+tracing = { optional = true, workspace = true, default-features = true }
+
+[build-dependencies]
+rustc_version = { workspace = true, default-features = true }
+
+[features]
+nightly = []
+tracing = ["dep:tracing"]
+trace-components = []
+trace-component-props = []
+# Having an erasure feature rather than normal --cfg erase_components for the proc macro crate is a workaround for this rust issue:
+# https://github.com/rust-lang/cargo/issues/4423
+__internal_erase_components = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rustc_nightly)'] }

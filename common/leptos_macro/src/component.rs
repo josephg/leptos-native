@@ -5,7 +5,7 @@ use convert_case::{
 };
 use convert_case_extras::is_case;
 use itertools::Itertools;
-use leptos_hot_reload::parsing::value_to_string;
+use crate::parsing::value_to_string;
 use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error2::abort;
 use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};

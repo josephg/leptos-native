@@ -11,7 +11,7 @@ use convert_case::{
     Casing,
 };
 use convert_case_extras::is_case;
-use leptos_hot_reload::parsing::{is_component_node, value_to_string};
+use crate::parsing::{is_component_node, value_to_string};
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use proc_macro_error2::abort;
 use quote::{format_ident, quote, quote_spanned, ToTokens};

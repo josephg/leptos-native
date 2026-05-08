@@ -13,6 +13,7 @@
 extern crate proc_macro_error2;
 
 use component::DummyModel;
+mod parsing;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenTree};
 use quote::{quote, ToTokens};
@@ -359,7 +360,7 @@ fn view_macro_impl(tokens: TokenStream, template: bool) -> TokenStream {
 
 fn normalized_call_site(site: proc_macro::Span) -> Option<String> {
     if cfg!(debug_assertions) {
-        Some(leptos_hot_reload::span_to_stable_id(
+        Some(crate::parsing::span_to_stable_id(
             site.file(),
             site.start().line(),
         ))
@@ -836,127 +837,6 @@ pub fn slot(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Declares that a function is a [server function](https://docs.rs/server_fn/latest/server_fn/index.html).
-/// This means that its body will only run on the server, i.e., when the `ssr` feature on this crate is enabled.
-///
-/// If you call a server function from the client (i.e., when the `csr` or `hydrate` features
-/// are enabled), it will instead make a network request to the server.
-///
-/// ## Named Arguments
-///
-/// You can provide any combination of the following named arguments:
-/// - `name`: sets the identifier for the server function’s type, which is a struct created
-///    to hold the arguments (defaults to the function identifier in PascalCase)
-/// - `prefix`: a prefix at which the server function handler will be mounted (defaults to `/api`)
-///    your prefix must begin with `/`. Otherwise your function won't be found.
-/// - `endpoint`: specifies the exact path at which the server function handler will be mounted,
-///   relative to the prefix (defaults to the function name followed by unique hash)
-/// - `input`: the encoding for the arguments (defaults to `PostUrl`)
-/// - `output`: the encoding for the response (defaults to `Json`)
-/// - `client`: a custom `Client` implementation that will be used for this server fn
-/// - `encoding`: (legacy, may be deprecated in future) specifies the encoding, which may be one
-///   of the following (not case sensitive)
-///     - `"Url"`: `POST` request with URL-encoded arguments and JSON response
-///     - `"GetUrl"`: `GET` request with URL-encoded arguments and JSON response
-///     - `"Cbor"`: `POST` request with CBOR-encoded arguments and response
-///     - `"GetCbor"`: `GET` request with URL-encoded arguments and CBOR response
-/// - `req` and `res` specify the HTTP request and response types to be used on the server (these
-///   should usually only be necessary if you are integrating with a server other than Actix/Axum)
-/// - `impl_from`: specifies whether to implement trait `From` for server function's type or not.
-///   By default, if a server function only has one argument, the macro automatically implements the `From` trait
-///   to convert from the argument type to the server function type, and vice versa, allowing you to convert
-///   between them easily. Setting `impl_from` to `false` disables this, which can be necessary for argument types
-///   for which this would create a conflicting implementation. (defaults to `true`)
-///
-/// ```rust,ignore
-/// #[server(
-///   name = SomeStructName,
-///   prefix = "/my_api",
-///   endpoint = "my_fn",
-///   input = Cbor,
-///   output = Json
-///   impl_from = true
-/// )]
-/// pub async fn my_wacky_server_fn(input: Vec<String>) -> Result<usize, ServerFnError> {
-///   todo!()
-/// }
-/// ```
-///
-/// ## Server Function Encodings
-///
-/// Server functions are designed to allow a flexible combination of `input` and `output` encodings, the set
-/// of which can be found in the [`server_fn::codec`](../server_fn/codec/index.html) module.
-///
-/// The serialization/deserialization process for server functions consists of a series of steps,
-/// each of which is represented by a different trait:
-/// 1. [`IntoReq`](../server_fn/codec/trait.IntoReq.html): The client serializes the [`ServerFn`](../server_fn/trait.ServerFn.html) argument type into an HTTP request.
-/// 2. The [`Client`](../server_fn/client/trait.Client.html) sends the request to the server.
-/// 3. [`FromReq`](../server_fn/codec/trait.FromReq.html): The server deserializes the HTTP request back into the [`ServerFn`](../server_fn/client/trait.Client.html) type.
-/// 4. The server calls calls [`ServerFn::run_body`](../server_fn/trait.ServerFn.html#tymethod.run_body) on the data.
-/// 5. [`IntoRes`](../server_fn/codec/trait.IntoRes.html): The server serializes the [`ServerFn::Output`](../server_fn/trait.ServerFn.html#associatedtype.Output) type into an HTTP response.
-/// 6. The server integration applies any middleware from [`ServerFn::middleware`](../server_fn/middleware/index.html) and responds to the request.
-/// 7. [`FromRes`](../server_fn/codec/trait.FromRes.html): The client deserializes the response back into the [`ServerFn::Output`](../server_fn/trait.ServerFn.html#associatedtype.Output) type.
-///
-/// Whatever encoding is provided to `input` should implement `IntoReq` and `FromReq`. Whatever encoding is provided
-/// to `output` should implement `IntoRes` and `FromRes`.
-///
-/// ## Default Values for Parameters
-///
-/// Individual function parameters can be annotated with `#[server(default)]`, which will pass
-/// through `#[serde(default)]`. This is useful for the empty values of arguments with some
-/// encodings. The URL encoding, for example, omits a field entirely if it is an empty `Vec<_>`,
-/// but this causes a deserialization error: the correct solution is to add `#[server(default)]`.
-/// ```rust,ignore
-/// pub async fn with_default_value(#[server(default)] values: Vec<u32>) /* etc. */
-/// ```
-///
-/// ## Important Notes
-/// - **Server functions must be `async`.** Even if the work being done inside the function body
-///   can run synchronously on the server, from the client’s perspective it involves an asynchronous
-///   function call.
-/// - **Server functions must return `Result<T, ServerFnError>`.** Even if the work being done
-///   inside the function body can’t fail, the processes of serialization/deserialization and the
-///   network call are fallible.
-///     - [`ServerFnError`](../server_fn/error/enum.ServerFnError.html) can be generic over some custom error type. If so, that type should implement
-///       [`FromStr`](std::str::FromStr) and [`Display`](std::fmt::Display), but does not need to implement [`Error`](std::error::Error). This is so the value
-///       can be easily serialized and deserialized along with the result.
-/// - **Server functions are part of the public API of your application.** A server function is an
-///   ad hoc HTTP API endpoint, not a magic formula. Any server function can be accessed by any HTTP
-///   client. You should take care to sanitize any data being returned from the function to ensure it
-///   does not leak data that should exist only on the server.
-/// - **Server functions can’t be generic.** Because each server function creates a separate API endpoint,
-///   it is difficult to monomorphize. As a result, server functions cannot be generic (for now?) If you need to use
-///   a generic function, you can define a generic inner function called by multiple concrete server functions.
-/// - **Arguments and return types must be serializable.** We support a variety of different encodings,
-///   but one way or another arguments need to be serialized to be sent to the server and deserialized
-///   on the server, and the return type must be serialized on the server and deserialized on the client.
-///   This means that the set of valid server function argument and return types is a subset of all
-///   possible Rust argument and return types. (i.e., server functions are strictly more limited than
-///   ordinary functions.)
-/// - **Context comes from the server.** Server functions are provided access to the HTTP request and other relevant
-///   server data via the server integrations, but they do *not* have access to reactive state that exists in the client.
-/// - Your server must be ready to handle the server functions at the API prefix you list. The easiest way to do this
-///   is to use the `handle_server_fns` function from [`leptos_actix`](https://docs.rs/leptos_actix/latest/leptos_actix/fn.handle_server_fns.html)
-///   or [`leptos_axum`](https://docs.rs/leptos_axum/latest/leptos_axum/fn.handle_server_fns.html).
-/// - **Server functions must have unique paths**. Unique paths are automatically generated for each
-///   server function. If you choose to specify a path in the fourth argument, you must ensure that these
-///   are unique. You cannot define two server functions with the same URL prefix and endpoint path,
-///   even if they have different URL encodings, e.g. a POST method at `/api/foo` and a GET method at `/api/foo`.
-#[proc_macro_attribute]
-#[proc_macro_error]
-pub fn server(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
-    match server_fn_macro::server_macro_impl(
-        args.into(),
-        s.into(),
-        Some(syn::parse_quote!(::leptos::server_fn)),
-        option_env!("SERVER_FN_PREFIX").unwrap_or("/api"),
-        None,
-        None,
-    ) {
-        Err(e) => e.to_compile_error().into(),
-        Ok(s) => s.to_token_stream().into(),
-    }
-}
 
 /// Derives a trait that parses a map of string keys and values into a typed
 /// data structure, e.g., for route params.
