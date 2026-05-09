@@ -138,7 +138,7 @@ pub mod prelude {
             button, hstack, label, stack_view, text_field, view, vstack,
         },
         node_ref::NodeRef,
-        FlexDirection, JustifyContent,
+        AlignItems, FlexDirection, JustifyContent,
     };
 
     // cocoa_dom helpers commonly used by examples (timers, persistent

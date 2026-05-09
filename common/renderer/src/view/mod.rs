@@ -10,11 +10,14 @@ use crate::renderer::Renderer;
 mod add_any_attr;
 mod either;
 mod iterators;
+mod keyed;
 mod option;
 mod primitives;
 mod result;
 mod strings;
 mod tuples;
+
+pub use keyed::{keyed, Keyed, KeyedState};
 
 pub use add_any_attr::{AddAnyAttr, ApplyAttr};
 

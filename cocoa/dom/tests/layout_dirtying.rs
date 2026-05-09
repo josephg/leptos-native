@@ -123,6 +123,112 @@ fn set_style_width_marks_node_dirty() {
     );
 }
 
+// ---------------------------------------------------------------------
+// Idempotency: re-attaching an already-attached child must not produce
+// a duplicate parent->child edge in the Taffy tree.
+//
+// REGRESSION: keyed `<For>` reorders re-call `attach_child` /
+// `insert_child_at` with the same node. Without dedup, every move
+// would duplicate the row in Taffy, blowing out the parent's flex
+// content size and shoving siblings off-screen.
+// ---------------------------------------------------------------------
+
+fn child_count(tree: &TreeRef, parent: &Element) -> usize {
+    let lh = parent
+        .as_node()
+        .layout_slot()
+        .borrow()
+        .handle
+        .clone()
+        .expect("element has no LayoutHandle");
+    tree.tree
+        .borrow()
+        .children(lh.node_id)
+        .map(|c| c.len())
+        .unwrap_or(0)
+}
+
+fn attach_child_is_idempotent() {
+    let _mtm = common::test_mtm();
+    let mtm = common::test_mtm();
+    let tree = fresh_tree();
+    let root = Element::create_with("vstack", mtm);
+    register_in_tree(root.as_node(), &tree);
+    let child = Element::create_with("button", mtm);
+
+    cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
+    assert_eq!(child_count(&tree, &root), 1);
+    cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
+    assert_eq!(
+        child_count(&tree, &root),
+        1,
+        "attach_child duplicated the parent->child edge"
+    );
+}
+
+fn insert_child_at_is_idempotent() {
+    let _mtm = common::test_mtm();
+    let mtm = common::test_mtm();
+    let tree = fresh_tree();
+    let root = Element::create_with("vstack", mtm);
+    register_in_tree(root.as_node(), &tree);
+    let a = Element::create_with("button", mtm);
+    let b = Element::create_with("button", mtm);
+
+    cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 0);
+    cocoa_dom::layout::insert_child_at(root.as_node(), b.as_node(), 1);
+    assert_eq!(child_count(&tree, &root), 2);
+
+    // Re-insert `a` at position 1 — should reorder, not duplicate.
+    cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 1);
+    assert_eq!(
+        child_count(&tree, &root),
+        2,
+        "insert_child_at duplicated the parent->child edge"
+    );
+
+    // Order should be [b, a] now.
+    let lh = root.as_node().layout_slot().borrow().handle.clone().unwrap();
+    let kids = tree.tree.borrow().children(lh.node_id).unwrap();
+    let a_id = a.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
+    let b_id = b.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
+    assert_eq!(kids, vec![b_id, a_id], "child order wrong after reorder");
+}
+
+/// Replays the operations a keyed-`<For>` move performs against the
+/// Taffy tree (the same calls a `Mountable::mount` cascade emits when
+/// re-mounting under the same parent at a new position): re-attach
+/// every child, plus an explicit `insert_child_at` for the relocated
+/// one. After the dust settles the tree must still have exactly the
+/// original three edges — not three edges per row.
+fn reorder_cascade_does_not_duplicate_edges() {
+    let _mtm = common::test_mtm();
+    let mtm = common::test_mtm();
+    let tree = fresh_tree();
+    let root = Element::create_with("vstack", mtm);
+    register_in_tree(root.as_node(), &tree);
+
+    let a = Element::create_with("button", mtm);
+    let b = Element::create_with("button", mtm);
+    let c = Element::create_with("button", mtm);
+    cocoa_dom::layout::attach_child(root.as_node(), a.as_node());
+    cocoa_dom::layout::attach_child(root.as_node(), b.as_node());
+    cocoa_dom::layout::attach_child(root.as_node(), c.as_node());
+    assert_eq!(child_count(&tree, &root), 3);
+
+    // Move `a` to position 2, then a remount cascade re-attaches the
+    // others to their existing parent.
+    cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 2);
+    cocoa_dom::layout::attach_child(root.as_node(), b.as_node());
+    cocoa_dom::layout::attach_child(root.as_node(), c.as_node());
+
+    assert_eq!(
+        child_count(&tree, &root),
+        3,
+        "reorder duplicated parent->child edges in Taffy"
+    );
+}
+
 fn main() {
     common::run_tests(&[
         ("baseline_compute_clears_dirty", baseline_compute_clears_dirty),
@@ -130,6 +236,12 @@ fn main() {
         ("detach_child_marks_parent_dirty", detach_child_marks_parent_dirty),
         ("set_text_marks_node_dirty", set_text_marks_node_dirty),
         ("set_style_width_marks_node_dirty", set_style_width_marks_node_dirty),
+        ("attach_child_is_idempotent", attach_child_is_idempotent),
+        ("insert_child_at_is_idempotent", insert_child_at_is_idempotent),
+        (
+            "reorder_cascade_does_not_duplicate_edges",
+            reorder_cascade_does_not_duplicate_edges,
+        ),
     ]);
 }
 

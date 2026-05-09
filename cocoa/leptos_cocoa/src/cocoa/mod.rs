@@ -28,4 +28,4 @@ pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums so users
 // don't have to import them from `cocoa_dom::layout` separately.
-pub use cocoa_dom::layout::{FlexDirection, JustifyContent};
+pub use cocoa_dom::layout::{AlignItems, FlexDirection, JustifyContent};

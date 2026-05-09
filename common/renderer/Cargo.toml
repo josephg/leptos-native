@@ -16,6 +16,8 @@ or_poisoned = { workspace = true }
 throw_error = { workspace = true }
 futures = { workspace = true, default-features = true }
 send_wrapper = { workspace = true, default-features = true }
+indexmap = { workspace = true, default-features = true }
+rustc-hash = { workspace = true, default-features = true }
 reactive_graph = { workspace = true, optional = true }
 
 [features]

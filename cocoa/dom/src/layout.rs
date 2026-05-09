@@ -295,11 +295,19 @@ pub fn attach_child(parent: &Node, child: &Node) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    let _ = parent_h
-        .tree
-        .tree
-        .borrow_mut()
-        .add_child(parent_h.node_id, child_id);
+    {
+        let mut tree = parent_h.tree.tree.borrow_mut();
+        // Idempotent: if `child` is already under this parent, detach
+        // the existing edge so add_child re-appends rather than
+        // duplicating. A keyed `<For>` move re-runs the children's
+        // mount cascade, which calls back through here.
+        let existing = tree.children(parent_h.node_id).unwrap_or_default();
+        if existing.iter().any(|c| *c == child_id) {
+            let _ = tree.remove_child(parent_h.node_id, child_id);
+        }
+        let _ = tree.add_child(parent_h.node_id, child_id);
+        let _ = tree.mark_dirty(parent_h.node_id);
+    }
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 
@@ -318,11 +326,19 @@ pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    let _ = parent_h
-        .tree
-        .tree
-        .borrow_mut()
-        .insert_child_at_index(parent_h.node_id, index, child_id);
+    {
+        let mut tree = parent_h.tree.tree.borrow_mut();
+        // If `child` is already under this parent (a keyed `<For>` move
+        // re-mounts the same node), detach the existing edge first.
+        // Otherwise Taffy ends up with two parent->child entries for the
+        // same node and layout becomes nonsense.
+        let existing = tree.children(parent_h.node_id).unwrap_or_default();
+        if existing.iter().any(|c| *c == child_id) {
+            let _ = tree.remove_child(parent_h.node_id, child_id);
+        }
+        let _ = tree.insert_child_at_index(parent_h.node_id, index, child_id);
+        let _ = tree.mark_dirty(parent_h.node_id);
+    }
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 

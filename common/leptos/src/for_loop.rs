@@ -1,36 +1,35 @@
-//! `<For>` — iterate over a collection and render each item.
+//! `<For>` — keyed iteration over a collection.
 //!
-//! Currently the **unkeyed** variant only. Upstream's `<For>` did
-//! keyed diffing via `tachys::view::keyed::keyed(...)` (959 lines of
-//! position-vs-key bookkeeping); a port to
-//! `common/renderer/src/view/keyed.rs` is on the punch list.
+//! When the input list reorders, each row's view state follows its
+//! key. Per-row signals continue reading from the right item; per-row
+//! `NodeRef`s and reactive owners stay attached. The `key` function
+//! must produce a value that's `Eq + Hash` and unique per row;
+//! duplicate keys silently coalesce into one rendered row.
 //!
-//! Unkeyed semantics: items diff by position. If your list reorders,
-//! every retained row gets `T::rebuild` called with whatever data
-//! ended up at its old position — which means signal-keyed children
-//! will re-read from the wrong row. Use stable positions only until
-//! keyed `<For>` lands.
-//!
-//! `key=` is accepted but currently ignored. The prop signature is
-//! kept stable so user code doesn't need editing once keyed lands.
+//! Implementation: delegates to [`renderer::view::keyed`], the
+//! `IndexSet`-backed diff ported from upstream `tachys`.
 
 use crate::into_view::IntoView;
 use leptos_macro::component;
 use reactive_graph::owner::Owner;
-use renderer::{reactive_graph::OwnedView, renderer::Renderer};
+use renderer::{
+    reactive_graph::OwnedView, renderer::Renderer, view::keyed,
+};
 use std::{hash::Hash, marker::PhantomData};
 
-/// Iterates over children and displays them.
+/// Iterates over children, keyed by `key`.
 ///
-/// Unkeyed (see module docs). The `key` function is accepted for
-/// forward-compatibility but not yet used.
+/// `each` must produce an iterator. `key` extracts a hashable key per
+/// item — when the list rebuilds (any signal `each` reads of changes),
+/// rows whose keys match between old and new lists keep their built
+/// state; new keys produce new rows; missing keys unmount their rows.
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
 #[component]
 pub fn For<IF, I, T, EF, N, KF, K, R>(
     /// Items to iterate over.
     each: IF,
-    /// A key function. Currently unused; reserved for keyed diffing.
-    #[allow(unused_variables)]
+    /// A key function applied to each item. Used to match rows
+    /// between rebuilds.
     key: KF,
     /// A function from item to view.
     children: EF,
@@ -48,16 +47,24 @@ where
     K: Eq + Hash + 'static,
     T: Send + 'static,
 {
+    // Each row gets its own reactive Owner under the For's own. When a
+    // row's key disappears between rebuilds, dropping the row's state
+    // drops its Owner — which fires that subtree's cleanup callbacks
+    // and unsubscribes its Effects.
     let parent = Owner::current().expect("no reactive owner");
-    let _ = key; // suppress unused; reserved for keyed diff
+
     move || {
-        each()
-            .into_iter()
-            .map(|item| {
+        let key_fn = key.clone();
+        let children_fn = children.clone();
+        let parent = parent.clone();
+        keyed(
+            each(),
+            move |item: &T| key_fn(item),
+            move |_idx, item| {
                 let owner = parent.with(Owner::new);
-                let view = owner.with(|| children(item));
+                let view = owner.with(|| children_fn(item));
                 OwnedView::new_with_owner(view, owner)
-            })
-            .collect::<Vec<_>>()
+            },
+        )
     }
 }
