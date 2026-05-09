@@ -1,6 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
+# Parse args. `-t SECONDS` (or `--timeout SECONDS`) auto-terminates
+# the app after the given number of seconds — useful for non-
+# interactive runs (e.g. an agent verifying the app launches
+# without hanging on the simulator). Without -t, the script
+# launches and detaches; the app keeps running until you close
+# it manually.
+TIMEOUT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -t|--timeout) TIMEOUT="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: $0 [-t SECONDS]"
+            echo "  -t, --timeout SECONDS   auto-terminate the app after SECONDS"
+            exit 0
+            ;;
+        *) echo "Unknown arg: $1" >&2; exit 1 ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/todomvc"
 BUNDLE_DIR="$SCRIPT_DIR/target/TodoMVC.app"
@@ -107,7 +126,18 @@ open -a Simulator
 
 # 6. Launch
 echo "==> Launching app..."
-xcrun simctl launch --console "$DEVICE_ID" "$BUNDLE_ID" || xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+if [ -n "$TIMEOUT" ]; then
+    # Background launch (no --console — that streams output and
+    # blocks the script). Then sleep + terminate.
+    xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+    echo "==> Auto-terminating in ${TIMEOUT}s..."
+    sleep "$TIMEOUT"
+    xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID" 2>/dev/null || true
+    echo "==> Terminated."
+    exit 0
+else
+    xcrun simctl launch --console "$DEVICE_ID" "$BUNDLE_ID" || xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+fi
 
 echo "==> App launched. If it crashed, check logs with:"
 echo "    xcrun simctl spawn $DEVICE_ID log stream --predicate 'process contains \"Counter\"'"

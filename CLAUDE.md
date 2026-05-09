@@ -124,16 +124,26 @@ simulator, hand-rolls a `.app` bundle, terminates any prior instance,
 then `xcrun simctl install`s + launches. No Xcode project required.
 
 ```sh
-# Run an example end-to-end on the booted simulator:
-cd examples_ios/counter && ./run_ios.sh
-cd examples_ios/greeter && ./run_ios.sh
-cd examples_ios/switch_demo && ./run_ios.sh
-cd examples_ios/controls && ./run_ios.sh
+# Interactive: launches the app, leaves it running for the user to
+# poke at. Without `-t`, the script blocks streaming app stdout via
+# `xcrun simctl launch --console`; you have to Cmd-Q the simulator
+# app or kill the process to get your terminal back.
+cd uikit/examples/counter && ./run_ios.sh
+cd uikit/examples/greeter && ./run_ios.sh
+cd uikit/examples/switch_demo && ./run_ios.sh
+cd uikit/examples/controls && ./run_ios.sh
+
+# Non-interactive (USE THIS FROM AGENTS / CI / ANY AUTOMATED FLOW):
+# `-t SECONDS` auto-terminates the app after the given timeout.
+# Without it the script hangs indefinitely streaming console output
+# from a running iOS app — agents in particular WILL stall waiting
+# for the script to return. ~3s is plenty to verify the app launched
+# and didn't immediately crash.
+cd uikit/examples/counter && ./run_ios.sh -t 3
 
 # Just typecheck the iOS-target build:
 cargo check -p ios_dom --target aarch64-apple-ios-sim
-cargo check -p tachys --features native-ui --target aarch64-apple-ios-sim
-cargo check -p leptos --features native-ui --target aarch64-apple-ios-sim
+cargo check -p leptos_uikit --target aarch64-apple-ios-sim
 ```
 
 Prereqs: Xcode + the iOS Rust targets (`rustup target add
