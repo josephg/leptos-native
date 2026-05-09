@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[[bin]]
-name = "greeter"
-path = "src/main.rs"
-
 [dependencies]
 leptos = { package = "leptos_gtk", path = "../../leptos_gtk" }
 

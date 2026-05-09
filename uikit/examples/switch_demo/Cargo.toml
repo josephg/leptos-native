@@ -1,12 +1,8 @@
 [package]
-name = "switch_demo"
+name = "switch_demo_ios"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "switch_demo"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }

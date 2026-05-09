@@ -4,11 +4,5 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[[bin]]
-# Bundle name stays "counter" so the run_ios.sh script's
-# `target/aarch64-apple-ios-sim/debug/counter` path keeps working.
-name = "counter"
-path = "src/main.rs"
-
 [dependencies]
 leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }

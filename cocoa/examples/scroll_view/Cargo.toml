@@ -1,12 +1,8 @@
 [package]
-name = "scroll_view_macos"
+name = "scroll_view_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "scroll_view"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }

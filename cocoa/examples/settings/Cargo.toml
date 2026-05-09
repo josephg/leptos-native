@@ -1,12 +1,8 @@
 [package]
-name = "settings"
+name = "settings_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "settings"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }

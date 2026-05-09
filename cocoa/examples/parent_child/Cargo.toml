@@ -1,12 +1,8 @@
 [package]
-name = "parent_child"
+name = "parent_child_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "parent_child"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
