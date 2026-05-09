@@ -1,6 +1,6 @@
 //! Tests for `Text` and `Placeholder` constructors + setters.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

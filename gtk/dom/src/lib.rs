@@ -23,7 +23,7 @@
 //! `Node` nominally `Send + 'static`, with a runtime panic if
 //! accessed off-main.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 pub mod app;
 pub mod event;

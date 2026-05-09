@@ -1,7 +1,7 @@
 //! Bind-cycle protection regression tests. Mirrors
 //! `leptos_cocoa/tests/bind_cycle.rs`.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

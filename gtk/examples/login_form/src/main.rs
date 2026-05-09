@@ -4,7 +4,6 @@
 //! Exercises: `<text_field>`, `<secure_text_field>`, `<checkbox>`,
 //! `bind:value`, `bind:checked`, `Memo`, `enabled=closure`.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -64,8 +63,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

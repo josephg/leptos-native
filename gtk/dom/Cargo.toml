@@ -7,19 +7,26 @@ description = "DOM-shaped façade over GTK4, used by tachys/leptos to render nat
 rust-version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+# Build the GTK backend. Auto-required by `leptos_gtk/gtk`. On Linux
+# the system gtk4 is usually packaged (e.g. `libgtk-4-dev` on Debian);
+# on macOS install via `brew install gtk4` to test cross-platform.
+# Without this feature, the crate compiles to empty so its presence
+# in the workspace doesn't force gtk4 onto every build.
+gtk = ["dep:gtk4", "dep:glib", "dep:gio", "dep:any_spawner", "dep:taffy"]
+
 [dependencies]
 renderer = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
+gtk4 = { workspace = true, default-features = true, optional = true }
+glib = { workspace = true, default-features = true, optional = true }
+gio = { workspace = true, default-features = true, optional = true }
+any_spawner = { workspace = true, features = ["glib"], optional = true }
+taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"], optional = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-gtk4 = { workspace = true, default-features = true }
-glib = { workspace = true, default-features = true }
-gio = { workspace = true, default-features = true }
-any_spawner = { workspace = true, features = ["glib"] }
-taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

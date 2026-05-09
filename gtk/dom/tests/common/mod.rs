@@ -7,7 +7,7 @@
 //! test, so we use `harness = false` and run all tests sequentially
 //! on the main thread (the binary's `fn main()`).
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 #![allow(dead_code)] // helpers used by some test files but not all
 
 /// Initialise GTK once for the test binary's lifetime. Idempotent —

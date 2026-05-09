@@ -3,7 +3,7 @@
 //! GTK4 widget class; tag names are snake_case (`view` → flexbox
 //! container, `button` → `gtk::Button`, etc.).
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 #![allow(missing_docs)]
 
 pub mod attr;

@@ -3,7 +3,6 @@
 //! signals and a slider whose `enabled=` is gated by the mute
 //! checkbox.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -62,8 +61,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

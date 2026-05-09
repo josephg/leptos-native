@@ -87,18 +87,12 @@ default-members = [
   "cocoa/examples/timer",
   "cocoa/examples/two_windows",
 
-  # GTK examples — workspace members on Linux. Cargo's
-  # target-conditional members aren't supported, so these are also
-  # listed when running on macOS/iOS. Each example's `main.rs` wraps
-  # its real code in `#[cfg(target_os = "linux")] mod app { ... }` and
-  # provides a stub `fn main()` for non-Linux, so they build to empty
-  # binaries on macOS/iOS.
-  "gtk/examples/checkbox",
-  "gtk/examples/counter",
-  "gtk/examples/counters",
-  "gtk/examples/greeter",
-  "gtk/examples/login_form",
-  "gtk/examples/settings",
+  # GTK examples — listed in `members` above so `cargo build --workspace`
+  # discovers them, but kept OUT of `default-members` because they
+  # activate the `leptos_gtk/gtk` feature in their `Cargo.toml` and
+  # therefore require gtk4 at link time. To run a GTK example on
+  # macOS, install gtk4 via Homebrew (`brew install gtk4`) and use
+  # `cargo run -p counter_gtk` (or any other `*_gtk` target).
 ]
 exclude = [
   "benchmarks",

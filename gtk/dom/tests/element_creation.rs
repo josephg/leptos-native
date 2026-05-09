@@ -2,7 +2,7 @@
 //!
 //! Verifies each tag string maps to a GTK widget class.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

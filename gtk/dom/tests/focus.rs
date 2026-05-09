@@ -3,7 +3,7 @@
 //! These need a `gtk::Window` to exercise — focus is a window-level
 //! concept; an unmounted widget reports `false` for `grab_focus`.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

@@ -1,7 +1,7 @@
 //! Tree-mutation tests for `Element`: `insert_node`, `remove_child`,
 //! `clear_children`, and node identity (`ptr_eq`, into_node round-trips).
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

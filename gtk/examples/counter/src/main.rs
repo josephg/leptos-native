@@ -1,7 +1,6 @@
 //! Counter — using `leptos::prelude::*`, the `view!{}` macro, and
 //! `#[component]` against the Linux/GTK backend.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -31,8 +30,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

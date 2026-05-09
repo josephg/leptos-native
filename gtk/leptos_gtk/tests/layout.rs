@@ -6,7 +6,7 @@
 //! `gtk_dom::layout::compute_layout` and assert the per-element
 //! Taffy-computed sizes.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

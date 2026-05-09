@@ -2,7 +2,7 @@
 //!
 //! Mirrors `leptos_cocoa::tests::components`.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

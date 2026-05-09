@@ -5,7 +5,7 @@
 //! checks that GTK was initialised on the calling thread. Threads
 //! other than the one that called `gtk::init` panic.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

@@ -5,7 +5,6 @@
 //! children — it exercises the `mount_before` / `try_mount_before`
 //! code paths in tachys::renderer::gtk.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -68,8 +67,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

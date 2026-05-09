@@ -8,7 +8,6 @@
 //!   most recently committed value (return key). This verifies all
 //!   three coexist on the same entry.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -63,8 +62,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}
