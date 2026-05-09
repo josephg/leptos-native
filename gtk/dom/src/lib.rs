@@ -1,32 +1,42 @@
-//! DOM-shaped façade over GTK4, used by tachys/leptos to render native
+//! DOM-shaped façade over GTK4, used by leptos_gtk to render native
 //! Linux UIs.
 //!
-//! See `cocoa_dom` (the macOS sibling) for the architectural pattern
-//! this crate mirrors. Like cocoa_dom, gtk_dom presents [`Node`],
-//! [`Element`], [`Text`], and [`Placeholder`] types loosely modelled
-//! on `web_sys` equivalents, but backed by [`gtk::Widget`] and its
-//! subclasses ([`gtk::Button`], [`gtk::Entry`], ...).
+//! Mirrors `cocoa_dom` (the macOS sibling) in shape, with two main
+//! deltas:
 //!
-//! Higher layers (`tachys`, `leptos`) target this façade rather than
-//! `web_sys` when building for Linux.
+//!  - GTK signal-handler closures are owned by the widget itself, so
+//!    there's no thread-local handler-store ([`event`] is a thin
+//!    routing layer instead of cocoa's `HANDLER_STORE`).
+//!  - Layout is computed by Taffy through a custom
+//!    [`TaffyLayout`](taffy_layout::TaffyLayout) `gtk::LayoutManager`
+//!    rather than our own hand-driven `compute_layout` dispatch —
+//!    GTK's measure/allocate cycle calls into our layout manager
+//!    every time something queues a resize.
+//!
+//! `leptos_gtk::Dom` is the [`renderer::Renderer`] impl that drives
+//! this façade from a Render tree.
 //!
 //! # Threading
 //!
 //! All public APIs in this crate must be called on the GTK main
-//! thread. `gtk::Widget` is `!Send` natively; we wrap it in
-//! `SendWrapper` so `Node` is nominally `Send + 'static`, with a
-//! runtime panic if accessed off-main. This mirrors the single-
-//! threaded model `web_sys` uses in the browser.
+//! thread. `gtk::Widget` is `!Send` natively; `SendWrapper` makes
+//! `Node` nominally `Send + 'static`, with a runtime panic if
+//! accessed off-main.
 
 #![cfg(target_os = "linux")]
 
 pub mod app;
+pub mod event;
+pub mod layout;
 pub mod node;
 pub mod renderer;
 pub mod spawner;
+pub mod taffy_layout;
 pub mod window;
 
-pub use node::{Element, Node, NodeKind, Placeholder, Text};
+pub use node::{
+    BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
+};
 pub use renderer::{
     ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,
 };

@@ -1,9 +1,9 @@
-//! Macro-facing facade for `tachys::svg` on Linux/GTK.
+//! Macro-facing facade for `tachys::svg` on Linux.
 //!
-//! The `view!{}` macro routes the `<view>` element tag through
-//! `tachys::svg::view` (because `view` is a real SVG element). On
-//! GTK native we re-route it back to our box container — same
-//! pattern as `tachys::svg_macos.rs`.
+//! The `view!{}` macro routes the `<view>` tag through
+//! `tachys::svg::view` (because `view` is a real SVG tag). On GTK
+//! that resolves to the gtk container builder.
 
-// Re-export the GTK `view()` function at the path the macro expects.
+#![allow(missing_docs)]
+
 pub use crate::gtk::element::view;

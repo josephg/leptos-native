@@ -1,32 +1,32 @@
-//! Window-level helpers: opening a `GtkApplicationWindow` and
-//! returning a content root that's ready for child mounting.
+//! Window-level helpers: opening a `GtkApplicationWindow` whose
+//! content area runs through our [`TaffyLayout`].
 //!
-//! Used by `tachys::gtk::window::Window` (which builds the actual
-//! `Render`/`Mountable` orchestration); kept in `gtk_dom` so all
-//! the GTK-specifics stay in one crate.
+//! Mirrors `cocoa_dom::window` — the higher-level
+//! `leptos_gtk::Window` builds the `Render`/`Mountable` orchestration
+//! against this and is responsible for mounting children before
+//! calling [`OpenedWindow::show`].
 
-use crate::node::Element;
+use crate::layout::{self, FlexDirection, TreeRef};
+use crate::node::{install_taffy_layout_for_container, Element};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
-/// `GtkApplicationWindow` itself and an [`Element`] (a `gtk::Box`
-/// installed as the window's child) that the caller mounts content
-/// into.
-///
-/// The window is *not* presented — call [`OpenedWindow::show`] after
-/// mounting children so children get their initial layout pass
-/// before the window first appears.
+/// `GtkApplicationWindow` itself, the content-root [`Element`] (its
+/// child), and the new Taffy tree the content root was registered as
+/// root of.
 pub struct OpenedWindow {
     pub gtk_window: gtk4::ApplicationWindow,
     pub content_root: Element,
+    pub tree: TreeRef,
 }
 
 /// Open a `GtkApplicationWindow` with the given title and content
-/// size. Installs a vertical `gtk::Box` as the window's child and
-/// returns it as `content_root` for child mounting.
+/// size. Installs a generic container as the window's child, sets up
+/// a Taffy tree rooted at it, and attaches a [`TaffyLayout`] so GTK
+/// will run our layout code on every measure/allocate cycle.
 ///
-/// Does *not* call `present()` — that happens via [`OpenedWindow::show`]
-/// after the caller has mounted content.
+/// Does *not* call `present()` — that happens via
+/// [`OpenedWindow::show`] after the caller mounts content.
 pub fn open_window(
     app: &gtk4::Application,
     title: &str,
@@ -39,15 +39,39 @@ pub fn open_window(
         .default_height(size.1)
         .build();
 
-    // Content root: a vertical box. Mirrors cocoa_dom's choice of a
-    // FlippedView with `flex_direction: Column` — children stack top
-    // to bottom and fill the window's width.
+    // Content root: a generic container element with column flex
+    // direction (matches AppKit's content_root default — children
+    // stack top-to-bottom and cross-axis stretch fills the window's
+    // width).
     let content_root = Element::create("vstack");
+    layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
+
+    // Register in a fresh tree, then install our TaffyLayout as its
+    // layout manager (marked `is_root=true` so its `allocate` runs
+    // `compute_layout`).
+    let tree = layout::new_tree();
+    layout::register_in_tree(content_root.as_node(), &tree);
+    let root_id = content_root
+        .as_node()
+        .layout_slot()
+        .borrow()
+        .handle
+        .as_ref()
+        .expect("just registered")
+        .node_id;
+    install_taffy_layout_for_container(
+        content_root.widget(),
+        &tree,
+        root_id,
+        /* is_root */ true,
+    );
+
     gtk_window.set_child(Some(content_root.widget()));
 
     OpenedWindow {
         gtk_window,
         content_root,
+        tree,
     }
 }
 

@@ -1,28 +1,75 @@
 //! Element builder types: `view()`, `button()`, `label()`, etc.
 //!
-//! Each builder returns a struct that implements [`Render`] from
-//! tachys' view core. Building emits a [`gtk_dom::Element`] (or
-//! similar leaf), wires attributes (with reactive effects for
-//! signal-driven values), recursively builds children, and mounts
-//! them.
+//! Mirrors `leptos_cocoa::cocoa::element` for the controls that
+//! exist on both ports. AppKit-only knobs (NSDatePicker style,
+//! NSSegmentStyle, NSColorWell, etc.) are absent here; users that
+//! need them on GTK can extend the builders.
 
-use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::view::{Mountable, Render};
-use gtk_dom::gtk::prelude::*;
-use gtk_dom::{Element as GtkElement, Text as GtkText};
+use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
+use super::node_ref::NodeRef;
+use crate::Dom;
+use gtk_dom::{
+    layout::{
+        schedule_relayout, set_align_items, set_flex_basis, set_flex_direction,
+        set_flex_grow, set_flex_shrink, set_flex_wrap, set_gap,
+        set_justify_content, set_padding, update_style, AlignItems,
+        FlexDirection, FlexWrap, JustifyContent,
+    },
+    BoolAttr, Element as GtkElement, StringAttr,
+};
 use reactive_graph::effect::RenderEffect;
+use renderer::view::{Mountable, Render};
+
+/// Universal attrs (alpha, tool_tip) — Stack/Block helper.
+fn apply_universal(
+    _el: &GtkElement,
+    _alpha: Option<MaybeReactive<f64>>,
+    _tool_tip: Option<MaybeReactive<String>>,
+) -> Vec<RenderEffect<()>> {
+    // GTK's equivalent of NSView's alphaValue is `set_opacity`. We
+    // currently only support static values; reactive opacity needs
+    // its own install hook on gtk_dom::Element. Stub for now —
+    // matches cocoa's surface so callers compile.
+    Vec::new()
+}
+
+/// Inherent-method block for universal attrs (`alpha`, `tool_tip`).
+macro_rules! impl_universal_attrs {
+    ($builder:ident) => {
+        impl $builder {
+            pub fn alpha<V>(mut self, a: V) -> Self
+            where
+                V: IntoMaybeReactive<f64>,
+            {
+                self.alpha = Some(a.into_maybe_reactive());
+                self
+            }
+            pub fn tool_tip<V>(mut self, s: V) -> Self
+            where
+                V: IntoMaybeReactive<String>,
+            {
+                self.tool_tip = Some(s.into_maybe_reactive());
+                self
+            }
+        }
+    };
+}
 
 // ---------------------------------------------------------------------
 // Generic State machinery
 // ---------------------------------------------------------------------
 
-pub struct ElementState<ChildState> {
-    el: GtkElement,
-    _effects: Vec<RenderEffect<()>>,
-    children: ChildState,
+/// State retained for an element instance between build and rebuild.
+pub struct ElementState<AttrState, ChildState> {
+    pub el: GtkElement,
+    pub(crate) _effects: Vec<RenderEffect<()>>,
+    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
+    pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
+impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
+    for ElementState<AttrState, ChildState>
+{
     fn unmount(&mut self) {
         self.children.unmount();
         self.el.as_node().teardown();
@@ -33,11 +80,31 @@ impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
         parent: &GtkElement,
         marker: Option<&gtk_dom::Node>,
     ) {
+        // Insert self.el under parent. If parent has a Taffy tree
+        // handle, this also registers self.el (and recursively, on
+        // the next mount, our children) into the tree.
         parent.insert_node(self.el.as_node(), marker);
+
+        // If this element is a container, install our TaffyLayout
+        // now that it's registered.
+        let node = self.el.as_node();
+        let handle = node.layout_slot().borrow().handle.clone();
+        if let Some(h) = handle {
+            if gtk_dom::node::is_container_widget(self.el.widget()) {
+                gtk_dom::node::install_taffy_layout_for_container(
+                    self.el.widget(),
+                    &h.tree,
+                    h.node_id,
+                    /* is_root */ false,
+                );
+            }
+        }
+
+        // Cascade — mount children under self.el.
         self.children.mount(&self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -47,125 +114,423 @@ impl<ChildState: Mountable> Mountable for ElementState<ChildState> {
 }
 
 // ---------------------------------------------------------------------
-// view() — generic vertical box container
+// stack() — Taffy flexbox container
 // ---------------------------------------------------------------------
 
-pub struct View<Children> {
-    /// Tag passed to `GtkElement::create` at build time.
-    /// `"vstack"` / `"hstack"` / `"view"` — controls the Box
-    /// orientation.
-    tag: &'static str,
-    padding: Option<f32>,
-    gap: Option<f32>,
-    flex_grow: Option<f32>,
+#[allow(clippy::too_many_arguments)]
+fn apply_flex_item_attrs(
+    el: &GtkElement,
+    grow: Option<MaybeReactive<f32>>,
+    shrink: Option<MaybeReactive<f32>>,
+    basis: Option<MaybeReactive<f32>>,
+    width: Option<MaybeReactive<Dim>>,
+    min_width: Option<MaybeReactive<Dim>>,
+    max_width: Option<MaybeReactive<Dim>>,
+    height: Option<MaybeReactive<Dim>>,
+    min_height: Option<MaybeReactive<Dim>>,
+    max_height: Option<MaybeReactive<Dim>>,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(v) = grow {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = shrink {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |s| set_flex_shrink(e.as_node(), s))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = basis {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |b| set_flex_basis(e.as_node(), b))
+        {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = min_width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = max_width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.width = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = min_height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = max_height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.height = d.to_dimension());
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    out
+}
+
+pub struct Stack<Children> {
+    direction: Option<MaybeReactive<FlexDirection>>,
+    gap: Option<MaybeReactive<f32>>,
+    padding: Option<MaybeReactive<f32>>,
+    justify_content: Option<MaybeReactive<JustifyContent>>,
+    align: Option<MaybeReactive<AlignItems>>,
+    wrap: Option<MaybeReactive<FlexWrap>>,
+    grow: Option<MaybeReactive<f32>>,
+    shrink: Option<MaybeReactive<f32>>,
+    basis: Option<MaybeReactive<f32>>,
+    width: Option<MaybeReactive<Dim>>,
+    min_width: Option<MaybeReactive<Dim>>,
+    max_width: Option<MaybeReactive<Dim>>,
+    height: Option<MaybeReactive<Dim>>,
+    min_height: Option<MaybeReactive<Dim>>,
+    max_height: Option<MaybeReactive<Dim>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
     children: Children,
 }
 
-pub fn view() -> View<()> {
-    View {
-        tag: "view",
-        padding: None,
+fn empty_stack() -> Stack<()> {
+    Stack {
+        direction: None,
         gap: None,
-        flex_grow: None,
+        padding: None,
+        justify_content: None,
+        align: None,
+        wrap: None,
+        grow: None,
+        shrink: None,
+        basis: None,
+        width: None,
+        min_width: None,
+        max_width: None,
+        height: None,
+        min_height: None,
+        max_height: None,
+        alpha: None,
+        tool_tip: None,
         children: (),
     }
 }
 
-impl<Ch> View<Ch> {
-    pub fn padding(mut self, p: f32) -> Self {
-        self.padding = Some(p);
+pub fn stack() -> Stack<()> {
+    empty_stack()
+}
+
+pub fn vstack() -> Stack<()> {
+    Stack {
+        direction: Some(MaybeReactive::Static(FlexDirection::Column)),
+        ..empty_stack()
+    }
+}
+
+pub fn hstack() -> Stack<()> {
+    Stack {
+        direction: Some(MaybeReactive::Static(FlexDirection::Row)),
+        ..empty_stack()
+    }
+}
+
+pub fn stack_view() -> Stack<()> {
+    vstack()
+}
+
+pub fn view() -> Stack<()> {
+    empty_stack()
+}
+
+impl<Ch> Stack<Ch> {
+    pub fn direction<V>(mut self, d: V) -> Self
+    where
+        V: IntoMaybeReactive<FlexDirection>,
+    {
+        self.direction = Some(d.into_maybe_reactive());
         self
     }
 
-    pub fn gap(mut self, g: f32) -> Self {
-        self.gap = Some(g);
+    pub fn padding<V>(mut self, p: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.padding = Some(p.into_maybe_reactive());
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn gap<V>(mut self, g: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.gap = Some(g.into_maybe_reactive());
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh)> {
-        View {
-            tag: self.tag,
-            padding: self.padding,
+    pub fn justify_content<V>(mut self, j: V) -> Self
+    where
+        V: IntoMaybeReactive<JustifyContent>,
+    {
+        self.justify_content = Some(j.into_maybe_reactive());
+        self
+    }
+
+    pub fn align<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<AlignItems>,
+    {
+        self.align = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn wrap<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<FlexWrap>,
+    {
+        self.wrap = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn grow<V>(mut self, g: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.grow = Some(g.into_maybe_reactive());
+        self
+    }
+
+    pub fn shrink<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.shrink = Some(s.into_maybe_reactive());
+        self
+    }
+
+    pub fn basis<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.basis = Some(b.into_maybe_reactive());
+        self
+    }
+
+    pub fn width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn min_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.min_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn max_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.max_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    pub fn height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    pub fn min_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.min_height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    pub fn max_height<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<Dim>,
+    {
+        self.max_height = Some(h.into_maybe_reactive());
+        self
+    }
+
+    pub fn alpha<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.alpha = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn tool_tip<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.tool_tip = Some(s.into_maybe_reactive());
+        self
+    }
+
+    pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh)> {
+        Stack {
+            direction: self.direction,
             gap: self.gap,
-            flex_grow: self.flex_grow,
+            padding: self.padding,
+            justify_content: self.justify_content,
+            align: self.align,
+            wrap: self.wrap,
+            grow: self.grow,
+            shrink: self.shrink,
+            basis: self.basis,
+            width: self.width,
+            min_width: self.min_width,
+            max_width: self.max_width,
+            height: self.height,
+            min_height: self.min_height,
+            max_height: self.max_height,
+            alpha: self.alpha,
+            tool_tip: self.tool_tip,
             children: (self.children, child),
         }
     }
 }
 
-impl<Ch> Render for View<Ch>
+impl<Ch> Render<Dom> for Stack<Ch>
 where
-    Ch: Render,
+    Ch: Render<Dom>,
 {
-    type State = ElementState<Ch::State>;
+    type State = ElementState<(), Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = GtkElement::create(self.tag);
-        let widget = el.widget();
+        let el = GtkElement::create("stack");
+        let mut effects = Vec::new();
 
-        if let Some(box_) = widget.downcast_ref::<gtk_dom::gtk::Box>() {
-            if let Some(p) = self.padding {
-                let px = p as i32;
-                box_.set_margin_top(px);
-                box_.set_margin_bottom(px);
-                box_.set_margin_start(px);
-                box_.set_margin_end(px);
-            }
-            if let Some(g) = self.gap {
-                box_.set_spacing(g as i32);
+        let direction = self
+            .direction
+            .unwrap_or(MaybeReactive::Static(FlexDirection::Column));
+        {
+            let e = el.clone();
+            if let Some(eff) = install(direction, move |d| {
+                set_flex_direction(e.as_node(), d)
+            }) {
+                effects.push(eff);
             }
         }
-        // flex_grow on GTK: map truthiness to hexpand/vexpand (binary,
-        // not weighted). The builder API accepts f32 for cocoa parity.
-        if let Some(g) = self.flex_grow {
-            if g > 0.0 {
-                widget.set_hexpand(true);
-                widget.set_vexpand(true);
+        if let Some(v) = self.padding {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p))
+            {
+                effects.push(eff);
             }
         }
+        if let Some(v) = self.gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_content(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_items(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.wrap {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |w| set_flex_wrap(e.as_node(), w))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_flex_item_attrs(
+            &el,
+            self.grow,
+            self.shrink,
+            self.basis,
+            self.width,
+            self.min_width,
+            self.max_width,
+            self.height,
+            self.min_height,
+            self.max_height,
+        ));
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
+        // Build children but DON'T mount them yet — same cascade
+        // pattern as the cocoa port. Mounting is deferred until
+        // ElementState::mount runs (when self.el has joined a tree).
         let child_state = self.children.build();
 
         ElementState {
             el,
-            _effects: Vec::new(),
+            _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
 
     fn rebuild(self, _state: &mut Self::State) {}
-}
-
-/// Vertical stack — `gtk::Box::new(Vertical, 0)`.
-pub fn vstack() -> View<()> {
-    View {
-        tag: "vstack",
-        padding: None,
-        gap: None,
-        flex_grow: None,
-        children: (),
-    }
-}
-
-/// Horizontal stack — `gtk::Box::new(Horizontal, 0)`.
-pub fn hstack() -> View<()> {
-    View {
-        tag: "hstack",
-        padding: None,
-        gap: None,
-        flex_grow: None,
-        children: (),
-    }
-}
-
-/// Alias for `vstack()`.
-pub fn stack_view() -> View<()> {
-    vstack()
 }
 
 // ---------------------------------------------------------------------
@@ -175,8 +540,12 @@ pub fn stack_view() -> View<()> {
 pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
-    handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    grow: Option<f32>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 pub fn button() -> Button {
@@ -184,7 +553,11 @@ pub fn button() -> Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -206,15 +579,30 @@ impl Button {
     }
 
     pub fn on_click(mut self, mut cb: impl FnMut() + Send + 'static) -> Self {
-        self.handlers
-            .push(crate::html::event::PendingHandler::Click(Box::new(
-                move || cb(),
-            )));
+        self.handlers.push(
+            crate::event_gtk::PendingHandler::Click(Box::new(move || cb())),
+        );
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::directive::IntoDirective<GtkElement, T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(super::directives::pack(handler, param));
+        self
+    }
+
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -225,19 +613,10 @@ impl Button {
         self.title(value)
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
-        self
-    }
-
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
@@ -245,13 +624,15 @@ impl Button {
     }
 }
 
-impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::ClickEvent>
     for Button
 {
 }
 
-impl Render for Button {
-    type State = ElementState<()>;
+impl_universal_attrs!(Button);
+
+impl Render<Dom> for Button {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = GtkElement::create("button");
@@ -259,7 +640,7 @@ impl Render for Button {
 
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_attribute("title", &t);
+            el_for_title.set_string_attribute(StringAttr::Title, &t);
         }) {
             effects.push(eff);
         }
@@ -267,7 +648,7 @@ impl Render for Button {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -277,16 +658,22 @@ impl Render for Button {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
-            if g > 0.0 {
-                el.widget().set_hexpand(true);
-                el.widget().set_vexpand(true);
-            }
+        if let Some(g) = self.grow {
+            set_flex_grow(el.as_node(), g);
         }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
 
         ElementState {
             el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -302,7 +689,11 @@ pub struct Checkbox {
     title: MaybeReactive<String>,
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<super::bind::BoundChecked>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 pub fn checkbox() -> Checkbox {
@@ -311,6 +702,10 @@ pub fn checkbox() -> Checkbox {
         checked: MaybeReactive::Static(false),
         pending_bind_checked: None,
         handlers: Vec::new(),
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -347,31 +742,40 @@ impl Checkbox {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::directive::IntoDirective<GtkElement, T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(super::directives::pack(handler, param));
         self
     }
 }
 
-impl crate::html::event::SupportsEvent<crate::html::event::ClickEvent>
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::ClickEvent>
     for Checkbox
 {
 }
 
-impl Render for Checkbox {
-    type State = ElementState<()>;
+impl_universal_attrs!(Checkbox);
+
+impl Render<Dom> for Checkbox {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = GtkElement::create("checkbox");
@@ -379,14 +783,14 @@ impl Render for Checkbox {
 
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_attribute("title", &t);
+            el_for_title.set_string_attribute(StringAttr::Title, &t);
         }) {
             effects.push(eff);
         }
 
         let el_for_checked = el.clone();
         if let Some(eff) = install(self.checked, move |b| {
-            el_for_checked.set_bool_attribute("checked", b);
+            el_for_checked.set_bool_attribute(BoolAttr::Checked, b);
         }) {
             effects.push(eff);
         }
@@ -401,9 +805,18 @@ impl Render for Checkbox {
             h.apply_to(&el);
         }
 
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -421,8 +834,12 @@ pub struct Slider {
     max_value: f64,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<super::bind::BoundFloat>,
-    handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    grow: Option<f32>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 pub fn slider() -> Slider {
@@ -433,7 +850,11 @@ pub fn slider() -> Slider {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -464,8 +885,8 @@ impl Slider {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -478,26 +899,35 @@ impl Slider {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+
+    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+    where
+        D: crate::directive::IntoDirective<GtkElement, T, P> + Send + 'static,
+        P: Send + 'static,
+        T: 'static,
+    {
+        self.directives
+            .push(super::directives::pack(handler, param));
         self
     }
 }
 
-impl Render for Slider {
-    type State = ElementState<()>;
+impl_universal_attrs!(Slider);
+
+impl Render<Dom> for Slider {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = GtkElement::create("slider");
@@ -516,7 +946,7 @@ impl Render for Slider {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -531,16 +961,22 @@ impl Render for Slider {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
-            if g > 0.0 {
-                el.widget().set_hexpand(true);
-                el.widget().set_vexpand(true);
-            }
+        if let Some(g) = self.grow {
+            set_flex_grow(el.as_node(), g);
         }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
 
         ElementState {
             el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -557,8 +993,12 @@ pub struct PopUpButton {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<super::bind::BoundIndex>,
-    handlers: Vec<crate::html::event::PendingHandler>,
-    flex_grow: Option<f32>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    grow: Option<f32>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 pub fn pop_up_button() -> PopUpButton {
@@ -568,7 +1008,11 @@ pub fn pop_up_button() -> PopUpButton {
         enabled: None,
         pending_bind_selection: None,
         handlers: Vec::new(),
-        flex_grow: None,
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -598,8 +1042,8 @@ impl PopUpButton {
         self
     }
 
-    pub fn flex_grow(mut self, g: f32) -> Self {
-        self.flex_grow = Some(g);
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -612,26 +1056,24 @@ impl PopUpButton {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
         self
     }
 }
 
-impl Render for PopUpButton {
-    type State = ElementState<()>;
+impl_universal_attrs!(PopUpButton);
+
+impl Render<Dom> for PopUpButton {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let el = GtkElement::create("pop_up_button");
@@ -649,15 +1091,14 @@ impl Render for PopUpButton {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
         }
 
         if let Some(bound) = self.pending_bind_selection {
-            let eff =
-                super::bind::install_popup_selection_bind(&el, bound);
+            let eff = super::bind::install_popup_selection_bind(&el, bound);
             effects.push(eff);
         }
 
@@ -665,16 +1106,22 @@ impl Render for PopUpButton {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.flex_grow {
-            if g > 0.0 {
-                el.widget().set_hexpand(true);
-                el.widget().set_vexpand(true);
-            }
+        if let Some(g) = self.grow {
+            set_flex_grow(el.as_node(), g);
         }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
 
         ElementState {
             el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -688,6 +1135,12 @@ impl Render for PopUpButton {
 
 pub struct Label {
     text: MaybeReactive<String>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    grow: Option<f32>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 impl Label {
@@ -702,6 +1155,12 @@ impl Label {
 pub fn label() -> Label {
     Label {
         text: MaybeReactive::Static(String::new()),
+        handlers: Vec::new(),
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -720,52 +1179,65 @@ impl Label {
     {
         self.text(value)
     }
-}
 
-pub struct LabelState {
-    text: GtkText,
-    _effects: Vec<RenderEffect<()>>,
-}
-
-impl Mountable for LabelState {
-    fn unmount(&mut self) {
-        self.text.as_node().teardown();
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
+        self
     }
 
-    fn mount(
-        &mut self,
-        parent: &GtkElement,
-        marker: Option<&gtk_dom::Node>,
-    ) {
-        parent.insert_node(self.text.as_node(), marker);
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<GtkElement> {
-        Vec::new()
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
     }
 }
 
-impl Render for Label {
-    type State = LabelState;
+impl_universal_attrs!(Label);
+
+impl Render<Dom> for Label {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
-        let text = GtkText::create("");
+        let el = GtkElement::create("label");
         let mut effects = Vec::new();
 
-        let text_for_set = text.clone();
+        let el_for_text = el.clone();
         if let Some(eff) = install(self.text, move |s| {
-            text_for_set.set_text(&s);
+            el_for_text.set_string_attribute(StringAttr::Value, &s);
         }) {
             effects.push(eff);
         }
 
-        LabelState {
-            text,
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+
+        if let Some(g) = self.grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
+
+        ElementState {
+            el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
+            children: (),
         }
     }
 
@@ -773,16 +1245,21 @@ impl Render for Label {
 }
 
 // ---------------------------------------------------------------------
-// text_field() — editable entry
+// text_field() / secure_text_field()
 // ---------------------------------------------------------------------
 
 pub struct TextField {
     value: MaybeReactive<String>,
-    placeholder: Option<String>,
+    placeholder: Option<MaybeReactive<String>>,
     enabled: Option<MaybeReactive<bool>>,
     secure: bool,
     pending_bind: Option<super::bind::BoundValue>,
-    handlers: Vec<crate::html::event::PendingHandler>,
+    handlers: Vec<crate::event_gtk::PendingHandler>,
+    grow: Option<f32>,
+    node_ref: Option<NodeRef>,
+    directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
+    alpha: Option<MaybeReactive<f64>>,
+    tool_tip: Option<MaybeReactive<String>>,
 }
 
 pub fn text_field() -> TextField {
@@ -793,6 +1270,11 @@ pub fn text_field() -> TextField {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -804,6 +1286,11 @@ pub fn secure_text_field() -> TextField {
         secure: true,
         pending_bind: None,
         handlers: Vec::new(),
+        grow: None,
+        node_ref: None,
+        directives: Vec::new(),
+        alpha: None,
+        tool_tip: None,
     }
 }
 
@@ -816,8 +1303,11 @@ impl TextField {
         self
     }
 
-    pub fn placeholder(mut self, s: impl Into<String>) -> Self {
-        self.placeholder = Some(s.into());
+    pub fn placeholder<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.placeholder = Some(s.into_maybe_reactive());
         self
     }
 
@@ -826,6 +1316,11 @@ impl TextField {
         V: IntoMaybeReactive<bool>,
     {
         self.enabled = Some(value.into_maybe_reactive());
+        self
+    }
+
+    pub fn grow(mut self, g: f32) -> Self {
+        self.grow = Some(g);
         self
     }
 
@@ -838,26 +1333,42 @@ impl TextField {
 
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
-        E: crate::html::event::EventDescriptor,
+        Self: crate::event_gtk::SupportsEvent<E>,
+        E: crate::event_gtk::EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
         self.handlers.push(E::into_pending(handler));
         self
     }
 
-    pub fn add_any_attr(
-        mut self,
-        attr: crate::html::event::OnAttribute,
-    ) -> Self {
-        if let Some(h) = attr.take_pending() {
-            self.handlers.push(h);
-        }
+    pub fn node_ref(mut self, r: NodeRef) -> Self {
+        self.node_ref = Some(r);
         self
     }
 }
 
-impl Render for TextField {
-    type State = ElementState<()>;
+// TextField fires the "input" / "change" / "focus" / "blur" events.
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::InputEvent>
+    for TextField
+{
+}
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
+    for TextField
+{
+}
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::FocusEvent>
+    for TextField
+{
+}
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::BlurEvent>
+    for TextField
+{
+}
+
+impl_universal_attrs!(TextField);
+
+impl Render<Dom> for TextField {
+    type State = ElementState<(), ()>;
 
     fn build(self) -> Self::State {
         let tag = if self.secure {
@@ -869,13 +1380,18 @@ impl Render for TextField {
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
-            el.set_attribute("placeholder", &p);
+            let el_for_p = el.clone();
+            if let Some(eff) = install(p, move |s| {
+                el_for_p.set_string_attribute(StringAttr::Placeholder, &s);
+            }) {
+                effects.push(eff);
+            }
         }
 
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute("enabled", b);
+                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
             }) {
                 effects.push(eff);
             }
@@ -883,14 +1399,13 @@ impl Render for TextField {
 
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_attribute("value", &v);
+            el_for_value.set_string_attribute(StringAttr::Value, &v);
         }) {
             effects.push(eff);
         }
 
         if let Some(bound) = self.pending_bind {
-            let eff =
-                super::bind::install_text_field_value_bind(&el, bound);
+            let eff = super::bind::install_text_field_value_bind(&el, bound);
             effects.push(eff);
         }
 
@@ -898,9 +1413,22 @@ impl Render for TextField {
             h.apply_to(&el);
         }
 
+        if let Some(g) = self.grow {
+            set_flex_grow(el.as_node(), g);
+        }
+
+        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        super::directives::run_all(self.directives, &el);
+
         ElementState {
             el,
             _effects: effects,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -909,69 +1437,43 @@ impl Render for TextField {
 }
 
 // ---------------------------------------------------------------------
-// IntoView plumbing — RenderHtml + AddAnyAttr stubs.
+// AddAnyAttr<Dom> for the leaf builders.
 // ---------------------------------------------------------------------
 
-use super::render_html_stub::gtk_stub_view_impls;
-
-gtk_stub_view_impls!(Button);
-gtk_stub_view_impls!(Checkbox);
-gtk_stub_view_impls!(Label);
-gtk_stub_view_impls!(PopUpButton);
-gtk_stub_view_impls!(Slider);
-gtk_stub_view_impls!(TextField);
-
-// View<Children> needs its own (generic) impls.
-impl<Ch> crate::view::add_attr::AddAnyAttr for View<Ch>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> = View<Ch>;
-
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        _attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        self
-    }
+macro_rules! impl_add_any_attr_for_leaf {
+    ($($builder:ident),+ $(,)?) => {
+        $(
+            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+                fn add_any_attr<__A>(mut self, attr: __A) -> Self
+                where
+                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                {
+                    self.directives.push(Box::new(move |el: &GtkElement| {
+                        attr.apply_to(el);
+                    }));
+                    self
+                }
+            }
+        )+
+    };
 }
 
-impl<Ch> crate::view::RenderHtml for View<Ch>
-where
-    Ch: Render + Send + 'static + crate::view::RenderHtml,
-{
-    type AsyncOutput = Self;
-    type Owned = Self;
+impl_add_any_attr_for_leaf!(
+    Button, Checkbox, Slider, PopUpButton, Label, TextField,
+);
 
-    const MIN_LENGTH: usize = 0;
-
-    fn dry_resolve(&mut self) {}
-
-    async fn resolve(self) -> Self::AsyncOutput {
-        self
-    }
-
-    fn to_html_with_buf(
-        self,
-        _buf: &mut String,
-        _position: &mut crate::view::Position,
-        _escape: bool,
-        _mark_branches: bool,
-        _extra_attrs: Vec<
-            crate::html::attribute::any_attribute::AnyAttribute,
-        >,
-    ) {
-    }
-
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        _cursor: &crate::hydration::Cursor,
-        _position: &crate::view::PositionState,
-    ) -> Self::State {
-        <Self as Render>::build(self)
-    }
-
-    fn into_owned(self) -> Self::Owned {
-        self
+// Container builders panic on spread attrs — same as cocoa.
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
+    #[track_caller]
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/\
+             stack_view). Containers have no signal target — click \
+             and other events have no install path. Attach to a \
+             child button/label/text_field instead."
+        )
     }
 }

@@ -1,21 +1,5 @@
-//! Attribute-value plumbing for GTK elements.
-//!
-//! Builder methods like `.title(...)` accept anything that implements
-//! [`IntoMaybeReactive<T>`]. The two impls of interest:
-//!
-//! - **`T` itself** — a static value. Wrapped as `MaybeReactive::Static`.
-//! - **`F: Fn() -> T`** — a closure. Wrapped as `MaybeReactive::Reactive`.
-//!   At build time we register a [`RenderEffect`] that re-runs the
-//!   closure whenever any signal it reads changes, and updates the
-//!   underlying GTK widget property each time.
-//!
-//! The `RenderEffect` is owned by the element's `State` so it lives
-//! exactly as long as the element is mounted.
-//!
-//! This is a near-verbatim copy of `tachys/src/cocoa/attr.rs` — the
-//! renderer-agnostic `MaybeReactive`/`install` machinery is identical
-//! between backends. If a third native backend ever lands, extract to
-//! `tachys/src/native/attr.rs`.
+//! Attribute-value plumbing for GTK elements. Mirrors
+//! `leptos_cocoa::cocoa::attr` minus the AppKit-specific value types.
 
 use reactive_graph::effect::RenderEffect;
 
@@ -25,10 +9,45 @@ pub enum MaybeReactive<T: 'static> {
     Reactive(Box<dyn Fn() -> T + Send + 'static>),
 }
 
-/// Conversion trait so attribute setters can take either form
-/// transparently.
 pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
+}
+
+/// A dimension value for sizing. Same shape as the cocoa `Dim`.
+///
+/// - `Px(v)` — fixed length in points.
+/// - `Pct(v)` — fraction of the parent's content size, 0.0..=1.0.
+/// - `Auto` — let the layout engine decide.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dim {
+    Px(f32),
+    Pct(f32),
+    Auto,
+}
+
+impl Dim {
+    pub const fn px(v: f32) -> Self {
+        Self::Px(v)
+    }
+    pub const fn pct(v: f32) -> Self {
+        Self::Pct(v)
+    }
+    pub const AUTO: Self = Self::Auto;
+
+    pub fn to_dimension(self) -> gtk_dom::layout::Dimension {
+        use gtk_dom::layout::Dimension as D;
+        match self {
+            Self::Px(v) => D::length(v),
+            Self::Pct(v) => D::percent(v),
+            Self::Auto => D::auto(),
+        }
+    }
+}
+
+impl From<f32> for Dim {
+    fn from(v: f32) -> Self {
+        Self::Px(v)
+    }
 }
 
 // Static-value impls.
@@ -62,13 +81,83 @@ impl IntoMaybeReactive<f64> for f64 {
     }
 }
 
+impl IntoMaybeReactive<f32> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<f32> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<Dim> for Dim {
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<Dim> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Static(Dim::Px(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<Dim> for F
+where
+    F: Fn() -> Dim + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
 impl IntoMaybeReactive<usize> for usize {
     fn into_maybe_reactive(self) -> MaybeReactive<usize> {
         MaybeReactive::Static(self)
     }
 }
 
-// Closure impls.
+impl IntoMaybeReactive<gtk_dom::layout::FlexDirection>
+    for gtk_dom::layout::FlexDirection
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::FlexDirection> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<gtk_dom::layout::JustifyContent>
+    for gtk_dom::layout::JustifyContent
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::JustifyContent> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<gtk_dom::layout::AlignItems>
+    for gtk_dom::layout::AlignItems
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::AlignItems> {
+        MaybeReactive::Static(self)
+    }
+}
+
+impl IntoMaybeReactive<gtk_dom::layout::FlexWrap>
+    for gtk_dom::layout::FlexWrap
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::FlexWrap> {
+        MaybeReactive::Static(self)
+    }
+}
+
+// Closure impls per concrete output type. (We can't write a single
+// `impl<T, F> IntoMaybeReactive<T> for F where F: Fn() -> T` because
+// it would conflict with the static impls above.)
+
 impl<F> IntoMaybeReactive<String> for F
 where
     F: Fn() -> String + Send + 'static,
@@ -96,6 +185,59 @@ where
     }
 }
 
+impl<F> IntoMaybeReactive<f32> for F
+where
+    F: Fn() -> f32 + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<f32> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<gtk_dom::layout::FlexDirection> for F
+where
+    F: Fn() -> gtk_dom::layout::FlexDirection + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::FlexDirection> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<gtk_dom::layout::JustifyContent> for F
+where
+    F: Fn() -> gtk_dom::layout::JustifyContent + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::JustifyContent> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<gtk_dom::layout::AlignItems> for F
+where
+    F: Fn() -> gtk_dom::layout::AlignItems + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::AlignItems> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
+impl<F> IntoMaybeReactive<gtk_dom::layout::FlexWrap> for F
+where
+    F: Fn() -> gtk_dom::layout::FlexWrap + Send + 'static,
+{
+    fn into_maybe_reactive(
+        self,
+    ) -> MaybeReactive<gtk_dom::layout::FlexWrap> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
+}
+
 impl<F> IntoMaybeReactive<usize> for F
 where
     F: Fn() -> usize + Send + 'static,
@@ -105,13 +247,7 @@ where
     }
 }
 
-/// Drives `apply` whenever the underlying signal(s) change.
-///
-/// For `Static`, calls `apply(value)` once and returns `None`.
-/// For `Reactive`, builds a [`RenderEffect`] that calls
-/// `apply(closure())` on every reactive run. The effect's internal
-/// constructor runs the closure synchronously inside the reactive
-/// observer, so the initial value is set before this returns.
+/// Drive `apply` whenever the underlying signal(s) change.
 pub fn install<T: 'static>(
     value: MaybeReactive<T>,
     mut apply: impl FnMut(T) + 'static,

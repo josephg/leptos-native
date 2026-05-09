@@ -1,24 +1,20 @@
-//! The renderer surface that tachys targets.
+//! The renderer surface that leptos_gtk targets.
 //!
-//! [`Renderer`] is a unit struct that mirrors the inherent-method
-//! surface of `tachys::renderer::dom::Dom`: every method tachys ever
-//! calls on the global renderer has a matching associated function
-//! here. This is the "thin imperative API" that view types use to
-//! manipulate the tree.
+//! [`Renderer`] is a unit struct mirroring the inherent-method surface
+//! of `tachys::renderer::dom::Dom`: every method tachys ever calls on
+//! the global renderer has a matching associated function here.
 //!
-//! The methods that don't have a meaningful native counterpart (CSS
-//! style declarations, class lists, `<template>` cloning, JS property
-//! setting, hydration tree walking) are present so the type-checker
-//! is happy, but they panic with `unimplemented!()` if actually
-//! called. On the native code path they should be unreachable.
+//! Methods without a meaningful native counterpart (CSS style
+//! declarations, class lists, `<template>` cloning, JS property
+//! setting, hydration tree walking) panic with `unimplemented!()` if
+//! actually called.
 
-use crate::node::{Element, Node, Placeholder, Text};
+use crate::node::{Element, Node, NodeKind, Placeholder, Text};
 use send_wrapper::SendWrapper;
 use std::fmt;
 
 /// Marker / placeholder types that exist solely so tachys' generic
-/// machinery has something concrete to alias. Most are never
-/// constructed at runtime on the native target.
+/// machinery has something concrete to alias.
 #[derive(Clone, Default)]
 pub struct ClassList;
 
@@ -47,8 +43,7 @@ impl fmt::Debug for TemplateElement {
 }
 
 /// A GTK event delivered to a handler. Currently a placeholder
-/// wrapper around an optional `gdk::Event`; will be fleshed out
-/// alongside event-controller wiring in Stage 3.
+/// wrapper around an optional `gdk::Event`.
 #[derive(Clone)]
 pub struct Event {
     inner: Option<SendWrapper<gtk4::gdk::Event>>,
@@ -61,9 +56,6 @@ impl Event {
         }
     }
 
-    /// A synthetic event with no payload — used for synthesized
-    /// notifications (e.g. button "clicked" signal that doesn't
-    /// carry a real GdkEvent).
     pub fn synthetic() -> Self {
         Event { inner: None }
     }
@@ -82,17 +74,11 @@ impl fmt::Debug for Event {
 }
 
 /// The renderer surface.
-///
-/// Aliased as `Dom` from inside tachys so that the rest of the
-/// codebase (which calls `Rndr::create_element` and friends as
-/// `Dom::method`) compiles without churn.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Renderer;
 
 impl Renderer {
     pub fn intern(text: &str) -> &str {
-        // Web's wasm-bindgen string interning has no native
-        // equivalent.
         text
     }
 
@@ -144,8 +130,6 @@ impl Renderer {
         node.teardown();
     }
 
-    /// Hydration-only API. Should be unreachable on native — see
-    /// implementation_log.md.
     pub fn get_parent(_node: &Node) -> Option<Node> {
         unimplemented!(
             "gtk_dom::Renderer::get_parent — hydration is not supported \
@@ -153,7 +137,6 @@ impl Renderer {
         );
     }
 
-    /// Hydration-only API. Should be unreachable on native.
     pub fn first_child(_node: &Node) -> Option<Node> {
         unimplemented!(
             "gtk_dom::Renderer::first_child — hydration is not supported \
@@ -161,7 +144,6 @@ impl Renderer {
         );
     }
 
-    /// Hydration-only API. Should be unreachable on native.
     pub fn next_sibling(_node: &Node) -> Option<Node> {
         unimplemented!(
             "gtk_dom::Renderer::next_sibling — hydration is not supported \
@@ -196,11 +178,7 @@ impl Renderer {
     }
     pub fn remove_css_property(_style: &CssStyleDeclaration, _name: &str) {}
 
-    pub fn set_inner_html(_el: &Element, _html: &str) {
-        // No HTML on native; this is a no-op rather than a panic so
-        // that any indirect callers from the (currently disabled)
-        // html module degrade gracefully.
-    }
+    pub fn set_inner_html(_el: &Element, _html: &str) {}
 
     pub fn get_template<V: 'static>() -> TemplateElement {
         unimplemented!(
@@ -214,5 +192,48 @@ impl Renderer {
             "gtk_dom::Renderer::clone_template — <template> cloning is a \
              web-only optimization"
         );
+    }
+}
+
+// ---------------------------------------------------------------------
+// CastFrom impls — used by leptos_gtk::Dom and the renderer-agnostic
+// view tree. They live here for the same orphan-rule reasons as the
+// cocoa_dom CastFrom impls do.
+// ---------------------------------------------------------------------
+
+use renderer::renderer::CastFrom;
+
+impl CastFrom<Node> for Element {
+    fn cast_from(node: Node) -> Option<Element> {
+        match node.kind() {
+            NodeKind::Element => Some(Element::from_node_unchecked(node)),
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Node> for Text {
+    fn cast_from(node: Node) -> Option<Text> {
+        match node.kind() {
+            NodeKind::Text => Some(Text::from_node_unchecked(node)),
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Node> for Placeholder {
+    fn cast_from(node: Node) -> Option<Placeholder> {
+        match node.kind() {
+            NodeKind::Placeholder => {
+                Some(Placeholder::from_node_unchecked(node))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Element> for Element {
+    fn cast_from(source: Element) -> Option<Element> {
+        Some(source)
     }
 }
