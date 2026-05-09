@@ -4,59 +4,68 @@
 //! Exercises: `<text_field>`, `<secure_text_field>`, `<checkbox>`,
 //! `bind:value`, `bind:checked`, `Memo`, `enabled=closure`.
 
-use leptos::prelude::*;
+#[cfg(target_os = "linux")]
+mod app {
+    use leptos::prelude::*;
 
-#[component]
-fn LoginForm() -> impl IntoView {
-    let username = RwSignal::new(String::new());
-    let password = RwSignal::new(String::new());
-    let remember = RwSignal::new(false);
-    let status = RwSignal::new(String::new());
+    #[component]
+    pub fn LoginForm() -> impl IntoView {
+        let username = RwSignal::new(String::new());
+        let password = RwSignal::new(String::new());
+        let remember = RwSignal::new(false);
+        let status = RwSignal::new(String::new());
 
-    let can_submit = Memo::new(move |_| {
-        !username.get().is_empty() && password.get().len() >= 8
-    });
+        let can_submit = Memo::new(move |_| {
+            !username.get().is_empty() && password.get().len() >= 8
+        });
 
-    let on_submit = move |_| {
-        status.set(format!(
-            "Signed in as {} (remember={})",
-            username.get(),
-            remember.get()
-        ));
-    };
+        let on_submit = move |_| {
+            status.set(format!(
+                "Signed in as {} (remember={})",
+                username.get(),
+                remember.get()
+            ));
+        };
 
-    view! {
-        <vstack padding=16.0 gap=8.0>
-            <label>{"Sign in"}</label>
+        view! {
+            <vstack padding=16.0 gap=8.0>
+                <label>{"Sign in"}</label>
 
-            <text_field
-                bind:value=username
-                placeholder="Username" />
+                <text_field
+                    bind:value=username
+                    placeholder="Username" />
 
-            <secure_text_field
-                bind:value=password
-                placeholder="Password (8+ chars)" />
+                <secure_text_field
+                    bind:value=password
+                    placeholder="Password (8+ chars)" />
 
-            <checkbox bind:checked=remember>
-                {"Remember me on this device"}
-            </checkbox>
+                <checkbox bind:checked=remember>
+                    {"Remember me on this device"}
+                </checkbox>
 
-            <button
-                enabled=move || can_submit.get()
-                on:click=on_submit>
-                "Sign in"
-            </button>
+                <button
+                    enabled=move || can_submit.get()
+                    on:click=on_submit>
+                    "Sign in"
+                </button>
 
-            <label>{move || status.get()}</label>
-        </vstack>
+                <label>{move || status.get()}</label>
+            </vstack>
+        }
+    }
+
+    pub fn main() {
+        mount_to_window(
+            "org.leptos.login_form_gtk",
+            "Login",
+            (360, 260),
+            || view! { <LoginForm /> },
+        );
     }
 }
 
-fn main() {
-    mount_to_window(
-        "org.leptos.login_form_gtk",
-        "Login",
-        (360, 260),
-        || view! { <LoginForm /> },
-    );
-}
+#[cfg(target_os = "linux")]
+fn main() { app::main() }
+
+#[cfg(not(target_os = "linux"))]
+fn main() {}

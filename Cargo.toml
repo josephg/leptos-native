@@ -98,8 +98,10 @@ default-members = [
 
   # GTK examples — workspace members on Linux. Cargo's
   # target-conditional members aren't supported, so these are also
-  # listed when running on macOS/iOS, but their `[target.'cfg(...)']`
-  # dep gates keep them empty there.
+  # listed when running on macOS/iOS. Each example's `main.rs` wraps
+  # its real code in `#[cfg(target_os = "linux")] mod app { ... }` and
+  # provides a stub `fn main()` for non-Linux, so they build to empty
+  # binaries on macOS/iOS.
   "gtk/examples/checkbox",
   "gtk/examples/counter",
   "gtk/examples/counters",

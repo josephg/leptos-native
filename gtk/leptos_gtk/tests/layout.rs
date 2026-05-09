@@ -13,6 +13,7 @@ mod common;
 use gtk_dom::layout;
 use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use reactive_graph::owner::Owner;
+use renderer::attrs::WithLayout;
 use renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {

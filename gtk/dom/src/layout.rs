@@ -368,6 +368,41 @@ pub fn set_margin(node: &Node, all_px: f32) {
     schedule_relayout(node);
 }
 
+/// Per-child override of the parent flex container's `align_items`.
+/// `None` means inherit from parent (Taffy's default).
+pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
+    update_style(node, |s| s.align_self = ai);
+    schedule_relayout(node);
+}
+
+/// Convert renderer-common's `Dim` to Taffy's `Dimension`.
+pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
+    use renderer::attrs::Dim;
+    match d {
+        Dim::Px(v) => Dimension::length(v),
+        Dim::Pct(v) => Dimension::percent(v),
+        Dim::Auto => Dimension::auto(),
+    }
+}
+
+/// Convert renderer-common's `AlignSelf` to Taffy's `AlignItems`
+/// (Taffy uses one enum for both align-items and align-self).
+/// Returns `None` for `AlignSelf::Auto` so the Style stores `None`,
+/// meaning "inherit from the parent's `align_items`".
+pub fn align_self_to_taffy(
+    a: renderer::attrs::AlignSelf,
+) -> Option<AlignItems> {
+    use renderer::attrs::AlignSelf;
+    match a {
+        AlignSelf::Auto => None,
+        AlignSelf::Start => Some(AlignItems::FlexStart),
+        AlignSelf::End => Some(AlignItems::FlexEnd),
+        AlignSelf::Center => Some(AlignItems::Center),
+        AlignSelf::Stretch => Some(AlignItems::Stretch),
+        AlignSelf::Baseline => Some(AlignItems::Baseline),
+    }
+}
+
 // ---------------------------------------------------------------------
 // compute_layout (test helper)
 // ---------------------------------------------------------------------

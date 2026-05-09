@@ -1,56 +1,37 @@
-//! Attribute-value plumbing for GTK elements. Mirrors
-//! `leptos_cocoa::cocoa::attr` minus the AppKit-specific value types.
+//! Attribute-value plumbing for GTK elements.
+//!
+//! Builder methods like `.title(...)` accept anything that implements
+//! [`IntoMaybeReactive<T>`]. The two impls of interest:
+//!
+//! - **`T` itself** — a static value. Wrapped as `MaybeReactive::Static`.
+//! - **`F: Fn() -> T`** — a closure. Wrapped as `MaybeReactive::Reactive`.
+//!   At build time we register a [`RenderEffect`] that re-runs the
+//!   closure whenever any signal it reads changes, and updates the
+//!   underlying GTK widget property each time.
+//!
+//! The [`MaybeReactive`] enum and the [`install`] driver are
+//! re-exports from `renderer-common` (`renderer::attrs`) — they're
+//! shared with every native backend. The [`IntoMaybeReactive`] trait,
+//! however, is **port-local**: it lives in this module so we can
+//! provide impls for GTK / Taffy-foreign types like `FlexDirection`
+//! and `JustifyContent` without orphan-rule violations. Renderer-
+//! common's `WithLayout` / `WithUniversal` default methods use a
+//! separately-defined trait of the same name that only covers
+//! renderer-common-owned types (f32, Dim, AlignSelf, …); the two
+//! traits coexist because each builder method's bound pins the trait
+//! it wants explicitly.
 
-use reactive_graph::effect::RenderEffect;
+pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 
-/// Either a static value or a closure that produces one reactively.
-pub enum MaybeReactive<T: 'static> {
-    Static(T),
-    Reactive(Box<dyn Fn() -> T + Send + 'static>),
-}
-
+/// Conversion trait so attribute setters can take either a bare
+/// value or a `Fn() -> T` closure transparently. Port-local —
+/// see the module docs for why.
 pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
 }
 
-/// A dimension value for sizing. Same shape as the cocoa `Dim`.
-///
-/// - `Px(v)` — fixed length in points.
-/// - `Pct(v)` — fraction of the parent's content size, 0.0..=1.0.
-/// - `Auto` — let the layout engine decide.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Dim {
-    Px(f32),
-    Pct(f32),
-    Auto,
-}
-
-impl Dim {
-    pub const fn px(v: f32) -> Self {
-        Self::Px(v)
-    }
-    pub const fn pct(v: f32) -> Self {
-        Self::Pct(v)
-    }
-    pub const AUTO: Self = Self::Auto;
-
-    pub fn to_dimension(self) -> gtk_dom::layout::Dimension {
-        use gtk_dom::layout::Dimension as D;
-        match self {
-            Self::Px(v) => D::length(v),
-            Self::Pct(v) => D::percent(v),
-            Self::Auto => D::auto(),
-        }
-    }
-}
-
-impl From<f32> for Dim {
-    fn from(v: f32) -> Self {
-        Self::Px(v)
-    }
-}
-
-// Static-value impls.
+// Static-value impls. `&str` and `String` have explicit impls so
+// callers can pass them without `.to_string()`.
 impl IntoMaybeReactive<String> for String {
     fn into_maybe_reactive(self) -> MaybeReactive<String> {
         MaybeReactive::Static(self)
@@ -231,9 +212,7 @@ impl<F> IntoMaybeReactive<gtk_dom::layout::FlexWrap> for F
 where
     F: Fn() -> gtk_dom::layout::FlexWrap + Send + 'static,
 {
-    fn into_maybe_reactive(
-        self,
-    ) -> MaybeReactive<gtk_dom::layout::FlexWrap> {
+    fn into_maybe_reactive(self) -> MaybeReactive<gtk_dom::layout::FlexWrap> {
         MaybeReactive::Reactive(Box::new(self))
     }
 }
@@ -244,25 +223,5 @@ where
 {
     fn into_maybe_reactive(self) -> MaybeReactive<usize> {
         MaybeReactive::Reactive(Box::new(self))
-    }
-}
-
-/// Drive `apply` whenever the underlying signal(s) change.
-pub fn install<T: 'static>(
-    value: MaybeReactive<T>,
-    mut apply: impl FnMut(T) + 'static,
-) -> Option<RenderEffect<()>> {
-    match value {
-        MaybeReactive::Static(v) => {
-            apply(v);
-            None
-        }
-        MaybeReactive::Reactive(f) => {
-            let effect = RenderEffect::new(move |_prev| {
-                let v = f();
-                apply(v);
-            });
-            Some(effect)
-        }
     }
 }

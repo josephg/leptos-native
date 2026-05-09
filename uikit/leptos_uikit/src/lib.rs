@@ -111,10 +111,18 @@ pub mod prelude {
         bind::{BindAttribute, IntoSignal},
         element::{
             button, hstack, label, scroll_view, secure_text_field,
-            slider, switch_, text_field, vstack,
+            slider, switch_, text_field, vstack, WithText,
         },
         node_ref::NodeRef,
         FlexDirection, JustifyContent,
+    };
+
+    // Renderer-common attribute-accessor traits that builders impl.
+    // Importing the traits brings the chainable setters
+    // (`.padding(...)`, `.alpha(...)`, `.flex_grow(...)`, ...) into
+    // scope on every builder.
+    pub use ::renderer::attrs::{
+        AlignSelf, Dim, WithLayout, WithUniversal,
     };
 
     pub use ios_dom::{

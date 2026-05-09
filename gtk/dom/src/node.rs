@@ -701,6 +701,26 @@ impl Element {
         }
     }
 
+    /// Set this view's opacity (0.0..=1.0). Maps to
+    /// `gtk::Widget::set_opacity`. Diff-guarded.
+    pub fn set_alpha(&self, alpha: f64) {
+        let w = self.widget();
+        let clamped = alpha.clamp(0.0, 1.0);
+        if (w.opacity() - clamped).abs() > f64::EPSILON {
+            w.set_opacity(clamped);
+        }
+    }
+
+    /// Set this view's tooltip text. Empty string clears it.
+    pub fn set_tool_tip(&self, tip: &str) {
+        let w = self.widget();
+        if tip.is_empty() {
+            w.set_tooltip_text(None);
+        } else {
+            w.set_tooltip_text(Some(tip));
+        }
+    }
+
     /// Set the focused state — equivalent to AppKit's
     /// `makeFirstResponder`. Returns `true` always (GTK's
     /// `grab_focus` returns a bool indicating success).

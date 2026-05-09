@@ -5,54 +5,142 @@
 //! NSSegmentStyle, NSColorWell, etc.) are absent here; users that
 //! need them on GTK can extend the builders.
 
-use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
+use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use super::node_ref::NodeRef;
 use crate::Dom;
 use gtk_dom::{
     layout::{
-        schedule_relayout, set_align_items, set_flex_basis, set_flex_direction,
+        align_self_to_taffy, dim_to_dimension, schedule_relayout,
+        set_align_items, set_align_self, set_flex_basis, set_flex_direction,
         set_flex_grow, set_flex_shrink, set_flex_wrap, set_gap,
-        set_justify_content, set_padding, update_style, AlignItems,
-        FlexDirection, FlexWrap, JustifyContent,
+        set_justify_content, set_margin, set_padding, update_style,
+        AlignItems, FlexDirection, FlexWrap, JustifyContent,
     },
     BoolAttr, Element as GtkElement, StringAttr,
 };
 use reactive_graph::effect::RenderEffect;
+use renderer::attrs::{
+    Dim, LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
+};
 use renderer::view::{Mountable, Render};
 
-/// Universal attrs (alpha, tool_tip) — Stack/Block helper.
+/// Apply [`UniversalAttrs`] (alpha, tool_tip) to the live GTK widget.
 fn apply_universal(
-    _el: &GtkElement,
-    _alpha: Option<MaybeReactive<f64>>,
-    _tool_tip: Option<MaybeReactive<String>>,
+    el: &GtkElement,
+    attrs: UniversalAttrs,
 ) -> Vec<RenderEffect<()>> {
-    // GTK's equivalent of NSView's alphaValue is `set_opacity`. We
-    // currently only support static values; reactive opacity needs
-    // its own install hook on gtk_dom::Element. Stub for now —
-    // matches cocoa's surface so callers compile.
-    Vec::new()
+    let mut out = Vec::new();
+    if let Some(a) = attrs.alpha {
+        let el_for = el.clone();
+        if let Some(eff) = install(a, move |v| el_for.set_alpha(v)) {
+            out.push(eff);
+        }
+    }
+    if let Some(t) = attrs.tool_tip {
+        let el_for = el.clone();
+        if let Some(eff) = install(t, move |s| el_for.set_tool_tip(&s)) {
+            out.push(eff);
+        }
+    }
+    out
 }
 
-/// Inherent-method block for universal attrs (`alpha`, `tool_tip`).
-macro_rules! impl_universal_attrs {
-    ($builder:ident) => {
-        impl $builder {
-            pub fn alpha<V>(mut self, a: V) -> Self
-            where
-                V: IntoMaybeReactive<f64>,
-            {
-                self.alpha = Some(a.into_maybe_reactive());
-                self
-            }
-            pub fn tool_tip<V>(mut self, s: V) -> Self
-            where
-                V: IntoMaybeReactive<String>,
-            {
-                self.tool_tip = Some(s.into_maybe_reactive());
-                self
-            }
+/// Apply [`LayoutAttrs`] (padding, margin, sizing, flex_grow,
+/// align_self) to the underlying Taffy node. Same shape as the cocoa
+/// port: returns the `RenderEffect`s for the caller to stash in the
+/// element's State.
+fn apply_layout(
+    el: &GtkElement,
+    attrs: LayoutAttrs,
+) -> Vec<RenderEffect<()>> {
+    let mut out = Vec::new();
+    if let Some(v) = attrs.padding {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p)) {
+            out.push(eff);
         }
-    };
+    }
+    if let Some(v) = attrs.margin {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |m| set_margin(e.as_node(), m)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.width = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.size.height = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.min_width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.width = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.min_height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.min_size.height = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.max_width {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.width = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.max_height {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |d: Dim| {
+            let n = e.as_node();
+            update_style(n, |s| s.max_size.height = dim_to_dimension(d));
+            schedule_relayout(n);
+        }) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.flex_grow {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
+            out.push(eff);
+        }
+    }
+    if let Some(v) = attrs.align_self {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |a| {
+            set_align_self(e.as_node(), align_self_to_taffy(a))
+        }) {
+            out.push(eff);
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------
@@ -117,26 +205,14 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
 // stack() — Taffy flexbox container
 // ---------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
-fn apply_flex_item_attrs(
+/// Install Stack-specific flex-item attrs that aren't covered by
+/// [`LayoutAttrs`] / [`WithLayout`] (`flex_shrink`, `flex_basis`).
+fn apply_flex_item_extras(
     el: &GtkElement,
-    grow: Option<MaybeReactive<f32>>,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
-    width: Option<MaybeReactive<Dim>>,
-    min_width: Option<MaybeReactive<Dim>>,
-    max_width: Option<MaybeReactive<Dim>>,
-    height: Option<MaybeReactive<Dim>>,
-    min_height: Option<MaybeReactive<Dim>>,
-    max_height: Option<MaybeReactive<Dim>>,
 ) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
-    if let Some(v) = grow {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
-            out.push(eff);
-        }
-    }
     if let Some(v) = shrink {
         let e = el.clone();
         if let Some(eff) = install(v, move |s| set_flex_shrink(e.as_node(), s))
@@ -151,87 +227,19 @@ fn apply_flex_item_attrs(
             out.push(eff);
         }
     }
-    if let Some(v) = width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.width = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = min_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.width = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = max_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.width = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.height = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = min_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.height = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = max_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.height = d.to_dimension());
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
     out
 }
 
 pub struct Stack<Children> {
     direction: Option<MaybeReactive<FlexDirection>>,
     gap: Option<MaybeReactive<f32>>,
-    padding: Option<MaybeReactive<f32>>,
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align: Option<MaybeReactive<AlignItems>>,
     wrap: Option<MaybeReactive<FlexWrap>>,
-    grow: Option<MaybeReactive<f32>>,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
-    width: Option<MaybeReactive<Dim>>,
-    min_width: Option<MaybeReactive<Dim>>,
-    max_width: Option<MaybeReactive<Dim>>,
-    height: Option<MaybeReactive<Dim>>,
-    min_height: Option<MaybeReactive<Dim>>,
-    max_height: Option<MaybeReactive<Dim>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    layout: LayoutAttrs,
+    universal: UniversalAttrs,
     children: Children,
 }
 
@@ -239,21 +247,13 @@ fn empty_stack() -> Stack<()> {
     Stack {
         direction: None,
         gap: None,
-        padding: None,
         justify_content: None,
         align: None,
         wrap: None,
-        grow: None,
         shrink: None,
         basis: None,
-        width: None,
-        min_width: None,
-        max_width: None,
-        height: None,
-        min_height: None,
-        max_height: None,
-        alpha: None,
-        tool_tip: None,
+        layout: LayoutAttrs::default(),
+        universal: UniversalAttrs::default(),
         children: (),
     }
 }
@@ -293,14 +293,6 @@ impl<Ch> Stack<Ch> {
         self
     }
 
-    pub fn padding<V>(mut self, p: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.padding = Some(p.into_maybe_reactive());
-        self
-    }
-
     pub fn gap<V>(mut self, g: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
@@ -333,14 +325,6 @@ impl<Ch> Stack<Ch> {
         self
     }
 
-    pub fn grow<V>(mut self, g: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.grow = Some(g.into_maybe_reactive());
-        self
-    }
-
     pub fn shrink<V>(mut self, s: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
@@ -357,92 +341,28 @@ impl<Ch> Stack<Ch> {
         self
     }
 
-    pub fn width<V>(mut self, w: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.width = Some(w.into_maybe_reactive());
-        self
-    }
-
-    pub fn min_width<V>(mut self, w: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.min_width = Some(w.into_maybe_reactive());
-        self
-    }
-
-    pub fn max_width<V>(mut self, w: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.max_width = Some(w.into_maybe_reactive());
-        self
-    }
-
-    pub fn height<V>(mut self, h: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.height = Some(h.into_maybe_reactive());
-        self
-    }
-
-    pub fn min_height<V>(mut self, h: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.min_height = Some(h.into_maybe_reactive());
-        self
-    }
-
-    pub fn max_height<V>(mut self, h: V) -> Self
-    where
-        V: IntoMaybeReactive<Dim>,
-    {
-        self.max_height = Some(h.into_maybe_reactive());
-        self
-    }
-
-    pub fn alpha<V>(mut self, a: V) -> Self
-    where
-        V: IntoMaybeReactive<f64>,
-    {
-        self.alpha = Some(a.into_maybe_reactive());
-        self
-    }
-
-    pub fn tool_tip<V>(mut self, s: V) -> Self
-    where
-        V: IntoMaybeReactive<String>,
-    {
-        self.tool_tip = Some(s.into_maybe_reactive());
-        self
-    }
-
     pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh)> {
         Stack {
             direction: self.direction,
             gap: self.gap,
-            padding: self.padding,
             justify_content: self.justify_content,
             align: self.align,
             wrap: self.wrap,
-            grow: self.grow,
             shrink: self.shrink,
             basis: self.basis,
-            width: self.width,
-            min_width: self.min_width,
-            max_width: self.max_width,
-            height: self.height,
-            min_height: self.min_height,
-            max_height: self.max_height,
-            alpha: self.alpha,
-            tool_tip: self.tool_tip,
+            layout: self.layout,
+            universal: self.universal,
             children: (self.children, child),
         }
     }
+}
+
+impl<Ch> WithLayout for Stack<Ch> {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl<Ch> WithUniversal for Stack<Ch> {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl<Ch> Render<Dom> for Stack<Ch>
@@ -463,13 +383,6 @@ where
             if let Some(eff) = install(direction, move |d| {
                 set_flex_direction(e.as_node(), d)
             }) {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.padding {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p))
-            {
                 effects.push(eff);
             }
         }
@@ -503,19 +416,9 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_flex_item_attrs(
-            &el,
-            self.grow,
-            self.shrink,
-            self.basis,
-            self.width,
-            self.min_width,
-            self.max_width,
-            self.height,
-            self.min_height,
-            self.max_height,
-        ));
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
+        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_universal(&el, self.universal));
 
         // Build children but DON'T mount them yet — same cascade
         // pattern as the cocoa port. Mounting is deferred until
@@ -541,11 +444,10 @@ pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    grow: Option<f32>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 pub fn button() -> Button {
@@ -553,11 +455,10 @@ pub fn button() -> Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -601,11 +502,6 @@ impl Button {
         self
     }
 
-    pub fn grow(mut self, g: f32) -> Self {
-        self.grow = Some(g);
-        self
-    }
-
     pub fn child<V>(self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -629,7 +525,12 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ClickEvent>
 {
 }
 
-impl_universal_attrs!(Button);
+impl WithLayout for Button {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for Button {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for Button {
     type State = ElementState<(), ()>;
@@ -658,11 +559,8 @@ impl Render<Dom> for Button {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.grow {
-            set_flex_grow(el.as_node(), g);
-        }
-
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -692,8 +590,8 @@ pub struct Checkbox {
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 pub fn checkbox() -> Checkbox {
@@ -704,8 +602,8 @@ pub fn checkbox() -> Checkbox {
         handlers: Vec::new(),
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -772,7 +670,12 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ClickEvent>
 {
 }
 
-impl_universal_attrs!(Checkbox);
+impl WithLayout for Checkbox {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for Checkbox {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for Checkbox {
     type State = ElementState<(), ()>;
@@ -805,7 +708,8 @@ impl Render<Dom> for Checkbox {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -835,11 +739,10 @@ pub struct Slider {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<super::bind::BoundFloat>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    grow: Option<f32>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 pub fn slider() -> Slider {
@@ -850,11 +753,10 @@ pub fn slider() -> Slider {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -882,11 +784,6 @@ impl Slider {
         V: IntoMaybeReactive<bool>,
     {
         self.enabled = Some(value.into_maybe_reactive());
-        self
-    }
-
-    pub fn grow(mut self, g: f32) -> Self {
-        self.grow = Some(g);
         self
     }
 
@@ -924,7 +821,12 @@ impl Slider {
     }
 }
 
-impl_universal_attrs!(Slider);
+impl WithLayout for Slider {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for Slider {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
@@ -961,11 +863,8 @@ impl Render<Dom> for Slider {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.grow {
-            set_flex_grow(el.as_node(), g);
-        }
-
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -994,11 +893,10 @@ pub struct PopUpButton {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<super::bind::BoundIndex>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    grow: Option<f32>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 pub fn pop_up_button() -> PopUpButton {
@@ -1008,11 +906,10 @@ pub fn pop_up_button() -> PopUpButton {
         enabled: None,
         pending_bind_selection: None,
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -1042,11 +939,6 @@ impl PopUpButton {
         self
     }
 
-    pub fn grow(mut self, g: f32) -> Self {
-        self.grow = Some(g);
-        self
-    }
-
     pub(crate) fn set_pending_bind_selection(
         &mut self,
         bound: super::bind::BoundIndex,
@@ -1070,7 +962,12 @@ impl PopUpButton {
     }
 }
 
-impl_universal_attrs!(PopUpButton);
+impl WithLayout for PopUpButton {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for PopUpButton {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for PopUpButton {
     type State = ElementState<(), ()>;
@@ -1106,11 +1003,8 @@ impl Render<Dom> for PopUpButton {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.grow {
-            set_flex_grow(el.as_node(), g);
-        }
-
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1136,11 +1030,10 @@ impl Render<Dom> for PopUpButton {
 pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    grow: Option<f32>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 impl Label {
@@ -1156,11 +1049,10 @@ pub fn label() -> Label {
     Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -1180,11 +1072,6 @@ impl Label {
         self.text(value)
     }
 
-    pub fn grow(mut self, g: f32) -> Self {
-        self.grow = Some(g);
-        self
-    }
-
     pub fn node_ref(mut self, r: NodeRef) -> Self {
         self.node_ref = Some(r);
         self
@@ -1201,7 +1088,12 @@ impl Label {
     }
 }
 
-impl_universal_attrs!(Label);
+impl WithLayout for Label {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for Label {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for Label {
     type State = ElementState<(), ()>;
@@ -1221,11 +1113,8 @@ impl Render<Dom> for Label {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.grow {
-            set_flex_grow(el.as_node(), g);
-        }
-
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1255,11 +1144,10 @@ pub struct TextField {
     secure: bool,
     pending_bind: Option<super::bind::BoundValue>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    grow: Option<f32>,
     node_ref: Option<NodeRef>,
     directives: Vec<Box<dyn FnOnce(&GtkElement) + Send + 'static>>,
-    alpha: Option<MaybeReactive<f64>>,
-    tool_tip: Option<MaybeReactive<String>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
 }
 
 pub fn text_field() -> TextField {
@@ -1270,11 +1158,10 @@ pub fn text_field() -> TextField {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -1286,11 +1173,10 @@ pub fn secure_text_field() -> TextField {
         secure: true,
         pending_bind: None,
         handlers: Vec::new(),
-        grow: None,
         node_ref: None,
         directives: Vec::new(),
-        alpha: None,
-        tool_tip: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
     }
 }
 
@@ -1316,11 +1202,6 @@ impl TextField {
         V: IntoMaybeReactive<bool>,
     {
         self.enabled = Some(value.into_maybe_reactive());
-        self
-    }
-
-    pub fn grow(mut self, g: f32) -> Self {
-        self.grow = Some(g);
         self
     }
 
@@ -1365,7 +1246,12 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::BlurEvent>
 {
 }
 
-impl_universal_attrs!(TextField);
+impl WithLayout for TextField {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for TextField {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
 
 impl Render<Dom> for TextField {
     type State = ElementState<(), ()>;
@@ -1413,11 +1299,8 @@ impl Render<Dom> for TextField {
             h.apply_to(&el);
         }
 
-        if let Some(g) = self.grow {
-            set_flex_grow(el.as_node(), g);
-        }
-
-        effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
