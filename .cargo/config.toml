@@ -1,0 +1,6 @@
+# Run iOS-simulator binaries via `xcrun simctl spawn` so `cargo test
+# --target aarch64-apple-ios-sim` works end-to-end. Requires a booted
+# simulator (the run_ios.sh scripts under uikit/examples/ boot one if
+# none is running).
+[target.aarch64-apple-ios-sim]
+runner = "xcrun simctl spawn booted"
