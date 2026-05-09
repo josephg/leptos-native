@@ -950,6 +950,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos_apple_shared"
+version = "0.1.0"
+
+[[package]]
 name = "leptos_cocoa"
 version = "0.1.0"
 dependencies = [
@@ -957,6 +961,7 @@ dependencies = [
  "cocoa_dom",
  "either_of",
  "leptos",
+ "leptos_apple_shared",
  "leptos_macro",
  "objc2",
  "objc2-app-kit",
@@ -996,6 +1001,7 @@ dependencies = [
  "either_of",
  "ios_dom",
  "leptos",
+ "leptos_apple_shared",
  "leptos_macro",
  "objc2",
  "objc2-foundation",
@@ -1574,7 +1580,6 @@ dependencies = [
  "tokio-test",
  "tracing",
  "typed-builder",
- "web-sys",
 ]
 
 [[package]]

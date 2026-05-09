@@ -1,6 +1,6 @@
 //! Small helpers used by `view!`/`component!` macro expansion. Vendored from
-//! upstream `leptos_hot_reload::parsing` (MIT) — that crate was deleted from
-//! this fork in Phase 4 since hot-reloading is web-only.
+//! upstream `leptos_hot_reload::parsing` (MIT) — that crate is gone from
+//! this fork since hot-reloading is web-only.
 
 use rstml::node::{CustomNode, NodeElement, NodeName};
 use std::path::Path;

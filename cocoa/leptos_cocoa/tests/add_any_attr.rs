@@ -1,8 +1,7 @@
-//! Regression tests for `AddAnyAttr<Dom>` on cocoa builders.
-//!
-//! Phase 9 minimal AddAnyAttr port — the macro-emitted
-//! `MyComponent(props).add_any_attr((on_attr,))` path that lets users
-//! attach `on:click` handlers directly to custom components.
+//! Regression tests for `AddAnyAttr<Dom>` on cocoa builders — the
+//! macro-emitted `MyComponent(props).add_any_attr((on_attr,))` path
+//! that lets users attach `on:click` handlers directly to custom
+//! components.
 
 #![cfg(target_os = "macos")]
 

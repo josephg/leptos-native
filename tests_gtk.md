@@ -611,3 +611,40 @@ before closing the feature.
   `SupportsEvent<E>` the way `tests.md` suggests (e.g.
   `<button on:input=...>` should fail at compile time)? Gated on
   `cfg(target_os = "linux")`.
+
+---
+
+## Added 2026-05-09 — review pass
+
+Gaps surfaced during the post-native-pivot codebase review.
+
+### Status: gtk/leptos_gtk not in workspace
+- The crate exists on disk but isn't a workspace member; `cargo
+  check --workspace` does not touch it. **First step**: add to
+  `workspace.members`, then the test plan below becomes runnable.
+
+### Macro / build-time (shared with cocoa)
+- □ *compile_fail* `#[island]` and `#[lazy]` macros are gone.
+
+### Signal handler stacking (GTK-specific)
+- □ Multiple `on:click` on one button: GTK *stacks* handlers (unlike
+  cocoa's target/action which overwrites). Confirm the documented
+  behaviour and add a test that fires one click and verifies all
+  closures ran in registration order.
+
+### Widget lifetime / closure drop
+- □ Drop a `<button>` with a captured `RwSignal`. Verify the
+  closure (and the `Rc` to the signal) is dropped (assert via
+  `Weak::upgrade` on the signal, or via a `Drop`-guarded sentinel).
+  Cocoa-side has the leak; GTK side claims to drop with the widget
+  — pin that down with a regression test.
+
+### gtk::Box layout assumptions
+- □ `<view>` defaults to vertical orientation (cocoa is row).
+  Document + test.
+- □ `flex_grow` is binary on GTK — `0.0` -> no expand, anything
+  positive -> `set_hexpand(true)`. Test both arms.
+
+### Reactivity through glib main loop
+- □ `RwSignal::set` triggers a `gtk::Widget` update on the next idle
+  tick, not synchronously (depending on spawner config).

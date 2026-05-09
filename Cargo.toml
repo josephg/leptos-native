@@ -8,6 +8,7 @@ members = [
   "common/renderer",
   "common/leptos_macro",
   "common/leptos",
+  "apple_shared",
   "cocoa/leptos_cocoa",
   "uikit/leptos_uikit",
 
@@ -57,6 +58,7 @@ default-members = [
   "common/renderer",
   "common/leptos_macro",
   "common/leptos",
+  "apple_shared",
   "cocoa/leptos_cocoa",
   "cocoa/dom",
   "gtk/dom",
@@ -123,6 +125,7 @@ reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos = { path = "./common/leptos", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
+leptos_apple_shared = { path = "./apple_shared", version = "0.1.0" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---
 throw_error = { default-features = false, version = "0.3.1" }
@@ -161,7 +164,6 @@ serde = { default-features = false, version = "1.0" }
 syn = { default-features = false, version = "2.0" }
 paste = { default-features = false, version = "1.0" }
 quote = { default-features = false, version = "1.0" }
-web-sys = { default-features = false, version = "0.3" }
 serial_test = { default-features = false, version = "3.3" }
 glib = { default-features = false, version = "0.21" }
 gio = { default-features = false, version = "0.21" }
@@ -178,7 +180,6 @@ lto = true
 opt-level = 'z'
 
 [workspace.metadata.cargo-all-features]
-skip_feature_sets = [["csr", "ssr"], ["csr", "hydrate"], ["ssr", "hydrate"]]
 max_combination_size = 2
 
 [workspace.lints.rust]

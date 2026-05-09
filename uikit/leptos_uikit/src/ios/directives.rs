@@ -1,32 +1,11 @@
-//! `use:directive=param` macro plumbing for iOS builders.
-//! Port from `tachys::cocoa::directives`. Currently unreferenced —
-//! the iOS builders have no `.directive()` method yet (audit issue
-//! 5d). Kept here so that wiring it up later is a one-side change.
+//! `use:directive=param` macro plumbing for iOS builders. The
+//! generic `pack` and `run_all` helpers live in
+//! `leptos_apple_shared::directive`; this module just re-exports them
+//! at the path the iOS builders import from. Currently unreferenced —
+//! the iOS builders have no `.directive()` method yet (see
+//! `audit_ios.md` issue 5d). Kept so wiring it up later is a one-side
+//! change.
 
-#![allow(dead_code)]
+#![allow(unused_imports)]
 
-use ios_dom::Element;
-use crate::directive::IntoDirective;
-
-pub(crate) fn pack<D, T, P>(
-    handler: D,
-    param: P,
-) -> Box<dyn FnOnce(&Element) + Send + 'static>
-where
-    D: IntoDirective<T, P> + Send + 'static,
-    P: Send + 'static,
-    T: 'static,
-{
-    Box::new(move |el: &Element| {
-        handler.run(el.clone(), param);
-    })
-}
-
-pub(crate) fn run_all(
-    directives: Vec<Box<dyn FnOnce(&Element) + Send + 'static>>,
-    el: &Element,
-) {
-    for d in directives {
-        d(el);
-    }
-}
+pub(crate) use leptos_apple_shared::directive::{pack, run_all};

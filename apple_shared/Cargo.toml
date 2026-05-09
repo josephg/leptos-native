@@ -1,0 +1,11 @@
+[package]
+name = "leptos_apple_shared"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared helpers for the Cocoa (macOS) and UIKit (iOS) Leptos ports."
+
+[dependencies]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [] }

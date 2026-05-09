@@ -15,6 +15,7 @@ renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
 leptos = { workspace = true }
 leptos_macro = { workspace = true }
+leptos_apple_shared = { workspace = true }
 either_of = { workspace = true }
 oco_ref = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
@@ -47,4 +48,19 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 [[test]]
 name = "add_any_attr"
 path = "tests/add_any_attr.rs"
+harness = false
+
+[[test]]
+name = "components"
+path = "tests/components.rs"
+harness = false
+
+[[test]]
+name = "bind_cycle"
+path = "tests/bind_cycle.rs"
+harness = false
+
+[[test]]
+name = "two_handlers"
+path = "tests/two_handlers.rs"
 harness = false

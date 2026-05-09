@@ -82,7 +82,7 @@
 //! have no use for it. Notable removals:
 //!
 //! - **No `RenderHtml`** trait. `IntoView<R>` only requires
-//!   `Render<R> + Send`. Native has no SSR step.
+//!   `Render<R> + AddAnyAttr<R> + Send`. Native has no SSR step.
 //! - **No `AnyView` / type-erased `Children`.** Each binary has
 //!   exactly one renderer; concrete view types pass through the
 //!   component graph unmolested. Components that need to accept

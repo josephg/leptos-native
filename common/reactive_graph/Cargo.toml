@@ -30,9 +30,6 @@ subsecond = { workspace = true, default-features = true, optional = true }
 indexmap = { workspace = true, default-features = true }
 paste = { workspace = true, default-features = true }
 
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-web-sys = { workspace = true, features = ["console"] }
-
 [dev-dependencies]
 tokio = { features = [
   "rt-multi-thread",

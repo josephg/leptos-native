@@ -24,7 +24,6 @@ mod params;
 mod view;
 use crate::component::unmodified_fn_name_from_fn_name;
 mod component;
-mod lazy;
 mod memo;
 mod slice;
 mod slot;
@@ -577,108 +576,12 @@ pub fn component(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
         false
     };
 
-    component_macro(s, is_transparent, false, None)
-}
-
-/// Defines a component as an interactive island when you are using the
-/// `islands` feature of Leptos. Apart from the macro name,
-/// the API is the same as the [`component`](macro@component) macro.
-///
-/// When you activate the `islands` feature, every `#[component]`
-/// is server-only by default. This "default to server" behavior is important:
-/// you opt into shipping code to the client, rather than opting out. You can
-/// opt into client-side interactivity for any given component by changing from
-///  `#[component]` to `#[island]`—the two macros are otherwise identical.
-///
-/// Everything that is included inside an island will be compiled to WASM and
-/// shipped to the browser. So the key to really benefiting from this architecture
-/// is to make islands as small as possible, and include only the minimal
-/// required amount of functionality in islands themselves.
-///
-/// Only code included in an island itself is compiled to WASM. This means:
-/// 1. `children` can be provided from a server `#[component]` to an `#[island]`
-/// without the island needing to be able to hydrate them.
-/// 2. Props can be passed from the server to an island.
-///
-/// ## Present Limitations
-/// A few noteworthy limitations, at the moment:
-/// 1. `children` are completely opaque in islands. You can't iterate over `children`;
-/// in fact they're all bundled into a single `<leptos-children>` HTML element.
-/// 2. Similarly, `children` need to be used in the HTML rendered on the server.
-/// If they need to be displayed conditionally, they should be included in the HTML
-/// and rendered or not using `display: none` rather than `<Show>` or ordinary control flow.
-/// This is because the children aren't serialized at all, other than as HTML: if that
-/// HTML isn't present in the DOM, even if hidden, it is never sent and not available
-/// to the client at all.
-///
-/// ## Example
-/// ```rust,ignore
-/// use leptos::prelude::*;
-///
-/// #[component]
-/// pub fn App() -> impl IntoView {
-///     // this would panic if it ran in the browser
-///     // but because this isn't an island, it only runs on the server
-///     let file =
-///         std::fs::read_to_string("./src/is_this_a_server_component.txt")
-///             .unwrap();
-///     let len = file.len();
-///
-///     view! {
-///         <p>"The starting value for the button is the file's length."</p>
-///         // `value` is serialized and given to the island as a prop
-///         <Island value=len>
-///             // `file` is only available on the server
-///             // island props are projected in, so we can nest
-///             // server-only content inside islands inside server content etc.
-///             <p>{file}</p>
-///         </Island>
-///     }
-/// }
-///
-/// #[island]
-/// pub fn Island(
-///     #[prop(into)] value: RwSignal<usize>,
-///     children: Children,
-/// ) -> impl IntoView {
-///     // because `RwSignal<T>` implements `From<T>`, we can pass in a plain
-///     // value and use it as the starting value of a signal here
-///     view! {
-///         <button on:click=move |_| value.update(|n| *n += 1)>
-///             {value}
-///         </button>
-///         {children()}
-///     }
-/// }
-/// ```
-#[proc_macro_error2::proc_macro_error]
-#[proc_macro_attribute]
-pub fn island(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
-    let (is_transparent, is_lazy) = if !args.is_empty() {
-        let arg = parse_macro_input!(args as syn::Ident);
-
-        if arg != "transparent" && arg != "lazy" {
-            abort!(
-                arg,
-                "only `transparent` or `lazy` are supported";
-                help = "try `#[island(transparent)]`, `#[island(lazy)]`, or `#[island]`"
-            );
-        }
-
-        (arg == "transparent", arg == "lazy")
-    } else {
-        (false, false)
-    };
-
-    let island_src = s.to_string();
-    component_macro(s, is_transparent, is_lazy, Some(island_src))
+    component_macro(s, is_transparent)
 }
 
 fn component_macro(
     s: TokenStream,
     is_transparent: bool,
-    is_lazy: bool,
-    island: Option<String>,
 ) -> TokenStream {
     let mut dummy = syn::parse::<DummyModel>(s.clone());
     let parse_result = syn::parse::<component::Model>(s);
@@ -686,8 +589,6 @@ fn component_macro(
     if let (Ok(ref mut unexpanded), Ok(model)) = (&mut dummy, parse_result) {
         let expanded = model
             .is_transparent(is_transparent)
-            .is_lazy(is_lazy)
-            .with_island(island)
             .into_token_stream();
         if !matches!(unexpanded.vis, Visibility::Public(_)) {
             unexpanded.vis = Visibility::Public(Pub {
@@ -914,43 +815,3 @@ pub fn memo(input: TokenStream) -> TokenStream {
     memo::memo_impl(input)
 }
 
-/// The `#[lazy]` macro indicates that a function can be lazy-loaded from a separate WebAssembly (WASM) binary.
-///
-/// The first time the function is called, calling the function will first load that other binary,
-/// then call the function. On subsequent calls it will be called immediately, but still return
-/// asynchronously to maintain the same API.
-///
-/// `#[lazy]` can be used to annotate synchronous or `async` functions. In both cases, the final function will be
-/// `async` and must be called as such.
-///
-/// All parameters and output types should be concrete types, with no generics or `impl Trait` types.
-///
-/// This should be used in tandem with a suitable build process, such as `cargo leptos --split`.
-///
-/// ```rust
-/// # use leptos_macro::lazy;
-///
-/// #[lazy]
-/// fn lazy_synchronous_function() -> String {
-///     "Hello, lazy world!".to_string()
-/// }
-///
-/// #[lazy]
-/// async fn lazy_async_function() -> String {
-///     /* do something that requires async work */
-///     "Hello, lazy async world!".to_string()
-/// }
-///
-/// async fn use_lazy_functions() {
-///     // synchronous function has been converted to async
-///     let value1 = lazy_synchronous_function().await;
-///
-///     // async function is still async
-///     let value1 = lazy_async_function().await;
-/// }
-/// ```
-#[proc_macro_attribute]
-#[proc_macro_error]
-pub fn lazy(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
-    lazy::lazy_impl(args, s)
-}

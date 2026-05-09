@@ -1,40 +1,11 @@
-//! Attribute-key marker types used by the `bind:value` / `bind:checked`
-//! / `bind:selection` machinery in [`crate::cocoa::bind`].
-//!
-//! Phase 8: previously these came from `tachys::html::attribute::*`
-//! (`Value`, `Checked`, `AttributeKey`). That whole module is gone in
-//! the native fork; the only pieces bind needs are the zero-sized
-//! marker structs and the trait, so we vendor them here.
+//! Attribute-key markers used by the `bind:` machinery in
+//! [`crate::cocoa::bind`]. The platform-agnostic markers (`Value`,
+//! `Checked`, `AttributeKey`) live in `leptos_apple_shared`; this
+//! module re-exports them and adds the cocoa-specific `Selection`.
 
-/// Marker trait identifying an HTML-style attribute by its name.
-///
-/// Native targets use these markers solely to disambiguate the
-/// `BindAttribute<Key, Sig>` trait impls per-control (so a control can
-/// say it supports `bind:value` but not `bind:checked`, etc.).
-pub trait AttributeKey: Clone + Send + 'static {
-    /// The name of the attribute (informational; not used to set
-    /// anything on a real element).
-    const KEY: &'static str;
-}
+pub use leptos_apple_shared::attr_keys::{AttributeKey, Checked, Value};
 
-/// `bind:value` key — text fields, sliders, steppers, etc.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Value;
-
-impl AttributeKey for Value {
-    const KEY: &'static str = "value";
-}
-
-/// `bind:checked` key — checkboxes.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Checked;
-
-impl AttributeKey for Checked {
-    const KEY: &'static str = "checked";
-}
-
-/// `bind:selection` key — re-exported from `crate::cocoa::bind` so that
-/// the macro path `::leptos::attr::Selection` resolves. Defined as a
-/// const so it's usable both as a value (`Selection`) and as a type
-/// (the BindAttribute<Selection, ...> impls).
+/// `bind:selection` key — defined in `crate::cocoa::bind` next to its
+/// `BindAttribute` impls. Re-exported here so the macro path
+/// `::leptos::attr::Selection` resolves.
 pub use crate::cocoa::bind::Selection;

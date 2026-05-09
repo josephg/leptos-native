@@ -2,9 +2,9 @@
 //! views (via the `throw_error` hook system, see `Render<R>` for
 //! `Result<T, E>` in `renderer::view::result`) and renders a fallback.
 //!
-//! Phase 7B port. The upstream version was 726 lines of
-//! `RenderHtml`/`AddAnyAttr`/`SharedContext`/SSR machinery;
-//! native-only fork strips all that. What's preserved:
+//! Pared down from upstream's 726-line version, which carried
+//! `RenderHtml`/`SharedContext`/SSR machinery the native ports don't
+//! need. What's preserved:
 //!  - The same prop signature: `fallback: F where F: FnMut(ArcRwSignal<Errors>) -> Fal`.
 //!  - The same `Errors` map shape: `FxHashMap<ErrorId, Error>`.
 //!  - The reactive flip between children and fallback driven by

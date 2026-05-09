@@ -165,10 +165,11 @@ pub struct ElementState<AttrState, ChildState> {
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    /// Phase 8: previously the state for the dynamic attribute tuple
-    /// installed via `add_any_attr`. The fork dropped that machinery
-    /// (no SSR, no spread); kept as a phantom slot so existing builder
-    /// code that passes a unit `()` through the type still type-checks.
+    /// Phantom slot where upstream stored the state for the dynamic
+    /// attribute tuple installed via `add_any_attr`. The fork dropped
+    /// that machinery (no SSR, no spread); kept as a phantom so
+    /// existing builder code that passes a unit `()` through the
+    /// type still type-checks.
     pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
@@ -998,7 +999,7 @@ impl Button {
     /// fact that our `AddAnyAttr` stub drops attributes.
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1273,7 +1274,7 @@ impl Checkbox {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1458,7 +1459,7 @@ impl Slider {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1681,7 +1682,7 @@ impl PopUpButton {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1874,7 +1875,7 @@ impl Label {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2116,7 +2117,7 @@ impl TextField {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2355,7 +2356,7 @@ impl DatePicker {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2593,7 +2594,7 @@ impl Stepper {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2749,7 +2750,7 @@ impl ProgressIndicator {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2907,7 +2908,7 @@ impl ColorWell {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3087,7 +3088,7 @@ impl SegmentedControl {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3407,7 +3408,7 @@ impl ImageView {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3538,7 +3539,7 @@ impl TextView {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {

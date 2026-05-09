@@ -74,9 +74,9 @@ impl Default for TextProp {
     }
 }
 
-// `IntoAttributeValue` impl deferred to Phase 8 (the trait is on
-// platform `leptos_<X>` element/attr modules, not the renderer-agnostic
-// `common/renderer` crate).
+// No `IntoAttributeValue` impl: the trait lives in the platform
+// `leptos_<X>` element/attr modules, not in the renderer-agnostic
+// `common/renderer` crate.
 
 #[allow(unused)]
 macro_rules! textprop_reactive {

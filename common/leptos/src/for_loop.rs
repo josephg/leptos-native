@@ -1,9 +1,9 @@
 //! `<For>` — iterate over a collection and render each item.
 //!
-//! Phase 7B: this is the **unkeyed** variant. Upstream's `<For>` did
+//! Currently the **unkeyed** variant only. Upstream's `<For>` did
 //! keyed diffing via `tachys::view::keyed::keyed(...)` (959 lines of
-//! position-vs-key bookkeeping that's still on the Phase 8 punch list
-//! to port to `common/renderer/src/view/keyed.rs`).
+//! position-vs-key bookkeeping); a port to
+//! `common/renderer/src/view/keyed.rs` is on the punch list.
 //!
 //! Unkeyed semantics: items diff by position. If your list reorders,
 //! every retained row gets `T::rebuild` called with whatever data
@@ -22,14 +22,14 @@ use std::{hash::Hash, marker::PhantomData};
 
 /// Iterates over children and displays them.
 ///
-/// Phase 7B: unkeyed (see module docs). The `key` function is accepted
-/// for forward-compatibility but not yet used.
+/// Unkeyed (see module docs). The `key` function is accepted for
+/// forward-compatibility but not yet used.
 #[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
 #[component]
 pub fn For<IF, I, T, EF, N, KF, K, R>(
     /// Items to iterate over.
     each: IF,
-    /// A key function. Currently unused (Phase 8 will wire keyed diffing).
+    /// A key function. Currently unused; reserved for keyed diffing.
     #[allow(unused_variables)]
     key: KF,
     /// A function from item to view.

@@ -699,14 +699,14 @@ fn node_to_tokens(
             disable_inert_html,
         ),
         Node::Block(block) => {
-            // Phase 8: native fork — emit the bare block. Upstream
-            // wrapped this in `IntoRender::into_render(...)` to
-            // normalize the value into Render<R>, but on native that
-            // adds an R type parameter the surrounding context often
-            // can't infer (e.g. <label>{closure}</label> where label's
-            // .child() takes IntoMaybeReactive<String>, not Render).
-            // The blanket `impl<R, T: Render<R>> IntoRender<R> for T`
-            // is identity anyway, so dropping the wrap is type-equivalent
+            // Native: emit the bare block. Upstream wrapped this in
+            // `IntoRender::into_render(...)` to normalize the value
+            // into Render<R>, but that adds an R type parameter the
+            // surrounding context often can't infer (e.g.
+            // <label>{closure}</label> where label's .child() takes
+            // IntoMaybeReactive<String>, not Render). The blanket
+            // `impl<R, T: Render<R>> IntoRender<R> for T` is identity
+            // anyway, so dropping the wrap is type-equivalent
             // for paths that ARE generic in R.
             Some(quote! { (#block) })
         }
@@ -927,10 +927,6 @@ pub(crate) fn element_to_tokens(
         }
     } else {
         let tag = name.to_string();
-        // collect close_tag name to emit semantic information for IDE.
-        /* TODO restore this
-        let mut ide_helper_close_tag = IdeTagHelper::new();
-        let close_tag = node.close_tag.as_ref().map(|c| &c.name);*/
         let is_custom = is_custom_element(&tag);
         let name = if is_custom {
             let name = node.name().to_string();
@@ -972,11 +968,6 @@ pub(crate) fn element_to_tokens(
             parent_type = TagType::Html;
             quote_spanned! { name.span() => ::leptos::tachys::html::element::#name() }
         };
-
-        /* TODO restore this
-        if let Some(close_tag) = close_tag {
-            ide_helper_close_tag.save_tag_completion(close_tag)
-        } */
 
         let attributes = node.attributes();
         let attributes = if attributes.len() == 1 {

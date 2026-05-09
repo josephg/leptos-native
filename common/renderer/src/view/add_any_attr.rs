@@ -8,16 +8,15 @@
 //! trickle down through wrapper types ([`View`], [`OwnedView`], …)
 //! and land on a leaf builder.
 //!
-//! Phase-9 minimal port of upstream `tachys::view::add_attr::AddAnyAttr`.
-//! Differences:
+//! Minimal port of upstream `tachys::view::add_attr::AddAnyAttr`.
+//! Differences from upstream:
 //!
 //! - Single method, no `Output<NewAttr>` type-changing accumulation.
 //!   Native installs at runtime via a `pending_spreads` Vec on the
 //!   leaf builder; no need for the attribute to become part of the
 //!   static type.
-//! - No `Attribute` trait with `to_html` / `hydrate` / `keys` /
-//!   `dry_resolve` / `into_owned` / etc. — that's the SSR machinery
-//!   we deleted in Phase 8.
+//! - No `Attribute` trait (the SSR machinery — `to_html` / `hydrate`
+//!   / `keys` / `dry_resolve` / `into_owned`).
 //! - No `IntoAnyAttribute` / `AnyAttribute` enum — only
 //!   [`OnAttribute`](crate::view::add_any_attr::ApplyAttr) and a few
 //!   handful of native attribute kinds need to round-trip.

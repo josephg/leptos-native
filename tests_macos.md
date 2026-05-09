@@ -793,3 +793,52 @@ When we eventually add this:
 - □ *integration* `WindowState::unmount` calls
   `nswindow.close()` which fires the close handler — i.e. unmount
   via the AppKit code path is exercised.
+
+---
+
+## Added 2026-05-09 — review pass
+
+Gaps surfaced during the post-native-pivot codebase review.
+
+### Macro / build-time
+- □ *compile_fail* `#[island] fn Foo() { ... }` no longer resolves
+  (we removed the macro). Catches accidental restore.
+- □ *compile_fail* `#[lazy] async fn ...` no longer resolves.
+- □ *compile-time* `#[component]` with `transparent` arg still works;
+  rejects unknown args.
+- □ *expansion test* (insta-style snapshot of generated tokens) for
+  `#[component]` so the post-island code shape is locked in.
+
+### Failure-mode hierarchy
+- □ *should_panic* installing two `on:click` handlers on one
+  `<button>` panics at build time with the documented diagnostic.
+- □ *should_panic* spawning a future from a non-main thread fails
+  loudly (i.e. the `SendWrapper` invariant is enforced).
+- □ *should_panic* mutating a `Node` from a non-main thread.
+
+### Layout / mark_dirty discipline
+- □ Setting an attribute to its *current* value does NOT trigger a
+  relayout (counted by hooking `schedule_relayout`).
+- □ Setting an attribute to a *new* value DOES dirty the node and
+  trigger exactly one relayout per main-loop tick (dedupe through
+  `PENDING`).
+- □ Inserting / removing children dirties the parent node.
+- □ `<scroll_view>` inside a non-bounded parent renders without a
+  viewport (documents the gotcha and produces a recognisable result).
+- □ `<scroll_view>` inside `flex_grow=1.0` parent gets a viewport.
+
+### Handler / leak detection
+- □ Build + drop 1000 buttons in a loop; `HANDLER_STORE` length
+  returns to baseline (currently leaks — flag as `#[ignore]` until
+  the unmount story is fixed; the test documents the bug).
+- □ Same for `TEXT_FIELD_STORE` and any text-view delegate store.
+
+### Bind-cycle protection
+- □ `bind:value` on text_field with an effect that writes back the
+  same value does not loop infinitely (relies on
+  `set_attribute`-diffs-against-current).
+- □ `bind:checked` on a checkbox with the same pattern.
+
+### Cross-port parity (with iOS / GTK)
+- □ Same view graph (subset that all three support) produces the
+  same Taffy node count + layout result on cocoa and ios.

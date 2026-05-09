@@ -8,8 +8,9 @@ use std::{marker::PhantomData, sync::Arc};
 
 /// Like `<Show>`, but for `Option`. Shows children when `some` returns `Some`.
 ///
-/// Phase 7B: the `fallback` prop from upstream's `<ShowLet>` is dropped
-/// (it used `ViewFn`/`AnyView`); see `Show` doc for context.
+/// Note: upstream's `<ShowLet>` had a `fallback` prop backed by
+/// `ViewFn`/`AnyView`; that's not available in this fork (see `Show`
+/// doc for context).
 #[component(transparent)]
 pub fn ShowLet<T, ChFn, V, M, R>(
     /// Rendered when `some` returns `Some(t)`. Receives `t` as its argument.

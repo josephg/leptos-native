@@ -254,10 +254,10 @@ impl OnAttribute {
     }
 }
 
-// Phase 8: dropped the upstream Attribute/NextAttribute/ToTemplate
-// impls (SSR machinery). Phase 9: revived AddAnyAttr / ApplyAttr in
-// minimal form so `<MyComponent on:click=...>` works — see
-// `renderer::view::add_any_attr` for the trait shape.
+// `OnAttribute` implements only `ApplyAttr` here (the minimal
+// `add_any_attr` machinery in `renderer::view::add_any_attr`). Upstream
+// also had `Attribute` / `NextAttribute` / `ToTemplate` impls — those
+// are SSR-coupled and gone in this fork.
 
 impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
     fn apply_to(self, el: &cocoa_dom::Element) {

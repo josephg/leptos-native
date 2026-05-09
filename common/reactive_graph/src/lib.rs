@@ -108,34 +108,22 @@ pub mod prelude {
     };
 }
 
-// TODO remove this, it's just useful while developing
 #[allow(unused)]
 #[doc(hidden)]
 pub fn log_warning(text: Arguments) {
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    {
-        web_sys::console::warn_1(&text.to_string().into());
-    }
-    #[cfg(all(
-        not(feature = "tracing"),
-        not(all(target_arch = "wasm32", target_os = "unknown"))
-    ))]
+    #[cfg(not(feature = "tracing"))]
     {
         eprintln!("{text}");
     }
 }
 
-/// Calls [`Executor::spawn`](any_spawner::Executor::spawn) on non-wasm targets and [`Executor::spawn_local`](any_spawner::Executor::spawn_local) on wasm targets, but ensures that the task also runs in the current arena, if
+/// Calls [`Executor::spawn`](any_spawner::Executor::spawn), but ensures that the task also runs in the current arena, if
 /// multithreaded arena sandboxing is enabled.
 pub fn spawn(task: impl Future<Output = ()> + Send + 'static) {
     #[cfg(feature = "sandboxed-arenas")]
     let task = owner::Sandboxed::new(task);
 
-    #[cfg(not(target_family = "wasm"))]
     any_spawner::Executor::spawn(task);
-
-    #[cfg(target_family = "wasm")]
-    any_spawner::Executor::spawn_local(task);
 }
 
 /// Calls [`Executor::spawn_local`](any_spawner::Executor::spawn_local), but ensures that the task also runs in the current arena, if

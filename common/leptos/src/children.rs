@@ -1,12 +1,12 @@
 //! Component `children` prop types.
 //!
-//! Phase 7B: pared down from upstream. The web-side variants
+//! Pared down from upstream. The web-side variants
 //! (`Children = Box<dyn FnOnce() -> AnyView>`, `ChildrenFn`,
 //! `ChildrenFragment`, `ChildrenFragmentFn`, etc.) all required
-//! `AnyView` — an 881-line type-erasure machine that's tightly bound
-//! to RenderHtml/AddAnyAttr. Native components don't need erasure
-//! because each application binary has exactly one renderer; we can
-//! preserve concrete view types through the typed variants.
+//! `AnyView` — an 881-line type-erasure machine. Native components
+//! don't need erasure because each application binary has exactly
+//! one renderer; we preserve concrete view types through the typed
+//! variants.
 //!
 //! What survives: `ToChildren` trait + `TypedChildren<T, R>` /
 //! `TypedChildrenMut<T, R>` / `TypedChildrenFn<T, R>`. Plus

@@ -1,48 +1,6 @@
-//! `use:directive=param` macro plumbing for cocoa builders.
-//!
-//! The upstream `tachys::html::directive::IntoDirective` trait
-//! and its blanket impls already cover function pointers with
-//! one or two parameters where the first is
-//! `crate::renderer::types::Element` (which on macOS is
-//! `cocoa_dom::Element`). Our job is just to call `handler.run(el,
-//! param)` at the right time.
-//!
-//! Each cocoa element builder has an inherent `.directive(handler,
-//! param)` method that boxes the call as a `FnOnce(&Element)` and
-//! pushes it onto a directives Vec. `Render::build` drains the Vec
-//! after constructing the underlying NSView.
+//! `use:directive=param` macro plumbing for cocoa builders. The
+//! generic `pack` and `run_all` helpers live in
+//! `leptos_apple_shared::directive`; this module just re-exports them
+//! at the path the cocoa builders import from.
 
-use cocoa_dom::Element;
-
-use crate::directive::IntoDirective;
-
-/// Pack a `(handler, param)` directive into the `FnOnce(&Element)`
-/// boxed shape that builders' `directives: Vec<...>` field
-/// stores.
-pub(crate) fn pack<D, T, P>(
-    handler: D,
-    param: P,
-) -> Box<dyn FnOnce(&Element) + Send + 'static>
-where
-    D: IntoDirective<T, P> + Send + 'static,
-    P: Send + 'static,
-    T: ?Sized + 'static,
-{
-    Box::new(move |el: &Element| {
-        // Phase 8: `IntoDirective::run` consumes self now (no
-        // Cloneable). Element is cloned into the directive body.
-        handler.run(el.clone(), param);
-    })
-}
-
-/// Drain a builder's directives Vec, calling each closure with
-/// `&el`. Called from each builder's `Render::build` after
-/// constructing the underlying element.
-pub(crate) fn run_all(
-    directives: Vec<Box<dyn FnOnce(&Element) + Send + 'static>>,
-    el: &Element,
-) {
-    for d in directives {
-        d(el);
-    }
-}
+pub(crate) use leptos_apple_shared::directive::{pack, run_all};

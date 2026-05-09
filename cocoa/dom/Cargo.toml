@@ -137,3 +137,13 @@ harness = false
 name = "focus"
 path = "tests/focus.rs"
 harness = false
+
+[[test]]
+name = "thread_safety"
+path = "tests/thread_safety.rs"
+harness = false
+
+[[test]]
+name = "layout_dirtying"
+path = "tests/layout_dirtying.rs"
+harness = false

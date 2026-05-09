@@ -43,8 +43,6 @@ pub use leptos::context;
 pub use leptos::typed_builder;
 #[doc(hidden)]
 pub use leptos::typed_builder_macro;
-#[doc(hidden)]
-pub use leptos::serde_json;
 pub use leptos::callback;
 
 pub mod tachys {

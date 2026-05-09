@@ -479,3 +479,34 @@ cargo build --workspace 2>&1 | tail -5
 cat REFACTOR.md   # this file
 cat /Users/seph/.claude/plans/tender-sniffing-star.md   # full plan
 ```
+
+---
+
+## TODO: rescue `trace-components` / `trace-component-props`
+
+Both are `leptos_macro` features inherited from upstream. They're
+zero-cost when the `tracing` feature is off (the cfg arms emit
+nothing). Status:
+
+- `trace-components` — emits
+  `#[tracing::instrument(level="info", name="<MyComponent />",
+   skip_all)]` on each `#[component]` body. Should still work as-is
+  because it only references `::leptos::tracing` (which we re-export).
+- `trace-component-props` — emits
+  `::leptos::leptos_dom::tracing_props![...]` to log each prop's value
+  as a tracing field. **Broken**: `leptos_dom` no longer exists in
+  this fork (folded into the `leptos` crate). Enabling this feature
+  alongside `tracing` will fail to compile with "no module
+  `leptos_dom` in `leptos`".
+
+To fix `trace-component-props`: port the upstream `tracing_props!`
+declarative macro into `common/leptos`, expose it as
+`::leptos::tracing_props` (or similar), and update the path in
+`common/leptos_macro/src/component.rs` (currently around line 255).
+
+Stretch goal: a third trace feature (e.g. `trace-component-render`)
+that wraps each component body with a debug overlay — flashes a red
+border / box over the component on every rerender. Hooks into the
+native renderer rather than tracing. Out of scope for the cleanup
+pass, but would be a great visual debugging affordance once
+`trace-component-props` is healthy again.
