@@ -824,6 +824,7 @@ dependencies = [
  "objc2-quartz-core",
  "objc2-ui-kit",
  "reactive_graph",
+ "renderer",
  "send_wrapper",
  "taffy",
 ]
@@ -922,6 +923,24 @@ dependencies = [
  "syn",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "leptos_uikit"
+version = "0.1.0"
+dependencies = [
+ "any_spawner",
+ "either_of",
+ "ios_dom",
+ "leptos",
+ "leptos_macro",
+ "objc2",
+ "objc2-foundation",
+ "objc2-ui-kit",
+ "oco_ref",
+ "reactive_graph",
+ "renderer",
+ "send_wrapper",
 ]
 
 [[package]]

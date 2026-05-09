@@ -9,9 +9,10 @@
 //! is added later it'll be a `Scene` builder integrated with
 //! `UISceneDelegate`, not a window builder.
 
+use crate::Dom;
 use ios_dom::app::{store_view_builder, uiapplication_main};
 use reactive_graph::owner::Owner;
-use tachys::view::{Mountable, Render};
+use renderer::view::{Mountable, Render};
 
 /// Run a UIKit application whose root view is built by `f`.
 ///
@@ -24,8 +25,8 @@ use tachys::view::{Mountable, Render};
 pub fn run<F, V>(f: F) -> !
 where
     F: FnOnce() -> V + 'static,
-    V: Render,
-    V::State: Mountable + 'static,
+    V: Render<Dom>,
+    V::State: Mountable<Dom> + 'static,
 {
     store_view_builder(move |window, content_root| {
         let owner = Owner::new();

@@ -10,9 +10,10 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::{
-    html::event::{EventDescriptor, PendingHandler, SupportsEvent},
-    view::{Mountable, Render, RenderHtml},
+    event_ios::{EventDescriptor, PendingHandler, SupportsEvent},
+    Dom,
 };
+use renderer::view::{Mountable, Render, UnitState};
 use ios_dom::{
     layout::{
         set_aspect_ratio, set_flex_direction, set_flex_grow, set_gap,
@@ -224,78 +225,12 @@ macro_rules! impl_chrome_attrs {
     };
 }
 
-/// Emit `impl AddAnyAttr + impl RenderHtml` for a builder generic
-/// over a single type parameter `<At = ()>`. Cuts the boilerplate
-/// shared by every builder. Direct port of cocoa's macro.
+// Phase 8: impl_typed_attrs_for! used to emit AddAnyAttr + RenderHtml
+// impls for every `<At>`-generic builder. Both traits are gone in this
+// fork (no SSR; no attribute-spread machinery). The macro is now a
+// no-op so we don't have to delete each invocation site below.
 macro_rules! impl_typed_attrs_for {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {
-        #[allow(clippy::type_complexity)]
-        impl<At> $crate::view::add_attr::AddAnyAttr for $builder<At>
-        where
-            At: $crate::html::attribute::Attribute,
-        {
-            type Output<NewAttr: $crate::html::attribute::Attribute> =
-                $builder<<At as $crate::html::attribute::NextAttribute>::Output<NewAttr>>;
-
-            fn add_any_attr<NewAttr: $crate::html::attribute::Attribute>(
-                self,
-                attr: NewAttr,
-            ) -> Self::Output<NewAttr> {
-                $builder {
-                    $($field: self.$field,)+
-                    attrs: $crate::html::attribute::NextAttribute::add_any_attr(
-                        self.attrs, attr,
-                    ),
-                }
-            }
-        }
-
-        impl<At> $crate::view::RenderHtml for $builder<At>
-        where
-            At: $crate::html::attribute::Attribute,
-        {
-            type AsyncOutput = $builder<At::AsyncOutput>;
-            type Owned = $builder<At::CloneableOwned>;
-
-            const MIN_LENGTH: usize = 0;
-
-            fn dry_resolve(&mut self) {
-                self.attrs.dry_resolve();
-            }
-
-            async fn resolve(self) -> Self::AsyncOutput {
-                let $builder { $($field,)+ attrs } = self;
-                let attrs = attrs.resolve().await;
-                $builder { $($field,)+ attrs }
-            }
-
-            fn to_html_with_buf(
-                self,
-                _buf: &mut String,
-                _position: &mut $crate::view::Position,
-                _escape: bool,
-                _mark_branches: bool,
-                _extra_attrs: Vec<
-                    $crate::html::attribute::any_attribute::AnyAttribute,
-                >,
-            ) {
-            }
-
-            fn hydrate<const FROM_SERVER: bool>(
-                self,
-                _cursor: &$crate::hydration::Cursor,
-                _position: &$crate::view::PositionState,
-            ) -> Self::State {
-                <Self as $crate::view::Render>::build(self)
-            }
-
-            fn into_owned(self) -> Self::Owned {
-                let $builder { $($field,)+ attrs } = self;
-                let attrs = attrs.into_cloneable_owned();
-                $builder { $($field,)+ attrs }
-            }
-        }
-    };
+    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
 }
 
 // ---------------------------------------------------------------------
@@ -305,11 +240,11 @@ macro_rules! impl_typed_attrs_for {
 pub struct ElementState<AttrState, ChildState> {
     pub el: IosElement,
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    pub(crate) _attrs: AttrState,
+    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
 
-impl<AttrState, ChildState: Mountable> Mountable
+impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
     for ElementState<AttrState, ChildState>
 {
     fn unmount(&mut self) {
@@ -326,7 +261,7 @@ impl<AttrState, ChildState: Mountable> Mountable
         self.children.mount(&self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -499,10 +434,10 @@ impl<Ch, A> View<Ch, A> {
 // in `Element::on_click` when the underlying view isn't a UIControl).
 // Plain UIView, UILabel, UIImageView etc. all route through that
 // fallback.
-impl<Ch, A> SupportsEvent<crate::html::event::ClickEvent> for View<Ch, A> {}
+impl<Ch, A> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch, A> {}
 
-impl<Ch: Render, A: crate::html::attribute::Attribute> Render for View<Ch, A> {
-    type State = ElementState<A::State, Ch::State>;
+impl<Ch: Render<Dom>, A> Render<Dom> for View<Ch, A> {
+    type State = ElementState<(), Ch::State>;
     fn build(self) -> Self::State {
         let el = IosElement::create("view");
         let mut effects = Vec::new();
@@ -540,134 +475,22 @@ impl<Ch: Render, A: crate::html::attribute::Attribute> Render for View<Ch, A> {
             self.border_color,
         ));
         let child_state = self.children.build();
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
         for handler in self.handlers {
             handler.apply_to(&el);
         }
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
-impl<Ch, A> crate::view::add_attr::AddAnyAttr for View<Ch, A>
-where
-    Ch: Render + Send + 'static + RenderHtml,
-    A: crate::html::attribute::Attribute,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> =
-        View<Ch, <A as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            aspect_ratio: self.aspect_ratio,
-            position_absolute: self.position_absolute,
-            inset_top: self.inset_top,
-            inset_right: self.inset_right,
-            inset_bottom: self.inset_bottom,
-            inset_left: self.inset_left,
-            alpha: self.alpha,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            handlers: self.handlers,
-            children: self.children,
-            attrs: crate::html::attribute::NextAttribute::add_any_attr(
-                self.attrs, attr,
-            ),
-        }
-    }
-}
-
-impl<Ch, A> RenderHtml for View<Ch, A>
-where
-    Ch: Render + Send + 'static + RenderHtml,
-    A: crate::html::attribute::Attribute,
-{
-    type AsyncOutput = View<Ch::AsyncOutput, A::AsyncOutput>;
-    type Owned = View<Ch::Owned, A::CloneableOwned>;
-    const MIN_LENGTH: usize = 0;
-    fn dry_resolve(&mut self) {
-        self.attrs.dry_resolve();
-    }
-    async fn resolve(self) -> Self::AsyncOutput {
-        let ch = self.children.resolve();
-        let a = self.attrs.resolve();
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            aspect_ratio: self.aspect_ratio,
-            position_absolute: self.position_absolute,
-            inset_top: self.inset_top,
-            inset_right: self.inset_right,
-            inset_bottom: self.inset_bottom,
-            inset_left: self.inset_left,
-            alpha: self.alpha,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            handlers: Vec::new(),
-            children: ch.await,
-            attrs: a.await,
-        }
-    }
-    fn to_html_with_buf(
-        self,
-        _buf: &mut String,
-        _position: &mut crate::view::Position,
-        _escape: bool,
-        _mark_branches: bool,
-        _extra_attrs: Vec<
-            crate::html::attribute::any_attribute::AnyAttribute,
-        >,
-    ) {
-    }
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        _cursor: &crate::hydration::Cursor,
-        _position: &crate::view::PositionState,
-    ) -> Self::State {
-        <Self as Render>::build(self)
-    }
-    fn into_owned(self) -> Self::Owned {
-        View {
-            flex_direction: self.flex_direction,
-            padding: self.padding,
-            gap: self.gap,
-            flex_grow: self.flex_grow,
-            aspect_ratio: self.aspect_ratio,
-            position_absolute: self.position_absolute,
-            inset_top: self.inset_top,
-            inset_right: self.inset_right,
-            inset_bottom: self.inset_bottom,
-            inset_left: self.inset_left,
-            alpha: self.alpha,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            handlers: self.handlers,
-            children: self.children.into_owned(),
-            attrs: self.attrs.into_cloneable_owned(),
-        }
-    }
-}
 
 pub fn vstack() -> View<(), ()> {
     view().flex_direction(FlexDirection::Column)
@@ -740,7 +563,7 @@ impl<A> Button<A> {
     }
 }
 
-impl<A> SupportsEvent<crate::html::event::ClickEvent> for Button<A> {}
+impl<A> SupportsEvent<crate::event_ios::ClickEvent> for Button<A> {}
 
 impl_universal_attrs!(Button);
 
@@ -749,8 +572,8 @@ impl_typed_attrs_for!(
     font_size,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for Button<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for Button<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("button");
         let mut effects = Vec::new();
@@ -794,17 +617,17 @@ impl<At: crate::html::attribute::Attribute> Render for Button<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -876,7 +699,7 @@ impl<A> Label<A> {
     }
 }
 
-impl<A> SupportsEvent<crate::html::event::ClickEvent> for Label<A> {}
+impl<A> SupportsEvent<crate::event_ios::ClickEvent> for Label<A> {}
 
 impl_universal_attrs!(Label);
 impl_text_attrs!(Label);
@@ -886,8 +709,8 @@ impl_typed_attrs_for!(
     alignment, font_size, pending_bind_text,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for Label<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for Label<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("label");
         let mut effects = Vec::new();
@@ -924,17 +747,17 @@ impl<At: crate::html::attribute::Attribute> Render for Label<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1029,10 +852,10 @@ impl<A> TextField<A> {
 // (`change` — return key / focus loss). Click is deliberately not
 // supported — clicking inside the field places the caret. Focus/
 // blur are UIControl `editingDidBegin` / `editingDidEnd`.
-impl<At> SupportsEvent<crate::html::event::InputEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::html::event::ChangeEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::html::event::FocusEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::html::event::BlurEvent> for TextField<At> {}
+impl<At> SupportsEvent<crate::event_ios::InputEvent> for TextField<At> {}
+impl<At> SupportsEvent<crate::event_ios::ChangeEvent> for TextField<At> {}
+impl<At> SupportsEvent<crate::event_ios::FocusEvent> for TextField<At> {}
+impl<At> SupportsEvent<crate::event_ios::BlurEvent> for TextField<At> {}
 
 impl_universal_attrs!(TextField);
 impl_text_attrs!(TextField);
@@ -1043,8 +866,8 @@ impl_typed_attrs_for!(
     font_size,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for TextField<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for TextField<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
         let el = IosElement::create(tag);
@@ -1099,17 +922,17 @@ impl<At: crate::html::attribute::Attribute> Render for TextField<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1175,7 +998,7 @@ impl<A> Switch<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::html::event::ClickEvent> for Switch<At> {}
+impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Switch<At> {}
 
 impl_universal_attrs!(Switch);
 
@@ -1184,8 +1007,8 @@ impl_typed_attrs_for!(
     node_ref, alpha,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for Switch<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for Switch<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("switch");
         let mut effects = Vec::new();
@@ -1224,17 +1047,17 @@ impl<At: crate::html::attribute::Attribute> Render for Switch<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1312,7 +1135,7 @@ impl<A> Slider<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::html::event::ClickEvent> for Slider<At> {}
+impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Slider<At> {}
 
 impl_universal_attrs!(Slider);
 
@@ -1321,8 +1144,8 @@ impl_typed_attrs_for!(
     handlers, flex_grow, node_ref, alpha,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for Slider<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for Slider<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("slider");
         let mut effects = Vec::new();
@@ -1367,17 +1190,17 @@ impl<At: crate::html::attribute::Attribute> Render for Slider<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1461,7 +1284,7 @@ impl<A> Stepper<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::html::event::ClickEvent> for Stepper<At> {}
+impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Stepper<At> {}
 
 impl_universal_attrs!(Stepper);
 
@@ -1470,8 +1293,8 @@ impl_typed_attrs_for!(
     pending_bind, handlers, flex_grow, node_ref, alpha,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for Stepper<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for Stepper<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("stepper");
         let mut effects = Vec::new();
@@ -1515,17 +1338,17 @@ impl<At: crate::html::attribute::Attribute> Render for Stepper<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1575,8 +1398,8 @@ impl_universal_attrs!(ProgressIndicator);
 
 impl_typed_attrs_for!(ProgressIndicator, value, flex_grow, node_ref, alpha);
 
-impl<At: crate::html::attribute::Attribute> Render for ProgressIndicator<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for ProgressIndicator<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("progress_indicator");
         let mut effects = Vec::new();
@@ -1598,17 +1421,17 @@ impl<At: crate::html::attribute::Attribute> Render for ProgressIndicator<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1666,14 +1489,14 @@ impl<A> ImageView<A> {
 
 // `<image_view on:click=...>` lands on a UITapGestureRecognizer via
 // the on_click → on_tap_gesture fallback.
-impl<A> SupportsEvent<crate::html::event::ClickEvent> for ImageView<A> {}
+impl<A> SupportsEvent<crate::event_ios::ClickEvent> for ImageView<A> {}
 
 impl_universal_attrs!(ImageView);
 
 impl_typed_attrs_for!(ImageView, source, flex_grow, handlers, node_ref, alpha);
 
-impl<At: crate::html::attribute::Attribute> Render for ImageView<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for ImageView<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("image_view");
         let mut effects = Vec::new();
@@ -1699,17 +1522,17 @@ impl<At: crate::html::attribute::Attribute> Render for ImageView<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1785,7 +1608,7 @@ impl<A> SegmentedControl<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::html::event::ClickEvent> for SegmentedControl<At> {}
+impl<At> SupportsEvent<crate::event_ios::ClickEvent> for SegmentedControl<At> {}
 
 impl_universal_attrs!(SegmentedControl);
 
@@ -1794,8 +1617,8 @@ impl_typed_attrs_for!(
     pending_bind_selection, handlers, flex_grow, node_ref, alpha,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for SegmentedControl<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for SegmentedControl<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("segmented_control");
         let mut effects = Vec::new();
@@ -1837,17 +1660,17 @@ impl<At: crate::html::attribute::Attribute> Render for SegmentedControl<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -1936,7 +1759,7 @@ impl<A> DatePicker<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::html::event::ClickEvent> for DatePicker<At> {}
+impl<At> SupportsEvent<crate::event_ios::ClickEvent> for DatePicker<At> {}
 
 impl_universal_attrs!(DatePicker);
 
@@ -1945,8 +1768,8 @@ impl_typed_attrs_for!(
     node_ref, alpha, style, min_date, max_date,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for DatePicker<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for DatePicker<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("date_picker");
         let mut effects = Vec::new();
@@ -2011,17 +1834,17 @@ impl<At: crate::html::attribute::Attribute> Render for DatePicker<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
@@ -2092,10 +1915,8 @@ impl<Ch, A> ScrollView<Ch, A> {
     }
 }
 
-impl<Ch: Render, A: crate::html::attribute::Attribute> Render
-    for ScrollView<Ch, A>
-{
-    type State = ElementState<A::State, Ch::State>;
+impl<Ch: Render<Dom>, A> Render<Dom> for ScrollView<Ch, A> {
+    type State = ElementState<(), Ch::State>;
     fn build(self) -> Self::State {
         let el = IosElement::create("scroll_view");
         let mut effects = Vec::new();
@@ -2124,96 +1945,20 @@ impl<Ch: Render, A: crate::html::attribute::Attribute> Render
         effects.extend(apply_universal(&el, self.alpha));
 
         let child_state = self.children.build();
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }
 
-impl<Ch, A> crate::view::add_attr::AddAnyAttr for ScrollView<Ch, A>
-where
-    Ch: Render + Send + 'static + RenderHtml,
-    A: crate::html::attribute::Attribute,
-{
-    type Output<NewAttr: crate::html::attribute::Attribute> =
-        ScrollView<Ch, <A as crate::html::attribute::NextAttribute>::Output<NewAttr>>;
-    fn add_any_attr<NewAttr: crate::html::attribute::Attribute>(
-        self,
-        attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        ScrollView {
-            flex_grow: self.flex_grow,
-            children: self.children,
-            alpha: self.alpha,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: crate::html::attribute::NextAttribute::add_any_attr(
-                self.attrs, attr,
-            ),
-        }
-    }
-}
-
-impl<Ch, A> RenderHtml for ScrollView<Ch, A>
-where
-    Ch: Render + Send + 'static + RenderHtml,
-    A: crate::html::attribute::Attribute,
-{
-    type AsyncOutput = ScrollView<Ch::AsyncOutput, A::AsyncOutput>;
-    type Owned = ScrollView<Ch::Owned, A::CloneableOwned>;
-    const MIN_LENGTH: usize = 0;
-    fn dry_resolve(&mut self) {
-        self.attrs.dry_resolve();
-    }
-    async fn resolve(self) -> Self::AsyncOutput {
-        let (ch, a) =
-            futures::join!(self.children.resolve(), self.attrs.resolve());
-        ScrollView {
-            flex_grow: self.flex_grow,
-            children: ch,
-            alpha: self.alpha,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: a,
-        }
-    }
-    fn to_html_with_buf(
-        self,
-        _buf: &mut String,
-        _position: &mut crate::view::Position,
-        _escape: bool,
-        _mark_branches: bool,
-        _extra_attrs: Vec<
-            crate::html::attribute::any_attribute::AnyAttribute,
-        >,
-    ) {
-    }
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        _cursor: &crate::hydration::Cursor,
-        _position: &crate::view::PositionState,
-    ) -> Self::State {
-        <Self as Render>::build(self)
-    }
-    fn into_owned(self) -> Self::Owned {
-        ScrollView {
-            flex_grow: self.flex_grow,
-            children: self.children.into_owned(),
-            alpha: self.alpha,
-            has_horizontal_scroller: self.has_horizontal_scroller,
-            has_vertical_scroller: self.has_vertical_scroller,
-            attrs: self.attrs.into_cloneable_owned(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------
 // text_view() — UITextView (multi-line plain-text editor)
@@ -2284,8 +2029,8 @@ impl_typed_attrs_for!(
     alpha, text_color, alignment, font_size,
 );
 
-impl<At: crate::html::attribute::Attribute> Render for TextView<At> {
-    type State = ElementState<At::State, ()>;
+impl<At> Render<Dom> for TextView<At> {
+    type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("text_view");
         let mut effects = Vec::new();
@@ -2331,16 +2076,16 @@ impl<At: crate::html::attribute::Attribute> Render for TextView<At> {
             r.load(&el);
         }
 
-        let attrs = self.attrs.build(&el);
+        let _attrs: () = ();
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: attrs,
+            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
     fn rebuild(self, state: &mut Self::State) {
-        self.attrs.rebuild(&mut state._attrs);
+        
     }
 }

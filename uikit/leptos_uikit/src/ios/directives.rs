@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use ios_dom::Element;
-use crate::html::directive::IntoDirective;
+use crate::directive::IntoDirective;
 
 pub(crate) fn pack<D, T, P>(
     handler: D,

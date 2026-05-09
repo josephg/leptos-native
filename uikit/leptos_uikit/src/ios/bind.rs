@@ -104,13 +104,13 @@ pub(crate) struct BoundIndex {
 // TextField — bind:value=String-ish signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextField
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for TextField
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -143,13 +143,13 @@ pub(crate) fn install_text_field_value_bind(
 // Switch — bind:checked=bool signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Checked, Sig> for Switch
+impl<Sig> BindAttribute<crate::keys::Checked, Sig> for Switch
 where
     Sig: IntoSignal<bool>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Checked,
+        _key: crate::keys::Checked,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -188,13 +188,13 @@ pub(crate) fn install_switch_checked_bind(
 // Slider — bind:value=f64 signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Slider
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Slider
 where
     Sig: IntoSignal<f64>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -228,13 +228,13 @@ pub(crate) fn install_slider_value_bind(
 // Stepper — bind:value=f64 signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Stepper
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Stepper
 where
     Sig: IntoSignal<f64>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -265,13 +265,13 @@ pub(crate) fn install_stepper_value_bind(
 // DatePicker — bind:value=Date signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for DatePicker
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for DatePicker
 where
     Sig: IntoSignal<ios_dom::Date>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -308,7 +308,7 @@ pub(crate) fn install_date_picker_bind(
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Selection;
 
-impl crate::html::attribute::AttributeKey for Selection {
+impl crate::keys::AttributeKey for Selection {
     const KEY: &'static str = "selection";
 }
 
@@ -352,13 +352,13 @@ pub(crate) fn install_segmented_selection_bind(
 // fan-out (see `ios_dom::event::on_text_view_change`).
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for TextView
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for TextView
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         let getter = signal.into_get();
@@ -388,13 +388,13 @@ pub(crate) fn install_text_view_value_bind(
 // for symmetry with the cocoa port).
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::html::attribute::Value, Sig> for Label
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for Label
 where
     Sig: IntoSignal<String>,
 {
     fn bind(
         mut self,
-        _key: crate::html::attribute::Value,
+        _key: crate::keys::Value,
         signal: Sig,
     ) -> Self {
         // Only the read direction is meaningful for a label; reuse

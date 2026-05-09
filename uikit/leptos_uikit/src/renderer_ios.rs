@@ -1,57 +1,56 @@
+//! `Dom`: this crate's [`renderer::Renderer`] impl, plus the orphan-rule
+//! [`Mountable<Dom>`] impls on the ios_dom types.
+//!
+//! Mirror of `cocoa/leptos_cocoa/src/renderer_cocoa.rs`. CastFrom impls
+//! live in `ios_dom::renderer` (orphan rule — see comment there).
+
 #![allow(missing_docs)]
 
-//! UIKit-backed implementation of the renderer surface.
-//!
-//! This is the iOS analogue of [`super::dom`] and [`super::cocoa`].
-//! It re-exports the types from the `ios_dom` crate as the names
-//! tachys expects and adds the [`Mountable`] / [`CastFrom`] trait
-//! impls that have to live here for orphan-rule reasons.
-
-use super::CastFrom;
-use crate::view::Mountable;
 use ios_dom::{layout::Style, NodeKind, Renderer as IosRenderer};
+use renderer::{
+    renderer::Renderer as RendererTrait,
+    view::Mountable,
+};
 
-// Type re-exports: the names the rest of tachys expects under
-// `crate::renderer::types::*`.
 pub use ios_dom::{
     ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
     TemplateElement, Text,
 };
 
-/// The renderer surface used by tachys on iOS.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Dom;
 
-impl Dom {
-    pub fn intern(text: &str) -> &str {
+impl RendererTrait for Dom {
+    type Node = Node;
+    type Element = Element;
+    type Text = Text;
+    type Placeholder = Placeholder;
+
+    fn intern(text: &str) -> &str {
         IosRenderer::intern(text)
     }
 
-    pub fn create_element(tag: &str, namespace: Option<&str>) -> Element {
-        IosRenderer::create_element(tag, namespace)
-    }
-
-    pub fn create_text_node(text: &str) -> Text {
+    fn create_text_node(text: &str) -> Text {
         IosRenderer::create_text_node(text)
     }
 
-    pub fn create_placeholder() -> Placeholder {
+    fn create_placeholder() -> Placeholder {
         IosRenderer::create_placeholder()
     }
 
-    pub fn set_text(node: &Text, text: &str) {
+    fn set_text(node: &Text, text: &str) {
         IosRenderer::set_text(node, text);
     }
 
-    pub fn set_attribute(node: &Element, name: &str, value: &str) {
+    fn set_attribute(node: &Element, name: &str, value: &str) {
         IosRenderer::set_attribute(node, name, value);
     }
 
-    pub fn remove_attribute(node: &Element, name: &str) {
+    fn remove_attribute(node: &Element, name: &str) {
         IosRenderer::remove_attribute(node, name);
     }
 
-    pub fn insert_node(
+    fn insert_node(
         parent: &Element,
         new_child: &Node,
         anchor: Option<&Node>,
@@ -59,96 +58,43 @@ impl Dom {
         IosRenderer::insert_node(parent, new_child, anchor);
     }
 
-    pub fn try_insert_node(
-        parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
-    ) -> bool {
-        IosRenderer::try_insert_node(parent, new_child, anchor)
-    }
-
-    pub fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
         IosRenderer::remove_node(parent, child)
     }
 
-    pub fn remove(node: &Node) {
-        IosRenderer::remove(node);
-    }
-
-    pub fn get_parent(node: &Node) -> Option<Node> {
-        IosRenderer::get_parent(node)
-    }
-
-    pub fn first_child(node: &Node) -> Option<Node> {
-        IosRenderer::first_child(node)
-    }
-
-    pub fn next_sibling(node: &Node) -> Option<Node> {
-        IosRenderer::next_sibling(node)
-    }
-
-    pub fn log_node(node: &Node) {
-        IosRenderer::log_node(node);
-    }
-
-    pub fn clear_children(parent: &Element) {
+    fn clear_children(parent: &Element) {
         IosRenderer::clear_children(parent);
     }
 
-    pub fn class_list(el: &Element) -> ClassList {
-        IosRenderer::class_list(el)
-    }
-    pub fn add_class(list: &ClassList, name: &str) {
-        IosRenderer::add_class(list, name);
-    }
-    pub fn remove_class(list: &ClassList, name: &str) {
-        IosRenderer::remove_class(list, name);
+    fn remove(node: &Node) {
+        IosRenderer::remove(node);
     }
 
-    pub fn style(el: &Element) -> CssStyleDeclaration {
-        IosRenderer::style(el)
-    }
-    pub fn set_css_property(
-        style: &CssStyleDeclaration,
-        name: &str,
-        value: &str,
-    ) {
-        IosRenderer::set_css_property(style, name, value);
-    }
-    pub fn remove_css_property(
-        style: &CssStyleDeclaration,
-        name: &str,
-    ) {
-        IosRenderer::remove_css_property(style, name);
+    // get_parent / first_child / next_sibling: cocoa returns None to
+    // dodge ios_dom's "hydration not supported" panics; same here.
+    fn get_parent(_node: &Node) -> Option<Node> {
+        None
     }
 
-    pub fn set_inner_html(el: &Element, html: &str) {
-        IosRenderer::set_inner_html(el, html);
+    fn first_child(_node: &Node) -> Option<Node> {
+        None
     }
 
-    pub fn get_template<V: 'static>() -> TemplateElement {
-        IosRenderer::get_template::<V>()
+    fn next_sibling(_node: &Node) -> Option<Node> {
+        None
     }
 
-    pub fn clone_template(tpl: &TemplateElement) -> Element {
-        IosRenderer::clone_template(tpl)
+    fn log_node(node: &Node) {
+        IosRenderer::log_node(node);
     }
 
-    pub fn mount_before<M>(new_child: &mut M, before: &Node)
+    /// Override the trait default: synthesise a parent Element from
+    /// `before`'s superview, with the right LayoutHandle so the new
+    /// child registers in the same Taffy tree.
+    #[track_caller]
+    fn try_mount_before<M>(new_child: &mut M, before: &Node) -> bool
     where
-        M: Mountable,
-    {
-        let parent_view = before
-            .ui_view()
-            .superview()
-            .expect("ios_dom: mount_before — node has no superview");
-        let parent = synthesise_parent_element(parent_view, before);
-        new_child.mount(&parent, Some(before));
-    }
-
-    pub fn try_mount_before<M>(new_child: &mut M, before: &Node) -> bool
-    where
-        M: Mountable,
+        M: Mountable<Self>,
     {
         let Some(parent_view) = before.ui_view().superview() else {
             return false;
@@ -156,6 +102,23 @@ impl Dom {
         let parent = synthesise_parent_element(parent_view, before);
         new_child.mount(&parent, Some(before));
         true
+    }
+}
+
+impl Dom {
+    /// Mount `new_child` immediately before `before`. Panics if
+    /// `before` has no superview (must-succeed variant).
+    #[track_caller]
+    pub fn mount_before<M>(new_child: &mut M, before: &Node)
+    where
+        M: Mountable<Dom>,
+    {
+        let parent_view = before
+            .ui_view()
+            .superview()
+            .expect("Dom::mount_before — node has no superview");
+        let parent = synthesise_parent_element(parent_view, before);
+        new_child.mount(&parent, Some(before));
     }
 }
 
@@ -192,23 +155,27 @@ fn synthesise_parent_element(
 }
 
 // ---------------------------------------------------------------------
-// Mountable
+// Mountable<Dom> impls
 // ---------------------------------------------------------------------
 
-impl Mountable for Node {
+impl Mountable<Dom> for Node {
     fn unmount(&mut self) {
         self.teardown();
     }
 
     fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        Dom::insert_node(parent, self, marker);
+        <Dom as RendererTrait>::insert_node(parent, self, marker);
     }
 
-    fn try_mount(&mut self, parent: &Element, marker: Option<&Node>) -> bool {
-        Dom::try_insert_node(parent, self, marker)
+    fn try_mount(
+        &mut self,
+        parent: &Element,
+        marker: Option<&Node>,
+    ) -> bool {
+        IosRenderer::try_insert_node(parent, self, marker)
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -217,16 +184,16 @@ impl Mountable for Node {
     }
 }
 
-impl Mountable for Element {
+impl Mountable<Dom> for Element {
     fn unmount(&mut self) {
         self.as_node().teardown();
     }
 
     fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        Dom::insert_node(parent, self.as_node(), marker);
+        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -235,16 +202,16 @@ impl Mountable for Element {
     }
 }
 
-impl Mountable for Text {
+impl Mountable<Dom> for Text {
     fn unmount(&mut self) {
         self.as_node().teardown();
     }
 
     fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        Dom::insert_node(parent, self.as_node(), marker);
+        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
@@ -253,59 +220,20 @@ impl Mountable for Text {
     }
 }
 
-impl Mountable for Placeholder {
+impl Mountable<Dom> for Placeholder {
     fn unmount(&mut self) {
         self.as_node().teardown();
     }
 
     fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        Dom::insert_node(parent, self.as_node(), marker);
+        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
     fn elements(&self) -> Vec<Element> {
         Vec::new()
-    }
-}
-
-// ---------------------------------------------------------------------
-// CastFrom
-// ---------------------------------------------------------------------
-
-impl CastFrom<Node> for Element {
-    fn cast_from(node: Node) -> Option<Element> {
-        match node.kind() {
-            NodeKind::Element => Some(Element::from_node_unchecked(node)),
-            _ => None,
-        }
-    }
-}
-
-impl CastFrom<Node> for Text {
-    fn cast_from(node: Node) -> Option<Text> {
-        match node.kind() {
-            NodeKind::Text => Some(Text::from_node_unchecked(node)),
-            _ => None,
-        }
-    }
-}
-
-impl CastFrom<Node> for Placeholder {
-    fn cast_from(node: Node) -> Option<Placeholder> {
-        match node.kind() {
-            NodeKind::Placeholder => {
-                Some(Placeholder::from_node_unchecked(node))
-            }
-            _ => None,
-        }
-    }
-}
-
-impl CastFrom<Element> for Element {
-    fn cast_from(source: Element) -> Option<Element> {
-        Some(source)
     }
 }

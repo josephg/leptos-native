@@ -172,81 +172,8 @@ impl OnAttribute {
     }
 }
 
-// ---------------------------------------------------------------------
-// Attribute trait impl
-// ---------------------------------------------------------------------
-
-use crate::html::attribute::{
-    Attribute, NamedAttributeKey, NextAttribute,
-};
-
-impl Attribute for OnAttribute {
-    const MIN_LENGTH: usize = 0;
-
-    type State = ();
-    type AsyncOutput = Self;
-    type Cloneable = ();
-    type CloneableOwned = ();
-
-    fn html_len(&self) -> usize {
-        0
-    }
-
-    fn to_html(
-        self,
-        _buf: &mut String,
-        _class: &mut String,
-        _style: &mut String,
-        _inner_html: &mut String,
-    ) {
-    }
-
-    fn hydrate<const FROM_SERVER: bool>(
-        self,
-        el: &ios_dom::Element,
-    ) -> Self::State {
-        self.apply(el);
-    }
-
-    fn build(self, el: &ios_dom::Element) -> Self::State {
-        self.apply(el);
-    }
-
-    fn rebuild(self, _state: &mut Self::State) {}
-
-    fn into_cloneable(self) -> Self::Cloneable {}
-
-    fn into_cloneable_owned(self) -> Self::CloneableOwned {}
-
-    fn dry_resolve(&mut self) {}
-
-    async fn resolve(self) -> Self::AsyncOutput {
-        self
-    }
-
-    fn keys(&self) -> Vec<NamedAttributeKey> {
-        Vec::new()
-    }
-}
-
-impl NextAttribute for OnAttribute {
-    type Output<NewAttr: Attribute> = (Self, NewAttr);
-
-    fn add_any_attr<NewAttr: Attribute>(
-        self,
-        new_attr: NewAttr,
-    ) -> Self::Output<NewAttr> {
-        (self, new_attr)
-    }
-}
-
-impl crate::view::ToTemplate for OnAttribute {
-    fn to_template(
-        _buf: &mut String,
-        _class: &mut String,
-        _style: &mut String,
-        _inner_html: &mut String,
-        _position: &mut crate::view::Position,
-    ) {
-    }
-}
+// Phase 8: dropped the upstream Attribute / NextAttribute / ToTemplate
+// impls on OnAttribute (SSR-coupled machinery from the deleted
+// tachys::html::attribute::* + tachys::view::ToTemplate). Inline `.on()`
+// on the element builder is the only path examples use, and it goes
+// through `OnAttribute::apply` directly.

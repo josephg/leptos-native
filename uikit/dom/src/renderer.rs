@@ -208,3 +208,47 @@ impl Renderer {
         );
     }
 }
+
+// ---------------------------------------------------------------------
+// CastFrom impls (orphan rule — Node/Element/Text/Placeholder are local
+// to ios_dom; CastFrom is from `renderer`, which has no local-type
+// reference, so the impls have to live here).
+// ---------------------------------------------------------------------
+
+use crate::node::NodeKind;
+use renderer::renderer::CastFrom;
+
+impl CastFrom<Node> for Element {
+    fn cast_from(node: Node) -> Option<Element> {
+        match node.kind() {
+            NodeKind::Element => Some(Element::from_node_unchecked(node)),
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Node> for Text {
+    fn cast_from(node: Node) -> Option<Text> {
+        match node.kind() {
+            NodeKind::Text => Some(Text::from_node_unchecked(node)),
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Node> for Placeholder {
+    fn cast_from(node: Node) -> Option<Placeholder> {
+        match node.kind() {
+            NodeKind::Placeholder => {
+                Some(Placeholder::from_node_unchecked(node))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl CastFrom<Element> for Element {
+    fn cast_from(source: Element) -> Option<Element> {
+        Some(source)
+    }
+}

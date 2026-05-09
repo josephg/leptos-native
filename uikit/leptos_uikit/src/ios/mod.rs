@@ -14,7 +14,6 @@ pub mod bind;
 pub(crate) mod directives;
 pub mod element;
 pub mod node_ref;
-mod render_html_stub;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal, Selection};

@@ -9,6 +9,7 @@ members = [
   "common/leptos_macro",
   "common/leptos",
   "cocoa/leptos_cocoa",
+  "uikit/leptos_uikit",
 
   # native ports
   "cocoa/dom",
@@ -39,6 +40,7 @@ reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
 reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos = { path = "./common/leptos", version = "0.1.0" }
+leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---
 throw_error = { default-features = false, version = "0.3.1" }
