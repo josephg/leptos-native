@@ -9,6 +9,12 @@ description = "Stores for holding deeply-nested reactive state while maintaining
 rust-version.workspace = true
 edition.workspace = true
 
+[lib]
+# Doctests reference `leptos::*` which would require leptos as a
+# dev-dep (cycle). Disable; upstream relies on workspace test
+# orchestration we don't have.
+doctest = false
+
 [features]
 default = []
 serde = ["dep:serde"]

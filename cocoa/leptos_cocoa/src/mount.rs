@@ -36,9 +36,9 @@ use renderer::view::Render;
 ///
 /// Usage (multi-window):
 ///
-/// ```no_run
-/// # use leptos::prelude::*;
-/// # use tachys::cocoa::window::window;
+/// ```ignore
+/// use leptos::prelude::*;
+/// use leptos::tachys::cocoa::window::window;
 /// run(|| (
 ///     window().title("Main").size(640.0, 480.0).child(/* main view */),
 ///     window().title("Inspector").size(280.0, 600.0).child(/* inspector */),

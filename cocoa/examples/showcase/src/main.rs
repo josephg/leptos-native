@@ -4,9 +4,24 @@
 //! value, demonstrating the `bind:` / `value=` reactivity.
 
 use leptos::prelude::*;
+use leptos::core::children::TypedChildrenFn;
+use std::marker::PhantomData;
 
+// Section takes typed children. With this fork's no-AnyView design,
+// the untyped `Children = Box<dyn FnOnce() -> AnyView>` from upstream
+// isn't available — components carry the concrete child view type as
+// a generic parameter instead. The Renderer is pinned to Dom (cocoa)
+// because the body uses cocoa-specific builders (vstack, label).
 #[component]
-fn Section(title: &'static str, children: Children) -> impl IntoView {
+fn Section<C>(
+    title: &'static str,
+    children: TypedChildrenFn<C, Dom>,
+    #[prop(optional)] _marker: PhantomData<C>,
+) -> impl IntoView
+where
+    C: IntoView + 'static,
+{
+    let children = children.into_inner();
     view! {
         <vstack gap=6.0>
             <label>{title}</label>

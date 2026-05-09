@@ -9,6 +9,10 @@ edition.workspace = true
 
 [lib]
 proc-macro = true
+# Doctests require leptos as a dev-dep, which would create a cycle
+# (leptos depends on leptos_macro). Upstream sidesteps this with
+# workspace-level test orchestration we don't have. Disable.
+doctest = false
 
 [dependencies]
 attribute-derive = { features = ["syn-full"], workspace = true, default-features = true }

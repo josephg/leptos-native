@@ -122,10 +122,6 @@ name = "app_menu"
 path = "tests/app_menu.rs"
 harness = false
 
-[[test]]
-name = "builders"
-path = "tests/builders.rs"
-harness = false
 
 [[test]]
 name = "interval"

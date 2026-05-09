@@ -16,6 +16,30 @@ members = [
   "gtk/dom",
   "uikit/dom",
 ]
+
+# `cargo test` (no args) and `cargo build` (no args) operate on
+# `default-members`, not all members. We exclude the uikit ports
+# because their tests require an iOS-simulator target — running
+# them on the macOS host fails at link time. To test them
+# explicitly:
+#
+#   cargo test --manifest-path uikit/dom/Cargo.toml \
+#     --target aarch64-apple-ios-sim
+#   cargo test --manifest-path uikit/leptos_uikit/Cargo.toml \
+#     --target aarch64-apple-ios-sim
+#
+# (or `cargo test -p ios_dom -p leptos_uikit --target ...`.)
+default-members = [
+  "common/reactive_graph",
+  "common/reactive_stores",
+  "common/reactive_stores_macro",
+  "common/renderer",
+  "common/leptos_macro",
+  "common/leptos",
+  "cocoa/leptos_cocoa",
+  "cocoa/dom",
+  "gtk/dom",
+]
 exclude = [
   "benchmarks",
   "projects",
