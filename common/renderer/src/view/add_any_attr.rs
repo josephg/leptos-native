@@ -88,91 +88,131 @@ impl_apply_attr_tuple!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G));
 impl_apply_attr_tuple!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G), (7, H));
 
 // ---------------------------------------------------------------------
-// No-op fallback impls of `AddAnyAttr<R>` for the terminal / dynamic
-// view types. The attribute is silently dropped for these; the user's
-// `<Component on:click=…>` only does anything if the component
-// returns a tree whose root is a leaf builder (Button, Label, …) or
-// a wrapper that forwards (View<T>, OwnedView<T>).
+// Fallback impls of `AddAnyAttr<R>` for the terminal / dynamic view
+// types. These cases are required by the type system (IntoView<R>
+// has AddAnyAttr<R> as a supertrait, so every renderable type must
+// implement it) but have no sensible install target. They PANIC at
+// build time rather than silently swallowing the attribute, so users
+// see a clear failure when they write `<Component on:click=…>` and
+// the component returns one of these shapes.
 //
-// Branching wrappers (`Either`, `Option<T>`, `Vec<T>`, reactive
-// closures) get this no-op too — supporting them properly needs
-// re-attach-on-rebuild semantics, which is deferred.
+// All these panics are caught at view *construction* time (when
+// `add_any_attr` is called during the macro-emitted builder chain),
+// well before the AppKit run loop starts — the failure is loud and
+// immediate, not a silent UI bug.
 // ---------------------------------------------------------------------
 
-impl<R: Renderer> AddAnyAttr<R> for () {
-    fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {}
+#[track_caller]
+fn panic_terminal(kind: &str) -> ! {
+    panic!(
+        "AddAnyAttr<R>::add_any_attr called on a {kind} view. Spread \
+         attributes (e.g. `<Component on:click=…>`) require a component \
+         that returns a builder element (button, label, vstack, …) — \
+         not a plain text or numeric value."
+    );
 }
 
-macro_rules! noop_add_any_attr {
-    ($($ty:ty),+ $(,)?) => {
+#[track_caller]
+fn panic_branching(kind: &str) -> ! {
+    panic!(
+        "AddAnyAttr<R>::add_any_attr called on a {kind} view (a \
+         branching/reactive wrapper). This isn't supported yet — it \
+         needs re-attach-on-rebuild semantics that haven't been \
+         designed. Workaround: attach the attribute to the inner \
+         element directly. e.g. instead of `<Show on:click=h \
+         when=…>{{…}}</Show>`, write `<Show when=…><view \
+         on:click=h>…</view></Show>`."
+    );
+}
+
+impl<R: Renderer> AddAnyAttr<R> for () {
+    #[track_caller]
+    fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
+        panic_terminal("`()` (empty)")
+    }
+}
+
+macro_rules! terminal_add_any_attr {
+    ($($ty:ty => $name:expr),+ $(,)?) => {
         $(
             impl<R: Renderer> AddAnyAttr<R> for $ty {
+                #[track_caller]
                 fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-                    self
+                    panic_terminal($name)
                 }
             }
         )+
     };
 }
 
-noop_add_any_attr!(
-    String,
-    &'static str,
-    bool,
-    char,
-    i8, i16, i32, i64, i128, isize,
-    u8, u16, u32, u64, u128, usize,
-    f32, f64,
-    std::borrow::Cow<'static, str>,
-    std::rc::Rc<str>,
-    std::sync::Arc<str>,
+terminal_add_any_attr!(
+    String => "String",
+    &'static str => "&str",
+    bool => "bool",
+    char => "char",
+    i8 => "i8", i16 => "i16", i32 => "i32",
+    i64 => "i64", i128 => "i128", isize => "isize",
+    u8 => "u8", u16 => "u16", u32 => "u32",
+    u64 => "u64", u128 => "u128", usize => "usize",
+    f32 => "f32", f64 => "f64",
+    std::borrow::Cow<'static, str> => "Cow<str>",
+    std::rc::Rc<str> => "Rc<str>",
+    std::sync::Arc<str> => "Arc<str>",
 );
 
-// Either — branching wrapper, defer.
 impl<R: Renderer, A, B> AddAnyAttr<R> for either_of::Either<A, B> {
+    #[track_caller]
     fn add_any_attr<Attr: ApplyAttr<R>>(self, _attr: Attr) -> Self {
-        self
+        panic_branching("`Either<A, B>`")
     }
 }
 
-// Option — branching, defer.
 impl<R: Renderer, T> AddAnyAttr<R> for Option<T> {
+    #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        self
+        panic_branching("`Option<T>`")
     }
 }
 
-// Vec — multi-child, defer.
 impl<R: Renderer, T> AddAnyAttr<R> for Vec<T> {
+    #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        self
+        panic_branching("`Vec<T>` (`<For>` body)")
     }
 }
 
-// Result<T, E> — error-boundary branching, defer.
 impl<R: Renderer, T, E> AddAnyAttr<R> for Result<T, E> {
+    #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        self
+        panic_branching("`Result<T, E>` (ErrorBoundary body)")
     }
 }
 
-// Tuples — multi-child, defer (we'd need to pick which child gets
-// the attribute).
-macro_rules! impl_addanyattr_tuple_noop {
+// Tuples — multi-child views. Could route to a specific child but
+// it's ambiguous; surface the ambiguity to the user.
+macro_rules! impl_addanyattr_tuple_panic {
     ($(($idx:tt, $T:ident)),+ $(,)?) => {
         impl<R: Renderer, $($T),+> AddAnyAttr<R> for ($($T,)+) {
+            #[track_caller]
             fn add_any_attr<__A: ApplyAttr<R>>(self, _attr: __A) -> Self {
-                self
+                panic!(
+                    "AddAnyAttr<R>::add_any_attr called on a tuple of \
+                     views. Tuples have multiple top-level children — \
+                     it's ambiguous which one should receive the spread \
+                     attribute. Wrap the desired child in its own \
+                     component or apply the attribute to a specific \
+                     element instead."
+                )
             }
         }
     };
 }
 
-impl_addanyattr_tuple_noop!((0, A));
-impl_addanyattr_tuple_noop!((0, A), (1, B));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C), (3, D));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C), (3, D), (4, E));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G));
-impl_addanyattr_tuple_noop!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G), (7, H));
+impl_addanyattr_tuple_panic!((0, A));
+impl_addanyattr_tuple_panic!((0, A), (1, B));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C), (3, D));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C), (3, D), (4, E));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G));
+impl_addanyattr_tuple_panic!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G), (7, H));

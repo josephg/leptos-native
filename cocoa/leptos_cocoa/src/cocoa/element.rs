@@ -3668,30 +3668,47 @@ impl_add_any_attr_for_leaf!(
 // Container builders (Stack, Block, ScrollView) — no-op AddAnyAttr.
 // Their underlying NSView (FlippedView / NSScrollView) doesn't have a
 // click target, so OnAttribute on a container would no-op anyway.
+// Container builders (Stack, Block, ScrollView). Their underlying
+// NSView (FlippedView / NSScrollView) isn't an NSControl, so cocoa_dom
+// silently no-ops on `on_click` at the dom layer. Rather than inherit
+// the silent failure, panic here with a clear diagnostic.
+//
+// Future: NSClickGestureRecognizer integration so `<vstack on:click=…>`
+// becomes meaningful, then route through that.
+
 impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
+    #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/             stack_view). Containers have no NSControl target/action              slot — click and other UIControl events have no install              path. Attach to a child button/label/text_field instead."
+        )
     }
 }
 
 #[cfg(feature = "block_layout")]
 impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Block<Children> {
+    #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on Block. Same limitation              as Stack — see Stack's panic message."
+        )
     }
 }
 
 impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+    #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView              isn't an NSControl — click handlers have no install path.              Attach to inner content instead."
+        )
     }
 }

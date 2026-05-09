@@ -369,6 +369,37 @@ window-builder-based.
 
 ## Conventions and gotchas
 
+### Failure-mode hierarchy
+
+When a feature is unimplemented, partially supported, or genuinely broken,
+prefer failure modes in this order:
+
+1. **Compile error** — make the construct ill-typed, so the broken code
+   doesn't build.
+2. **Runtime panic** — fail loudly at the earliest possible moment
+   (typically at view-build / mount time, before the run loop starts).
+   Include a clear message with the *kind* of view that hit the
+   limitation, why it doesn't work, and a workaround.
+3. **Warning** — `#[deprecated]`, `eprintln!`, log, or similar; only
+   when 1 and 2 are impractical.
+4. **Silent no-op** — only as an absolute last resort, and only when the
+   silence itself is the contract (e.g. event delegate receives a
+   notification it doesn't care about).
+
+The temptation to "make it compile by stubbing" is the bug-hiding
+pattern this hierarchy exists to prevent. A silently-dropped `on:click`
+handler is a UI bug that surfaces as "the button does nothing" hours
+later in the user's session — a far worse failure mode than an
+immediate panic at the call site.
+
+Concrete example: when `AddAnyAttr<R>` was added (Phase 9), the trait
+required impls on every type that implements `IntoView<R>`, including
+branching wrappers (`Option<T>`, `Either`, `Vec<T>`, reactive closures,
+ErrorBoundary, etc.). It was tempting to make those impls return `self`
+unchanged. We instead made them `panic!()` with diagnostic messages
+naming the offending type (`Option<T>`, `Vec<T>` etc.) and pointing at
+the workaround. See `common/renderer/src/view/add_any_attr.rs`.
+
 ### Shared (both ports)
 
 - **Tag names are snake_case** by deliberate choice, even when they correspond to PascalCase widget types (so the macro's auto-routing works). Live with the convention clash.

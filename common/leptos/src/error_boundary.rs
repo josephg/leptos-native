@@ -313,12 +313,20 @@ impl<'a> Iterator for Iter<'a> {
     }
 }
 
-/// `<ErrorBoundary on:click=…>` — branching wrapper, defer.
+/// `<ErrorBoundary on:click=…>` — branching wrapper, panic with a
+/// clear message rather than silently dropping the handler.
 impl<Chil, FalFn, R> AddAnyAttr<R> for ErrorBoundaryView<Chil, FalFn, R>
 where
     R: Renderer,
 {
+    #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        self
+        panic!(
+            "AddAnyAttr<R>::add_any_attr called on `<ErrorBoundary>`. \
+             ErrorBoundary swaps between children and fallback at \
+             runtime, so attaching a spread attribute to the boundary \
+             itself isn't well-defined. Attach the attribute to the \
+             inner element (the children OR the fallback) instead."
+        )
     }
 }

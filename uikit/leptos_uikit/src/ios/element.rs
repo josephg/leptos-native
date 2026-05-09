@@ -2058,19 +2058,39 @@ impl_add_any_attr_for_leaf!(
 );
 
 // ProgressIndicator + TextView don't carry a handlers/pending_spreads
-// Vec; spread attrs on them are no-op.
+// Vec, so attaching a spread here has no install path. Panic rather
+// than silently drop. (UITextView and UIProgressView CAN take tap
+// gesture recognizers in principle, but adding the storage is
+// scope-creep for this commit.)
 impl renderer::view::AddAnyAttr<crate::Dom> for ProgressIndicator {
+    #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: renderer::view::ApplyAttr<crate::Dom> { self }
-}
-impl renderer::view::AddAnyAttr<crate::Dom> for TextView {
-    fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: renderer::view::ApplyAttr<crate::Dom> { self }
+    where __A: renderer::view::ApplyAttr<crate::Dom> {
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on ProgressIndicator — \
+             UIProgressView doesn't carry handler/spread storage in \
+             this fork. Attach the handler to a sibling control instead."
+        )
+    }
 }
 
-// View<Children> (the iOS equivalent of cocoa's Stack) — push spreads
-// onto its pending_spreads field too, since it has handlers + a UIView
-// underneath. ScrollView likewise.
+impl renderer::view::AddAnyAttr<crate::Dom> for TextView {
+    #[track_caller]
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where __A: renderer::view::ApplyAttr<crate::Dom> {
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on TextView — UITextView \
+             doesn't carry handler/spread storage in this fork. \
+             Attach the handler to a sibling control instead."
+        )
+    }
+}
+
+// View<Children> — the iOS analogue of cocoa's Stack. UIKit's
+// `on_click` falls back to UITapGestureRecognizer for non-UIControl
+// views, so View *does* have a real install path. Push to
+// pending_spreads, drained in Render::build like the inline
+// `.on(click, …)` path.
 impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
     fn add_any_attr<__A>(mut self, attr: __A) -> Self
     where
@@ -2083,11 +2103,19 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
     }
 }
 
+// ScrollView lacks pending_spreads in its struct — same treatment as
+// ProgressIndicator/TextView. UIScrollView could host a tap gesture
+// recognizer in principle but isn't wired here.
 impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+    #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on ScrollView — no spread \
+             storage on ScrollView<Children>. Attach to inner content \
+             or wait for gesture-recognizer support."
+        )
     }
 }

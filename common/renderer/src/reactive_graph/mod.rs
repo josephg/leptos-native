@@ -129,18 +129,29 @@ where
     }
 }
 
-/// `AddAnyAttr<R>` for reactive closures: deferred (branching).
-/// `<Show on:click=…>` would route here; supporting it properly
-/// needs re-attach-on-rebuild semantics (what to do when the
-/// closure swaps content? does the handler stay attached?). For
-/// now the attribute is silently dropped.
+/// `AddAnyAttr<R>` for reactive closures (`<Show>`, `<For>`, …).
+///
+/// Panics. Supporting `<Show on:click=…>` needs re-attach-on-rebuild
+/// semantics — when the closure swaps content, does the handler
+/// follow? attach to both branches? — that hasn't been designed.
+/// Surface the limitation loudly rather than silently dropping the
+/// handler.
 impl<R, F, V> AddAnyAttr<R> for F
 where
     R: Renderer,
     F: ReactiveFunction<Output = V>,
     V: Render<R>,
 {
+    #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        self
+        panic!(
+            "AddAnyAttr<R>::add_any_attr called on a reactive closure \
+             (`<Show>`, `<For>`, etc.). Branching/reactive wrappers \
+             aren't supported by the spread machinery yet — it needs \
+             re-attach-on-rebuild semantics. Workaround: attach the \
+             attribute to the inner element directly, e.g. instead of \
+             `<Show on:click=h when=…>{{…}}</Show>`, write \
+             `<Show when=…><view on:click=h>…</view></Show>`."
+        )
     }
 }

@@ -49,9 +49,62 @@ fn add_any_attr_routes_on_click_to_button() {
     });
 }
 
+/// Per the failure-mode hierarchy in CLAUDE.md, a spread on a
+/// branching wrapper (closure / Either / Option / Vec / ErrorBoundary)
+/// MUST panic, not silently drop. Regression test for that contract.
+fn add_any_attr_panics_on_reactive_closure() {
+    let _mtm = common::test_mtm();
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let view = move || button().title("hi");
+        let _ = <_ as AddAnyAttr<Dom>>::add_any_attr(
+            view,
+            (on(click, |_: ()| {}),),
+        );
+    }));
+    assert!(
+        result.is_err(),
+        "expected panic on add_any_attr on a reactive closure"
+    );
+    let payload = result.unwrap_err();
+    let msg = payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&'static str>().map(|s| s.to_string()))
+        .unwrap_or_default();
+    assert!(
+        msg.contains("reactive closure") || msg.contains("Show"),
+        "panic message should name the kind, got: {msg}"
+    );
+}
+
+/// `<Component on:click=…>` where Component returns just a String —
+/// no element to install on. Must panic.
+fn add_any_attr_panics_on_string() {
+    let _mtm = common::test_mtm();
+    let result = std::panic::catch_unwind(|| {
+        let s: String = "hello".into();
+        let _ = <String as AddAnyAttr<Dom>>::add_any_attr(
+            s,
+            (on(click, |_: ()| {}),),
+        );
+    });
+    assert!(result.is_err(), "expected panic on add_any_attr on String");
+}
+
 fn main() {
-    common::run_tests(&[(
-        "add_any_attr_routes_on_click_to_button",
-        add_any_attr_routes_on_click_to_button,
-    )]);
+    common::run_tests(&[
+        (
+            "add_any_attr_routes_on_click_to_button",
+            add_any_attr_routes_on_click_to_button,
+        ),
+        (
+            "add_any_attr_panics_on_reactive_closure",
+            add_any_attr_panics_on_reactive_closure,
+        ),
+        (
+            "add_any_attr_panics_on_string",
+            add_any_attr_panics_on_string,
+        ),
+    ]);
 }
