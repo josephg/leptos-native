@@ -12,7 +12,7 @@ default = []
 # Enables Taffy's `block_layout` algorithm and the `<block>` tag in
 # `Element::create_with`. Off by default to keep binary size down
 # for apps that only need flex.
-block_layout = ["taffy/block_layout"]
+block_layout = ["taffy/block_layout", "native_layout/block_layout"]
 # Strokes a 1px outline around every Taffy-tracked node, toggled with
 # the `~` key. See `cocoa_dom::debug_overlay`. Off by default — flip
 # on per-binary in the example's Cargo.toml when debugging layout.
@@ -24,6 +24,7 @@ debug-overlay = [
 
 [dependencies]
 renderer = { workspace = true }
+native_layout = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
@@ -35,8 +36,7 @@ block2 = { version = "0.6", optional = true }
 dispatch2 = "0.3"
 any_spawner = { workspace = true }
 futures = { workspace = true, default-features = true }
-taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
-slotmap = "1.0"
+taffy = { workspace = true }
 objc2-foundation = { version = "0.3", features = [
     "NSGeometry",
     "NSString",

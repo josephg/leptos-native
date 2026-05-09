@@ -191,6 +191,7 @@ dependencies = [
  "block2",
  "dispatch2",
  "futures",
+ "native_layout",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -199,7 +200,6 @@ dependencies = [
  "reactive_graph",
  "renderer",
  "send_wrapper",
- "slotmap",
  "taffy",
 ]
 
@@ -838,6 +838,7 @@ dependencies = [
  "gio",
  "glib 0.21.5",
  "gtk4",
+ "native_layout",
  "reactive_graph",
  "renderer",
  "send_wrapper",
@@ -1169,6 +1170,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "native_layout"
+version = "0.1.0"
+dependencies = [
+ "slotmap",
+ "taffy",
 ]
 
 [[package]]

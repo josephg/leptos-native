@@ -1,115 +1,88 @@
-//! Taffy-based layout for the GTK port.
+//! GTK-side layout adapter.
 //!
-//! Mirrors `cocoa_dom::layout` in shape: each window owns a single
-//! [`TaffyTree`], and every [`Node`](crate::Node) carries a layout
-//! slot ([`NodeLayout`], shared via `Rc<RefCell<...>>`) holding its
-//! current style and (once registered) its [`LayoutHandle`] inside
-//! that tree.
+//! Tree storage and Taffy integration live in [`native_layout`];
+//! this file plugs GTK-specific types into it via [`GtkBackend`].
+//! The shape mirrors `cocoa_dom::layout`: per-element wrappers
+//! ([`register_in_tree`], [`attach_child`], the `set_*` setters)
+//! read the [`NodeLayout`] slot off a [`Node`] and dispatch into
+//! the shared tree.
 //!
-//! Where cocoa needs an explicit `compute_layout` on every dirtying
-//! event, GTK does it for us: when a widget changes size/content it
-//! calls `gtk_widget_queue_resize`, which propagates up and triggers
-//! a fresh measure/allocate pass on the next frame. Our [`TaffyLayout`]
-//! `LayoutManager` (in [`super::taffy_layout`]) is what GTK runs that
-//! pass through, and it's the single place where Taffy's
-//! `compute_layout` actually executes.
-//!
-//! Layout is computed *only at the tree root* (the window's content
-//! root). Layout managers attached to nested containers don't compute
-//! anything themselves — they just look up their direct children's
-//! pre-computed Taffy frames and call [`gtk::Widget::allocate`].
+//! Where cocoa drives layout via an explicit `compute_layout` call
+//! after every dirtying mutation, GTK piggybacks on its native
+//! measure/allocate cycle: every dirtying mutation calls
+//! [`queue_root_resize`], which asks GTK to re-run measure+allocate
+//! on the next frame, and our [`super::taffy_layout::TaffyLayout`]
+//! `LayoutManager` is what runs Taffy from inside that pass.
 
 use crate::node::Node;
 use gtk4::prelude::*;
-use std::{cell::RefCell, rc::Rc};
-use taffy::TaffyTree;
 
-pub use taffy::{
+pub use native_layout::{
     AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
     JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
-    Position, Size, Style,
+    Position, Rect, Size, Style,
 };
+use native_layout::LayoutBackend;
 
-/// Per-Taffy-node user data. Attaches the underlying `gtk::Widget` so
-/// the leaf measure callback can call `widget.measure(...)` for
-/// content-driven sizing.
-#[derive(Clone)]
-pub struct NodeContext {
-    pub widget: gtk4::Widget,
+// ---------------------------------------------------------------------
+// GTK backend
+// ---------------------------------------------------------------------
+
+/// `LayoutBackend` impl for GTK4. The `View` is a `gtk::Widget`
+/// (cheap-clonable reference). `NodeMeta = ()` — GTK has no
+/// scroll-view second pass like cocoa does (NSScrollView's
+/// content sizing); `gtk::ScrolledWindow` handles its own
+/// content sizing.
+pub struct GtkBackend;
+
+impl LayoutBackend for GtkBackend {
+    type View = gtk4::Widget;
+    type NodeMeta = ();
+
+    fn measure_leaf(
+        widget: &Self::View,
+        known: Size<Option<f32>>,
+        avail: Size<AvailableSpace>,
+    ) -> Size<f32> {
+        measure_leaf_size(widget, known, avail)
+    }
+
+    fn first_baseline(widget: &Self::View) -> Option<f32> {
+        // GTK4 reports natural baseline through `measure(Vertical, -1)`.
+        // -1 in the baseline slot means "no baseline".
+        let (_, _, _, nat_baseline) =
+            widget.measure(gtk4::Orientation::Vertical, -1);
+        if nat_baseline >= 0 {
+            Some(nat_baseline as f32)
+        } else {
+            None
+        }
+    }
 }
 
-/// Owns a Taffy tree plus a slot for the tree's root NodeId. Created
-/// once per [`Window`](crate::window); each node registered into the
-/// window borrows a clone (Rc-bumped) of this handle so it can address
-/// its own slot in the tree later.
-pub struct LayoutTree {
-    pub tree: RefCell<TaffyTree<NodeContext>>,
-    pub root: RefCell<Option<NodeId>>,
-}
+// Aliases so call sites don't have to spell `GtkBackend` everywhere.
+pub type LayoutTree = native_layout::LayoutTree<GtkBackend>;
+pub type TreeRef = native_layout::TreeRef<GtkBackend>;
+pub type LayoutHandle = native_layout::LayoutHandle<GtkBackend>;
+pub type NodeLayout = native_layout::NodeLayout<GtkBackend>;
+pub type NodeContext = native_layout::NodeContext<GtkBackend>;
 
-pub type TreeRef = Rc<LayoutTree>;
-
-/// Construct a fresh, empty Taffy tree wrapped for sharing.
 pub fn new_tree() -> TreeRef {
-    Rc::new(LayoutTree {
-        tree: RefCell::new(TaffyTree::new()),
-        root: RefCell::new(None),
-    })
-}
-
-/// What a [`Node`] knows about its layout state. Lives behind an
-/// `Rc<RefCell<...>>` inside the Node; clones share it.
-#[derive(Debug)]
-pub struct NodeLayout {
-    /// The node's current style. Setters mutate this. When the node
-    /// joins a tree, this is the seed used for `new_leaf`.
-    pub style: Style,
-    /// Set once the node has been registered in a tree.
-    pub handle: Option<LayoutHandle>,
-}
-
-impl NodeLayout {
-    pub fn new(style: Style) -> Self {
-        NodeLayout { style, handle: None }
-    }
-}
-
-/// Where a node lives once it's joined a Taffy tree.
-#[derive(Clone)]
-pub struct LayoutHandle {
-    pub tree: TreeRef,
-    pub node_id: NodeId,
-}
-
-impl std::fmt::Debug for LayoutHandle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LayoutHandle")
-            .field("node_id", &self.node_id)
-            .finish()
-    }
+    LayoutTree::new()
 }
 
 // ---------------------------------------------------------------------
-// Registration
+// Per-Node helpers (read the `NodeLayout` slot off a `Node`)
 // ---------------------------------------------------------------------
 
-/// Register `node` as a leaf in `tree` if it isn't already registered.
-/// Idempotent. Uses the node's currently-stored style as the seed and
-/// attaches the GTK widget as the node's Taffy context (used by the
-/// measure closure during layout).
+/// Register `node` as a leaf in `tree` if not already registered.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     let mut layout = node.layout_slot().borrow_mut();
     if layout.handle.is_some() {
         return;
     }
-    let context = NodeContext {
-        widget: node.widget().clone(),
-    };
-    let node_id = tree
-        .tree
-        .borrow_mut()
-        .new_leaf_with_context(layout.style.clone(), context)
-        .expect("taffy: new_leaf_with_context failed");
+    let widget = node.widget().clone();
+    let node_id = tree.new_leaf(layout.style.clone(), widget, ());
     {
         let mut root = tree.root.borrow_mut();
         if root.is_none() {
@@ -122,34 +95,26 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     });
 }
 
-/// Drop the Taffy node and unregister this node. Called from
-/// [`Node::teardown`] during unmount. No-op if the node was never
-/// registered.
+/// Drop the node and unregister it. No-op if never registered.
 pub fn drop_node(node: &Node) {
     let handle = node.layout_slot().borrow_mut().handle.take();
     if let Some(h) = handle {
-        let parent_id = h.tree.tree.borrow().parent(h.node_id);
-        let _ = h.tree.tree.borrow_mut().remove(h.node_id);
+        let parent_id = h.tree.parent(h.node_id);
+        h.tree.remove(h.node_id);
         if let Some(pid) = parent_id {
-            let _ = h.tree.tree.borrow_mut().mark_dirty(pid);
+            h.tree.mark_dirty(pid);
             queue_root_resize(&h.tree);
         }
     }
 }
 
 // ---------------------------------------------------------------------
-// Edge mirroring (called from gtk_dom::node insert/remove)
+// Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-/// Add a Taffy parent-child edge. If the child isn't yet registered,
-/// register it in the parent's tree first. If the parent isn't
-/// registered, this is a no-op (the child stays orphan in Taffy too —
-/// it'll be registered when the parent joins a tree).
 pub fn attach_child(parent: &Node, child: &Node) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     register_in_tree(child, &parent_h.tree);
     let child_id = child
         .layout_slot()
@@ -158,24 +123,13 @@ pub fn attach_child(parent: &Node, child: &Node) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        let existing = tree.children(parent_h.node_id).unwrap_or_default();
-        if existing.iter().any(|c| *c == child_id) {
-            let _ = tree.remove_child(parent_h.node_id, child_id);
-        }
-        let _ = tree.add_child(parent_h.node_id, child_id);
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h.tree.add_child(parent_h.node_id, child_id);
     queue_root_resize(&parent_h.tree);
 }
 
-/// Insert a Taffy child at a specific index under `parent`.
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     register_in_tree(child, &parent_h.tree);
     let child_id = child
         .layout_slot()
@@ -184,52 +138,31 @@ pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        let existing = tree.children(parent_h.node_id).unwrap_or_default();
-        if existing.iter().any(|c| *c == child_id) {
-            let _ = tree.remove_child(parent_h.node_id, child_id);
-        }
-        let _ = tree.insert_child_at_index(parent_h.node_id, index, child_id);
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h
+        .tree
+        .insert_child_at_index(parent_h.node_id, index, child_id);
     queue_root_resize(&parent_h.tree);
 }
 
-/// Remove a Taffy parent-child edge. No-op if either side isn't
-/// registered.
 pub fn detach_child(parent: &Node, child: &Node) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     let child_id = match child.layout_slot().borrow().handle.as_ref() {
         Some(h) => h.node_id,
         None => return,
     };
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        let _ = tree.remove_child(parent_h.node_id, child_id);
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h.tree.remove_child(parent_h.node_id, child_id);
     queue_root_resize(&parent_h.tree);
 }
 
-/// Ask GTK to re-run measure+allocate on the tree's root widget. Each
-/// of our [`super::taffy_layout::TaffyLayout`] instances registers
-/// itself with the tree on `root()`, so we can fish the root widget
-/// out and `queue_resize` it. Works even when the root has finished
-/// layout already (GTK coalesces multiple queue_resize calls).
+/// Ask GTK to re-run measure+allocate on the tree's root widget.
+/// Each TaffyLayout instance registers the root widget on the tree
+/// so we can fish it out via the stored root NodeId. Multiple
+/// `queue_resize` calls coalesce into one pass per frame.
 pub fn queue_root_resize(tree: &TreeRef) {
-    let Some(root_id) = *tree.root.borrow() else {
-        return;
-    };
-    let widget = {
-        let t = tree.tree.borrow();
-        t.get_node_context(root_id).map(|c| c.widget.clone())
-    };
-    if let Some(w) = widget {
-        w.queue_resize();
+    let Some(root_id) = *tree.root.borrow() else { return };
+    if let Some(widget) = tree.view(root_id) {
+        widget.queue_resize();
     }
 }
 
@@ -237,36 +170,33 @@ pub fn queue_root_resize(tree: &TreeRef) {
 // Style mutation
 // ---------------------------------------------------------------------
 
-/// Apply a function to the node's stored style and (if registered)
-/// push the updated style into its tree.
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
     let mut layout = node.layout_slot().borrow_mut();
     f(&mut layout.style);
     if let Some(h) = &layout.handle {
-        let _ = h.tree.tree.borrow_mut().set_style(h.node_id, layout.style.clone());
+        h.tree.set_style(h.node_id, layout.style.clone());
     }
 }
 
-/// Replace the node's style entirely.
 pub fn set_style(node: &Node, style: Style) {
     update_style(node, |s| *s = style);
 }
 
-/// Mark this node dirty in Taffy and queue a GTK resize. Call after
-/// content changes that affect intrinsic size (button title, label
-/// text, etc.). GTK already calls `queue_resize` for us when changing
-/// the corresponding widget property — but we still need to mark
-/// Taffy dirty so the cached measurement is invalidated.
+/// Mark this node dirty in the tree and queue a GTK resize. Call
+/// after content changes that affect intrinsic size (button title,
+/// label text). GTK already calls `queue_resize` for us when
+/// changing the corresponding widget property — but we still need
+/// to mark the cached measurement invalid.
 pub fn schedule_relayout(node: &Node) {
     let handle = node.layout_slot().borrow().handle.clone();
     if let Some(h) = handle {
-        let _ = h.tree.tree.borrow_mut().mark_dirty(h.node_id);
+        h.tree.mark_dirty(h.node_id);
         queue_root_resize(&h.tree);
     }
 }
 
 // ---------------------------------------------------------------------
-// Convenience setters for common style properties.
+// Convenience setters
 // ---------------------------------------------------------------------
 
 pub fn set_width(node: &Node, width_px: f32) {
@@ -306,7 +236,7 @@ pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
 
 pub fn set_padding(node: &Node, all_px: f32) {
     update_style(node, |s| {
-        s.padding = taffy::Rect {
+        s.padding = Rect {
             left: LengthPercentage::length(all_px),
             right: LengthPercentage::length(all_px),
             top: LengthPercentage::length(all_px),
@@ -358,7 +288,7 @@ pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
 
 pub fn set_margin(node: &Node, all_px: f32) {
     update_style(node, |s| {
-        s.margin = taffy::Rect {
+        s.margin = Rect {
             left: LengthPercentageAuto::length(all_px),
             right: LengthPercentageAuto::length(all_px),
             top: LengthPercentageAuto::length(all_px),
@@ -368,14 +298,11 @@ pub fn set_margin(node: &Node, all_px: f32) {
     schedule_relayout(node);
 }
 
-/// Per-child override of the parent flex container's `align_items`.
-/// `None` means inherit from parent (Taffy's default).
 pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
     update_style(node, |s| s.align_self = ai);
     schedule_relayout(node);
 }
 
-/// Convert renderer-common's `Dim` to Taffy's `Dimension`.
 pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
     use renderer::attrs::Dim;
     match d {
@@ -385,10 +312,6 @@ pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
     }
 }
 
-/// Convert renderer-common's `AlignSelf` to Taffy's `AlignItems`
-/// (Taffy uses one enum for both align-items and align-self).
-/// Returns `None` for `AlignSelf::Auto` so the Style stores `None`,
-/// meaning "inherit from the parent's `align_items`".
 pub fn align_self_to_taffy(
     a: renderer::attrs::AlignSelf,
 ) -> Option<AlignItems> {
@@ -408,79 +331,41 @@ pub fn align_self_to_taffy(
 // ---------------------------------------------------------------------
 //
 // At runtime, layout is driven by GTK's measure/allocate cycle through
-// our `taffy_layout::TaffyLayout` LayoutManager. For unit tests we want
-// to be able to compute layout against a fixed `available_size` without
-// running a GTK main loop. This helper mirrors cocoa_dom's
-// `layout::compute_layout(root, size)` shape.
+// `taffy_layout::TaffyLayout`. For unit tests we want to compute
+// layout against a fixed available size without running a GTK main
+// loop; this helper mirrors `cocoa_dom::layout::compute_layout`.
 
-/// Compute Taffy layout for the subtree rooted at `root` against the
-/// given available size. Forces the root to fill the size exactly,
-/// then runs `compute_layout_with_measure` so leaf measure callbacks
-/// fire for content-driven sizing.
-///
-/// `root` must be registered in a tree.
 pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
     let handle = root.layout_slot().borrow().handle.clone();
-    let Some(handle) = handle else {
-        return;
-    };
-
+    let Some(handle) = handle else { return };
     let (w, h) = available_size;
-    let mut tree = handle.tree.tree.borrow_mut();
 
-    let mut style = tree.style(handle.node_id).cloned().unwrap_or_default();
+    let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
     style.size = Size {
         width: Dimension::length(w),
         height: Dimension::length(h),
     };
-    let _ = tree.set_style(handle.node_id, style);
+    handle.tree.set_style(handle.node_id, style);
 
     let avail = Size {
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    let _ = tree.compute_layout_with_measure(
-        handle.node_id,
-        avail,
-        measure_closure,
-    );
+    handle.tree.run_layout_pass(handle.node_id, avail);
 }
 
 // ---------------------------------------------------------------------
-// Measure callback for leaf widgets.
+// Leaf measure
 // ---------------------------------------------------------------------
 
-/// Reusable function-pointer used by `compute_layout_with_measure` so
-/// both call sites share a single monomorphization.
-pub fn measure_closure(
+fn measure_leaf_size(
+    widget: &gtk4::Widget,
     known: Size<Option<f32>>,
     avail: Size<AvailableSpace>,
-    _node_id: NodeId,
-    ctx: Option<&mut NodeContext>,
-    _style: &Style,
 ) -> Size<f32> {
     if let (Some(w), Some(h)) = (known.width, known.height) {
         return Size { width: w, height: h };
     }
-    let Some(ctx) = ctx else {
-        return Size {
-            width: known.width.unwrap_or(0.0),
-            height: known.height.unwrap_or(0.0),
-        };
-    };
-
-    let widget = &ctx.widget;
-
-    // GTK widgets that report "constant size for any orientation" are
-    // either handled by their layout manager (containers — Taffy
-    // descends into them; we don't measure them) or are leaves whose
-    // intrinsic size we can ask for via measure(orientation, -1).
-    //
-    // For an editable Entry: the natural width tracks content (grows
-    // as you type), which would push the field's frame outwards on
-    // every keystroke. Force width=0 so the parent's flex layout
-    // decides — same trick cocoa_dom's measure_leaf does for
-    // NSTextField.
 
     let constraint_w = match (known.width, avail.width) {
         (Some(w), _) => Some(w as i32),
@@ -500,13 +385,11 @@ pub fn measure_closure(
     // field's frame outwards on every keystroke. Force width=0 so
     // the parent's flex layout decides — same trick cocoa_dom's
     // measure_leaf does for editable NSTextField. Sliders and
-    // dropdowns have stable natural widths, so we leave them alone
-    // (cocoa parity: NSSlider and NSPopUpButton keep their
-    // intrinsic widths there too).
-    if widget.is::<gtk4::Entry>() || widget.is::<gtk4::PasswordEntry>() {
-        if known.width.is_none() {
-            w = 0.0;
-        }
+    // dropdowns have stable natural widths, so we leave them alone.
+    if (widget.is::<gtk4::Entry>() || widget.is::<gtk4::PasswordEntry>())
+        && known.width.is_none()
+    {
+        w = 0.0;
     }
 
     let height_for = constraint_w.unwrap_or(w as i32).max(-1);

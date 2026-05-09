@@ -160,10 +160,8 @@ impl Node {
     where
         W: IsA<gtk4::Widget>,
     {
-        let layout = NodeLayout {
-            style: Style::default(),
-            handle: Some(handle),
-        };
+        let mut layout = NodeLayout::new(Style::default());
+        layout.handle = Some(handle);
         Node {
             widget: SendWrapper::new(widget.upcast()),
             layout: SendWrapper::new(Rc::new(RefCell::new(layout))),

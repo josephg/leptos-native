@@ -37,9 +37,7 @@ fn frame_eq(
         .handle
         .clone()
         .expect("element not registered in tree");
-    let layout = *tree
-        .tree
-        .borrow()
+    let layout = tree
         .layout(lh.node_id)
         .expect("no layout computed");
     let tol = 0.5;
