@@ -460,11 +460,15 @@ pub fn measure_closure(
     };
     let mut w = known.width.unwrap_or(nat_w as f32);
 
-    if widget.is::<gtk4::Entry>()
-        || widget.is::<gtk4::PasswordEntry>()
-        || widget.is::<gtk4::Scale>()
-        || widget.is::<gtk4::DropDown>()
-    {
+    // For editable text entries, the natural width tracks content
+    // (the entry grows as the user types), which would push the
+    // field's frame outwards on every keystroke. Force width=0 so
+    // the parent's flex layout decides — same trick cocoa_dom's
+    // measure_leaf does for editable NSTextField. Sliders and
+    // dropdowns have stable natural widths, so we leave them alone
+    // (cocoa parity: NSSlider and NSPopUpButton keep their
+    // intrinsic widths there too).
+    if widget.is::<gtk4::Entry>() || widget.is::<gtk4::PasswordEntry>() {
         if known.width.is_none() {
             w = 0.0;
         }
