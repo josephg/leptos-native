@@ -111,7 +111,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "block_layout"
+name = "block_layout_cocoa"
 version = "0.1.0"
 dependencies = [
  "cocoa_dom",
@@ -170,7 +170,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
-name = "checkbox"
+name = "checkbox_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -210,7 +210,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2550f75b8cfac212855f6b1885455df8eaee8fe8e246b647d69146142e016084"
 
 [[package]]
-name = "component_event_test"
+name = "component_event_test_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -244,7 +244,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "counter"
+name = "counter_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -258,14 +258,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "counter_without_macros"
+name = "counter_without_macros_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
 ]
 
 [[package]]
-name = "counters"
+name = "counters_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -296,7 +296,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "directives"
+name = "directives_cocoa"
 version = "0.1.0"
 dependencies = [
  "cocoa_dom",
@@ -348,7 +348,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "error_boundary_macos"
+name = "error_boundary_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -728,7 +728,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "greeter"
+name = "greeter_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1103,7 +1103,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "login_form"
+name = "login_form_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1449,7 +1449,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parent_child"
+name = "parent_child_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1491,7 +1491,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "persistent_counter"
+name = "persistent_counter_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1772,7 +1772,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "scroll_view_macos"
+name = "scroll_view_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1878,7 +1878,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "settings"
+name = "settings_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -1892,7 +1892,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "showcase_macos"
+name = "showcase_cocoa"
 version = "0.1.0"
 dependencies = [
  "cocoa_dom",
@@ -1921,7 +1921,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "stores"
+name = "stores_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -2040,7 +2040,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "timer"
+name = "timer_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
@@ -2174,7 +2174,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "two_windows"
+name = "two_windows_cocoa"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",

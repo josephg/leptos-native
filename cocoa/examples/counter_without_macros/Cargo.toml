@@ -1,12 +1,8 @@
 [package]
-name = "counter_without_macros"
+name = "counter_without_macros_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "counter_without_macros"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }

@@ -1,12 +1,8 @@
 [package]
-name = "block_layout"
+name = "block_layout_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "block_layout"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa", features = ["block_layout"] }

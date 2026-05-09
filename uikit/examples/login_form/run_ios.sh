@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/login_form"
+BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/login_form_ios"
 BUNDLE_DIR="$SCRIPT_DIR/bundle/LoginForm.app"
 BUNDLE_ID="com.example.login_form"
 

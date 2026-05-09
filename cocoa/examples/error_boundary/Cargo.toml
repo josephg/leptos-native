@@ -1,12 +1,8 @@
 [package]
-name = "error_boundary_macos"
+name = "error_boundary_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[[bin]]
-name = "error_boundary"
-path = "src/main.rs"
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }

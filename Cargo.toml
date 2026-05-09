@@ -19,8 +19,7 @@ members = [
   "gtk/dom",
   "uikit/dom",
 
-  # cocoa examples — workspace members so they share the workspace
-  # `target/` directory rather than each example creating its own.
+  # cocoa examples
   "cocoa/examples/block_layout",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
@@ -40,6 +39,9 @@ members = [
   "cocoa/examples/timer",
   "cocoa/examples/two_windows",
 
+  # iOS examples
+  "uikit/examples/*",
+  
   # GTK examples — analogous to the cocoa examples list. Each
   # example's `[target.'cfg(target_os = "linux")'.dependencies]`
   # gates the leptos_gtk dep so they compile to empty rlibs on
@@ -51,17 +53,6 @@ members = [
   "gtk/examples/greeter",
   "gtk/examples/login_form",
   "gtk/examples/settings",
-
-  # iOS examples are NOT workspace members. They only build for the
-  # iOS-simulator target and Cargo workspaces don't support
-  # target-conditional members. Keeping them out lets each example
-  # `main.rs` stay clean (just `use leptos::prelude::*;` at the top,
-  # no #[cfg(target_os = "ios")] / mod ios { … } wrappers).
-  #
-  # Disk-share: the iOS examples still write into the workspace's
-  # `target/` because `.cargo/config.toml` at the workspace root
-  # (parents-search rule) sets `[build] target-dir = "../../../target"`
-  # for the uikit/examples/* tree.
 ]
 
 # `cargo test` / `cargo build` (no args) operate on `default-members`.
