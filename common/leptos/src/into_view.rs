@@ -1,6 +1,6 @@
 use renderer::{
     renderer::Renderer,
-    view::Render,
+    view::{AddAnyAttr, ApplyAttr, Render},
 };
 use std::borrow::Cow;
 
@@ -48,9 +48,14 @@ impl<T> View<T> {
 ///
 /// Generic over the renderer backend `R`. Each platform's `leptos_<platform>`
 /// crate uses this with its own `Renderer` impl.
+///
+/// Has `AddAnyAttr<R>` as a supertrait so the macro-emitted
+/// `MyComponent(props).add_any_attr(...)` call resolves on a
+/// component's opaque `impl IntoView` return type without the user
+/// needing the trait in scope explicitly.
 pub trait IntoView<R: Renderer>
 where
-    Self: Sized + Render<R> + Send,
+    Self: Sized + Render<R> + AddAnyAttr<R> + Send,
 {
     /// Wraps the inner type.
     fn into_view(self) -> View<Self>;
@@ -59,7 +64,7 @@ where
 impl<R, T> IntoView<R> for T
 where
     R: Renderer,
-    T: Sized + Render<R> + Send,
+    T: Sized + Render<R> + AddAnyAttr<R> + Send,
 {
     fn into_view(self) -> View<Self> {
         View {
@@ -79,6 +84,21 @@ impl<R: Renderer, T: Render<R>> Render<R> for View<T> {
 
     fn rebuild(self, state: &mut Self::State) {
         self.inner.rebuild(state)
+    }
+}
+
+/// `View<T>` forwards `.add_any_attr` to its wrapped value. This is
+/// the entry point the leptos_macro emits component-spread attrs on:
+/// `<MyComponent on:click=…>` becomes
+/// `MyComponent(props).add_any_attr((on_click_attr,))`, and
+/// `MyComponent(props)` returns a `View<...>` from `into_view()`.
+impl<R: Renderer, T: AddAnyAttr<R>> AddAnyAttr<R> for View<T> {
+    fn add_any_attr<A: ApplyAttr<R>>(self, attr: A) -> Self {
+        View {
+            inner: self.inner.add_any_attr(attr),
+            #[cfg(debug_assertions)]
+            view_marker: self.view_marker,
+        }
     }
 }
 

@@ -43,3 +43,8 @@ harness = false
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
 ] }
+
+[[test]]
+name = "add_any_attr"
+path = "tests/add_any_attr.rs"
+harness = false

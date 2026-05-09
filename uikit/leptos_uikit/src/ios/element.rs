@@ -285,6 +285,7 @@ pub struct View<Children> {
     border_width: Option<MaybeReactive<f64>>,
     border_color: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     children: Children,
 }
 
@@ -306,6 +307,7 @@ pub fn view() -> View<()> {
         border_width: None,
         border_color: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         children: (),
     }
 }
@@ -406,6 +408,7 @@ impl<Ch> View<Ch> {
             border_width: self.border_width,
             border_color: self.border_color,
             handlers: self.handlers,
+            pending_spreads: self.pending_spreads,
             children: (self.children, child),
         }
     }
@@ -494,6 +497,7 @@ pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -505,6 +509,7 @@ pub fn button() -> Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -591,12 +596,15 @@ impl Render<Dom> for Button {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
+
 
 
         ElementState {
@@ -616,6 +624,7 @@ impl Render<Dom> for Button {
 pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -630,6 +639,7 @@ pub fn label() -> Label {
     Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -706,6 +716,8 @@ impl Render<Dom> for Label {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         effects.extend(apply_universal(&el, self.alpha));
         effects.extend(apply_text_attrs(
@@ -718,6 +730,7 @@ impl Render<Dom> for Label {
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
+
 
 
         ElementState {
@@ -743,6 +756,7 @@ pub struct TextField {
     secure: bool,
     pending_bind: Option<crate::ios::bind::BoundValue>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -759,6 +773,7 @@ pub fn text_field() -> TextField {
         secure: false,
         pending_bind: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -867,10 +882,13 @@ impl Render<Dom> for TextField {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
 
         effects.extend(apply_universal(&el, self.alpha));
         effects.extend(apply_text_attrs(
@@ -907,6 +925,7 @@ pub struct Switch {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_checked: Option<crate::ios::bind::BoundChecked>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
 }
@@ -917,6 +936,7 @@ pub fn switch_() -> Switch {
         enabled: None,
         pending_bind_checked: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         node_ref: None,
         alpha: None,
     }
@@ -993,12 +1013,15 @@ impl Render<Dom> for Switch {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
+
 
 
         ElementState {
@@ -1022,6 +1045,7 @@ pub struct Slider {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1035,6 +1059,7 @@ pub fn slider() -> Slider {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -1123,10 +1148,13 @@ impl Render<Dom> for Slider {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
@@ -1157,6 +1185,7 @@ pub struct Stepper {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1171,6 +1200,7 @@ pub fn stepper() -> Stepper {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -1262,10 +1292,13 @@ impl Render<Dom> for Stepper {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
@@ -1369,6 +1402,7 @@ pub struct ImageView {
     source: MaybeReactive<String>,
     flex_grow: Option<f32>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
 }
@@ -1378,6 +1412,7 @@ pub fn image_view() -> ImageView {
         source: MaybeReactive::Static(String::new()),
         flex_grow: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         node_ref: None,
         alpha: None,
     }
@@ -1438,12 +1473,15 @@ impl Render<Dom> for ImageView {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
+
 
 
         ElementState {
@@ -1466,6 +1504,7 @@ pub struct SegmentedControl {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1478,6 +1517,7 @@ pub fn segmented_control() -> SegmentedControl {
         enabled: None,
         pending_bind_selection: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -1563,10 +1603,13 @@ impl Render<Dom> for SegmentedControl {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
 
         effects.extend(apply_universal(&el, self.alpha));
 
@@ -1594,6 +1637,7 @@ pub struct DatePicker {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundDate>,
     handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1608,6 +1652,7 @@ pub fn date_picker() -> DatePicker {
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
+        pending_spreads: Vec::new(),
         flex_grow: None,
         node_ref: None,
         alpha: None,
@@ -1703,10 +1748,13 @@ impl Render<Dom> for DatePicker {
         for h in self.handlers {
             h.apply_to(&el);
         }
+        for f in self.pending_spreads { f(&el); }
+
 
         if let Some(g) = self.flex_grow {
             set_flex_grow(el.as_node(), g);
         }
+
 
         if let Some(s) = self.style {
             let el_for = el.clone();
@@ -1975,4 +2023,71 @@ impl Render<Dom> for TextView {
         }
     }
     fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
+// AddAnyAttr<Dom> for iOS leaf builders. Routes spread attrs (e.g.
+// `<MyComponent on:click=...>`) onto the existing `pending_spreads`
+// post-build hook, drained in `Render::build` after the underlying
+// UIView is constructed. For OnAttribute, `apply_to` calls
+// `el.on_click(cb)`, which on iOS routes via the UIControl
+// target-action mechanism (silently no-ops on non-UIControl views).
+// ---------------------------------------------------------------------
+
+macro_rules! impl_add_any_attr_for_leaf {
+    ($($builder:ident),+ $(,)?) => {
+        $(
+            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+                fn add_any_attr<__A>(mut self, attr: __A) -> Self
+                where
+                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                {
+                    self.pending_spreads.push(Box::new(move |el: &IosElement| {
+                        attr.apply_to(el);
+                    }));
+                    self
+                }
+            }
+        )+
+    };
+}
+
+impl_add_any_attr_for_leaf!(
+    Button, Label, TextField, Switch, Slider, Stepper,
+    ImageView, SegmentedControl, DatePicker,
+);
+
+// ProgressIndicator + TextView don't carry a handlers/pending_spreads
+// Vec; spread attrs on them are no-op.
+impl renderer::view::AddAnyAttr<crate::Dom> for ProgressIndicator {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where __A: renderer::view::ApplyAttr<crate::Dom> { self }
+}
+impl renderer::view::AddAnyAttr<crate::Dom> for TextView {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where __A: renderer::view::ApplyAttr<crate::Dom> { self }
+}
+
+// View<Children> (the iOS equivalent of cocoa's Stack) — push spreads
+// onto its pending_spreads field too, since it has handlers + a UIView
+// underneath. ScrollView likewise.
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
+    fn add_any_attr<__A>(mut self, attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self.pending_spreads.push(Box::new(move |el: &IosElement| {
+            attr.apply_to(el);
+        }));
+        self
+    }
+}
+
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self
+    }
 }

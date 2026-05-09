@@ -8,7 +8,7 @@ pub use owned::{OwnedView, OwnedViewState};
 
 use crate::{
     renderer::Renderer,
-    view::{Mountable, Render},
+    view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::effect::RenderEffect;
 use std::{
@@ -126,5 +126,21 @@ where
             .as_ref()
             .and_then(|inner| inner.with_value_mut(|t| t.elements()))
             .unwrap_or_default()
+    }
+}
+
+/// `AddAnyAttr<R>` for reactive closures: deferred (branching).
+/// `<Show on:click=…>` would route here; supporting it properly
+/// needs re-attach-on-rebuild semantics (what to do when the
+/// closure swaps content? does the handler stay attached?). For
+/// now the attribute is silently dropped.
+impl<R, F, V> AddAnyAttr<R> for F
+where
+    R: Renderer,
+    F: ReactiveFunction<Output = V>,
+    V: Render<R>,
+{
+    fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
+        self
     }
 }

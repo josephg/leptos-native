@@ -172,8 +172,13 @@ impl OnAttribute {
     }
 }
 
-// Phase 8: dropped the upstream Attribute / NextAttribute / ToTemplate
-// impls on OnAttribute (SSR-coupled machinery from the deleted
-// tachys::html::attribute::* + tachys::view::ToTemplate). Inline `.on()`
-// on the element builder is the only path examples use, and it goes
-// through `OnAttribute::apply` directly.
+// Phase 8 dropped the upstream Attribute / NextAttribute / ToTemplate
+// impls on OnAttribute (SSR-coupled machinery). Phase 9 revived
+// AddAnyAttr / ApplyAttr in minimal form so `<MyComponent on:click=…>`
+// works — see `renderer::view::add_any_attr`.
+
+impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
+    fn apply_to(self, el: &ios_dom::Element) {
+        OnAttribute::apply(self, el)
+    }
+}

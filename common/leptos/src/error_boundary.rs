@@ -25,7 +25,7 @@ use reactive_graph::{
 use renderer::{
     reactive_graph::{OwnedView, RenderEffectState},
     renderer::Renderer,
-    view::{Mountable, Render},
+    view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use rustc_hash::FxHashMap;
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
@@ -310,5 +310,15 @@ impl<'a> Iterator for Iter<'a> {
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
+    }
+}
+
+/// `<ErrorBoundary on:click=…>` — branching wrapper, defer.
+impl<Chil, FalFn, R> AddAnyAttr<R> for ErrorBoundaryView<Chil, FalFn, R>
+where
+    R: Renderer,
+{
+    fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
+        self
     }
 }

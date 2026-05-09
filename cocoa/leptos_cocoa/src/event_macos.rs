@@ -255,10 +255,12 @@ impl OnAttribute {
 }
 
 // Phase 8: dropped the upstream Attribute/NextAttribute/ToTemplate
-// impls that previously lived here. They were SSR-coupled machinery
-// from tachys::html::attribute::* + tachys::view::ToTemplate, none of
-// which exists in this fork. The native cocoa port doesn't need
-// `<Component on:click=...>` spread routing — inline `.on()` on the
-// element builder is the only path examples use, and it goes through
-// `OnAttribute::apply` directly without any AddAnyAttr / NextAttribute
-// machinery.
+// impls (SSR machinery). Phase 9: revived AddAnyAttr / ApplyAttr in
+// minimal form so `<MyComponent on:click=...>` works — see
+// `renderer::view::add_any_attr` for the trait shape.
+
+impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
+    fn apply_to(self, el: &cocoa_dom::Element) {
+        OnAttribute::apply(self, el)
+    }
+}

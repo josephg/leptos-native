@@ -3625,3 +3625,73 @@ where
 
 
 
+
+// ---------------------------------------------------------------------
+// AddAnyAttr<Dom> for the 13 leaf builders. Routes spread attrs (e.g.
+// `<MyComponent on:click=...>`) onto the existing `directives: Vec<...>`
+// post-build hook, which gets drained in `Render::build` after the
+// underlying NSView is constructed. Same install timing as a `use:`
+// directive — the attr's `apply_to` is called with `&CocoaElement` and
+// (for OnAttribute) routes to e.g. `el.on_click(cb)`, which silently
+// no-ops on non-NSButton element kinds.
+//
+// Container builders (Stack, Block, ScrollView) intentionally don't
+// implement AddAnyAttr — the `<App on:click=…>` use case where App
+// wraps a vstack-of-buttons would no-op anyway (NSView has no click
+// target), and threading through containers needs decisions about
+// re-attach-on-rebuild for branching wrappers.
+
+macro_rules! impl_add_any_attr_for_leaf {
+    ($($builder:ident),+ $(,)?) => {
+        $(
+            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+                fn add_any_attr<__A>(mut self, attr: __A) -> Self
+                where
+                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                {
+                    self.directives.push(Box::new(move |el: &CocoaElement| {
+                        attr.apply_to(el);
+                    }));
+                    self
+                }
+            }
+        )+
+    };
+}
+
+impl_add_any_attr_for_leaf!(
+    Button, Checkbox, Slider, PopUpButton, Label, TextField,
+    DatePicker, Stepper, ProgressIndicator, ColorWell,
+    SegmentedControl, ImageView, TextView,
+);
+
+// Container builders (Stack, Block, ScrollView) — no-op AddAnyAttr.
+// Their underlying NSView (FlippedView / NSScrollView) doesn't have a
+// click target, so OnAttribute on a container would no-op anyway.
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self
+    }
+}
+
+#[cfg(feature = "block_layout")]
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Block<Children> {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self
+    }
+}
+
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self
+    }
+}

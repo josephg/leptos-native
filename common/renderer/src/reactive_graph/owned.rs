@@ -1,6 +1,6 @@
 use crate::{
     renderer::Renderer,
-    view::{Mountable, Render},
+    view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::owner::Owner;
 
@@ -97,5 +97,21 @@ where
 
     fn elements(&self) -> Vec<R::Element> {
         self.state.elements()
+    }
+}
+
+/// `OwnedView<T>` forwards `add_any_attr` to its wrapped view. The
+/// reactive owner doesn't change anything about the spread path.
+impl<T, R> AddAnyAttr<R> for OwnedView<T>
+where
+    R: Renderer,
+    T: AddAnyAttr<R>,
+{
+    fn add_any_attr<A: ApplyAttr<R>>(self, attr: A) -> Self {
+        let OwnedView { owner, view } = self;
+        OwnedView {
+            owner,
+            view: view.add_any_attr(attr),
+        }
     }
 }
