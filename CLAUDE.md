@@ -144,6 +144,14 @@ cd uikit/examples/counter && ./run_ios.sh -t 3
 # Just typecheck the iOS-target build:
 cargo check -p ios_dom --target aarch64-apple-ios-sim
 cargo check -p leptos_uikit --target aarch64-apple-ios-sim
+
+# Direct iOS-example builds outside run_ios.sh — set CARGO_TARGET_DIR
+# so the build lands in the shared workspace target/ rather than a
+# per-example target/ (iOS examples aren't workspace members because
+# Cargo doesn't support target-conditional members):
+CARGO_TARGET_DIR=$(pwd)/target cargo build \
+  --manifest-path uikit/examples/counter/Cargo.toml \
+  --target aarch64-apple-ios-sim
 ```
 
 Prereqs: Xcode + the iOS Rust targets (`rustup target add

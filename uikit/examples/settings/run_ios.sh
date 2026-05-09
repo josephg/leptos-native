@@ -22,8 +22,13 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/settings"
-BUNDLE_DIR="$SCRIPT_DIR/target/Settings.app"
+BUNDLE_DIR="$SCRIPT_DIR/bundle/Settings.app"
 BUNDLE_ID="com.example.settings"
+
+# Share the workspace root's target/ instead of dropping a
+# per-example one (cargo defaults to <package>/target when the
+# package isn't a workspace member). Saves ~1 GB per example.
+export CARGO_TARGET_DIR="$SCRIPT_DIR/../../../target"
 
 # 1. Build
 echo "==> Building for aarch64-apple-ios-sim..."

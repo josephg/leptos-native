@@ -21,3 +21,4 @@ fn Counter(initial: i32) -> impl IntoView {
 fn main() {
     leptos::mount_ios::run(|| view! { <Counter initial=0 /> });
 }
+

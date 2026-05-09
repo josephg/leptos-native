@@ -195,3 +195,4 @@ fn TodoRow(todo: Todo) -> impl IntoView {
 fn main() {
     leptos::mount_ios::run(|| view! { <TodoMVC /> });
 }
+

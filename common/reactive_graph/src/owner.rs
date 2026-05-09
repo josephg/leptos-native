@@ -1,7 +1,5 @@
 //! The reactive ownership model, which manages effect cancellation, cleanups, and arena allocation.
 
-#[cfg(feature = "hydration")]
-use hydration_context::SharedContext;
 use or_poisoned::OrPoisoned;
 use rustc_hash::FxHashMap;
 use std::{
@@ -56,8 +54,6 @@ pub use stored_value::{store_value, FromLocal, StoredValue};
 #[must_use]
 pub struct Owner {
     pub(crate) inner: Arc<RwLock<OwnerInner>>,
-    #[cfg(feature = "hydration")]
-    pub(crate) shared_context: Option<Arc<dyn SharedContext + Send + Sync>>,
 }
 
 impl Owner {
@@ -65,8 +61,6 @@ impl Owner {
     pub fn downgrade(&self) -> WeakOwner {
         WeakOwner {
             inner: Arc::downgrade(&self.inner),
-            #[cfg(feature = "hydration")]
-            shared_context: self.shared_context.as_ref().map(Arc::downgrade),
         }
     }
 }
@@ -78,8 +72,6 @@ impl Owner {
 #[derive(Clone)]
 pub struct WeakOwner {
     inner: Weak<RwLock<OwnerInner>>,
-    #[cfg(feature = "hydration")]
-    shared_context: Option<Weak<dyn SharedContext + Send + Sync>>,
 }
 
 impl WeakOwner {
@@ -88,13 +80,8 @@ impl WeakOwner {
     /// Returns `None` if the owner has already been dropped.
     pub fn upgrade(&self) -> Option<Owner> {
         self.inner.upgrade().map(|inner| {
-            #[cfg(feature = "hydration")]
-            let shared_context =
-                self.shared_context.as_ref().and_then(|sc| sc.upgrade());
             Owner {
                 inner,
-                #[cfg(feature = "hydration")]
-                shared_context,
             }
         })
     }
@@ -146,21 +133,12 @@ impl Owner {
 
     /// Creates a new `Owner` and registers it as a child of the current `Owner`, if there is one.
     pub fn new() -> Self {
-        #[cfg(not(feature = "hydration"))]
         let parent = OWNER.with(|o| {
             o.borrow()
                 .as_ref()
                 .and_then(|o| o.upgrade())
                 .map(|o| Arc::downgrade(&o.inner))
         });
-        #[cfg(feature = "hydration")]
-        let (parent, shared_context) = OWNER
-            .with(|o| {
-                o.borrow().as_ref().and_then(|o| o.upgrade()).map(|o| {
-                    (Some(Arc::downgrade(&o.inner)), o.shared_context.clone())
-                })
-            })
-            .unwrap_or((None, None));
         let this = Self {
             inner: Arc::new(RwLock::new(OwnerInner {
                 parent: parent.clone(),
@@ -176,8 +154,6 @@ impl Owner {
                     .unwrap_or_default(),
                 paused: false,
             })),
-            #[cfg(feature = "hydration")]
-            shared_context,
         };
         if let Some(parent) = parent.and_then(|n| n.upgrade()) {
             parent
@@ -186,34 +162,6 @@ impl Owner {
                 .children
                 .push(Arc::downgrade(&this.inner));
         }
-        this
-    }
-
-    /// Creates a new "root" context with the given [`SharedContext`], which allows sharing data
-    /// between the server and client.
-    ///
-    /// Only one `SharedContext` needs to be created per request, and will be automatically shared
-    /// by any other `Owner`s created under this one.
-    #[cfg(feature = "hydration")]
-    #[track_caller]
-    pub fn new_root(
-        shared_context: Option<Arc<dyn SharedContext + Send + Sync>>,
-    ) -> Self {
-        let this = Self {
-            inner: Arc::new(RwLock::new(OwnerInner {
-                parent: None,
-                nodes: Default::default(),
-                contexts: Default::default(),
-                cleanups: Default::default(),
-                children: Default::default(),
-                #[cfg(feature = "sandboxed-arenas")]
-                arena: Default::default(),
-                paused: false,
-            })),
-            #[cfg(feature = "hydration")]
-            shared_context,
-        };
-        this.set();
         this
     }
 
@@ -231,8 +179,6 @@ impl Owner {
             .and_then(|p| p.upgrade())
             .map(|inner| Owner {
                 inner,
-                #[cfg(feature = "hydration")]
-                shared_context: self.shared_context.clone(),
             })
     }
 
@@ -254,8 +200,6 @@ impl Owner {
                 arena,
                 paused,
             })),
-            #[cfg(feature = "hydration")]
-            shared_context: self.shared_context.clone(),
         };
         inner.children.push(Arc::downgrade(&child.inner));
         child
@@ -335,14 +279,6 @@ impl Owner {
         OWNER.with(|o| o.borrow().as_ref().and_then(|n| n.upgrade()))
     }
 
-    /// Returns the [`SharedContext`] associated with this owner, if any.
-    #[cfg(feature = "hydration")]
-    pub fn shared_context(
-        &self,
-    ) -> Option<Arc<dyn SharedContext + Send + Sync>> {
-        self.shared_context.clone()
-    }
-
     /// Removes this from its state as the thread-local owner and drops it.
     /// If there are other holders of this owner, it may not cleanup, if always cleaning up is required,
     /// see [`Owner::unset_with_forced_cleanup`].
@@ -369,71 +305,6 @@ impl Owner {
             }
         });
         self.cleanup();
-    }
-
-    /// Returns the current [`SharedContext`], if any.
-    #[cfg(feature = "hydration")]
-    pub fn current_shared_context(
-    ) -> Option<Arc<dyn SharedContext + Send + Sync>> {
-        OWNER.with(|o| {
-            o.borrow()
-                .as_ref()
-                .and_then(|o| o.upgrade())
-                .and_then(|current| current.shared_context.clone())
-        })
-    }
-
-    /// Runs the given function, after indicating that the current [`SharedContext`] should be
-    /// prepared to handle any data created in the function.
-    #[cfg(feature = "hydration")]
-    pub fn with_hydration<T>(fun: impl FnOnce() -> T + 'static) -> T {
-        fn inner<T>(fun: Box<dyn FnOnce() -> T>) -> T {
-            provide_context(IsHydrating(true));
-
-            let sc = OWNER.with_borrow(|o| {
-                o.as_ref()
-                    .and_then(|o| o.upgrade())
-                    .and_then(|current| current.shared_context.clone())
-            });
-            match sc {
-                None => fun(),
-                Some(sc) => {
-                    let prev = sc.get_is_hydrating();
-                    sc.set_is_hydrating(true);
-                    let value = fun();
-                    sc.set_is_hydrating(prev);
-                    value
-                }
-            }
-        }
-
-        inner(Box::new(fun))
-    }
-
-    /// Runs the given function, after indicating that the current [`SharedContext`] should /// not handle data created in this function.
-    #[cfg(feature = "hydration")]
-    pub fn with_no_hydration<T>(fun: impl FnOnce() -> T + 'static) -> T {
-        fn inner<T>(fun: Box<dyn FnOnce() -> T>) -> T {
-            provide_context(IsHydrating(false));
-
-            let sc = OWNER.with_borrow(|o| {
-                o.as_ref()
-                    .and_then(|o| o.upgrade())
-                    .and_then(|current| current.shared_context.clone())
-            });
-            match sc {
-                None => fun(),
-                Some(sc) => {
-                    let prev = sc.get_is_hydrating();
-                    sc.set_is_hydrating(false);
-                    let value = fun();
-                    sc.set_is_hydrating(prev);
-                    value
-                }
-            }
-        }
-
-        inner(Box::new(fun))
     }
 
     /// Pauses the execution of side effects for this owner, and any of its descendants.

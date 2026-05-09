@@ -177,13 +177,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "checkbox_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
 name = "cocoa_dom"
 version = "0.1.0"
 dependencies = [
@@ -223,13 +216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "controls_demo"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
 name = "convert_case"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -255,13 +241,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "counter_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
 name = "counter_without_macros"
 version = "0.1.0"
 dependencies = [
@@ -273,13 +252,6 @@ name = "counters"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
-]
-
-[[package]]
-name = "counters_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
 ]
 
 [[package]]
@@ -739,13 +711,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "greeter_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
 name = "grid"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1085,13 +1050,6 @@ name = "login_form"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
-]
-
-[[package]]
-name = "login_form_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
 ]
 
 [[package]]
@@ -1852,13 +1810,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "settings_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
 name = "showcase_macos"
 version = "0.1.0"
 dependencies = [
@@ -1921,13 +1872,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d07aa455c66ddfdbb51507537402b961e027846468954ef8d974bce65dff9eb0"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "switch_demo"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
 ]
 
 [[package]]
@@ -2018,23 +1962,6 @@ name = "timer"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
-]
-
-[[package]]
-name = "timer_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
-]
-
-[[package]]
-name = "todomvc_ios"
-version = "0.1.0"
-dependencies = [
- "leptos_uikit",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -2223,7 +2150,6 @@ checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
  "getrandom",
  "js-sys",
- "serde_core",
  "wasm-bindgen",
 ]
 
