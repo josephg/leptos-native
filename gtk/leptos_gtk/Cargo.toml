@@ -1,0 +1,61 @@
+[package]
+name = "leptos_gtk"
+version = "0.1.0"
+authors = ["Seph Gentle"]
+license = "MIT"
+description = "GTK4 native UI port for the leptos-mac fork."
+rust-version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "leptos_gtk"
+
+[dependencies]
+renderer = { workspace = true }
+reactive_graph = { workspace = true, features = ["effects"] }
+leptos = { workspace = true }
+leptos_macro = { workspace = true }
+leptos_apple_shared = { workspace = true }
+either_of = { workspace = true }
+oco_ref = { workspace = true }
+send_wrapper = { workspace = true, default-features = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk_dom = { path = "../dom", version = "0.1.0" }
+gtk4 = { workspace = true, default-features = true }
+glib = { workspace = true, default-features = true }
+gio = { workspace = true, default-features = true }
+any_spawner = { workspace = true, features = ["glib"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+reactive_graph = { workspace = true, features = ["effects"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+] }
+
+# GTK requires the main thread; see gtk_dom/Cargo.toml for the same
+# pattern. Each integration test below uses `harness = false` and
+# supplies its own main fn that runs the test bodies sequentially on
+# the main thread (via `run_tests` in `tests/common`).
+
+[[test]]
+name = "add_any_attr"
+path = "tests/add_any_attr.rs"
+harness = false
+
+[[test]]
+name = "bind_cycle"
+path = "tests/bind_cycle.rs"
+harness = false
+
+[[test]]
+name = "components"
+path = "tests/components.rs"
+harness = false
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false

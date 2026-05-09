@@ -10,6 +10,7 @@ members = [
   "common/leptos",
   "apple_shared",
   "cocoa/leptos_cocoa",
+  "gtk/leptos_gtk",
   "uikit/leptos_uikit",
 
   # native ports
@@ -38,6 +39,18 @@ members = [
   "cocoa/examples/timer",
   "cocoa/examples/two_windows",
 
+  # GTK examples — analogous to the cocoa examples list. Each
+  # example's `[target.'cfg(target_os = "linux")'.dependencies]`
+  # gates the leptos_gtk dep so they compile to empty rlibs on
+  # macOS (still needed for `cargo build --workspace` to succeed
+  # cross-platform).
+  "gtk/examples/checkbox",
+  "gtk/examples/counter",
+  "gtk/examples/counters",
+  "gtk/examples/greeter",
+  "gtk/examples/login_form",
+  "gtk/examples/settings",
+
   # iOS examples are NOT workspace members. They only build for the
   # iOS-simulator target and Cargo workspaces don't support
   # target-conditional members. Keeping them out lets each example
@@ -62,6 +75,7 @@ default-members = [
   "cocoa/leptos_cocoa",
   "cocoa/dom",
   "gtk/dom",
+  "gtk/leptos_gtk",
 
   "cocoa/examples/block_layout",
   "cocoa/examples/checkbox",
@@ -81,11 +95,21 @@ default-members = [
   "cocoa/examples/stores",
   "cocoa/examples/timer",
   "cocoa/examples/two_windows",
+
+  # GTK examples — workspace members on Linux. Cargo's
+  # target-conditional members aren't supported, so these are also
+  # listed when running on macOS/iOS, but their `[target.'cfg(...)']`
+  # dep gates keep them empty there.
+  "gtk/examples/checkbox",
+  "gtk/examples/counter",
+  "gtk/examples/counters",
+  "gtk/examples/greeter",
+  "gtk/examples/login_form",
+  "gtk/examples/settings",
 ]
 exclude = [
   "benchmarks",
   "projects",
-  "gtk/examples",
   "uikit/xcuitests",
   # iOS examples — kept out of the workspace because Cargo
   # doesn't support target-conditional members and they only build
@@ -125,6 +149,7 @@ reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos = { path = "./common/leptos", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
+leptos_gtk = { path = "./gtk/leptos_gtk", version = "0.1.0" }
 leptos_apple_shared = { path = "./apple_shared", version = "0.1.0" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---

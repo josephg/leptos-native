@@ -1,7 +1,17 @@
 [package]
-name = "login_form"
+name = "login_form_gtk"
 version = "0.1.0"
 edition = "2021"
+publish = false
+
+[[bin]]
+name = "login_form"
+path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui"] }
+leptos = { package = "leptos_gtk", path = "../../leptos_gtk" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+] }

@@ -8,6 +8,7 @@ rust-version.workspace = true
 edition.workspace = true
 
 [dependencies]
+renderer = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
@@ -18,8 +19,60 @@ gtk4 = { workspace = true, default-features = true }
 glib = { workspace = true, default-features = true }
 gio = { workspace = true, default-features = true }
 any_spawner = { workspace = true, features = ["glib"] }
+taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
 ] }
+
+# GTK requires the main thread for almost every API. Cargo's default
+# test harness spawns a worker thread per test; gtk::init then panics.
+# Each integration test below uses `harness = false` and supplies its
+# own main fn that runs the test bodies sequentially on the actual
+# main thread (via the `run_tests` helper in `tests/common`).
+
+[[test]]
+name = "element_creation"
+path = "tests/element_creation.rs"
+harness = false
+
+[[test]]
+name = "attributes"
+path = "tests/attributes.rs"
+harness = false
+
+[[test]]
+name = "events"
+path = "tests/events.rs"
+harness = false
+
+[[test]]
+name = "text_and_placeholder"
+path = "tests/text_and_placeholder.rs"
+harness = false
+
+[[test]]
+name = "tree_mutation"
+path = "tests/tree_mutation.rs"
+harness = false
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false
+
+[[test]]
+name = "layout_dirtying"
+path = "tests/layout_dirtying.rs"
+harness = false
+
+[[test]]
+name = "focus"
+path = "tests/focus.rs"
+harness = false
+
+[[test]]
+name = "thread_safety"
+path = "tests/thread_safety.rs"
+harness = false

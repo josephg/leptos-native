@@ -177,6 +177,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "checkbox_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
+]
+
+[[package]]
 name = "cocoa_dom"
 version = "0.1.0"
 dependencies = [
@@ -242,6 +249,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "counter_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
+]
+
+[[package]]
 name = "counter_without_macros"
 version = "0.1.0"
 dependencies = [
@@ -253,6 +267,13 @@ name = "counters"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
+]
+
+[[package]]
+name = "counters_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
 ]
 
 [[package]]
@@ -712,6 +733,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "greeter_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
+]
+
+[[package]]
 name = "grid"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,7 +837,9 @@ dependencies = [
  "glib 0.21.5",
  "gtk4",
  "reactive_graph",
+ "renderer",
  "send_wrapper",
+ "taffy",
 ]
 
 [[package]]
@@ -974,6 +1004,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos_gtk"
+version = "0.1.0"
+dependencies = [
+ "any_spawner",
+ "either_of",
+ "gio",
+ "glib 0.21.5",
+ "gtk4",
+ "gtk_dom",
+ "leptos",
+ "leptos_apple_shared",
+ "leptos_macro",
+ "oco_ref",
+ "reactive_graph",
+ "renderer",
+ "send_wrapper",
+]
+
+[[package]]
 name = "leptos_macro"
 version = "0.1.0"
 dependencies = [
@@ -1055,6 +1104,13 @@ name = "login_form"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
+]
+
+[[package]]
+name = "login_form_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
 ]
 
 [[package]]
@@ -1813,6 +1869,13 @@ name = "settings"
 version = "0.1.0"
 dependencies = [
  "leptos_cocoa",
+]
+
+[[package]]
+name = "settings_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
 ]
 
 [[package]]

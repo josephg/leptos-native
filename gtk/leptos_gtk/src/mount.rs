@@ -1,92 +1,92 @@
-//! GTK-flavoured app mounting for Linux.
+//! GTK app mounting for Linux.
 //!
-//! The web-target equivalent is [`crate::mount`]: `mount_to_body`,
-//! `mount_to`, etc., which take a closure returning an `IntoView`
-//! and attach the resulting state to a DOM element.
+//! Mirrors `leptos_cocoa::mount` in shape. Two entry points:
 //!
-//! On Linux we have two entry points:
+//!  - [`run`] — general purpose. Takes any tachys `Render` value,
+//!    builds it once the GtkApplication has activated, then runs the
+//!    GTK main loop. Use this when your closure returns one or more
+//!    [`tachys::gtk::Window`]s.
 //!
-//!  - [`run`] — opens a GtkApplication, invokes `f` inside a fresh
-//!    reactive [`Owner`] scope during the `activate` signal, builds
-//!    the view tree, mounts it into a window, and runs the GTK main
-//!    loop until the app terminates.
+//!  - [`mount_to_window`] — convenience for the single-window case.
+//!    Wraps the user's content in a `window()` with the given
+//!    application id, title, and size and delegates to [`run`].
 //!
-//!  - [`mount_to_window`] — convenience for the common single-window
-//!    case. Opens one window with the given title and size, mounts
-//!    the view tree, and runs the loop.
-//!
-//! Both block until the app terminates.
+//! Both block until the app terminates (last window closed).
 
-use gtk_dom::gtk::prelude::*;
+use crate::{gtk::window::window, Dom};
+use gtk4::prelude::*;
+use gtk_dom::app::{init_app, run_loop};
 use reactive_graph::owner::Owner;
+use renderer::view::Render;
 use std::cell::RefCell;
 use std::rc::Rc;
-use tachys::view::{Mountable, Render};
 
 /// Run a GTK application whose root view is built by `f`.
 ///
-/// `f` is invoked once on the GTK main thread inside a fresh reactive
-/// [`Owner`] scope, during `GtkApplication::activate`. It should
-/// return any tachys `Render` value with a `Window` as the outermost
-/// container (the same pattern as the macOS port's `run`).
-pub fn run<F, V>(app_id: &str, f: F)
+/// `application_id` is a reverse-DNS string (e.g.
+/// `"org.example.Counter"`) used by GTK for single-instance behavior
+/// and settings storage.
+///
+/// `f` is invoked once on the main thread inside a fresh reactive
+/// [`Owner`] scope. It should return any tachys `Render` value —
+/// typically one or more [`tachys::gtk::Window`]s. Building those
+/// opens GtkApplicationWindows and mounts their content. Then the
+/// GTK main loop runs until the app terminates.
+pub fn run<F, V>(application_id: &str, f: F)
 where
-    F: FnOnce() -> V + Send + 'static,
-    V: Render,
-    V::State: 'static,
+    F: FnOnce(&gtk4::Application) -> V + 'static,
+    V: Render<Dom> + 'static,
 {
-    let app = gtk_dom::app::init_app(app_id);
-    let f = Rc::new(RefCell::new(Some(f)));
+    let app = init_app(application_id);
 
-    app.connect_activate(move |_app| {
-        let f = f.borrow_mut().take().expect("gtk_dom: activate fired twice");
+    // The user's `f` needs the gtk::Application to construct windows
+    // (GtkApplicationWindow is built from one). gtk::Application
+    // emits its `activate` signal once the main loop is up; we set
+    // up the reactive scope and build the view tree there.
+    //
+    // GTK 4 actually wants `connect_activate` to be called with a
+    // FnMut + 'static closure. We move `f` in via a RefCell-Option
+    // take dance so it runs at most once.
+    let f_cell = Rc::new(RefCell::new(Some(f)));
+    app.connect_activate(move |app| {
+        let Some(f) = f_cell.borrow_mut().take() else {
+            return;
+        };
+
+        // Reactive scope rooted for the app's lifetime.
         let owner = Owner::new();
         owner.set();
         std::mem::forget(owner);
 
-        let view = f();
+        let view = f(app);
         let state = view.build();
         std::mem::forget(state);
     });
 
-    gtk_dom::app::run_loop(&app);
+    run_loop(&app);
 }
 
 /// Open a single GTK window and mount the view returned by `f` as
 /// its content. Sugar over [`run`] for the common case.
 ///
-/// `title` is shown in the window's title bar; `size` is the initial
-/// content-area size in pixels.
+/// `application_id` is the reverse-DNS app id (see [`run`]).
+/// `title` is shown in the window's title bar; `size` is the
+/// initial content-area size in pixels.
 pub fn mount_to_window<F, V>(
-    app_id: &str,
+    application_id: &str,
     title: &str,
     size: (i32, i32),
     f: F,
 ) where
-    F: FnOnce() -> V + Send + 'static,
-    V: Render,
-    V::State: Mountable + 'static,
+    F: FnOnce() -> V + 'static,
+    V: Render<Dom> + 'static,
 {
-    let app = gtk_dom::app::init_app(app_id);
     let title = title.to_owned();
-    let f = Rc::new(RefCell::new(Some(f)));
-
-    app.connect_activate(move |app| {
-        let f = f.borrow_mut().take().expect("gtk_dom: activate fired twice");
-
-        let owner = Owner::new();
-        owner.set();
-        std::mem::forget(owner);
-
-        let opened = gtk_dom::window::open_window(app, &title, size);
-
-        let view = f();
-        let mut state = view.build();
-        state.mount(&opened.content_root, None);
-        std::mem::forget(state);
-
-        opened.show();
+    run(application_id, move |app| {
+        window()
+            .application(app.clone())
+            .title(title)
+            .size(size.0, size.1)
+            .child(f())
     });
-
-    gtk_dom::app::run_loop(&app);
 }

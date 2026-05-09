@@ -1,0 +1,142 @@
+//! Smoke tests for `Element::create` per tag.
+//!
+//! Verifies each tag string maps to a GTK widget class.
+
+#![cfg(target_os = "linux")]
+
+mod common;
+
+use gtk_dom::{gtk::prelude::*, Element, NodeKind};
+
+fn view_is_a_box() {
+    // `<view>` is a generic flexbox container, backed by gtk::Box
+    // (with our TaffyLayout swapped in once mounted).
+    let el = Element::create("view");
+    assert_eq!(el.as_node().kind(), NodeKind::Element);
+    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+}
+
+fn vstack_is_a_box() {
+    let el = Element::create("vstack");
+    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+}
+
+fn hstack_is_a_box() {
+    let el = Element::create("hstack");
+    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+}
+
+fn stack_is_a_box() {
+    let el = Element::create("stack");
+    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+}
+
+fn button_is_gtk_button() {
+    let el = Element::create("button");
+    assert_eq!(el.as_node().kind(), NodeKind::Element);
+    assert!(el.widget().is::<gtk_dom::gtk::Button>());
+}
+
+fn checkbox_is_gtk_check_button() {
+    let el = Element::create("checkbox");
+    assert!(el.widget().is::<gtk_dom::gtk::CheckButton>());
+}
+
+fn label_is_gtk_label() {
+    let el = Element::create("label");
+    assert!(el.widget().is::<gtk_dom::gtk::Label>());
+}
+
+fn label_wraps_by_default() {
+    // gtk::Label::wrap defaults to false, but we flip it on at
+    // construction so multi-line text behaves like cocoa's
+    // wrappingLabelWithString:.
+    let el = Element::create("label");
+    let l = el
+        .widget()
+        .downcast_ref::<gtk_dom::gtk::Label>()
+        .unwrap();
+    assert!(l.wraps(), "label should wrap by default");
+}
+
+fn text_field_is_gtk_entry() {
+    let el = Element::create("text_field");
+    assert!(el.widget().is::<gtk_dom::gtk::Entry>());
+    assert!(
+        !el.widget().is::<gtk_dom::gtk::PasswordEntry>(),
+        "plain text_field shouldn't be a password entry"
+    );
+}
+
+fn secure_text_field_is_password_entry() {
+    let el = Element::create("secure_text_field");
+    assert!(el.widget().is::<gtk_dom::gtk::PasswordEntry>());
+}
+
+fn slider_is_gtk_scale() {
+    let el = Element::create("slider");
+    let v = el.widget();
+    assert!(v.is::<gtk_dom::gtk::Scale>());
+    let s = v.downcast_ref::<gtk_dom::gtk::Scale>().unwrap();
+    // We disable the value display since cocoa sliders don't show one
+    // either — keep cross-platform parity.
+    assert!(!s.draws_value());
+}
+
+fn pop_up_button_is_drop_down() {
+    let el = Element::create("pop_up_button");
+    assert!(el.widget().is::<gtk_dom::gtk::DropDown>());
+}
+
+fn unknown_tag_falls_back_to_view() {
+    let el = Element::create("totally_made_up_zzz");
+    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+    assert!(!el.widget().is::<gtk_dom::gtk::Button>());
+    assert_eq!(el.as_node().kind(), NodeKind::Element);
+}
+
+fn kind_is_always_element() {
+    for tag in [
+        "view",
+        "button",
+        "checkbox",
+        "label",
+        "text_field",
+        "secure_text_field",
+        "slider",
+        "pop_up_button",
+        "stack_view",
+        "stack",
+        "totally_unknown_xyz",
+    ] {
+        let el = Element::create(tag);
+        assert_eq!(
+            el.as_node().kind(),
+            NodeKind::Element,
+            "tag {:?} should produce NodeKind::Element",
+            tag
+        );
+    }
+}
+
+fn main() {
+    common::run_tests(&[
+        ("view_is_a_box", view_is_a_box),
+        ("vstack_is_a_box", vstack_is_a_box),
+        ("hstack_is_a_box", hstack_is_a_box),
+        ("stack_is_a_box", stack_is_a_box),
+        ("button_is_gtk_button", button_is_gtk_button),
+        ("checkbox_is_gtk_check_button", checkbox_is_gtk_check_button),
+        ("label_is_gtk_label", label_is_gtk_label),
+        ("label_wraps_by_default", label_wraps_by_default),
+        ("text_field_is_gtk_entry", text_field_is_gtk_entry),
+        (
+            "secure_text_field_is_password_entry",
+            secure_text_field_is_password_entry,
+        ),
+        ("slider_is_gtk_scale", slider_is_gtk_scale),
+        ("pop_up_button_is_drop_down", pop_up_button_is_drop_down),
+        ("unknown_tag_falls_back_to_view", unknown_tag_falls_back_to_view),
+        ("kind_is_always_element", kind_is_always_element),
+        ]);
+}
