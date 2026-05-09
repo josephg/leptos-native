@@ -13,7 +13,7 @@ use crate::{
     event_ios::{EventDescriptor, PendingHandler, SupportsEvent},
     Dom,
 };
-use renderer::view::{Mountable, Render, UnitState};
+use renderer::view::{Mountable, Render};
 use ios_dom::{
     layout::{
         set_aspect_ratio, set_flex_direction, set_flex_grow, set_gap,
@@ -125,7 +125,7 @@ fn apply_chrome(
 /// (No `tool_tip` analogue on iOS — tooltips are a macOS hover concept.)
 macro_rules! impl_universal_attrs {
     ($builder:ident) => {
-        impl<At> $builder<At> {
+        impl $builder {
             /// View opacity, 0.0..=1.0. Maps to UIView's `alpha`.
             /// Reactive: pass an f64 or a closure.
             pub fn alpha<V>(mut self, a: V) -> Self
@@ -143,7 +143,7 @@ macro_rules! impl_universal_attrs {
 /// `impl_universal_attrs!`, reactive over Color / NSTextAlignment / f64.
 macro_rules! impl_text_attrs {
     ($builder:ident) => {
-        impl<At> $builder<At> {
+        impl $builder {
             pub fn text_color<V>(mut self, c: V) -> Self
             where
                 V: IntoMaybeReactive<ios_dom::Color>,
@@ -183,7 +183,7 @@ macro_rules! impl_text_attrs {
 #[allow(unused_macros)]
 macro_rules! impl_chrome_attrs {
     ($builder:ident) => {
-        impl<At> $builder<At> {
+        impl $builder {
             /// Background fill colour. Pass a `Color` (e.g.
             /// `Color::SYSTEM_BACKGROUND`) or a closure.
             pub fn background_color<V>(mut self, c: V) -> Self
@@ -225,13 +225,6 @@ macro_rules! impl_chrome_attrs {
     };
 }
 
-// Phase 8: impl_typed_attrs_for! used to emit AddAnyAttr + RenderHtml
-// impls for every `<At>`-generic builder. Both traits are gone in this
-// fork (no SSR; no attribute-spread machinery). The macro is now a
-// no-op so we don't have to delete each invocation site below.
-macro_rules! impl_typed_attrs_for {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
-}
 
 // ---------------------------------------------------------------------
 // ElementState — generic state for every builder
@@ -274,7 +267,7 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
 // view() — generic UIView container
 // ---------------------------------------------------------------------
 
-pub struct View<Children, At = ()> {
+pub struct View<Children> {
     flex_direction: Option<FlexDirection>,
     padding: Option<f32>,
     gap: Option<f32>,
@@ -293,10 +286,9 @@ pub struct View<Children, At = ()> {
     border_color: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
     children: Children,
-    attrs: At,
 }
 
-pub fn view() -> View<(), ()> {
+pub fn view() -> View<()> {
     View {
         flex_direction: None,
         padding: None,
@@ -315,11 +307,10 @@ pub fn view() -> View<(), ()> {
         border_color: None,
         handlers: Vec::new(),
         children: (),
-        attrs: (),
     }
 }
 
-impl<Ch, A> View<Ch, A> {
+impl<Ch> View<Ch> {
     pub fn flex_direction(mut self, dir: FlexDirection) -> Self {
         self.flex_direction = Some(dir);
         self
@@ -397,7 +388,7 @@ impl<Ch, A> View<Ch, A> {
         self.border_color = Some(c.into_maybe_reactive());
         self
     }
-    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh), A> {
+    pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh)> {
         View {
             flex_direction: self.flex_direction,
             padding: self.padding,
@@ -416,7 +407,6 @@ impl<Ch, A> View<Ch, A> {
             border_color: self.border_color,
             handlers: self.handlers,
             children: (self.children, child),
-            attrs: self.attrs,
         }
     }
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
@@ -434,9 +424,9 @@ impl<Ch, A> View<Ch, A> {
 // in `Element::on_click` when the underlying view isn't a UIControl).
 // Plain UIView, UILabel, UIImageView etc. all route through that
 // fallback.
-impl<Ch, A> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch, A> {}
+impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
 
-impl<Ch: Render<Dom>, A> Render<Dom> for View<Ch, A> {
+impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
     type State = ElementState<(), Ch::State>;
     fn build(self) -> Self::State {
         let el = IosElement::create("view");
@@ -475,7 +465,6 @@ impl<Ch: Render<Dom>, A> Render<Dom> for View<Ch, A> {
             self.border_color,
         ));
         let child_state = self.children.build();
-        let _attrs: () = ();
         for handler in self.handlers {
             handler.apply_to(&el);
         }
@@ -486,16 +475,14 @@ impl<Ch: Render<Dom>, A> Render<Dom> for View<Ch, A> {
             children: child_state,
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 
-pub fn vstack() -> View<(), ()> {
+pub fn vstack() -> View<()> {
     view().flex_direction(FlexDirection::Column)
 }
-pub fn hstack() -> View<(), ()> {
+pub fn hstack() -> View<()> {
     view().flex_direction(FlexDirection::Row)
 }
 
@@ -503,7 +490,7 @@ pub fn hstack() -> View<(), ()> {
 // button() — UIButton with title + on:click
 // ---------------------------------------------------------------------
 
-pub struct Button<At = ()> {
+pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<PendingHandler>,
@@ -511,10 +498,9 @@ pub struct Button<At = ()> {
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
     font_size: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn button() -> Button<()> {
+pub fn button() -> Button {
     Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
@@ -523,11 +509,10 @@ pub fn button() -> Button<()> {
         node_ref: None,
         alpha: None,
         font_size: None,
-        attrs: (),
     }
 }
 
-impl<A> Button<A> {
+impl Button {
     pub fn title<V: IntoMaybeReactive<String>>(mut self, t: V) -> Self {
         self.title = t.into_maybe_reactive();
         self
@@ -563,16 +548,12 @@ impl<A> Button<A> {
     }
 }
 
-impl<A> SupportsEvent<crate::event_ios::ClickEvent> for Button<A> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for Button {}
 
 impl_universal_attrs!(Button);
 
-impl_typed_attrs_for!(
-    Button, title, enabled, handlers, flex_grow, node_ref, alpha,
-    font_size,
-);
 
-impl<At> Render<Dom> for Button<At> {
+impl Render<Dom> for Button {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("button");
@@ -617,7 +598,6 @@ impl<At> Render<Dom> for Button<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -626,16 +606,14 @@ impl<At> Render<Dom> for Button<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // label() — UILabel
 // ---------------------------------------------------------------------
 
-pub struct Label<At = ()> {
+pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<PendingHandler>,
     flex_grow: Option<f32>,
@@ -646,10 +624,9 @@ pub struct Label<At = ()> {
     font_size: Option<MaybeReactive<f64>>,
     pending_bind_text:
         Option<Box<dyn Fn() -> String + Send + 'static>>,
-    attrs: At,
 }
 
-pub fn label() -> Label<()> {
+pub fn label() -> Label {
     Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
@@ -660,11 +637,10 @@ pub fn label() -> Label<()> {
         alignment: None,
         font_size: None,
         pending_bind_text: None,
-        attrs: (),
     }
 }
 
-impl<A> Label<A> {
+impl Label {
     pub fn text<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
         self.text = v.into_maybe_reactive();
         self
@@ -699,17 +675,13 @@ impl<A> Label<A> {
     }
 }
 
-impl<A> SupportsEvent<crate::event_ios::ClickEvent> for Label<A> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for Label {}
 
 impl_universal_attrs!(Label);
 impl_text_attrs!(Label);
 
-impl_typed_attrs_for!(
-    Label, text, handlers, flex_grow, node_ref, alpha, text_color,
-    alignment, font_size, pending_bind_text,
-);
 
-impl<At> Render<Dom> for Label<At> {
+impl Render<Dom> for Label {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("label");
@@ -747,7 +719,6 @@ impl<At> Render<Dom> for Label<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -756,16 +727,14 @@ impl<At> Render<Dom> for Label<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // text_field() / secure_text_field() — UITextField
 // ---------------------------------------------------------------------
 
-pub struct TextField<At = ()> {
+pub struct TextField {
     value: MaybeReactive<String>,
     placeholder: Option<String>,
     enabled: Option<MaybeReactive<bool>>,
@@ -780,10 +749,9 @@ pub struct TextField<At = ()> {
     text_color: Option<MaybeReactive<ios_dom::Color>>,
     alignment: Option<MaybeReactive<ios_dom::NSTextAlignment>>,
     font_size: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn text_field() -> TextField<()> {
+pub fn text_field() -> TextField {
     TextField {
         value: MaybeReactive::Static(String::new()),
         placeholder: None,
@@ -797,20 +765,19 @@ pub fn text_field() -> TextField<()> {
         text_color: None,
         alignment: None,
         font_size: None,
-        attrs: (),
     }
 }
 
 /// Password-masking variant of [`text_field`]. Builds a UITextField
 /// with `secureTextEntry = YES`.
-pub fn secure_text_field() -> TextField<()> {
+pub fn secure_text_field() -> TextField {
     TextField {
         secure: true,
         ..text_field()
     }
 }
 
-impl<A> TextField<A> {
+impl TextField {
     pub fn value<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -852,21 +819,16 @@ impl<A> TextField<A> {
 // (`change` — return key / focus loss). Click is deliberately not
 // supported — clicking inside the field places the caret. Focus/
 // blur are UIControl `editingDidBegin` / `editingDidEnd`.
-impl<At> SupportsEvent<crate::event_ios::InputEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::event_ios::ChangeEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::event_ios::FocusEvent> for TextField<At> {}
-impl<At> SupportsEvent<crate::event_ios::BlurEvent> for TextField<At> {}
+impl SupportsEvent<crate::event_ios::InputEvent> for TextField {}
+impl SupportsEvent<crate::event_ios::ChangeEvent> for TextField {}
+impl SupportsEvent<crate::event_ios::FocusEvent> for TextField {}
+impl SupportsEvent<crate::event_ios::BlurEvent> for TextField {}
 
 impl_universal_attrs!(TextField);
 impl_text_attrs!(TextField);
 
-impl_typed_attrs_for!(
-    TextField, value, placeholder, enabled, secure, pending_bind,
-    handlers, flex_grow, node_ref, alpha, text_color, alignment,
-    font_size,
-);
 
-impl<At> Render<Dom> for TextField<At> {
+impl Render<Dom> for TextField {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
@@ -922,7 +884,6 @@ impl<At> Render<Dom> for TextField<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -931,9 +892,7 @@ impl<At> Render<Dom> for TextField<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -943,17 +902,16 @@ impl<At> Render<Dom> for TextField<At> {
 // `view!{}` macro maps `<switch>` → `switch_()`.
 // ---------------------------------------------------------------------
 
-pub struct Switch<At = ()> {
+pub struct Switch {
     checked: MaybeReactive<bool>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_checked: Option<crate::ios::bind::BoundChecked>,
     handlers: Vec<PendingHandler>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn switch_() -> Switch<()> {
+pub fn switch_() -> Switch {
     Switch {
         checked: MaybeReactive::Static(false),
         enabled: None,
@@ -961,11 +919,10 @@ pub fn switch_() -> Switch<()> {
         handlers: Vec::new(),
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> Switch<A> {
+impl Switch {
     pub fn checked<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
         self.checked = v.into_maybe_reactive();
         self
@@ -998,16 +955,12 @@ impl<A> Switch<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Switch<At> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for Switch {}
 
 impl_universal_attrs!(Switch);
 
-impl_typed_attrs_for!(
-    Switch, checked, enabled, pending_bind_checked, handlers,
-    node_ref, alpha,
-);
 
-impl<At> Render<Dom> for Switch<At> {
+impl Render<Dom> for Switch {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("switch");
@@ -1047,7 +1000,6 @@ impl<At> Render<Dom> for Switch<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1056,16 +1008,14 @@ impl<At> Render<Dom> for Switch<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // slider() — UISlider
 // ---------------------------------------------------------------------
 
-pub struct Slider<At = ()> {
+pub struct Slider {
     value: MaybeReactive<f64>,
     min_value: f64,
     max_value: f64,
@@ -1075,10 +1025,9 @@ pub struct Slider<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn slider() -> Slider<()> {
+pub fn slider() -> Slider {
     Slider {
         value: MaybeReactive::Static(0.0),
         min_value: 0.0,
@@ -1089,11 +1038,10 @@ pub fn slider() -> Slider<()> {
         flex_grow: None,
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> Slider<A> {
+impl Slider {
     pub fn value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -1135,16 +1083,12 @@ impl<A> Slider<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Slider<At> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for Slider {}
 
 impl_universal_attrs!(Slider);
 
-impl_typed_attrs_for!(
-    Slider, value, min_value, max_value, enabled, pending_bind,
-    handlers, flex_grow, node_ref, alpha,
-);
 
-impl<At> Render<Dom> for Slider<At> {
+impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("slider");
@@ -1190,7 +1134,6 @@ impl<At> Render<Dom> for Slider<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1199,16 +1142,14 @@ impl<At> Render<Dom> for Slider<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // stepper() — UIStepper (+/-)
 // ---------------------------------------------------------------------
 
-pub struct Stepper<At = ()> {
+pub struct Stepper {
     value: MaybeReactive<f64>,
     min_value: f64,
     max_value: f64,
@@ -1219,10 +1160,9 @@ pub struct Stepper<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn stepper() -> Stepper<()> {
+pub fn stepper() -> Stepper {
     Stepper {
         value: MaybeReactive::Static(0.0),
         min_value: 0.0,
@@ -1234,11 +1174,10 @@ pub fn stepper() -> Stepper<()> {
         flex_grow: None,
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> Stepper<A> {
+impl Stepper {
     pub fn value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -1284,16 +1223,12 @@ impl<A> Stepper<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::event_ios::ClickEvent> for Stepper<At> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for Stepper {}
 
 impl_universal_attrs!(Stepper);
 
-impl_typed_attrs_for!(
-    Stepper, value, min_value, max_value, increment, enabled,
-    pending_bind, handlers, flex_grow, node_ref, alpha,
-);
 
-impl<At> Render<Dom> for Stepper<At> {
+impl Render<Dom> for Stepper {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("stepper");
@@ -1338,7 +1273,6 @@ impl<At> Render<Dom> for Stepper<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1347,9 +1281,7 @@ impl<At> Render<Dom> for Stepper<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1361,25 +1293,23 @@ impl<At> Render<Dom> for Stepper<At> {
 // carry over. Tagged `progress_indicator` for cross-port name parity.
 // ---------------------------------------------------------------------
 
-pub struct ProgressIndicator<At = ()> {
+pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn progress_indicator() -> ProgressIndicator<()> {
+pub fn progress_indicator() -> ProgressIndicator {
     ProgressIndicator {
         value: MaybeReactive::Static(0.0),
         flex_grow: None,
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> ProgressIndicator<A> {
+impl ProgressIndicator {
     pub fn value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -1396,9 +1326,8 @@ impl<A> ProgressIndicator<A> {
 
 impl_universal_attrs!(ProgressIndicator);
 
-impl_typed_attrs_for!(ProgressIndicator, value, flex_grow, node_ref, alpha);
 
-impl<At> Render<Dom> for ProgressIndicator<At> {
+impl Render<Dom> for ProgressIndicator {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("progress_indicator");
@@ -1421,7 +1350,6 @@ impl<At> Render<Dom> for ProgressIndicator<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1430,36 +1358,32 @@ impl<At> Render<Dom> for ProgressIndicator<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // image_view() — UIImageView, source from a file path
 // ---------------------------------------------------------------------
 
-pub struct ImageView<At = ()> {
+pub struct ImageView {
     source: MaybeReactive<String>,
     flex_grow: Option<f32>,
     handlers: Vec<PendingHandler>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn image_view() -> ImageView<()> {
+pub fn image_view() -> ImageView {
     ImageView {
         source: MaybeReactive::Static(String::new()),
         flex_grow: None,
         handlers: Vec::new(),
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> ImageView<A> {
+impl ImageView {
     /// File path to the image. Empty string clears the image.
     /// Network URLs aren't supported here — fetch them yourself
     /// and pass the local path. `UIImage::imageWithContentsOfFile:`
@@ -1489,13 +1413,12 @@ impl<A> ImageView<A> {
 
 // `<image_view on:click=...>` lands on a UITapGestureRecognizer via
 // the on_click → on_tap_gesture fallback.
-impl<A> SupportsEvent<crate::event_ios::ClickEvent> for ImageView<A> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for ImageView {}
 
 impl_universal_attrs!(ImageView);
 
-impl_typed_attrs_for!(ImageView, source, flex_grow, handlers, node_ref, alpha);
 
-impl<At> Render<Dom> for ImageView<At> {
+impl Render<Dom> for ImageView {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("image_view");
@@ -1522,7 +1445,6 @@ impl<At> Render<Dom> for ImageView<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1531,16 +1453,14 @@ impl<At> Render<Dom> for ImageView<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // segmented_control() — UISegmentedControl
 // ---------------------------------------------------------------------
 
-pub struct SegmentedControl<At = ()> {
+pub struct SegmentedControl {
     items: Vec<String>,
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
@@ -1549,10 +1469,9 @@ pub struct SegmentedControl<At = ()> {
     flex_grow: Option<f32>,
     node_ref: Option<crate::ios::NodeRef>,
     alpha: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn segmented_control() -> SegmentedControl<()> {
+pub fn segmented_control() -> SegmentedControl {
     SegmentedControl {
         items: Vec::new(),
         selection: MaybeReactive::Static(0),
@@ -1562,11 +1481,10 @@ pub fn segmented_control() -> SegmentedControl<()> {
         flex_grow: None,
         node_ref: None,
         alpha: None,
-        attrs: (),
     }
 }
 
-impl<A> SegmentedControl<A> {
+impl SegmentedControl {
     pub fn items<I, S>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -1608,16 +1526,12 @@ impl<A> SegmentedControl<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::event_ios::ClickEvent> for SegmentedControl<At> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for SegmentedControl {}
 
 impl_universal_attrs!(SegmentedControl);
 
-impl_typed_attrs_for!(
-    SegmentedControl, items, selection, enabled,
-    pending_bind_selection, handlers, flex_grow, node_ref, alpha,
-);
 
-impl<At> Render<Dom> for SegmentedControl<At> {
+impl Render<Dom> for SegmentedControl {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("segmented_control");
@@ -1660,7 +1574,6 @@ impl<At> Render<Dom> for SegmentedControl<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1669,16 +1582,14 @@ impl<At> Render<Dom> for SegmentedControl<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // date_picker() — UIDatePicker
 // ---------------------------------------------------------------------
 
-pub struct DatePicker<At = ()> {
+pub struct DatePicker {
     value: MaybeReactive<ios_dom::Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundDate>,
@@ -1689,10 +1600,9 @@ pub struct DatePicker<At = ()> {
     style: Option<MaybeReactive<ios_dom::UIDatePickerStyle>>,
     min_date: Option<MaybeReactive<ios_dom::Date>>,
     max_date: Option<MaybeReactive<ios_dom::Date>>,
-    attrs: At,
 }
 
-pub fn date_picker() -> DatePicker<()> {
+pub fn date_picker() -> DatePicker {
     DatePicker {
         value: MaybeReactive::Static(ios_dom::Date::now()),
         enabled: None,
@@ -1704,11 +1614,10 @@ pub fn date_picker() -> DatePicker<()> {
         style: None,
         min_date: None,
         max_date: None,
-        attrs: (),
     }
 }
 
-impl<A> DatePicker<A> {
+impl DatePicker {
     pub fn value<V: IntoMaybeReactive<ios_dom::Date>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -1759,16 +1668,12 @@ impl<A> DatePicker<A> {
     }
 }
 
-impl<At> SupportsEvent<crate::event_ios::ClickEvent> for DatePicker<At> {}
+impl SupportsEvent<crate::event_ios::ClickEvent> for DatePicker {}
 
 impl_universal_attrs!(DatePicker);
 
-impl_typed_attrs_for!(
-    DatePicker, value, enabled, pending_bind, handlers, flex_grow,
-    node_ref, alpha, style, min_date, max_date,
-);
 
-impl<At> Render<Dom> for DatePicker<At> {
+impl Render<Dom> for DatePicker {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("date_picker");
@@ -1834,7 +1739,6 @@ impl<At> Render<Dom> for DatePicker<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1843,9 +1747,7 @@ impl<At> Render<Dom> for DatePicker<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1860,27 +1762,25 @@ impl<At> Render<Dom> for DatePicker<At> {
 // the union of children's rects so UIScrollView shows scroll bars.
 // ---------------------------------------------------------------------
 
-pub struct ScrollView<Children, At = ()> {
+pub struct ScrollView<Children> {
     flex_grow: Option<f32>,
     children: Children,
     alpha: Option<MaybeReactive<f64>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn scroll_view() -> ScrollView<(), ()> {
+pub fn scroll_view() -> ScrollView<()> {
     ScrollView {
         flex_grow: None,
         children: (),
         alpha: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
-        attrs: (),
     }
 }
 
-impl<Ch, A> ScrollView<Ch, A> {
+impl<Ch> ScrollView<Ch> {
     pub fn flex_grow(mut self, g: f32) -> Self {
         self.flex_grow = Some(g);
         self
@@ -1903,19 +1803,18 @@ impl<Ch, A> ScrollView<Ch, A> {
         self.has_vertical_scroller = Some(b.into_maybe_reactive());
         self
     }
-    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh), A> {
+    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh)> {
         ScrollView {
             flex_grow: self.flex_grow,
             children: (self.children, child),
             alpha: self.alpha,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
-            attrs: self.attrs,
         }
     }
 }
 
-impl<Ch: Render<Dom>, A> Render<Dom> for ScrollView<Ch, A> {
+impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
     type State = ElementState<(), Ch::State>;
     fn build(self) -> Self::State {
         let el = IosElement::create("scroll_view");
@@ -1945,7 +1844,6 @@ impl<Ch: Render<Dom>, A> Render<Dom> for ScrollView<Ch, A> {
         effects.extend(apply_universal(&el, self.alpha));
 
         let child_state = self.children.build();
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -1954,9 +1852,7 @@ impl<Ch: Render<Dom>, A> Render<Dom> for ScrollView<Ch, A> {
             children: child_state,
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 
@@ -1968,7 +1864,7 @@ impl<Ch: Render<Dom>, A> Render<Dom> for ScrollView<Ch, A> {
 // `textViewDidChange:` instead of UIControl target/action.
 // ---------------------------------------------------------------------
 
-pub struct TextView<At = ()> {
+pub struct TextView {
     value: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundValue>,
@@ -1978,10 +1874,9 @@ pub struct TextView<At = ()> {
     text_color: Option<MaybeReactive<ios_dom::Color>>,
     alignment: Option<MaybeReactive<ios_dom::NSTextAlignment>>,
     font_size: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn text_view() -> TextView<()> {
+pub fn text_view() -> TextView {
     TextView {
         value: MaybeReactive::Static(String::new()),
         enabled: None,
@@ -1992,11 +1887,10 @@ pub fn text_view() -> TextView<()> {
         text_color: None,
         alignment: None,
         font_size: None,
-        attrs: (),
     }
 }
 
-impl<A> TextView<A> {
+impl TextView {
     pub fn value<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
@@ -2024,12 +1918,8 @@ impl<A> TextView<A> {
 impl_universal_attrs!(TextView);
 impl_text_attrs!(TextView);
 
-impl_typed_attrs_for!(
-    TextView, value, enabled, pending_bind, flex_grow, node_ref,
-    alpha, text_color, alignment, font_size,
-);
 
-impl<At> Render<Dom> for TextView<At> {
+impl Render<Dom> for TextView {
     type State = ElementState<(), ()>;
     fn build(self) -> Self::State {
         let el = IosElement::create("text_view");
@@ -2076,7 +1966,6 @@ impl<At> Render<Dom> for TextView<At> {
             r.load(&el);
         }
 
-        let _attrs: () = ();
 
         ElementState {
             el,
@@ -2085,7 +1974,5 @@ impl<At> Render<Dom> for TextView<At> {
             children: (),
         }
     }
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }

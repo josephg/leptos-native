@@ -7,7 +7,7 @@
 //! them.
 
 use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
-use renderer::view::{Mountable, Render, UnitState};
+use renderer::view::{Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
     layout::{
@@ -92,7 +92,7 @@ fn apply_text_attrs(
 /// returning the value (via `IntoMaybeReactive`).
 macro_rules! impl_universal_attrs {
     ($builder:ident) => {
-        impl<At> $builder<At> {
+        impl $builder {
             /// View opacity, 0.0..=1.0. Maps to NSView's
             /// `alphaValue`. Reactive: pass an f64 or a closure.
             pub fn alpha<V>(mut self, a: V) -> Self
@@ -120,7 +120,7 @@ macro_rules! impl_universal_attrs {
 /// reactive over Color / NSTextAlignment / f64.
 macro_rules! impl_text_attrs {
     ($builder:ident) => {
-        impl<At> $builder<At> {
+        impl $builder {
             pub fn text_color<V>(mut self, c: V) -> Self
             where
                 V: IntoMaybeReactive<cocoa_dom::Color>,
@@ -313,7 +313,7 @@ fn apply_flex_item_attrs(
     out
 }
 
-pub struct Stack<Children, At = ()> {
+pub struct Stack<Children> {
     direction:        Option<MaybeReactive<FlexDirection>>,
     gap:              Option<MaybeReactive<f32>>,
     padding:          Option<MaybeReactive<f32>>,
@@ -334,10 +334,9 @@ pub struct Stack<Children, At = ()> {
     alpha:            Option<MaybeReactive<f64>>,
     tool_tip:         Option<MaybeReactive<String>>,
     children:         Children,
-    attrs:            At,
 }
 
-fn empty_stack() -> Stack<(), ()> {
+fn empty_stack() -> Stack<()> {
     Stack {
         direction: None,
         gap: None,
@@ -359,18 +358,17 @@ fn empty_stack() -> Stack<(), ()> {
         alpha: None,
         tool_tip: None,
         children: (),
-        attrs: (),
     }
 }
 
 /// Linear layout container backed by Taffy flexbox. `direction`
 /// defaults to `Column` if unset.
-pub fn stack() -> Stack<(), ()> {
+pub fn stack() -> Stack<()> {
     empty_stack()
 }
 
 /// Vertical stack — `direction = Column`.
-pub fn vstack() -> Stack<(), ()> {
+pub fn vstack() -> Stack<()> {
     Stack {
         direction: Some(MaybeReactive::Static(FlexDirection::Column)),
         ..empty_stack()
@@ -378,7 +376,7 @@ pub fn vstack() -> Stack<(), ()> {
 }
 
 /// Horizontal stack — `direction = Row`.
-pub fn hstack() -> Stack<(), ()> {
+pub fn hstack() -> Stack<()> {
     Stack {
         direction: Some(MaybeReactive::Static(FlexDirection::Row)),
         ..empty_stack()
@@ -386,18 +384,18 @@ pub fn hstack() -> Stack<(), ()> {
 }
 
 /// Legacy alias of `vstack()` — kept for source-compatibility.
-pub fn stack_view() -> Stack<(), ()> {
+pub fn stack_view() -> Stack<()> {
     vstack()
 }
 
 /// Legacy alias of `stack()` (default Column). Preserved because the
 /// leptos `view!{}` macro emits `<view>` through its SVG-tag path
 /// (`tachys::svg::view`).
-pub fn view() -> Stack<(), ()> {
+pub fn view() -> Stack<()> {
     empty_stack()
 }
 
-impl<Ch, At> Stack<Ch, At> {
+impl<Ch> Stack<Ch> {
     pub fn direction<V>(mut self, d: V) -> Self
     where
         V: IntoMaybeReactive<FlexDirection>,
@@ -557,7 +555,7 @@ impl<Ch, At> Stack<Ch, At> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh), At> {
+    pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh)> {
         Stack {
             direction: self.direction,
             gap: self.gap,
@@ -579,12 +577,11 @@ impl<Ch, At> Stack<Ch, At> {
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
-            attrs: self.attrs,
         }
     }
 }
 
-impl<Ch, At> Render<Dom> for Stack<Ch, At>
+impl<Ch> Render<Dom> for Stack<Ch>
 where
     Ch: Render<Dom>,
 {
@@ -676,7 +673,6 @@ where
         // every descendant in the right Taffy tree.
         let child_state = self.children.build();
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -686,9 +682,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -696,7 +690,7 @@ where
 // ---------------------------------------------------------------------
 
 #[cfg(feature = "block_layout")]
-pub struct Block<Children, At = ()> {
+pub struct Block<Children> {
     padding:          Option<MaybeReactive<f32>>,
     grow:             Option<MaybeReactive<f32>>,
     shrink:           Option<MaybeReactive<f32>>,
@@ -712,11 +706,10 @@ pub struct Block<Children, At = ()> {
     alpha:            Option<MaybeReactive<f64>>,
     tool_tip:         Option<MaybeReactive<String>>,
     children:         Children,
-    attrs:            At,
 }
 
 #[cfg(feature = "block_layout")]
-pub fn block() -> Block<(), ()> {
+pub fn block() -> Block<()> {
     Block {
         padding: None,
         grow: None,
@@ -733,12 +726,11 @@ pub fn block() -> Block<(), ()> {
         alpha: None,
         tool_tip: None,
         children: (),
-        attrs: (),
     }
 }
 
 #[cfg(feature = "block_layout")]
-impl<Ch, At> Block<Ch, At> {
+impl<Ch> Block<Ch> {
     pub fn padding<V>(mut self, p: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
@@ -839,7 +831,7 @@ impl<Ch, At> Block<Ch, At> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> Block<(Ch, NewCh), At> {
+    pub fn child<NewCh>(self, child: NewCh) -> Block<(Ch, NewCh)> {
         Block {
             padding: self.padding,
             grow: self.grow,
@@ -856,13 +848,12 @@ impl<Ch, At> Block<Ch, At> {
             alpha: self.alpha,
             tool_tip: self.tool_tip,
             children: (self.children, child),
-            attrs: self.attrs,
         }
     }
 }
 
 #[cfg(feature = "block_layout")]
-impl<Ch, At> Render<Dom> for Block<Ch, At>
+impl<Ch> Render<Dom> for Block<Ch>
 where
     Ch: Render<Dom>,
 {
@@ -907,7 +898,6 @@ where
         effects.extend(apply_universal(&el, self.alpha, self.tool_tip));
 
         let child_state = self.children.build();
-        let attrs = ();
         ElementState {
             el,
             _effects: effects,
@@ -916,25 +906,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
-}
-
-// Phase 8: impl_typed_attrs_for! used to emit AddAnyAttr + RenderHtml
-// impls for every `<At>`-generic builder. Both traits are gone in this
-// fork (no SSR; no attribute-spread machinery). The macro is now a
-// no-op so we don't have to delete each `impl_typed_attrs_for!(...)`
-// invocation site below.
-macro_rules! impl_typed_attrs_for {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // button()
 // ---------------------------------------------------------------------
 
-pub struct Button<At = ()> {
+pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_macos::PendingHandler>,
@@ -950,14 +929,9 @@ pub struct Button<At = ()> {
     // Button-specific.
     bordered: Option<MaybeReactive<bool>>,
     key_equivalent: Option<MaybeReactive<String>>,
-    /// Type-level attribute tuple accumulated via `add_any_attr`
-    /// (the macro's typed-attribute pipeline). Default `()` —
-    /// extends to `(NewAttr,)`, `(NewAttr, AnotherAttr)`, … as
-    /// `add_any_attr` is called.
-    attrs: At,
 }
 
-pub fn button() -> Button<()> {
+pub fn button() -> Button {
     Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
@@ -971,11 +945,10 @@ pub fn button() -> Button<()> {
         alignment: None,
         bordered: None,
         key_equivalent: None,
-        attrs: (),
     }
 }
 
-impl<At> Button<At> {
+impl Button {
     pub fn title<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -1096,8 +1069,8 @@ impl<At> Button<At> {
 // Buttons fire on click (NSButton target/action). Generic over
 // At because every type-level attribute extension still describes
 // the same control kind.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for Button<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for Button
 {
 }
 
@@ -1106,7 +1079,7 @@ impl_universal_attrs!(Button);
 // Button-specific text attrs: NSButton supports font_size +
 // alignment but NOT text_color (would need attributedTitle). We
 // invoke a custom inline impl rather than `impl_text_attrs!`.
-impl<At> Button<At> {
+impl Button {
     pub fn alignment<V>(mut self, a: V) -> Self
     where
         V: IntoMaybeReactive<cocoa_dom::NSTextAlignment>,
@@ -1128,11 +1101,8 @@ impl<At> Button<At> {
 // At Render::build time, `attrs.build(&el)` walks the resulting
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
-impl_typed_attrs_for!(Button, title, enabled, handlers,
-    grow, node_ref, directives, alpha, tool_tip, font_size,
-    alignment, bordered, key_equivalent);
 
-impl<At> Render<Dom> for Button<At>
+impl Render<Dom> for Button
 where
 {
     type State = ElementState<(), ()>;
@@ -1198,7 +1168,6 @@ where
 
         // Run the typed-attribute pipeline. For the empty-tuple
         // default this is `().build(&el)` — a no-op.
-        let attrs = ();
 
         ElementState {
             el,
@@ -1208,11 +1177,8 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
+    fn rebuild(self, _state: &mut Self::State) {
         // Reactive attrs already update themselves via their Effects.
-        // The typed-attribute pipeline rebuilds against its
-        // accumulated state.
-        
     }
 }
 
@@ -1220,7 +1186,7 @@ where
 // checkbox() — NSButton in switch style with bool state
 // ---------------------------------------------------------------------
 
-pub struct Checkbox<At = ()> {
+pub struct Checkbox {
     title: MaybeReactive<String>,
     /// Static-or-reactive `checked=...` value (one-way: signal →
     /// button state). For two-way binding use `bind:checked=signal`,
@@ -1235,10 +1201,9 @@ pub struct Checkbox<At = ()> {
     text_color: Option<MaybeReactive<cocoa_dom::Color>>,
     alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
     font_size: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn checkbox() -> Checkbox<()> {
+pub fn checkbox() -> Checkbox {
     Checkbox {
         title: MaybeReactive::Static(String::new()),
         checked: MaybeReactive::Static(false),
@@ -1251,11 +1216,10 @@ pub fn checkbox() -> Checkbox<()> {
         text_color: None,
         alignment: None,
         font_size: None,
-        attrs: (),
     }
 }
 
-impl<At> Checkbox<At> {
+impl Checkbox {
     pub fn title<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -1320,19 +1284,16 @@ impl<At> Checkbox<At> {
 }
 
 // A checkbox toggles on click.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for Checkbox<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for Checkbox
 {
 }
 
 impl_universal_attrs!(Checkbox);
 impl_text_attrs!(Checkbox);
 
-impl_typed_attrs_for!(Checkbox, title, checked, pending_bind_checked,
-    handlers, node_ref, directives, alpha, tool_tip, text_color,
-    alignment, font_size);
 
-impl<At> Render<Dom> for Checkbox<At>
+impl Render<Dom> for Checkbox
 where
 {
     type State = ElementState<(), ()>;
@@ -1386,7 +1347,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -1396,16 +1356,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // slider() — NSSlider with min/max + bind:value
 // ---------------------------------------------------------------------
 
-pub struct Slider<At = ()> {
+pub struct Slider {
     value: MaybeReactive<f64>,
     min_value: f64,
     max_value: f64,
@@ -1420,10 +1378,9 @@ pub struct Slider<At = ()> {
     vertical: Option<MaybeReactive<bool>>,
     num_tick_marks: Option<MaybeReactive<usize>>,
     snaps_to_ticks: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn slider() -> Slider<()> {
+pub fn slider() -> Slider {
     Slider {
         value: MaybeReactive::Static(0.0),
         min_value: 0.0,
@@ -1439,11 +1396,10 @@ pub fn slider() -> Slider<()> {
         snaps_to_ticks: None,
         node_ref: None,
         directives: Vec::new(),
-        attrs: (),
     }
 }
 
-impl<At> Slider<At> {
+impl Slider {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<f64>,
@@ -1514,7 +1470,7 @@ impl<At> Slider<At> {
 
 impl_universal_attrs!(Slider);
 
-impl<At> Slider<At> {
+impl Slider {
     /// Force vertical orientation. Default (None) lets AppKit
     /// pick based on the slider's frame ratio.
     pub fn vertical<V>(mut self, b: V) -> Self
@@ -1542,11 +1498,8 @@ impl<At> Slider<At> {
     }
 }
 
-impl_typed_attrs_for!(Slider, value, min_value, max_value, enabled,
-    pending_bind, handlers, grow, node_ref, directives, alpha,
-    tool_tip, vertical, num_tick_marks, snaps_to_ticks);
 
-impl<At> Render<Dom> for Slider<At>
+impl Render<Dom> for Slider
 where
 {
     type State = ElementState<(), ()>;
@@ -1622,7 +1575,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -1632,16 +1584,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // pop_up_button() — NSPopUpButton with items + bind:selection
 // ---------------------------------------------------------------------
 
-pub struct PopUpButton<At = ()> {
+pub struct PopUpButton {
     items: Vec<String>,
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
@@ -1653,10 +1603,9 @@ pub struct PopUpButton<At = ()> {
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
     pulls_down: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn pop_up_button() -> PopUpButton<()> {
+pub fn pop_up_button() -> PopUpButton {
     PopUpButton {
         items: Vec::new(),
         selection: MaybeReactive::Static(0),
@@ -1669,11 +1618,10 @@ pub fn pop_up_button() -> PopUpButton<()> {
         alpha: None,
         tool_tip: None,
         pulls_down: None,
-        attrs: (),
     }
 }
 
-impl<At> PopUpButton<At> {
+impl PopUpButton {
     /// Sets the popup's item list. Accepts any iterable of
     /// string-ish things — `Vec<&str>`, `Vec<String>`, etc.
     pub fn items<I, S>(mut self, items: I) -> Self
@@ -1745,7 +1693,7 @@ impl<At> PopUpButton<At> {
 
 impl_universal_attrs!(PopUpButton);
 
-impl<At> PopUpButton<At> {
+impl PopUpButton {
     /// `false` (default) → popup mode; `true` → pull-down menu.
     pub fn pulls_down<V>(mut self, b: V) -> Self
     where
@@ -1756,11 +1704,8 @@ impl<At> PopUpButton<At> {
     }
 }
 
-impl_typed_attrs_for!(PopUpButton, items, selection, enabled,
-    pending_bind_selection, handlers, grow, node_ref, directives,
-    alpha, tool_tip, pulls_down);
 
-impl<At> Render<Dom> for PopUpButton<At>
+impl Render<Dom> for PopUpButton
 where
 {
     type State = ElementState<(), ()>;
@@ -1824,7 +1769,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -1834,9 +1778,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1849,7 +1791,7 @@ where
 // can flow attached events / attributes through the standard
 // AddAnyAttr pipeline.
 
-pub struct Label<At = ()> {
+pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
@@ -1861,10 +1803,9 @@ pub struct Label<At = ()> {
     alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
     font_size: Option<MaybeReactive<f64>>,
     selectable: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-impl<At> Label<At> {
+impl Label {
     /// Internal: stash a `bind:value=...` (read-direction only) for
     /// installation in `Render::build`. Used by the `BindAttribute`
     /// impl in `crate::cocoa::bind`. Equivalent to `.text(closure)`.
@@ -1876,7 +1817,7 @@ impl<At> Label<At> {
     }
 }
 
-pub fn label() -> Label<()> {
+pub fn label() -> Label {
     Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
@@ -1889,11 +1830,10 @@ pub fn label() -> Label<()> {
         alignment: None,
         font_size: None,
         selectable: None,
-        attrs: (),
     }
 }
 
-impl<At> Label<At> {
+impl Label {
     pub fn text<V>(mut self, value: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -1949,15 +1889,15 @@ impl<At> Label<At> {
 // "row" pattern). NSTextField *is* an NSControl so the existing
 // on_action / on_click NSButton-downcast path won't fire — labels
 // route Click via on_action instead (same as ColorWell etc.).
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for Label<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for Label
 {
 }
 
 impl_universal_attrs!(Label);
 impl_text_attrs!(Label);
 
-impl<At> Label<At> {
+impl Label {
     /// Allow the label's text to be selected (and copied with
     /// ⌘C). NSTextField labels are non-selectable by default.
     pub fn selectable<V>(mut self, b: V) -> Self
@@ -1969,11 +1909,8 @@ impl<At> Label<At> {
     }
 }
 
-impl_typed_attrs_for!(Label, text, handlers, grow, node_ref,
-    directives, alpha, tool_tip, text_color, alignment, font_size,
-    selectable);
 
-impl<At> Render<Dom> for Label<At>
+impl Render<Dom> for Label
 where
 {
     type State = ElementState<(), ()>;
@@ -2028,7 +1965,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -2038,9 +1974,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -2049,7 +1983,7 @@ where
 // with optional initial value.
 // ---------------------------------------------------------------------
 
-pub struct TextField<At = ()> {
+pub struct TextField {
     value: MaybeReactive<String>,
     placeholder: Option<String>,
     enabled: Option<MaybeReactive<bool>>,
@@ -2072,10 +2006,9 @@ pub struct TextField<At = ()> {
     font_size: Option<MaybeReactive<f64>>,
     bordered: Option<MaybeReactive<bool>>,
     bezeled: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn text_field() -> TextField<()> {
+pub fn text_field() -> TextField {
     TextField {
         value: MaybeReactive::Static(String::new()),
         placeholder: None,
@@ -2093,14 +2026,13 @@ pub fn text_field() -> TextField<()> {
         font_size: None,
         bordered: None,
         bezeled: None,
-        attrs: (),
     }
 }
 
 /// Password-masking variant of `text_field()`. Emits an
 /// `NSSecureTextField`, which is a subclass of `NSTextField` — so all
 /// the bind / event / placeholder plumbing works unchanged.
-pub fn secure_text_field() -> TextField<()> {
+pub fn secure_text_field() -> TextField {
     TextField {
         value: MaybeReactive::Static(String::new()),
         placeholder: None,
@@ -2118,11 +2050,10 @@ pub fn secure_text_field() -> TextField<()> {
         font_size: None,
         bordered: None,
         bezeled: None,
-        attrs: (),
     }
 }
 
-impl<At> TextField<At> {
+impl TextField {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -2200,35 +2131,35 @@ impl<At> TextField<At> {
 // non-event: clicking inside the field places the caret, no
 // "click" semantic equivalent. Focus/blur are AppKit's begin/end
 // editing notifications.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::InputEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::InputEvent>
+    for TextField
 {
 }
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
+    for TextField
 {
 }
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::FocusEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::FocusEvent>
+    for TextField
 {
 }
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::BlurEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::BlurEvent>
+    for TextField
 {
 }
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::KeyDownEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::KeyDownEvent>
+    for TextField
 {
 }
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::KeyUpEvent>
-    for TextField<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::KeyUpEvent>
+    for TextField
 {
 }
 
 impl_universal_attrs!(TextField);
 impl_text_attrs!(TextField);
 
-impl<At> TextField<At> {
+impl TextField {
     /// Toggle the field's border. `false` → label-style flat
     /// appearance even on editable fields.
     pub fn bordered<V>(mut self, b: V) -> Self
@@ -2248,11 +2179,8 @@ impl<At> TextField<At> {
     }
 }
 
-impl_typed_attrs_for!(TextField, value, placeholder, enabled, secure,
-    pending_bind, handlers, grow, node_ref, directives, alpha,
-    tool_tip, text_color, alignment, font_size, bordered, bezeled);
 
-impl<At> Render<Dom> for TextField<At>
+impl Render<Dom> for TextField
 where
 {
     type State = ElementState<(), ()>;
@@ -2333,7 +2261,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -2343,16 +2270,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // date_picker() — NSDatePicker
 // ---------------------------------------------------------------------
 
-pub struct DatePicker<At = ()> {
+pub struct DatePicker {
     value: MaybeReactive<cocoa_dom::Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
@@ -2365,10 +2290,9 @@ pub struct DatePicker<At = ()> {
     style: Option<MaybeReactive<cocoa_dom::NSDatePickerStyle>>,
     min_date: Option<MaybeReactive<cocoa_dom::Date>>,
     max_date: Option<MaybeReactive<cocoa_dom::Date>>,
-    attrs: At,
 }
 
-pub fn date_picker() -> DatePicker<()> {
+pub fn date_picker() -> DatePicker {
     DatePicker {
         value: MaybeReactive::Static(cocoa_dom::Date::now()),
         enabled: None,
@@ -2382,11 +2306,10 @@ pub fn date_picker() -> DatePicker<()> {
         style: None,
         min_date: None,
         max_date: None,
-        attrs: (),
     }
 }
 
-impl<At> DatePicker<At> {
+impl DatePicker {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<cocoa_dom::Date>,
@@ -2445,14 +2368,14 @@ impl<At> DatePicker<At> {
 // NSDatePicker fires target/action when the user changes the date.
 // As with ColorWell, we use the existing Click marker — semantically
 // "change" but that's what the macro emits and the wiring works.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for DatePicker<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for DatePicker
 {
 }
 
 impl_universal_attrs!(DatePicker);
 
-impl<At> DatePicker<At> {
+impl DatePicker {
     /// Set the picker's visual style. `Textual`,
     /// `TextualAndStepper` (default), or `ClockAndCalendar`.
     pub fn style<V>(mut self, s: V) -> Self
@@ -2482,11 +2405,8 @@ impl<At> DatePicker<At> {
     }
 }
 
-impl_typed_attrs_for!(DatePicker, value, enabled, pending_bind, handlers,
-    grow, node_ref, directives, alpha, tool_tip, style, min_date,
-    max_date);
 
-impl<At> Render<Dom> for DatePicker<At>
+impl Render<Dom> for DatePicker
 where
 {
     type State = ElementState<(), ()>;
@@ -2564,7 +2484,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -2574,16 +2493,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // stepper() — NSStepper, +/- numeric increment
 // ---------------------------------------------------------------------
 
-pub struct Stepper<At = ()> {
+pub struct Stepper {
     value: MaybeReactive<f64>,
     min_value: f64,
     max_value: f64,
@@ -2596,10 +2513,9 @@ pub struct Stepper<At = ()> {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
-    attrs: At,
 }
 
-pub fn stepper() -> Stepper<()> {
+pub fn stepper() -> Stepper {
     Stepper {
         value: MaybeReactive::Static(0.0),
         min_value: 0.0,
@@ -2613,11 +2529,10 @@ pub fn stepper() -> Stepper<()> {
         directives: Vec::new(),
         alpha: None,
         tool_tip: None,
-        attrs: (),
     }
 }
 
-impl<At> Stepper<At> {
+impl Stepper {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<f64>,
@@ -2688,18 +2603,15 @@ impl<At> Stepper<At> {
     }
 }
 
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for Stepper<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for Stepper
 {
 }
 
 impl_universal_attrs!(Stepper);
 
-impl_typed_attrs_for!(Stepper, value, min_value, max_value, increment,
-    enabled, pending_bind, handlers, grow, node_ref, directives,
-    alpha, tool_tip);
 
-impl<At> Render<Dom> for Stepper<At>
+impl Render<Dom> for Stepper
 where
 {
     type State = ElementState<(), ()>;
@@ -2759,7 +2671,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -2769,9 +2680,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -2781,7 +2690,7 @@ where
 // indicator.
 // ---------------------------------------------------------------------
 
-pub struct ProgressIndicator<At = ()> {
+pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
     max_value: f64,
     indeterminate: bool,
@@ -2791,10 +2700,9 @@ pub struct ProgressIndicator<At = ()> {
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
     displayed_when_stopped: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn progress_indicator() -> ProgressIndicator<()> {
+pub fn progress_indicator() -> ProgressIndicator {
     ProgressIndicator {
         value: MaybeReactive::Static(0.0),
         max_value: 1.0,
@@ -2805,11 +2713,10 @@ pub fn progress_indicator() -> ProgressIndicator<()> {
         alpha: None,
         tool_tip: None,
         displayed_when_stopped: None,
-        attrs: (),
     }
 }
 
-impl<At> ProgressIndicator<At> {
+impl ProgressIndicator {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<f64>,
@@ -2854,7 +2761,7 @@ impl<At> ProgressIndicator<At> {
 
 impl_universal_attrs!(ProgressIndicator);
 
-impl<At> ProgressIndicator<At> {
+impl ProgressIndicator {
     /// Whether the indicator stays visible while stopped (vs
     /// hiding itself entirely). Only meaningful in indeterminate
     /// (spinner) mode.
@@ -2867,10 +2774,8 @@ impl<At> ProgressIndicator<At> {
     }
 }
 
-impl_typed_attrs_for!(ProgressIndicator, value, max_value, indeterminate,
-    grow, node_ref, directives, alpha, tool_tip, displayed_when_stopped);
 
-impl<At> Render<Dom> for ProgressIndicator<At>
+impl Render<Dom> for ProgressIndicator
 where
 {
     type State = ElementState<(), ()>;
@@ -2913,7 +2818,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -2923,9 +2827,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -2933,7 +2835,7 @@ where
 // `value=` for one-way; `bind:value=` for two-way.
 // ---------------------------------------------------------------------
 
-pub struct ColorWell<At = ()> {
+pub struct ColorWell {
     value: MaybeReactive<cocoa_dom::Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
@@ -2943,10 +2845,9 @@ pub struct ColorWell<At = ()> {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
-    attrs: At,
 }
 
-pub fn color_well() -> ColorWell<()> {
+pub fn color_well() -> ColorWell {
     ColorWell {
         value: MaybeReactive::Static(cocoa_dom::Color::WHITE),
         enabled: None,
@@ -2957,11 +2858,10 @@ pub fn color_well() -> ColorWell<()> {
         directives: Vec::new(),
         alpha: None,
         tool_tip: None,
-        attrs: (),
     }
 }
 
-impl<At> ColorWell<At> {
+impl ColorWell {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<cocoa_dom::Color>,
@@ -3023,17 +2923,15 @@ impl<At> ColorWell<At> {
 // semantically it's a "value committed" event, more like
 // `on:change` would be on the web. Document this divergence
 // rather than introduce a separate Color-payload event for now.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for ColorWell<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for ColorWell
 {
 }
 
 impl_universal_attrs!(ColorWell);
 
-impl_typed_attrs_for!(ColorWell, value, enabled, pending_bind, handlers,
-    grow, node_ref, directives, alpha, tool_tip);
 
-impl<At> Render<Dom> for ColorWell<At>
+impl Render<Dom> for ColorWell
 where
 {
     type State = ElementState<(), ()>;
@@ -3088,7 +2986,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -3098,16 +2995,14 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
 // segmented_control() — NSSegmentedControl with items + bind:selection
 // ---------------------------------------------------------------------
 
-pub struct SegmentedControl<At = ()> {
+pub struct SegmentedControl {
     items: Vec<String>,
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
@@ -3119,10 +3014,9 @@ pub struct SegmentedControl<At = ()> {
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
     segment_style: Option<MaybeReactive<cocoa_dom::NSSegmentStyle>>,
-    attrs: At,
 }
 
-pub fn segmented_control() -> SegmentedControl<()> {
+pub fn segmented_control() -> SegmentedControl {
     SegmentedControl {
         items: Vec::new(),
         selection: MaybeReactive::Static(0),
@@ -3135,11 +3029,10 @@ pub fn segmented_control() -> SegmentedControl<()> {
         alpha: None,
         tool_tip: None,
         segment_style: None,
-        attrs: (),
     }
 }
 
-impl<At> SegmentedControl<At> {
+impl SegmentedControl {
     pub fn items<I, S>(mut self, items: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -3206,14 +3099,14 @@ impl<At> SegmentedControl<At> {
 
 // Click semantics for segmented_control match popup: a "click"
 // is a selection change.
-impl<At> crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
-    for SegmentedControl<At>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+    for SegmentedControl
 {
 }
 
 impl_universal_attrs!(SegmentedControl);
 
-impl<At> SegmentedControl<At> {
+impl SegmentedControl {
     /// Visual style: `Rounded`, `RoundRect`, `Capsule`,
     /// `SmallSquare`, `Separated`, etc. See
     /// `cocoa_dom::NSSegmentStyle`.
@@ -3226,11 +3119,8 @@ impl<At> SegmentedControl<At> {
     }
 }
 
-impl_typed_attrs_for!(SegmentedControl, items, selection, enabled,
-    pending_bind_selection, handlers, grow, node_ref, directives,
-    alpha, tool_tip, segment_style);
 
-impl<At> Render<Dom> for SegmentedControl<At>
+impl Render<Dom> for SegmentedControl
 where
 {
     type State = ElementState<(), ()>;
@@ -3297,7 +3187,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -3307,9 +3196,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -3324,7 +3211,7 @@ where
 // of children's rects (so NSScrollView shows scroll bars when content
 // overflows the viewport).
 
-pub struct ScrollView<Children, At = ()> {
+pub struct ScrollView<Children> {
     grow: Option<f32>,
     children: Children,
     alpha: Option<MaybeReactive<f64>>,
@@ -3332,10 +3219,9 @@ pub struct ScrollView<Children, At = ()> {
     autohides_scrollers: Option<MaybeReactive<bool>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
-    attrs: At,
 }
 
-pub fn scroll_view() -> ScrollView<(), ()> {
+pub fn scroll_view() -> ScrollView<()> {
     ScrollView {
         grow: None,
         children: (),
@@ -3344,11 +3230,10 @@ pub fn scroll_view() -> ScrollView<(), ()> {
         autohides_scrollers: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
-        attrs: (),
     }
 }
 
-impl<Ch, At> ScrollView<Ch, At> {
+impl<Ch> ScrollView<Ch> {
     pub fn grow(mut self, g: f32) -> Self {
         self.grow = Some(g);
         self
@@ -3402,7 +3287,7 @@ impl<Ch, At> ScrollView<Ch, At> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh), At> {
+    pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh)> {
         ScrollView {
             grow: self.grow,
             children: (self.children, child),
@@ -3411,12 +3296,11 @@ impl<Ch, At> ScrollView<Ch, At> {
             autohides_scrollers: self.autohides_scrollers,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
-            attrs: self.attrs,
         }
     }
 }
 
-impl<Ch, At> Render<Dom> for ScrollView<Ch, At>
+impl<Ch> Render<Dom> for ScrollView<Ch>
 where
     Ch: Render<Dom>,
 {
@@ -3460,7 +3344,6 @@ where
         // ElementState::mount, so the tree-aware insert_node
         // registers each descendant in the right Taffy tree.
         let child_state = self.children.build();
-        let attrs = ();
 
         ElementState {
             el,
@@ -3470,9 +3353,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 
@@ -3480,17 +3361,16 @@ where
 // image_view() — NSImageView, source from a file path
 // ---------------------------------------------------------------------
 
-pub struct ImageView<At = ()> {
+pub struct ImageView {
     source: MaybeReactive<String>,
     grow: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
     tool_tip: Option<MaybeReactive<String>>,
-    attrs: At,
 }
 
-pub fn image_view() -> ImageView<()> {
+pub fn image_view() -> ImageView {
     ImageView {
         source: MaybeReactive::Static(String::new()),
         grow: None,
@@ -3498,11 +3378,10 @@ pub fn image_view() -> ImageView<()> {
         directives: Vec::new(),
         alpha: None,
         tool_tip: None,
-        attrs: (),
     }
 }
 
-impl<At> ImageView<At> {
+impl ImageView {
     /// File path to the image. Empty string clears the image.
     /// Network URLs aren't supported here — fetch them yourself
     /// (e.g. via reqwest) and write to a temp file, then pass the
@@ -3540,10 +3419,8 @@ impl<At> ImageView<At> {
 
 impl_universal_attrs!(ImageView);
 
-impl_typed_attrs_for!(ImageView, source, grow, node_ref, directives,
-    alpha, tool_tip);
 
-impl<At> Render<Dom> for ImageView<At>
+impl Render<Dom> for ImageView
 where
 {
     type State = ElementState<(), ()>;
@@ -3571,7 +3448,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -3581,9 +3457,7 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -3592,7 +3466,7 @@ where
 // separate protocol; add when an example needs it.
 // ---------------------------------------------------------------------
 
-pub struct TextView<At = ()> {
+pub struct TextView {
     value: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     /// `bind:value=…` two-way binding. Distinct from `.value(...)`
@@ -3607,10 +3481,9 @@ pub struct TextView<At = ()> {
     text_color: Option<MaybeReactive<cocoa_dom::Color>>,
     alignment: Option<MaybeReactive<cocoa_dom::NSTextAlignment>>,
     font_size: Option<MaybeReactive<f64>>,
-    attrs: At,
 }
 
-pub fn text_view() -> TextView<()> {
+pub fn text_view() -> TextView {
     TextView {
         value: MaybeReactive::Static(String::new()),
         enabled: None,
@@ -3623,11 +3496,10 @@ pub fn text_view() -> TextView<()> {
         text_color: None,
         alignment: None,
         font_size: None,
-        attrs: (),
     }
 }
 
-impl<At> TextView<At> {
+impl TextView {
     pub fn value<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<String>,
@@ -3679,11 +3551,8 @@ impl<At> TextView<At> {
 impl_universal_attrs!(TextView);
 impl_text_attrs!(TextView);
 
-impl_typed_attrs_for!(TextView, value, enabled, pending_bind, grow,
-    node_ref, directives, alpha, tool_tip, text_color, alignment,
-    font_size);
 
-impl<At> Render<Dom> for TextView<At>
+impl Render<Dom> for TextView
 where
 {
     type State = ElementState<(), ()>;
@@ -3742,7 +3611,6 @@ where
 
         crate::cocoa::directives::run_all(self.directives, &el);
 
-        let attrs = ();
 
         ElementState {
             el,
@@ -3752,62 +3620,8 @@ where
         }
     }
 
-    fn rebuild(self, state: &mut Self::State) {
-        
-    }
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
-// All builders now go through `impl_typed_attrs_for!`; the
-// `render_html_stub` module is vestigial as a result. Keeping it
-// in the source tree (without invocations) so a future builder
-// that doesn't fit the typed-attrs pattern can revive it without
-// re-deriving the stub shape.
 
-// Phase 8: impl_container_typed_attrs! used to emit AddAnyAttr +
-// RenderHtml for `<Ch, At>` container builders (Stack, Block). Both
-// traits are gone (see comment on impl_typed_attrs_for!). No-op macro.
-macro_rules! impl_container_typed_attrs {
-    ($builder:ident, $( $field:ident ),+ $(,)?) => {};
-}
 
-impl_container_typed_attrs!(
-    Stack,
-    direction,
-    gap,
-    padding,
-    justify_content,
-    align,
-    wrap,
-    grow,
-    shrink,
-    basis,
-    width,
-    min_width,
-    max_width,
-    height,
-    min_height,
-    max_height,
-    background_color,
-    clip,
-    alpha,
-    tool_tip
-);
-
-#[cfg(feature = "block_layout")]
-impl_container_typed_attrs!(
-    Block,
-    padding,
-    grow,
-    shrink,
-    basis,
-    width,
-    min_width,
-    max_width,
-    height,
-    min_height,
-    max_height,
-    background_color,
-    clip,
-    alpha,
-    tool_tip
-);

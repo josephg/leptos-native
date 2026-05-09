@@ -14,6 +14,6 @@ pub use crate::ios::element::view;
 /// `<switch>` resolves here. The function name is `switch` (a Rust
 /// keyword) — declared via raw-identifier syntax, mirroring
 /// `tachys::svg::r#use` in the web port.
-pub fn r#switch() -> crate::ios::element::Switch<()> {
+pub fn r#switch() -> crate::ios::element::Switch {
     crate::ios::element::switch_()
 }
