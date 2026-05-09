@@ -1,0 +1,12 @@
+[package]
+name = "two_windows"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "two_windows"
+path = "src/main.rs"
+
+[dependencies]
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
