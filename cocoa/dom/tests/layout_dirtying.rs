@@ -27,7 +27,7 @@ fn dirty_for(tree: &TreeRef, el: &Element) -> bool {
         .handle
         .clone()
         .expect("element has no LayoutHandle — wasn't registered");
-    tree.tree.borrow().dirty(lh.node_id).unwrap_or(true)
+    tree.dirty(lh.node_id)
 }
 
 /// After `compute_layout`, the root's dirty bit is cleared.
@@ -141,11 +141,7 @@ fn child_count(tree: &TreeRef, parent: &Element) -> usize {
         .handle
         .clone()
         .expect("element has no LayoutHandle");
-    tree.tree
-        .borrow()
-        .children(lh.node_id)
-        .map(|c| c.len())
-        .unwrap_or(0)
+    tree.children(lh.node_id).len()
 }
 
 fn attach_child_is_idempotent() {
@@ -189,7 +185,7 @@ fn insert_child_at_is_idempotent() {
 
     // Order should be [b, a] now.
     let lh = root.as_node().layout_slot().borrow().handle.clone().unwrap();
-    let kids = tree.tree.borrow().children(lh.node_id).unwrap();
+    let kids = tree.children(lh.node_id);
     let a_id = a.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
     let b_id = b.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
     assert_eq!(kids, vec![b_id, a_id], "child order wrong after reorder");

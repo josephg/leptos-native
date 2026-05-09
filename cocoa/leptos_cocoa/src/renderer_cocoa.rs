@@ -155,7 +155,7 @@ fn synthesise_parent_element(
     let parent_handle: Option<LayoutHandle> = {
         let layout = before.layout_slot().borrow();
         layout.handle.as_ref().and_then(|h| {
-            let parent_id = h.tree.tree.borrow().parent(h.node_id)?;
+            let parent_id = h.tree.parent(h.node_id)?;
             Some(LayoutHandle {
                 tree: h.tree.clone(),
                 node_id: parent_id,

@@ -36,6 +36,7 @@ dispatch2 = "0.3"
 any_spawner = { workspace = true }
 futures = { workspace = true, default-features = true }
 taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
+slotmap = "1.0"
 objc2-foundation = { version = "0.3", features = [
     "NSGeometry",
     "NSString",
@@ -49,13 +50,17 @@ objc2-foundation = { version = "0.3", features = [
     "NSTimeZone",
 ] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
+objc2-core-foundation = "0.3"
 objc2-app-kit = { version = "0.3", features = [
+    "NSLayoutConstraint",
+    "objc2-core-foundation",
     "NSApplication",
     "NSWindow",
     "NSView",
     "NSResponder",
     "NSButton",
     "NSControl",
+    "NSFont",
     "NSText",
     "NSTextField",
     "NSTextView",

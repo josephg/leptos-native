@@ -98,9 +98,19 @@ define_class!(
             let content = NSColor::colorWithSRGBRed_green_blue_alpha(
                 0.2, 0.7, 1.0, 0.85,
             );
+            // Yellow stroke = alignment rect (visible content
+            // inside any AppKit-implicit padding like NSButton's
+            // focus-ring slack).
+            let align = NSColor::colorWithSRGBRed_green_blue_alpha(
+                1.0, 0.95, 0.2, 0.85,
+            );
             // Translucent orange fill = flex gap between siblings.
             let gap = NSColor::colorWithSRGBRed_green_blue_alpha(
                 1.0, 0.6, 0.0, 0.30,
+            );
+            // Green = leaf's reported text baseline.
+            let baseline = NSColor::colorWithSRGBRed_green_blue_alpha(
+                0.2, 1.0, 0.4, 0.9,
             );
             let ivars = self.ivars();
             walk(&ivars.tree, ivars.root_id, NSPoint::ZERO, &mut |cmd| {
@@ -117,10 +127,24 @@ define_class!(
                         p.setLineWidth(1.0);
                         p.stroke();
                     }
+                    DrawCmd::AlignmentRect(r) => {
+                        align.setStroke();
+                        let p = NSBezierPath::bezierPathWithRect(r);
+                        p.setLineWidth(1.0);
+                        p.stroke();
+                    }
                     DrawCmd::Gap(r) => {
                         gap.setFill();
                         let p = NSBezierPath::bezierPathWithRect(r);
                         p.fill();
+                    }
+                    DrawCmd::Baseline { y, x_start, x_end } => {
+                        baseline.setStroke();
+                        let p = NSBezierPath::bezierPath();
+                        p.moveToPoint(NSPoint::new(x_start, y));
+                        p.lineToPoint(NSPoint::new(x_end, y));
+                        p.setLineWidth(1.0);
+                        p.stroke();
                     }
                 }
             });
@@ -129,11 +153,22 @@ define_class!(
 );
 
 enum DrawCmd {
-    /// Border-box outline (magenta).
+    /// Border-box outline (magenta) — Taffy `Layout::size`.
     Border(NSRect),
-    /// Content-box outline (cyan) — only emitted for nodes with
-    /// non-zero padding on at least one edge.
+    /// Content-box outline (cyan) — border minus per-edge Taffy
+    /// padding. Emitted only for nodes with non-zero padding.
     Content(NSRect),
+    /// Alignment-rect outline (yellow) — AppKit's
+    /// `alignmentRectInsets` carved out of the border box. This is
+    /// the "implicit padding" leaf controls add inside their Taffy
+    /// frame (e.g. NSButton's focus-ring slack). Emitted only when
+    /// the insets are non-zero.
+    AlignmentRect(NSRect),
+    /// Horizontal line at the leaf's reported text baseline
+    /// (`firstBaselineOffsetFromTop`). Drawn green; only emitted
+    /// when the view returns a non-zero baseline (i.e. it carries
+    /// text).
+    Baseline { y: f64, x_start: f64, x_end: f64 },
     /// Gap between two consecutive flex children (translucent
     /// orange fill). Inferred from their layouts: whichever axis
     /// has empty space between sibling rectangles.
@@ -156,20 +191,39 @@ fn walk_inner(
     f: &mut dyn FnMut(DrawCmd),
     is_root: bool,
 ) {
-    let (loc_x, loc_y, size_w, size_h, pad_t, pad_r, pad_b, pad_l, kids) = {
-        let t = tree.tree.borrow();
-        let layout = t.layout(node_id).copied().unwrap_or_default();
-        let kids: Vec<NodeId> = t.children(node_id).unwrap_or_default();
+    // Read the NSView's actual `frame` — not Taffy's stored
+    // `Layout::location`/`size`. The two can diverge if anything
+    // post-processes layout after Taffy (e.g. the baseline-alignment
+    // pass in `apply_layout`). The overlay's job is to show what's
+    // actually on screen, not what Taffy intended.
+    //
+    // Padding still comes from Taffy: it's a styled property, not
+    // something inferable from the rendered frame.
+    let (loc_x, loc_y, size_w, size_h, pad_t, pad_r, pad_b, pad_l, kids, view) = {
+        let layout = tree.layout(node_id).unwrap_or_default();
+        let kids: Vec<NodeId> = tree.children(node_id);
+        let view = tree.get_node_context(node_id).map(|c| (*c.view).clone());
+        let frame = view.as_ref().map(|v| v.frame());
+        let (lx, ly, sw, sh) = match frame {
+            Some(f) => (f.origin.x, f.origin.y, f.size.width, f.size.height),
+            None => (
+                layout.location.x as f64,
+                layout.location.y as f64,
+                layout.size.width as f64,
+                layout.size.height as f64,
+            ),
+        };
         (
-            layout.location.x as f64,
-            layout.location.y as f64,
-            layout.size.width as f64,
-            layout.size.height as f64,
+            lx,
+            ly,
+            sw,
+            sh,
             layout.padding.top as f64,
             layout.padding.right as f64,
             layout.padding.bottom as f64,
             layout.padding.left as f64,
             kids,
+            view,
         )
     };
     let abs = NSPoint::new(offset.x + loc_x, offset.y + loc_y);
@@ -186,30 +240,62 @@ fn walk_inner(
             );
             f(DrawCmd::Content(content));
         }
+        if let Some(view) = view.as_ref() {
+            let insets = view.alignmentRectInsets();
+            let it = insets.top as f64;
+            let ir = insets.right as f64;
+            let ib = insets.bottom as f64;
+            let il = insets.left as f64;
+            if it > 0.0 || ir > 0.0 || ib > 0.0 || il > 0.0 {
+                let align = NSRect::new(
+                    NSPoint::new(abs.x + il, abs.y + it),
+                    NSSize::new(
+                        (size_w - il - ir).max(0.0),
+                        (size_h - it - ib).max(0.0),
+                    ),
+                );
+                f(DrawCmd::AlignmentRect(align));
+            }
+            // Use the port-corrected baseline (font-metric-derived
+            // for NSControls; NSButton's system value is wrong).
+            // Same source the layout post-pass uses, so the green
+            // line matches whatever `align_items: Baseline` aligns
+            // by.
+            if let Some(bo) = crate::layout::first_baseline_offset(view) {
+                if bo > 0.0 && bo < size_h {
+                    f(DrawCmd::Baseline {
+                        y: abs.y + bo,
+                        x_start: abs.x,
+                        x_end: abs.x + size_w,
+                    });
+                }
+            }
+        }
     }
 
-    // Gaps between consecutive children: inferred from their
-    // layouts (no need to read parent style). For each pair of
-    // siblings, find the empty band between them on whichever
-    // axis has separation.
+    // Gaps between consecutive children: inferred from their actual
+    // NSView frames (not Taffy layouts; see comment in `walk_inner`
+    // above re: post-Taffy mutations).
     if kids.len() >= 2 {
-        let layouts: Vec<_> = {
-            let t = tree.tree.borrow();
-            kids.iter()
-                .map(|id| t.layout(*id).copied().unwrap_or_default())
-                .collect()
-        };
-        for pair in layouts.windows(2) {
+        let frames: Vec<NSRect> = kids
+            .iter()
+            .map(|id| {
+                tree.get_node_context(*id)
+                    .map(|c| c.view.frame())
+                    .unwrap_or_default()
+            })
+            .collect();
+        for pair in frames.windows(2) {
             let a = pair[0];
             let b = pair[1];
-            let a_x = abs.x + a.location.x as f64;
-            let a_y = abs.y + a.location.y as f64;
-            let a_r = a_x + a.size.width as f64;
-            let a_b = a_y + a.size.height as f64;
-            let b_x = abs.x + b.location.x as f64;
-            let b_y = abs.y + b.location.y as f64;
-            let b_r = b_x + b.size.width as f64;
-            let b_b = b_y + b.size.height as f64;
+            let a_x = abs.x + a.origin.x;
+            let a_y = abs.y + a.origin.y;
+            let a_r = a_x + a.size.width;
+            let a_b = a_y + a.size.height;
+            let b_x = abs.x + b.origin.x;
+            let b_y = abs.y + b.origin.y;
+            let b_r = b_x + b.size.width;
+            let b_b = b_y + b.size.height;
 
             // Horizontal (row) gap.
             if b_x > a_r + 0.5 {

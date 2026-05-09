@@ -1,4 +1,4 @@
-//! Taffy-based layout engine.
+//! Layout engine — port-owned tree with Taffy as the layout algorithm.
 //!
 //! Each cocoa_dom [`Node`] carries a shared "layout slot"
 //! ([`NodeLayout`], stored in an `Rc<RefCell<...>>` shared across
@@ -7,14 +7,23 @@
 //!  - the node's *current* style ([`Style`]), mutated by setters and
 //!    used as the seed when the node is registered in a tree;
 //!  - an `Option<LayoutHandle>` — `Some` once the node has been
-//!    registered into a [`TaffyTree`] (i.e. mounted somewhere under a
-//!    [`Window`](crate::app)). While `None`, style mutations stay
-//!    local; once `Some`, they're also pushed into the tree.
+//!    registered into a [`LayoutTree`] (i.e. mounted somewhere under
+//!    a [`Window`](crate::window)). While `None`, style mutations
+//!    stay local; once `Some`, they're also pushed into the tree.
 //!
-//! Trees themselves are owned by their [`Window`]
-//! (`Rc<RefCell<TaffyTree<()>>>`). Each LayoutHandle keeps an Rc to
-//! its tree, so late-firing reactive effects can mutate the right
-//! tree without consulting any global registry.
+//! The tree itself stores each node's style/cache/layout/parent/
+//! children/view directly — no `TaffyTree` in between. We implement
+//! Taffy's `LayoutPartialTree` family of traits on the storage so
+//! the public layout algorithms (`compute_root_layout`,
+//! `compute_flexbox_layout`, etc.) operate on it. This is the path
+//! Taffy documents for embedders that want to bring their own
+//! storage; the upside for us is that
+//! [`LayoutPartialTree::compute_child_layout`] is *ours*, so we can
+//! return real first-text-baselines from leaves and let Taffy's
+//! flexbox engine do `align_items: Baseline` properly. (The public
+//! `compute_layout_with_measure` API on `TaffyTree` discards
+//! baselines; the leaf path hardcodes `first_baselines: Point::NONE`
+//! before flexbox sees the value.)
 
 use crate::node::Node;
 use dispatch2::DispatchQueue;
@@ -22,18 +31,9 @@ use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use send_wrapper::SendWrapper;
+use slotmap::{DefaultKey, SlotMap};
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-/// Toggle layout debug output by setting the `COCOA_DOM_LAYOUT_DEBUG`
-/// environment variable to any value (e.g.
-/// `COCOA_DOM_LAYOUT_DEBUG=1 cargo run ...`).
-///
-/// Cached after first read — set the var before the first
-/// `compute_layout` call and it's stable for the run.
-fn layout_debug_enabled() -> bool {
-    static FLAG: OnceLock<bool> = OnceLock::new();
-    *FLAG.get_or_init(|| std::env::var_os("COCOA_DOM_LAYOUT_DEBUG").is_some())
-}
 pub use taffy::{
     AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
     JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId,
@@ -41,66 +41,68 @@ pub use taffy::{
 };
 #[cfg(feature = "block_layout")]
 pub use taffy::Display;
-use taffy::{Layout, Point, TaffyTree};
+use taffy::{
+    compute_cached_layout, compute_flexbox_layout, compute_hidden_layout,
+    compute_leaf_layout, compute_root_layout, round_layout, Cache, CacheTree,
+    Display as TaffyDisplay, Layout, LayoutFlexboxContainer, LayoutInput,
+    LayoutOutput, LayoutPartialTree, Point, Rect, RoundTree,
+    TraversePartialTree, TraverseTree,
+};
 
-/// Per-Taffy-node user data. We attach the underlying NSView so the
-/// measure closure (passed to `compute_layout_with_measure`) can call
-/// `NSView::intrinsicContentSize` for leaf controls (NSButton,
-/// NSTextField, etc.) and Taffy can size them based on their actual
-/// content.
-///
-/// The NSView is also already held by the cocoa_dom [`Node`] wrapper;
-/// keeping a separate retain here means the tree owns a reference for
-/// as long as the node is registered, even if all Node clones drop.
+#[cfg(feature = "block_layout")]
+use taffy::{compute_block_layout, LayoutBlockContainer};
+
+/// Toggle layout debug output by setting the `COCOA_DOM_LAYOUT_DEBUG`
+/// environment variable to any value (e.g.
+/// `COCOA_DOM_LAYOUT_DEBUG=1 cargo run ...`).
+fn layout_debug_enabled() -> bool {
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("COCOA_DOM_LAYOUT_DEBUG").is_some())
+}
+
+// ---------------------------------------------------------------------
+// Public types (kept for backwards compatibility with callers that
+// still spell things in TaffyTree-shaped names).
+// ---------------------------------------------------------------------
+
+/// Lightweight read-only view of a node's per-tree context. Kept as a
+/// public type because external callers (`debug_overlay`,
+/// `renderer_cocoa`) still reach for `tree.get_node_context(...)`.
 #[derive(Clone)]
 pub struct NodeContext {
     pub view: SendWrapper<Retained<NSView>>,
     /// True if this node backs an `<scroll_view>` (NSScrollView).
-    /// Triggers a special second-pass `compute_layout` on this
-    /// subtree with `MaxContent` height so children take their
-    /// natural sizes instead of being compressed to fit the
-    /// viewport — that's what makes the documentView grow past the
-    /// viewport and gives NSScrollView something to scroll.
+    /// Triggers the scroll-view second pass.
     pub is_scroll_view: bool,
 }
 
-/// Owns a Taffy tree plus a slot for the tree's root NodeId. Created
-/// once per [`Window`](crate::window); each node registered into the
-/// window borrows a clone (Rc-bumped) of this handle so it can address
-/// its own slot in the tree later.
-///
-/// The root NodeId is set by [`register_in_tree`] the first time it
-/// runs against an empty tree (i.e. the contentView). Tracked
-/// explicitly so the dispatched re-layout pass can find the root
-/// without walking — walking via `tree.parent(id)` would panic if the
-/// captured id has been removed and its slot reused.
+/// Owns the layout tree plus a slot for the tree's root NodeId.
+/// Created once per [`Window`](crate::window); each registered node
+/// keeps an Rc clone so late-firing reactive effects can address the
+/// right tree.
 pub struct LayoutTree {
-    pub tree: RefCell<TaffyTree<NodeContext>>,
+    state: RefCell<LayoutState>,
+    /// Set by `register_in_tree` the first time a tree gets a node.
+    /// Tracked explicitly so `schedule_relayout_for_tree` can find
+    /// the root without walking — walking via `parent(id)` would
+    /// panic if any intermediate id has been removed and reused.
     pub root: RefCell<Option<NodeId>>,
 }
 
 pub type TreeRef = Rc<LayoutTree>;
 
-/// Construct a fresh, empty Taffy tree wrapped for sharing.
 pub fn new_tree() -> TreeRef {
     Rc::new(LayoutTree {
-        tree: RefCell::new(TaffyTree::new()),
+        state: RefCell::new(LayoutState::default()),
         root: RefCell::new(None),
     })
 }
 
-/// What a [`Node`] knows about its layout state. Lives behind an
-/// `Rc<RefCell<...>>` inside the Node; clones share it.
+/// What a [`Node`] knows about its layout state.
 #[derive(Debug)]
 pub struct NodeLayout {
-    /// The node's current style. Setters mutate this. When the node
-    /// joins a tree, this is the seed used for `new_leaf`.
     pub style: Style,
-    /// Set once the node has been registered in a tree.
     pub handle: Option<LayoutHandle>,
-    /// True if this node is an `<scroll_view>`. Triggers a special
-    /// second-pass `compute_layout` on its subtree with MaxContent
-    /// height; see `NodeContext::is_scroll_view`.
     pub is_scroll_view: bool,
 }
 
@@ -110,7 +112,7 @@ impl NodeLayout {
     }
 }
 
-/// Where a node lives once it's joined a Taffy tree.
+/// Where a node lives once it's joined a tree.
 #[derive(Clone)]
 pub struct LayoutHandle {
     pub tree: TreeRef,
@@ -126,34 +128,368 @@ impl std::fmt::Debug for LayoutHandle {
 }
 
 // ---------------------------------------------------------------------
-// Registration
+// Internal storage
 // ---------------------------------------------------------------------
 
-/// Register `node` as a leaf in `tree` if it isn't already registered.
-/// Idempotent. Uses the node's currently-stored style as the seed
-/// and attaches the NSView as the node's Taffy context (used by the
-/// measure closure during layout).
-///
-/// After registration, future style setters push directly into the
-/// tree as well as the local style cache.
+#[derive(Default)]
+struct LayoutState {
+    nodes: SlotMap<DefaultKey, NodeData>,
+}
+
+struct NodeData {
+    style: Style,
+    cache: Cache,
+    unrounded_layout: Layout,
+    final_layout: Layout,
+    parent: Option<NodeId>,
+    children: Vec<NodeId>,
+    view: SendWrapper<Retained<NSView>>,
+    is_scroll_view: bool,
+}
+
+impl NodeData {
+    fn new(style: Style, view: SendWrapper<Retained<NSView>>, is_scroll_view: bool) -> Self {
+        NodeData {
+            style,
+            cache: Cache::new(),
+            unrounded_layout: Layout::new(),
+            final_layout: Layout::new(),
+            parent: None,
+            children: Vec::new(),
+            view,
+            is_scroll_view,
+        }
+    }
+}
+
+fn key(id: NodeId) -> DefaultKey {
+    id.into()
+}
+
+// ---------------------------------------------------------------------
+// LayoutTree public API (RefCell-wrapped accessors)
+// ---------------------------------------------------------------------
+
+impl LayoutTree {
+    // -- internal access helpers --------------------------------------
+
+    /// Borrow the state and run `f` against the node's data, if it
+    /// exists.
+    fn with_node<R>(&self, id: NodeId, f: impl FnOnce(&NodeData) -> R) -> Option<R> {
+        self.state.borrow().nodes.get(key(id)).map(f)
+    }
+
+    /// Borrow the state mutably and run `f`.
+    fn with_state_mut<R>(&self, f: impl FnOnce(&mut LayoutState) -> R) -> R {
+        f(&mut self.state.borrow_mut())
+    }
+
+    /// Run a Taffy layout pass (`compute_root_layout` + `round_layout`)
+    /// against `id` with `available_space`.
+    fn run_layout_pass(&self, id: NodeId, available_space: Size<AvailableSpace>) {
+        self.with_state_mut(|s| {
+            compute_root_layout(s, id, available_space);
+            round_layout(s, id);
+        });
+    }
+
+    // -- mutation -----------------------------------------------------
+
+    /// Insert a fresh leaf, returning its NodeId.
+    fn new_leaf_with_context(
+        &self,
+        style: Style,
+        view: SendWrapper<Retained<NSView>>,
+        is_scroll_view: bool,
+    ) -> NodeId {
+        NodeId::from(self.with_state_mut(|s| {
+            s.nodes.insert(NodeData::new(style, view, is_scroll_view))
+        }))
+    }
+
+    /// Remove a node from the tree. Detaches it from any parent it
+    /// was under; orphans its descendants (callers always remove
+    /// leaves first today).
+    fn remove(&self, id: NodeId) {
+        self.with_state_mut(|s| {
+            let Some((parent, kids)) = s
+                .nodes
+                .get(key(id))
+                .map(|n| (n.parent, n.children.clone()))
+            else {
+                return;
+            };
+            if let Some(p) = parent {
+                if let Some(p_data) = s.nodes.get_mut(key(p)) {
+                    p_data.children.retain(|c| *c != id);
+                }
+            }
+            for c in kids {
+                if let Some(c_data) = s.nodes.get_mut(key(c)) {
+                    c_data.parent = None;
+                }
+            }
+            s.nodes.remove(key(id));
+        });
+    }
+
+    /// Add a child edge. If the edge already exists, no-op (the
+    /// existing position is preserved — Mountable cascades visit
+    /// children in construction order, which is the order we already
+    /// have, so duplicate-detect-and-keep matches what NSView's
+    /// `addSubview` does for already-mounted children in practice).
+    fn add_child(&self, parent: NodeId, child: NodeId) {
+        self.with_state_mut(|s| {
+            if let Some(p) = s.nodes.get_mut(key(parent)) {
+                if p.children.contains(&child) {
+                    return;
+                }
+                p.children.push(child);
+            }
+            if let Some(c) = s.nodes.get_mut(key(child)) {
+                c.parent = Some(parent);
+            }
+        });
+        self.mark_dirty(parent);
+    }
+
+    /// Place `child` at exactly `idx` under `parent`. If `child` was
+    /// already a child of `parent` at a different index, it's moved.
+    fn insert_child_at_index(&self, parent: NodeId, idx: usize, child: NodeId) {
+        self.with_state_mut(|s| {
+            if let Some(p) = s.nodes.get_mut(key(parent)) {
+                p.children.retain(|c| *c != child);
+                let i = idx.min(p.children.len());
+                p.children.insert(i, child);
+            }
+            if let Some(c) = s.nodes.get_mut(key(child)) {
+                c.parent = Some(parent);
+            }
+        });
+        self.mark_dirty(parent);
+    }
+
+    fn remove_child(&self, parent: NodeId, child: NodeId) {
+        self.with_state_mut(|s| {
+            if let Some(p) = s.nodes.get_mut(key(parent)) {
+                p.children.retain(|c| *c != child);
+            }
+            if let Some(c) = s.nodes.get_mut(key(child)) {
+                if c.parent == Some(parent) {
+                    c.parent = None;
+                }
+            }
+        });
+        self.mark_dirty(parent);
+    }
+
+    /// Mark `id` and its ancestors dirty (cleared cache → forced
+    /// re-layout). Stops walking upward as soon as it hits a node
+    /// that's already dirty — its ancestors were dirty when it was
+    /// dirtied, so they're still dirty.
+    pub fn mark_dirty(&self, id: NodeId) {
+        self.with_state_mut(|s| {
+            let mut current = Some(id);
+            while let Some(c) = current {
+                let Some(node) = s.nodes.get_mut(key(c)) else { break };
+                if node.cache.is_empty() {
+                    break;
+                }
+                node.cache.clear();
+                current = node.parent;
+            }
+        });
+    }
+
+    pub fn set_style(&self, id: NodeId, style: Style) {
+        self.with_state_mut(|s| {
+            if let Some(node) = s.nodes.get_mut(key(id)) {
+                node.style = style;
+            }
+        });
+        self.mark_dirty(id);
+    }
+
+    // -- read accessors -----------------------------------------------
+
+    /// Final (rounded) layout. `apply_layout` consumes this.
+    pub fn layout(&self, id: NodeId) -> Option<Layout> {
+        self.with_node(id, |n| n.final_layout)
+    }
+
+    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+        self.with_node(id, |n| n.parent).flatten()
+    }
+
+    pub fn children(&self, id: NodeId) -> Vec<NodeId> {
+        self.with_node(id, |n| n.children.clone()).unwrap_or_default()
+    }
+
+    pub fn dirty(&self, id: NodeId) -> bool {
+        self.with_node(id, |n| n.cache.is_empty()).unwrap_or(true)
+    }
+
+    pub fn get_node_context(&self, id: NodeId) -> Option<NodeContext> {
+        self.with_node(id, |n| NodeContext {
+            view: n.view.clone(),
+            is_scroll_view: n.is_scroll_view,
+        })
+    }
+
+    pub fn style(&self, id: NodeId) -> Option<Style> {
+        self.with_node(id, |n| n.style.clone())
+    }
+}
+
+// ---------------------------------------------------------------------
+// Taffy trait impls on LayoutState
+// ---------------------------------------------------------------------
+
+impl TraversePartialTree for LayoutState {
+    type ChildIter<'a> = std::iter::Copied<std::slice::Iter<'a, NodeId>>;
+
+    fn child_ids(&self, parent: NodeId) -> Self::ChildIter<'_> {
+        self.nodes
+            .get(key(parent))
+            .map(|n| n.children.as_slice())
+            .unwrap_or(&[])
+            .iter()
+            .copied()
+    }
+
+    fn child_count(&self, parent: NodeId) -> usize {
+        self.nodes.get(key(parent)).map(|n| n.children.len()).unwrap_or(0)
+    }
+
+    fn get_child_id(&self, parent: NodeId, index: usize) -> NodeId {
+        self.nodes[key(parent)].children[index]
+    }
+}
+
+impl TraverseTree for LayoutState {}
+
+impl CacheTree for LayoutState {
+    fn cache_get(&self, id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
+        self.nodes[key(id)].cache.get(input)
+    }
+
+    fn cache_store(&mut self, id: NodeId, input: &LayoutInput, output: LayoutOutput) {
+        self.nodes[key(id)].cache.store(input, output)
+    }
+
+    fn cache_clear(&mut self, id: NodeId) {
+        self.nodes[key(id)].cache.clear();
+    }
+}
+
+impl LayoutPartialTree for LayoutState {
+    type CoreContainerStyle<'a> = &'a Style where Self: 'a;
+    type CustomIdent = String;
+
+    fn get_core_container_style(&self, id: NodeId) -> Self::CoreContainerStyle<'_> {
+        &self.nodes[key(id)].style
+    }
+
+    fn set_unrounded_layout(&mut self, id: NodeId, layout: &Layout) {
+        self.nodes[key(id)].unrounded_layout = *layout;
+    }
+
+    fn resolve_calc_value(&self, _: *const (), _: f32) -> f32 {
+        0.0
+    }
+
+    fn compute_child_layout(&mut self, id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        compute_cached_layout(self, id, inputs, |this, id, inputs| {
+            let k = key(id);
+            let display = this.nodes[k].style.display;
+            let has_children = !this.nodes[k].children.is_empty();
+
+            match (display, has_children) {
+                (TaffyDisplay::None, _) => compute_hidden_layout(this, id),
+                #[cfg(feature = "block_layout")]
+                (TaffyDisplay::Block, true) => {
+                    compute_block_layout(this, id, inputs, None)
+                }
+                (TaffyDisplay::Flex, true) => compute_flexbox_layout(this, id, inputs),
+                (_, false) => {
+                    // Leaf — measure size, query baseline, build the
+                    // output. `compute_leaf_layout` does the size
+                    // accounting (clamping, min/max, content-box
+                    // adjustments) and returns a `LayoutOutput` with
+                    // `first_baselines: NONE`. We then overwrite the
+                    // baseline with our port-corrected value so
+                    // `align_items: Baseline` works in flexbox.
+                    let style = this.nodes[k].style.clone();
+                    let view: Retained<NSView> = (*this.nodes[k].view).clone();
+                    let mut out = compute_leaf_layout(
+                        inputs,
+                        &style,
+                        |_, _| 0.0,
+                        |known, avail| measure_leaf_size(known, avail, &view),
+                    );
+                    out.first_baselines.y =
+                        first_baseline_offset(&view).map(|b| b as f32);
+                    out
+                }
+            }
+        })
+    }
+}
+
+impl LayoutFlexboxContainer for LayoutState {
+    type FlexboxContainerStyle<'a> = &'a Style where Self: 'a;
+    type FlexboxItemStyle<'a> = &'a Style where Self: 'a;
+
+    fn get_flexbox_container_style(&self, id: NodeId) -> Self::FlexboxContainerStyle<'_> {
+        &self.nodes[key(id)].style
+    }
+
+    fn get_flexbox_child_style(&self, id: NodeId) -> Self::FlexboxItemStyle<'_> {
+        &self.nodes[key(id)].style
+    }
+}
+
+#[cfg(feature = "block_layout")]
+impl LayoutBlockContainer for LayoutState {
+    type BlockContainerStyle<'a> = &'a Style where Self: 'a;
+    type BlockItemStyle<'a> = &'a Style where Self: 'a;
+
+    fn get_block_container_style(&self, id: NodeId) -> Self::BlockContainerStyle<'_> {
+        &self.nodes[key(id)].style
+    }
+
+    fn get_block_child_style(&self, id: NodeId) -> Self::BlockItemStyle<'_> {
+        &self.nodes[key(id)].style
+    }
+}
+
+impl RoundTree for LayoutState {
+    fn get_unrounded_layout(&self, id: NodeId) -> Layout {
+        self.nodes[key(id)].unrounded_layout
+    }
+
+    fn set_final_layout(&mut self, id: NodeId, layout: &Layout) {
+        self.nodes[key(id)].final_layout = *layout;
+    }
+}
+
+// ---------------------------------------------------------------------
+// Registration / teardown
+// ---------------------------------------------------------------------
+
+/// Register `node` as a leaf in `tree` if not already registered.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     let mut layout = node.layout_slot().borrow_mut();
     if layout.handle.is_some() {
         return;
     }
-    // Get a Retained<NSView> from the borrowed view ref. Retained's
-    // From impl bumps the ObjC retain count.
     let view: Retained<NSView> = node.ns_view().into();
-    let context = NodeContext {
-        view: SendWrapper::new(view),
-        is_scroll_view: layout.is_scroll_view,
-    };
-    let node_id = tree
-        .tree
-        .borrow_mut()
-        .new_leaf_with_context(layout.style.clone(), context)
-        .expect("taffy: new_leaf_with_context failed");
-    // First registration in this tree → record the root.
+    let view_wrapped = SendWrapper::new(view);
+    let node_id = tree.new_leaf_with_context(
+        layout.style.clone(),
+        view_wrapped,
+        layout.is_scroll_view,
+    );
     {
         let mut root = tree.root.borrow_mut();
         if root.is_none() {
@@ -166,64 +502,38 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     });
 }
 
-/// Drop the Taffy node and unregister this node. Called from
-/// [`Node::teardown`] during unmount. No-op if the node was never
-/// registered.
+/// Drop the node and unregister it. No-op if never registered.
 pub fn drop_node(node: &Node) {
     let handle = node.layout_slot().borrow_mut().handle.take();
     if let Some(h) = handle {
-        // Capture the parent NodeId before we remove `h.node_id` —
-        // after `tree.remove` the parent edge is gone.
-        let parent_id = h.tree.tree.borrow().parent(h.node_id);
-        let _ = h.tree.tree.borrow_mut().remove(h.node_id);
+        let parent_id = h.tree.parent(h.node_id);
+        h.tree.remove(h.node_id);
         if let Some(pid) = parent_id {
-            // Explicitly mark the parent dirty. Taffy's
-            // `remove`/`remove_child` does adjust the tree, but
-            // doesn't always invalidate the parent's cached layout —
-            // and a stale parent layout means the dispatched
-            // `compute_layout` reuses old child positions and
-            // `apply_layout` keeps removed-children's space
-            // allocated.
-            let _ = h.tree.tree.borrow_mut().mark_dirty(pid);
+            h.tree.mark_dirty(pid);
             schedule_relayout_for_tree(&h.tree, pid);
         }
     }
 }
 
 // ---------------------------------------------------------------------
-// Dynamic relayout
+// Dynamic relayout — coalesce mutation bursts into one pass per tick.
 // ---------------------------------------------------------------------
-//
-// When user code mutates the tree at runtime (typically `<For>`/keyed
-// iteration adding+removing rows), each mutation mirrors into Taffy
-// immediately — but Taffy doesn't *recompute* layout on its own. On
-// web Leptos the browser reflows automatically; on AppKit we have to
-// call compute_layout ourselves.
-//
-// Doing it synchronously inside every `attach_child` would be O(N)
-// recomputes for an N-row insert. Instead we mark the affected tree
-// dirty and dispatch a single recompute on the next main-loop tick.
-// Multiple mutations between ticks coalesce into one pass.
 
 thread_local! {
-    /// Trees with a layout pass already queued. Keyed by the tree's
-    /// Rc identity; cleared at the start of the dispatched callback.
     static PENDING: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
 }
 
 /// Schedule a re-layout of the tree this node belongs to.
 ///
-/// Also marks the node as dirty in Taffy — without this, Taffy's
-/// layout cache returns the previously-computed result and the
-/// measure callback is never re-invoked. This matters for content
-/// changes on leaf controls (label text, button title): the NSView
-/// content changed, but Taffy can't see that on its own — we have to
-/// tell it explicitly.
+/// Also marks the node dirty — without this, the cache returns the
+/// previously-computed output and the measure callback isn't
+/// re-invoked. Required for content changes on leaf controls (label
+/// text, button title, etc.).
 pub fn schedule_relayout(node: &Node) {
     let handle = node.layout_slot().borrow().handle.clone();
     if let Some(h) = handle {
-        let _ = h.tree.tree.borrow_mut().mark_dirty(h.node_id);
+        h.tree.mark_dirty(h.node_id);
         schedule_relayout_for_tree(&h.tree, h.node_id);
     }
 }
@@ -232,32 +542,21 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
     let key = Rc::as_ptr(tree) as usize;
     let just_inserted = PENDING.with_borrow_mut(|p| p.insert(key));
     if !just_inserted {
-        return; // already queued
+        return;
     }
     let tree_weak = SendWrapper::new(Rc::downgrade(tree));
     DispatchQueue::main().exec_async(move || {
         let weak = tree_weak.take();
         let Some(tree) = weak.upgrade() else { return };
 
-        // Clear the pending flag *before* recomputing so any mutation
-        // that fires during the recompute can re-enqueue.
         PENDING.with_borrow_mut(|p| {
             p.remove(&(Rc::as_ptr(&tree) as usize));
         });
 
-        // Use the stored root NodeId (set on first registration —
-        // never reused or invalidated). Avoids walking, which would
-        // panic if any intermediate id was stale.
-        let Some(root_id) = *tree.root.borrow() else {
-            return;
-        };
+        let Some(root_id) = *tree.root.borrow() else { return };
         let root_view: Retained<NSView> = {
-            let tree_ref = tree.tree.borrow();
-            let Some(ctx) = tree_ref.get_node_context(root_id) else {
-                return;
-            };
-            let view_ref: &NSView = &**ctx.view;
-            view_ref.into()
+            let Some(ctx) = tree.get_node_context(root_id) else { return };
+            (*ctx.view).clone()
         };
 
         let root_handle = LayoutHandle {
@@ -275,18 +574,12 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 }
 
 // ---------------------------------------------------------------------
-// Tree-edge mirroring (called from cocoa_dom::node insert/remove)
+// Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-/// Add a Taffy parent-child edge. If the child isn't yet registered,
-/// register it in the parent's tree first. If the parent isn't
-/// registered, this is a no-op (the child stays orphan in Taffy too —
-/// it'll be registered when the parent joins a tree).
 pub fn attach_child(parent: &Node, child: &Node) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     register_in_tree(child, &parent_h.tree);
     let child_id = child
         .layout_slot()
@@ -295,29 +588,13 @@ pub fn attach_child(parent: &Node, child: &Node) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        // Idempotent: if `child` is already under this parent, detach
-        // the existing edge so add_child re-appends rather than
-        // duplicating. A keyed `<For>` move re-runs the children's
-        // mount cascade, which calls back through here.
-        let existing = tree.children(parent_h.node_id).unwrap_or_default();
-        if existing.iter().any(|c| *c == child_id) {
-            let _ = tree.remove_child(parent_h.node_id, child_id);
-        }
-        let _ = tree.add_child(parent_h.node_id, child_id);
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h.tree.add_child(parent_h.node_id, child_id);
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 
-/// Insert a Taffy child at a specific index under `parent`. Same
-/// register-if-needed semantics as [`attach_child`].
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     register_in_tree(child, &parent_h.tree);
     let child_id = child
         .layout_slot()
@@ -326,40 +603,18 @@ pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        // If `child` is already under this parent (a keyed `<For>` move
-        // re-mounts the same node), detach the existing edge first.
-        // Otherwise Taffy ends up with two parent->child entries for the
-        // same node and layout becomes nonsense.
-        let existing = tree.children(parent_h.node_id).unwrap_or_default();
-        if existing.iter().any(|c| *c == child_id) {
-            let _ = tree.remove_child(parent_h.node_id, child_id);
-        }
-        let _ = tree.insert_child_at_index(parent_h.node_id, index, child_id);
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h.tree.insert_child_at_index(parent_h.node_id, index, child_id);
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 
-/// Remove a Taffy parent-child edge. No-op if either side isn't
-/// registered.
 pub fn detach_child(parent: &Node, child: &Node) {
     let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else {
-        return;
-    };
+    let Some(parent_h) = parent_handle else { return };
     let child_id = match child.layout_slot().borrow().handle.as_ref() {
         Some(h) => h.node_id,
         None => return,
     };
-    {
-        let mut tree = parent_h.tree.tree.borrow_mut();
-        let _ = tree.remove_child(parent_h.node_id, child_id);
-        // Mark the parent dirty so its cached layout is
-        // invalidated — see the matching comment in `drop_node`.
-        let _ = tree.mark_dirty(parent_h.node_id);
-    }
+    parent_h.tree.remove_child(parent_h.node_id, child_id);
     schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
 }
 
@@ -367,32 +622,24 @@ pub fn detach_child(parent: &Node, child: &Node) {
 // Style mutation
 // ---------------------------------------------------------------------
 
-/// Apply a function to the node's stored style and (if registered)
-/// push the updated style into its tree.
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
     let mut layout = node.layout_slot().borrow_mut();
     f(&mut layout.style);
     if let Some(h) = &layout.handle {
-        let _ = h.tree.tree.borrow_mut().set_style(h.node_id, layout.style.clone());
+        h.tree.set_style(h.node_id, layout.style.clone());
     }
 }
 
-/// Replace the node's style entirely.
 pub fn set_style(node: &Node, style: Style) {
     update_style(node, |s| *s = style);
 }
 
 // ---------------------------------------------------------------------
-// Layout computation & frame application
+// Layout computation
 // ---------------------------------------------------------------------
 
 /// Compute layout for the subtree rooted at `root`, then walk it and
-/// assign frames to each NSView. `available_size` is the size of the
-/// region we're laying out into (typically the window's content rect).
-///
-/// `root` must be registered in a tree. The root's style is forced to
-/// fill `available_size` exactly so the layout fills the window
-/// content area instead of shrinking to its intrinsic size.
+/// assign frames to each NSView.
 pub fn compute_layout(root: &Node, available_size: NSSize) {
     if layout_debug_enabled() {
         eprintln!(
@@ -401,215 +648,116 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
         );
     }
     let handle = root.layout_slot().borrow().handle.clone();
-    let Some(handle) = handle else {
-        if layout_debug_enabled() {
-            eprintln!("[compute_layout] BAILED — no handle on root");
-        }
-        return;
-    };
+    let Some(handle) = handle else { return };
 
     let w = available_size.width as f32;
     let h = available_size.height as f32;
 
-    let mut tree = handle.tree.tree.borrow_mut();
-
-    // Force the root to fill the available space exactly.
-    let mut style = tree
-        .style(handle.node_id)
-        .cloned()
-        .unwrap_or_default();
-    style.size = Size {
-        width: Dimension::length(w),
-        height: Dimension::length(h),
-    };
-    tree.set_style(handle.node_id, style)
-        .expect("taffy: set_style failed");
+    // Force the root to fill the available space.
+    {
+        let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
+        style.size = Size {
+            width: Dimension::length(w),
+            height: Dimension::length(h),
+        };
+        handle.tree.set_style(handle.node_id, style);
+    }
 
     let avail = Size {
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    // Use compute_layout_with_measure so leaf controls (NSButton,
-    // NSTextField, etc.) get sized to their actual content via
-    // `intrinsicContentSize`. Without this, leaves would size to 0
-    // (or to a hardcoded placeholder) regardless of their text.
-    tree.compute_layout_with_measure(handle.node_id, avail, measure_closure)
-        .expect("taffy: compute_layout failed");
+    handle.tree.run_layout_pass(handle.node_id, avail);
 
-    // Second pass: for each `<scroll_view>` in the tree, recompute
-    // its subtree with the viewport width pinned and height =
-    // MaxContent. This produces natural-size frames for the scroll
-    // view's children — `apply_layout` later sets the documentView
-    // to span them so NSScrollView shows scroll bars when content
-    // overflows.
-    //
-    // Returns a map of `scroll_view NodeId → main-pass Layout`.
-    // `apply_layout` uses these to set each scroll_view's NSView
-    // frame from the *first* pass (the actual viewport size); the
-    // second pass overwrote that with `(viewport_w, content_height)`,
-    // which is the documentView's size, not the scroll view's.
-    let scroll_view_viewports =
-        relayout_scroll_views(&mut tree, handle.node_id);
+    // Second pass for scroll views.
+    let scroll_view_viewports = relayout_scroll_views(&handle.tree, handle.node_id);
 
     apply_layout(
-        &tree,
+        &handle.tree,
         handle.node_id,
         root.ns_view(),
         &scroll_view_viewports,
     );
 
-    // The debug overlay caches its draw output; if subview frames
-    // changed but the overlay's bounds didn't, AppKit won't redraw
-    // it on its own. Mark it dirty so the next display pass restrokes
-    // every node's bounding box from the freshly-computed Taffy
-    // layout.
     #[cfg(feature = "debug-overlay")]
     crate::debug_overlay::mark_overlays_dirty();
 }
 
-/// Walk `tree` from `node_id`. For each node whose context says
-/// `is_scroll_view`, run a second `compute_layout_with_measure`
-/// rooted at that node with width pinned to the first-pass
-/// viewport and height = MaxContent.
-///
-/// Returns the first-pass layout for each scroll_view encountered,
-/// keyed by NodeId. `apply_layout` reads these instead of calling
-/// `tree.layout(scroll_view_id)` (which now reflects the
-/// second-pass content size, not the viewport).
+/// Walk the tree from `node_id`. For each scroll-view, run a second
+/// `compute_root_layout` with the viewport width pinned and height =
+/// MaxContent. Returns a map of `scroll_view NodeId → main-pass
+/// Layout` (the viewport rect, before the second pass overwrites
+/// it).
 fn relayout_scroll_views(
-    tree: &mut TaffyTree<NodeContext>,
-    node_id: NodeId,
+    tree: &TreeRef,
+    root: NodeId,
 ) -> std::collections::HashMap<NodeId, Layout> {
     let mut viewports = std::collections::HashMap::new();
-    relayout_scroll_views_inner(tree, node_id, &mut viewports);
+    relayout_scroll_views_inner(tree, root, &mut viewports);
     viewports
 }
 
 fn relayout_scroll_views_inner(
-    tree: &mut TaffyTree<NodeContext>,
-    node_id: NodeId,
+    tree: &TreeRef,
+    id: NodeId,
     viewports: &mut std::collections::HashMap<NodeId, Layout>,
 ) {
     let is_scroll = tree
-        .get_node_context(node_id)
+        .get_node_context(id)
         .map(|c| c.is_scroll_view)
         .unwrap_or(false);
 
     if is_scroll {
-        // Snapshot the viewport size before the second pass
-        // overwrites it.
-        let main_layout = *tree
-            .layout(node_id)
-            .expect("taffy: layout missing for scroll_view");
-        viewports.insert(node_id, main_layout);
+        let main_layout = tree.layout(id).expect("layout missing for scroll_view");
+        viewports.insert(id, main_layout);
 
         let viewport_w = main_layout.size.width;
 
-        // Override the scroll_view's style for the second pass so
-        // it stretches to viewport width but is allowed to grow on
-        // the main axis with content. After the pass, restore.
-        let saved_style = tree
-            .style(node_id)
-            .expect("taffy: style missing")
-            .clone();
+        // Override the scroll_view's style for the second pass so it
+        // stretches to viewport width but is allowed to grow on the
+        // main axis with content. After the pass, restore.
+        let saved_style = tree.style(id).expect("style missing");
         let mut probe_style = saved_style.clone();
         probe_style.size = Size {
             width: Dimension::length(viewport_w),
             height: Dimension::auto(),
         };
-        let _ = tree.set_style(node_id, probe_style);
+        tree.set_style(id, probe_style);
+        tree.mark_dirty(id);
 
         let avail = Size {
             width: AvailableSpace::Definite(viewport_w),
             height: AvailableSpace::MaxContent,
         };
-        let _ = tree.mark_dirty(node_id);
-        tree.compute_layout_with_measure(node_id, avail, measure_closure)
-            .expect("taffy: scroll-view re-layout failed");
+        tree.run_layout_pass(id, avail);
 
-        // Restore the original style. (Mark dirty so the next main
-        // pass re-runs against the canonical style — without this,
-        // the cached "second-pass" layout would be reused.)
-        let _ = tree.set_style(node_id, saved_style);
-        let _ = tree.mark_dirty(node_id);
-
-        // Don't recurse — children of a scroll view have been laid
-        // out in the second pass; nested scroll_views inside one
-        // are an unusual case we'd handle by recursing here, but
-        // skipping for now.
+        tree.set_style(id, saved_style);
+        tree.mark_dirty(id);
         return;
     }
 
-    let children: Vec<NodeId> = tree
-        .children(node_id)
-        .map(|cs| cs.into_iter().collect())
-        .unwrap_or_default();
-    for child in children {
+    let kids = tree.children(id);
+    for child in kids {
         relayout_scroll_views_inner(tree, child, viewports);
     }
 }
 
-/// Reusable function-pointer so both `compute_layout_with_measure`
-/// call sites share a single monomorphization. Two identical inline
-/// closures would produce distinct types, doubling the flexbox
-/// engine in the binary.
-fn measure_closure(
-    known: Size<Option<f32>>,
-    avail_space: Size<AvailableSpace>,
-    _node_id: NodeId,
-    ctx: Option<&mut NodeContext>,
-    _style: &Style,
-) -> Size<f32> {
-    measure_leaf(known, avail_space, ctx)
-}
+// ---------------------------------------------------------------------
+// Leaf size measurement
+// ---------------------------------------------------------------------
 
-/// Measure callback for leaf Taffy nodes. We ask the underlying
-/// NSView for its `intrinsicContentSize` — for NSControl-derived
-/// views (button, label, text field) this is the size that fits the
-/// rendered content (font metrics, button title, etc.). For non-
-/// control views (FlippedView containers, Placeholder) the
-/// intrinsic is `NSViewNoIntrinsicMetric` (-1) on each axis, which
-/// we map to 0.
-///
-/// `known` carries dimensions that have already been pinned by
-/// styling (`size: length(...)`); when present we return them as-is
-/// to skip the AppKit call.
-fn measure_leaf(
+/// Size-only measure callback for leaves. Mirrors the previous
+/// `measure_leaf` logic; the baseline is queried separately by the
+/// LayoutPartialTree leaf path so it can flow into `LayoutOutput`.
+fn measure_leaf_size(
     known: Size<Option<f32>>,
-    _avail: Size<AvailableSpace>,
-    ctx: Option<&mut NodeContext>,
+    avail: Size<AvailableSpace>,
+    view: &NSView,
 ) -> Size<f32> {
     if let (Some(w), Some(h)) = (known.width, known.height) {
         return Size { width: w, height: h };
     }
-    let Some(ctx) = ctx else {
-        return Size {
-            width: known.width.unwrap_or(0.0),
-            height: known.height.unwrap_or(0.0),
-        };
-    };
 
-    let view = &**ctx.view;
-
-    // For NSControl (NSButton, NSTextField, etc.), call `sizeToFit`
-    // to compute proper bezel-inclusive size, then read the frame.
-    // `intrinsicContentSize` alone returns cell content only (no
-    // bezel padding) so text gets clipped inside the rendered chrome.
-    //
-    // Special case: a wrapping NSTextField (label with
-    // `cell.wraps == true`) needs its height computed for the
-    // *width Taffy will give it*. That width can come either from
-    // `known.width` (parent has already pinned it — flex stretch,
-    // explicit width, etc.) or from a `Definite` `_avail.width`
-    // (block-layout content area, or a flex parent's available
-    // cross-axis space). Without consulting `_avail`, block-layout
-    // labels measure at single-line natural width — which leaves
-    // their reported height at one-line — and any text past the
-    // container's edge ends up clipped instead of wrapping.
-    //
-    // For non-control views (FlippedView containers, Placeholder),
-    // fall back to intrinsicContentSize (NSViewNoIntrinsicMetric on
-    // each axis, mapped to 0).
     let any: &AnyObject = view.as_ref();
     let mut measured: NSSize = if let Some(field) =
         any.downcast_ref::<NSTextField>()
@@ -617,7 +765,7 @@ fn measure_leaf(
         let wrapping = field.cell().is_some_and(|c| c.wraps());
         let constraint_w: Option<f32> = if let Some(w) = known.width {
             Some(w)
-        } else if let AvailableSpace::Definite(w) = _avail.width {
+        } else if let AvailableSpace::Definite(w) = avail.width {
             Some(w)
         } else {
             None
@@ -626,26 +774,12 @@ fn measure_leaf(
             // AppKit's idiomatic recipe for multiline-label sizing:
             // set `preferredMaxLayoutWidth` to the width the parent
             // is going to give us, then read `intrinsicContentSize`.
-            // Per the docs:
-            //
-            //   "If the text field wraps, the intrinsic height is
-            //    large enough to show the entire text contents at
-            //    that width."
-            //
-            // This is what AppKit's own Auto Layout uses internally
-            // for wrapping labels and produces stable, properly
-            // rounded sizes (vs. `cellSizeForBounds:`, which can
-            // disagree with intrinsic size by a pixel and cause
-            // last-word flicker on resize).
             let w = constraint_w.unwrap() as f64;
             if (field.preferredMaxLayoutWidth() - w).abs() > f64::EPSILON {
                 field.setPreferredMaxLayoutWidth(w);
             }
             view.intrinsicContentSize()
         } else {
-            // Fallback: sizeToFit + frame round-trip (preserves the
-            // existing single-line / bezel-inclusive measurement
-            // behaviour for buttons, non-wrapping fields, etc.).
             let original = view.frame();
             (field as &NSControl).sizeToFit();
             let fit = view.frame().size;
@@ -662,14 +796,9 @@ fn measure_leaf(
         view.intrinsicContentSize()
     };
 
-    // Editable text fields: width is NOT content-driven. The user
-    // expects the field to be sized by its parent (typical web/UI
-    // behaviour: text scrolls horizontally inside a fixed-width
-    // box, the box doesn't grow as you type). Returning content-
-    // width here would make the field grow with each keystroke.
-    // Force width to 0 so the parent (via cross-axis stretch in a
-    // Column container, or via flex_grow if the user opts into it)
-    // decides the actual width.
+    // Editable text fields: width is NOT content-driven (otherwise
+    // the field grows with each keystroke). Force width to 0 so the
+    // parent decides via cross-axis stretch / flex_grow.
     if let Some(field) = any.downcast_ref::<NSTextField>() {
         if field.isEditable() {
             measured.width = 0.0;
@@ -681,13 +810,8 @@ fn measure_leaf(
             return k;
         }
         let v = measured_v as f32;
-        // NSViewNoIntrinsicMetric is -1; clamp anything negative to 0
-        // so Taffy doesn't get confused by negative sizes.
-        if v < 0.0 {
-            0.0
-        } else {
-            v
-        }
+        // NSViewNoIntrinsicMetric is -1; clamp to 0.
+        if v < 0.0 { 0.0 } else { v }
     }
 
     Size {
@@ -696,66 +820,37 @@ fn measure_leaf(
     }
 }
 
-/// Recursively walk the Taffy tree, copying each node's computed
-/// `Layout` into the corresponding NSView's `frame`.
-///
-/// We iterate over the parent's NSView subviews. AppKit-internal
-/// subviews (NSButton's cell, NSTextField's field editor, focus
-/// rings) are *not* registered in the Taffy tree, so we filter those
-/// out by reading the layout slot off each subview's wrapper. But
-/// since we don't have NSView → Node back-mapping, we instead iterate
-/// Taffy children and rely on subview index correspondence at each
-/// level. This works because `insert_node` mirrors NSView subview
-/// order into Taffy children order, and AppKit-internal subviews
-/// belong to leaf controls (which never have Taffy children, so we
-/// never try to descend into them).
+// ---------------------------------------------------------------------
+// Apply Taffy's computed frames onto NSViews
+// ---------------------------------------------------------------------
+
 fn apply_layout(
-    tree: &TaffyTree<NodeContext>,
-    node_id: NodeId,
+    tree: &TreeRef,
+    id: NodeId,
     view: &NSView,
     scroll_viewports: &std::collections::HashMap<NodeId, Layout>,
 ) {
-    // For scroll views, prefer the cached first-pass viewport
-    // layout — `tree.layout()` would return the second-pass result
-    // (which is the documentView's content size, not the
-    // viewport).
-    let layout: Layout = if let Some(cached) =
-        scroll_viewports.get(&node_id).copied()
-    {
-        cached
-    } else {
-        *tree
-            .layout(node_id)
-            .expect("taffy: layout missing for node")
-    };
+    // For scroll views, prefer the cached first-pass viewport layout
+    // — `tree.layout()` would now return the second-pass result.
+    let layout: Layout = scroll_viewports
+        .get(&id)
+        .copied()
+        .unwrap_or_else(|| tree.layout(id).expect("layout missing for node"));
     set_frame_from_layout(view, &layout);
 
-    let children = tree
-        .children(node_id)
-        .expect("taffy: children() failed");
+    let children = tree.children(id);
     if children.is_empty() {
-        // Leaf — don't descend. AppKit-internal subviews are not ours
-        // to position.
         return;
     }
 
-    // For `<scroll_view>`, our children live inside the documentView
-    // (a FlippedView we install at construction). Walk that view's
-    // subviews, not the scroll view's own (which are AppKit's
-    // clipView + scrollers).
-    //
-    // Gated on `NodeContext::is_scroll_view` rather than a dynamic
-    // NSScrollView class check — `<text_view>` is also backed by an
-    // NSScrollView but its documentView is an opaque NSTextView.
-    // We don't want apply_layout to recurse into NSTextView's
-    // subviews (it has none we own).
+    // For `<scroll_view>` containers, our children live inside the
+    // documentView (a FlippedView we install at construction).
     let scroll_doc: Option<Retained<NSView>> = {
         let is_ours = tree
-            .get_node_context(node_id)
+            .get_node_context(id)
             .map(|c| c.is_scroll_view)
             .unwrap_or(false);
         if is_ours {
-            use objc2::runtime::AnyObject;
             use objc2_app_kit::NSScrollView;
             let any: &AnyObject = view.as_ref();
             any.downcast_ref::<NSScrollView>()
@@ -765,25 +860,17 @@ fn apply_layout(
         }
     };
     if let Some(doc) = scroll_doc.as_ref() {
-        // Compute the union of children's allocated rects. Taffy's
-        // second pass laid them out at natural sizes; we bound the
-        // documentView around them so NSScrollView knows the
-        // scroll content extent.
+        // Bound the documentView around its children so NSScrollView
+        // shows scroll bars when content overflows.
         let mut max_x: f32 = 0.0;
         let mut max_y: f32 = 0.0;
         for child_id in children.iter() {
-            let child_layout = tree
-                .layout(*child_id)
-                .expect("taffy: child layout missing");
-            let right = child_layout.location.x + child_layout.size.width;
-            let bottom = child_layout.location.y + child_layout.size.height;
+            let cl = tree.layout(*child_id).expect("child layout missing");
+            let right = cl.location.x + cl.size.width;
+            let bottom = cl.location.y + cl.size.height;
             if right > max_x { max_x = right; }
             if bottom > max_y { max_y = bottom; }
         }
-        // Document view at least as wide as the viewport (so the
-        // content fills it horizontally) and at least as tall as
-        // the natural content. Larger-than-viewport heights are
-        // what makes NSScrollView show scroll bars.
         let doc_width = (max_x as f64).max(layout.size.width as f64);
         let doc_height = (max_y as f64).max(layout.size.height as f64);
         doc.setFrame(NSRect::new(
@@ -792,23 +879,11 @@ fn apply_layout(
         ));
     }
 
-    let subview_source: &NSView =
-        scroll_doc.as_deref().unwrap_or(view);
+    let subview_source: &NSView = scroll_doc.as_deref().unwrap_or(view);
     let subviews = subview_source.subviews();
-    // Match Taffy children to subviews by position. Taffy children are
-    // mirrored from the NSView subview order via insert_node, so the
-    // first N subviews correspond 1:1 to the N Taffy children.
-    //
-    // Filter out subviews tagged with `OVERLAY_TAG` (the debug overlay,
-    // when the `debug-overlay` feature is on). The overlay isn't
-    // registered in Taffy and would otherwise consume one Taffy child's
-    // index, shifting every other subview by one and stacking content
-    // in the top-left corner.
-    //
-    // (Caveat: if AppKit injects a subview under a CONTAINER we own
-    // — never observed today — this would still skew. Containers we
-    // expose as `<view>`/`<stack_view>` are FlippedView, which doesn't
-    // add its own subviews.)
+    // Filter out subviews tagged with `OVERLAY_TAG` (the debug
+    // overlay isn't registered in our tree and would otherwise
+    // consume one Taffy child's index).
     let owned: Vec<_> = subviews
         .iter()
         .filter(|sv| {
@@ -827,6 +902,37 @@ fn apply_layout(
     }
 }
 
+// ---------------------------------------------------------------------
+// Baseline helper (used by both the leaf path and the debug overlay)
+// ---------------------------------------------------------------------
+
+/// First-baseline offset from the top of `view`'s **frame**.
+///
+/// `NSView::firstBaselineOffsetFromTop` already does the work, but
+/// the docs are easy to misread: the value is the distance from the
+/// top of the view's *alignment rectangle* to its topmost baseline,
+/// not from the top of the view's frame. For controls with a focus-
+/// ring or shadow inset (NSButton has both), the alignment rect
+/// starts a few points inside the frame, so a caller that uses the
+/// raw value directly draws the baseline that many points too high.
+///
+/// We add `alignmentRectInsets.top` to convert into frame-relative
+/// coordinates — which is what every caller here actually wants
+/// (apply_layout setFrames in frame-coords, the debug overlay
+/// strokes in frame-coords).
+///
+/// Returns `None` for views with no measurable text baseline. The
+/// `NSView` default returns 0 — that's the docs-blessed "I don't
+/// have a baseline" sentinel.
+pub fn first_baseline_offset(view: &NSView) -> Option<f64> {
+    let raw = view.firstBaselineOffsetFromTop() as f64;
+    if raw <= 0.0 {
+        return None;
+    }
+    let insets = view.alignmentRectInsets();
+    Some(raw + insets.top as f64)
+}
+
 fn set_frame_from_layout(view: &NSView, layout: &Layout) {
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
@@ -843,26 +949,16 @@ fn set_frame_from_layout(view: &NSView, layout: &Layout) {
 }
 
 // ---------------------------------------------------------------------
-// Convenience setters for common style properties.
+// Convenience setters
 // ---------------------------------------------------------------------
 
-// All `set_*` style setters mutate the cached style + the Taffy
-// tree (via `update_style`) and then `schedule_relayout`. Scheduling
-// is a no-op when the node isn't registered in a tree yet, so it's
-// safe at static-build time. For reactive callers, scheduling is
-// what makes Taffy notice the change and recompute on the next tick.
-
 pub fn set_width(node: &Node, width_px: f32) {
-    update_style(node, |s| {
-        s.size.width = Dimension::length(width_px);
-    });
+    update_style(node, |s| s.size.width = Dimension::length(width_px));
     schedule_relayout(node);
 }
 
 pub fn set_height(node: &Node, height_px: f32) {
-    update_style(node, |s| {
-        s.size.height = Dimension::length(height_px);
-    });
+    update_style(node, |s| s.size.height = Dimension::length(height_px));
     schedule_relayout(node);
 }
 
@@ -893,7 +989,7 @@ pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
 
 pub fn set_padding(node: &Node, all_px: f32) {
     update_style(node, |s| {
-        s.padding = taffy::Rect {
+        s.padding = Rect {
             left: LengthPercentage::length(all_px),
             right: LengthPercentage::length(all_px),
             top: LengthPercentage::length(all_px),
@@ -943,8 +1039,6 @@ pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
     schedule_relayout(node);
 }
 
-/// Tint the underlying NSView with a solid background color via
-/// CALayer. Switches the view to layer-backed mode (idempotent).
 pub fn set_background_color(node: &Node, color: crate::Color) {
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -954,10 +1048,6 @@ pub fn set_background_color(node: &Node, color: crate::Color) {
     }
 }
 
-/// Clip subviews to the view's bounds — equivalent to CSS
-/// `overflow: hidden`. Layout still places children at their
-/// computed sizes; rendering clips them at the parent's edge.
-/// Switches the view to layer-backed mode (idempotent).
 pub fn set_clip(node: &Node, clip: bool) {
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -968,7 +1058,7 @@ pub fn set_clip(node: &Node, clip: bool) {
 
 pub fn set_margin(node: &Node, all_px: f32) {
     update_style(node, |s| {
-        s.margin = taffy::Rect {
+        s.margin = Rect {
             left: LengthPercentageAuto::length(all_px),
             right: LengthPercentageAuto::length(all_px),
             top: LengthPercentageAuto::length(all_px),
@@ -978,14 +1068,11 @@ pub fn set_margin(node: &Node, all_px: f32) {
     schedule_relayout(node);
 }
 
-/// Per-child override of the parent flex container's `align_items`.
-/// `None` means inherit from parent (Taffy's default).
 pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
     update_style(node, |s| s.align_self = ai);
     schedule_relayout(node);
 }
 
-/// Convert renderer-common's `Dim` to Taffy's `Dimension`.
 pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
     use renderer::attrs::Dim;
     match d {
@@ -995,10 +1082,6 @@ pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
     }
 }
 
-/// Convert renderer-common's `AlignSelf` to Taffy's `AlignItems`
-/// (Taffy uses one enum for both align-items and align-self).
-/// Returns `None` for `AlignSelf::Auto` so the Style stores `None`,
-/// meaning "inherit from the parent's `align_items`".
 pub fn align_self_to_taffy(
     a: renderer::attrs::AlignSelf,
 ) -> Option<AlignItems> {
