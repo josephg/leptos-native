@@ -169,6 +169,20 @@ pub fn open_window(
     layout::register_in_tree(content_root.as_node(), &tree);
     nswindow.setContentView(Some(content_root.ns_view()));
 
+    #[cfg(feature = "debug-overlay")]
+    {
+        // content_root.ns_view() is a FlippedView for the "view" tag.
+        let view: &objc2_app_kit::NSView = content_root.ns_view();
+        let any: &objc2::runtime::AnyObject = view.as_ref();
+        let flipped: &crate::flipped_view::FlippedView = any
+            .downcast_ref::<crate::flipped_view::FlippedView>()
+            .expect(
+                "debug-overlay: content_root is not a FlippedView — \
+                 view tag handling has diverged",
+            );
+        crate::debug_overlay::install(flipped, &tree, mtm);
+    }
+
     // Resize / close delegate.
     let delegate = WindowDelegate::new(content_root.as_node().clone(), mtm);
     let delegate_proto: &ProtocolObject<dyn NSWindowDelegate> =

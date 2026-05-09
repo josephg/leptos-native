@@ -75,7 +75,7 @@ fn Row(value: RwSignal<i32>) -> impl IntoView {
     view! {
         <hstack gap=8.0 align=AlignItems::Center>
             <button on:click=move |_| value.update(|n| *n -= 1)>"-1"</button>
-            <label>{move || value.get().to_string()}</label>
+            <label height=22.0>{move || value.get().to_string()}</label>
             <button on:click=move |_| value.update(|n| *n += 1)>"+1"</button>
         </hstack>
     }

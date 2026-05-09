@@ -181,6 +181,7 @@ name = "cocoa_dom"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
+ "block2",
  "dispatch2",
  "futures",
  "objc2",

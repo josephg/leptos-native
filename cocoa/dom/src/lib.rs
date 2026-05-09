@@ -27,6 +27,8 @@
 
 pub mod app;
 pub mod color;
+#[cfg(feature = "debug-overlay")]
+pub mod debug_overlay;
 pub mod date;
 pub mod event;
 pub mod flipped_view;

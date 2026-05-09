@@ -1796,6 +1796,10 @@ pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     grow: Option<f32>,
+    width: Option<f32>,
+    height: Option<f32>,
+    min_width: Option<f32>,
+    min_height: Option<f32>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     alpha: Option<MaybeReactive<f64>>,
@@ -1823,6 +1827,10 @@ pub fn label() -> Label {
         text: MaybeReactive::Static(String::new()),
         handlers: Vec::new(),
         grow: None,
+        width: None,
+        height: None,
+        min_width: None,
+        min_height: None,
         node_ref: None,
         directives: Vec::new(),
         alpha: None,
@@ -1855,6 +1863,26 @@ impl Label {
 
     pub fn grow(mut self, g: f32) -> Self {
         self.grow = Some(g);
+        self
+    }
+
+    pub fn width(mut self, w: f32) -> Self {
+        self.width = Some(w);
+        self
+    }
+
+    pub fn height(mut self, h: f32) -> Self {
+        self.height = Some(h);
+        self
+    }
+
+    pub fn min_width(mut self, w: f32) -> Self {
+        self.min_width = Some(w);
+        self
+    }
+
+    pub fn min_height(mut self, h: f32) -> Self {
+        self.min_height = Some(h);
         self
     }
 
@@ -1942,6 +1970,18 @@ where
 
         if let Some(g) = self.grow {
             set_flex_grow(el.as_node(), g);
+        }
+        if let Some(w) = self.width {
+            cocoa_dom::layout::set_width(el.as_node(), w);
+        }
+        if let Some(h) = self.height {
+            cocoa_dom::layout::set_height(el.as_node(), h);
+        }
+        if let Some(w) = self.min_width {
+            cocoa_dom::layout::set_min_width(el.as_node(), w);
+        }
+        if let Some(h) = self.min_height {
+            cocoa_dom::layout::set_min_height(el.as_node(), h);
         }
 
         if let Some(s) = self.selectable {

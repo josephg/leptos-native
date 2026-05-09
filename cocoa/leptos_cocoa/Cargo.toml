@@ -31,6 +31,9 @@ any_spawner = { workspace = true }
 default = []
 # Enables Taffy's `block_layout` algorithm and the `<block>` builder.
 block_layout = ["cocoa_dom/block_layout"]
+# Strokes a 1px outline around every Taffy-tracked node, toggled with
+# the `~` key. Forwards to `cocoa_dom`.
+debug-overlay = ["cocoa_dom/debug-overlay"]
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }

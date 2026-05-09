@@ -743,15 +743,27 @@ impl Element {
                 splice_subview_before(parent, child_view, marker_view);
                 // Find where `child` ended up in the subview array,
                 // mirror the same index into Taffy.
+                //
+                // The debug overlay (when the `debug-overlay` feature
+                // is on) lives in the subview list but isn't a Taffy
+                // child, so we skip it here — otherwise the Taffy
+                // index would be off by one for every child added
+                // while the overlay is installed.
                 let subviews = parent.subviews();
                 let child_ptr: *const NSView = child_view;
-                let mut child_index = subviews.len();
-                for (i, sv) in subviews.iter().enumerate() {
+                let mut child_index = 0_usize;
+                for sv in subviews.iter() {
                     let sv_ptr: *const NSView = &*sv;
                     if sv_ptr == child_ptr {
-                        child_index = i;
                         break;
                     }
+                    #[cfg(feature = "debug-overlay")]
+                    {
+                        if sv.tag() == crate::debug_overlay::OVERLAY_TAG {
+                            continue;
+                        }
+                    }
+                    child_index += 1;
                 }
                 crate::layout::insert_child_at(
                     self.as_node(),

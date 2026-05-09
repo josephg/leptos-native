@@ -457,6 +457,14 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
         root.ns_view(),
         &scroll_view_viewports,
     );
+
+    // The debug overlay caches its draw output; if subview frames
+    // changed but the overlay's bounds didn't, AppKit won't redraw
+    // it on its own. Mark it dirty so the next display pass restrokes
+    // every node's bounding box from the freshly-computed Taffy
+    // layout.
+    #[cfg(feature = "debug-overlay")]
+    crate::debug_overlay::mark_overlays_dirty();
 }
 
 /// Walk `tree` from `node_id`. For each node whose context says
@@ -787,20 +795,35 @@ fn apply_layout(
     let subview_source: &NSView =
         scroll_doc.as_deref().unwrap_or(view);
     let subviews = subview_source.subviews();
-    let subview_count = subviews.count() as usize;
     // Match Taffy children to subviews by position. Taffy children are
     // mirrored from the NSView subview order via insert_node, so the
     // first N subviews correspond 1:1 to the N Taffy children.
+    //
+    // Filter out subviews tagged with `OVERLAY_TAG` (the debug overlay,
+    // when the `debug-overlay` feature is on). The overlay isn't
+    // registered in Taffy and would otherwise consume one Taffy child's
+    // index, shifting every other subview by one and stacking content
+    // in the top-left corner.
+    //
     // (Caveat: if AppKit injects a subview under a CONTAINER we own
-    // — never observed today — this would skew. Containers we expose
-    // as `<view>`/`<stack_view>` are FlippedView, which doesn't add
-    // its own subviews.)
+    // — never observed today — this would still skew. Containers we
+    // expose as `<view>`/`<stack_view>` are FlippedView, which doesn't
+    // add its own subviews.)
+    let owned: Vec<_> = subviews
+        .iter()
+        .filter(|sv| {
+            #[cfg(feature = "debug-overlay")]
+            {
+                if sv.tag() == crate::debug_overlay::OVERLAY_TAG {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
     for (i, child_id) in children.iter().enumerate() {
-        if i >= subview_count {
-            break;
-        }
-        let sv = subviews.objectAtIndex(i);
-        apply_layout(tree, *child_id, &sv, scroll_viewports);
+        let Some(sv) = owned.get(i) else { break };
+        apply_layout(tree, *child_id, sv, scroll_viewports);
     }
 }
 

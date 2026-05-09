@@ -13,6 +13,14 @@ default = []
 # `Element::create_with`. Off by default to keep binary size down
 # for apps that only need flex.
 block_layout = ["taffy/block_layout"]
+# Strokes a 1px outline around every Taffy-tracked node, toggled with
+# the `~` key. See `cocoa_dom::debug_overlay`. Off by default — flip
+# on per-binary in the example's Cargo.toml when debugging layout.
+debug-overlay = [
+  "objc2-app-kit/NSBezierPath",
+  "objc2-app-kit/block2",
+  "dep:block2",
+]
 
 [dependencies]
 renderer = { workspace = true }
@@ -23,6 +31,7 @@ reactive_graph = { workspace = true, features = ["effects"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+block2 = { version = "0.6", optional = true }
 dispatch2 = "0.3"
 any_spawner = { workspace = true }
 futures = { workspace = true, default-features = true }
@@ -147,3 +156,9 @@ harness = false
 name = "layout_dirtying"
 path = "tests/layout_dirtying.rs"
 harness = false
+
+[[test]]
+name = "debug_overlay"
+path = "tests/debug_overlay.rs"
+harness = false
+required-features = ["debug-overlay"]
