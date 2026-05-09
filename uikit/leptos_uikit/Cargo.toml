@@ -12,7 +12,7 @@ name = "leptos_uikit"
 
 [dependencies]
 renderer = { workspace = true }
-reactive_graph = { workspace = true, features = ["effects"] }
+reactive_graph = { workspace = true, features = ["effects", "serde"] }
 leptos = { workspace = true }
 leptos_macro = { workspace = true }
 either_of = { workspace = true }
@@ -28,6 +28,17 @@ any_spawner = { workspace = true }
 
 [features]
 default = []
+
+[target.'cfg(target_os = "ios")'.dev-dependencies]
+ios_dom = { path = "../dom", version = "0.1.0" }
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-ui-kit = "0.3"
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

@@ -9,7 +9,7 @@ name = "settings"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../../web/leptos", features = ["native-ui"] }
+leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }
 
 [profile.dev]
 panic = "abort"
