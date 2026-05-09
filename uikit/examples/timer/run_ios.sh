@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/target/aarch64-apple-ios-sim/debug/timer"
+BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/timer"
 BUNDLE_DIR="$SCRIPT_DIR/target/Timer.app"
 BUNDLE_ID="com.example.timer"
 

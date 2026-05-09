@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/target/aarch64-apple-ios-sim/debug/login_form"
+BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/login_form"
 BUNDLE_DIR="$SCRIPT_DIR/target/LoginForm.app"
 BUNDLE_ID="com.example.login_form"
 

@@ -15,20 +15,52 @@ members = [
   "cocoa/dom",
   "gtk/dom",
   "uikit/dom",
+
+  # cocoa examples — workspace members so they share the workspace
+  # `target/` directory rather than each example creating its own.
+  "cocoa/examples/block_layout",
+  "cocoa/examples/checkbox",
+  "cocoa/examples/component_event_test",
+  "cocoa/examples/counter",
+  "cocoa/examples/counter_without_macros",
+  "cocoa/examples/counters",
+  "cocoa/examples/directives",
+  "cocoa/examples/error_boundary",
+  "cocoa/examples/greeter",
+  "cocoa/examples/login_form",
+  "cocoa/examples/parent_child",
+  "cocoa/examples/persistent_counter",
+  "cocoa/examples/scroll_view",
+  "cocoa/examples/settings",
+  "cocoa/examples/showcase",
+  "cocoa/examples/stores",
+  "cocoa/examples/timer",
+  "cocoa/examples/two_windows",
+
+  # iOS examples — workspace members for shared `target/`, but
+  # excluded from default-members below (they only build for the
+  # iOS-simulator target).
+  "uikit/examples/checkbox",
+  "uikit/examples/controls",
+  "uikit/examples/counter",
+  "uikit/examples/counters",
+  "uikit/examples/greeter",
+  "uikit/examples/login_form",
+  "uikit/examples/settings",
+  "uikit/examples/switch_demo",
+  "uikit/examples/timer",
+  "uikit/examples/todomvc",
 ]
 
-# `cargo test` (no args) and `cargo build` (no args) operate on
-# `default-members`, not all members. We exclude the uikit ports
-# because their tests require an iOS-simulator target — running
-# them on the macOS host fails at link time. To test them
-# explicitly:
+# `cargo test` / `cargo build` (no args) operate on `default-members`,
+# not all members. uikit/* are excluded because they only build for
+# the iOS-simulator target. Run them via:
 #
-#   cargo test --manifest-path uikit/dom/Cargo.toml \
-#     --target aarch64-apple-ios-sim
-#   cargo test --manifest-path uikit/leptos_uikit/Cargo.toml \
+#   cargo build --manifest-path uikit/examples/counter/Cargo.toml \
 #     --target aarch64-apple-ios-sim
 #
-# (or `cargo test -p ios_dom -p leptos_uikit --target ...`.)
+# (or `cargo build -p counter --target …` if the example name is
+# unique in the workspace).
 default-members = [
   "common/reactive_graph",
   "common/reactive_stores",
@@ -39,17 +71,39 @@ default-members = [
   "cocoa/leptos_cocoa",
   "cocoa/dom",
   "gtk/dom",
+
+  "cocoa/examples/block_layout",
+  "cocoa/examples/checkbox",
+  "cocoa/examples/component_event_test",
+  "cocoa/examples/counter",
+  "cocoa/examples/counter_without_macros",
+  "cocoa/examples/counters",
+  "cocoa/examples/directives",
+  "cocoa/examples/error_boundary",
+  "cocoa/examples/greeter",
+  "cocoa/examples/login_form",
+  "cocoa/examples/parent_child",
+  "cocoa/examples/persistent_counter",
+  "cocoa/examples/scroll_view",
+  "cocoa/examples/settings",
+  "cocoa/examples/showcase",
+  "cocoa/examples/stores",
+  "cocoa/examples/timer",
+  "cocoa/examples/two_windows",
 ]
 exclude = [
   "benchmarks",
   "projects",
-  "cocoa/examples",
   "gtk/examples",
-  "uikit/examples",
   "uikit/xcuitests",
-  # Excluded until cleaned up + moved into common/ in
-  # Phase 6 (leptos_macro -> common/leptos_macro) and
-  # Phase 7 (leptos -> common/leptos).
+  # Examples that don't build today — they hit features still on
+  # the deferred punch list (Slots, Resource, AnyView, Transition).
+  # Kept in the source tree as documentation; re-add to members as
+  # their dependencies land.
+  "cocoa/examples/fetch",
+  "cocoa/examples/slots",
+  "cocoa/examples/todomvc",
+  "cocoa/examples/transition",
 ]
 
 [workspace.package]
@@ -165,8 +219,6 @@ tower-layer = { default-features = false, version = "0.3" }
 attribute-derive = { default-features = false, version = "0.10" }
 insta = { default-features = false, version = "1.46" }
 codee = { default-features = false, version = "0.3" }
-actix-http = { default-features = false, version = "3.12" }
-wasm-bindgen-test = { default-features = false, version = "0.3" }
 rustversion = { default-features = false, version = "1.0" }
 getrandom = { default-features = false, version = "0.4" }
 actix-files = { default-features = false, version = "0.6" }
@@ -175,9 +227,6 @@ base16 = { default-features = false, version = "0.2" }
 digest = { default-features = false, version = "0.10" }
 sha2 = { default-features = false, version = "0.10" }
 subsecond = { default-features = false, version = "0.7" }
-dioxus-cli-config = { default-features = false, version = "0.7" }
-dioxus-devtools = { default-features = false, version = "0.7" }
-wasm_split_helpers = { default-features = false, version = "0.2.1" }
 
 [profile.release]
 codegen-units = 1

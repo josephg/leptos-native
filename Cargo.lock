@@ -111,6 +111,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "block_layout"
+version = "0.1.0"
+dependencies = [
+ "cocoa_dom",
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,6 +170,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "checkbox"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "checkbox_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
 name = "cocoa_dom"
 version = "0.1.0"
 dependencies = [
@@ -185,12 +207,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2550f75b8cfac212855f6b1885455df8eaee8fe8e246b647d69146142e016084"
 
 [[package]]
+name = "component_event_test"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
+]
+
+[[package]]
+name = "controls_demo"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
 ]
 
 [[package]]
@@ -212,6 +248,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "counter"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "counter_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
+name = "counter_without_macros"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "counters"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "counters_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -226,6 +297,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "directives"
+version = "0.1.0"
+dependencies = [
+ "cocoa_dom",
+ "leptos_cocoa",
 ]
 
 [[package]]
@@ -270,6 +349,13 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "error_boundary_macos"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
 ]
 
 [[package]]
@@ -646,6 +732,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "greeter"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "greeter_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
 name = "grid"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -981,6 +1081,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "login_form"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "login_form_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
 name = "manyhow"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1303,6 +1417,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "parent_child"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1336,6 +1457,13 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "persistent_counter"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
 
 [[package]]
 name = "pin-project-lite"
@@ -1611,6 +1739,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "scroll_view_macos"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "sdd"
 version = "3.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,6 +1845,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "settings"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "settings_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
+name = "showcase_macos"
+version = "0.1.0"
+dependencies = [
+ "cocoa_dom",
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1729,6 +1886,14 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "stores"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+ "reactive_stores",
+]
 
 [[package]]
 name = "subsecond"
@@ -1756,6 +1921,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d07aa455c66ddfdbb51507537402b961e027846468954ef8d974bce65dff9eb0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "switch_demo"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
 ]
 
 [[package]]
@@ -1839,6 +2011,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc0ed6038fcbc0795aca7c92963ddda636573b956679204e044492d2b13c8f64"
 dependencies = [
  "pin-project-lite",
+]
+
+[[package]]
+name = "timer"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "timer_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
+name = "todomvc_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -1969,6 +2165,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "two_windows"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "typed-builder"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2020,6 +2223,7 @@ checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
 dependencies = [
  "getrandom",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

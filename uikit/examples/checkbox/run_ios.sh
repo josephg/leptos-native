@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/target/aarch64-apple-ios-sim/debug/checkbox"
+BINARY="$SCRIPT_DIR/../../../target/aarch64-apple-ios-sim/debug/checkbox"
 BUNDLE_DIR="$SCRIPT_DIR/target/Checkbox.app"
 BUNDLE_ID="com.example.checkbox"
 
