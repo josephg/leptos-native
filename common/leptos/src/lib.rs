@@ -1,34 +1,108 @@
-//! # Leptos (native UI port)
+//! # Leptos — renderer-agnostic core (native UI fork)
 //!
-//! Renderer-agnostic core. Each native target (cocoa, gtk, uikit)
-//! provides its own `Renderer` impl in its `leptos_<platform>`
-//! crate. View types are generic over `R: Renderer`.
+//! This crate is the platform-independent core of `leptos-mac`, a
+//! native-only fork of [Leptos](https://leptos.dev). It defines the
+//! [`IntoView<R>`] trait, the component-system glue, control-flow
+//! components, and the `<ErrorBoundary>` machinery — but it does
+//! **not** render anything by itself. Rendering happens through a
+//! platform-specific [`renderer::Renderer`] impl provided by one of
+//! the sibling crates:
 //!
-//! ## Phase 7 status
+//! | Platform | Crate         | Backend  |
+//! |----------|---------------|----------|
+//! | macOS    | `leptos_cocoa` | AppKit   |
+//! | iOS      | `leptos_uikit` | UIKit    |
+//! | Linux    | `leptos_gtk`   | GTK4 *(in progress)* |
 //!
-//! Phase 7 has landed the scaffold: `Cargo.toml` rewritten to depend
-//! only on the native-side crates (`renderer`, `leptos_macro`,
-//! `reactive_graph`, plus utility crates), and `IntoView` has had its
-//! `RenderHtml` bound dropped and is now generic over `R: Renderer`.
+//! End-user code depends on the platform crate as `leptos = { package
+//! = "leptos_cocoa" | "leptos_uikit" | … }`. The platform crate
+//! re-exports everything here under `::leptos::*`, plus its own
+//! element builders (`button`, `vstack`, `<text_field>`, etc.) and
+//! a `Dom` unit type that is the `Renderer` for that target.
 //!
-//! Web-only modules (`mount`, `form`, `await_`, `nonce`, `subsecond`,
-//! `attribute_interceptor`, `hydration/`, `from_form_data`) have been
-//! deleted.
+//! ## What's in this crate
 //!
-//! Components that compile against the new core: `component`,
-//! `into_view`, `provider`, `text_prop`, `logging`. Those are
-//! `pub use`'d below.
+//! - [`IntoView<R>`] — every type that can be rendered. Generic over
+//!   `R: Renderer` so the same view trees work across platforms; each
+//!   platform crate provides a non-generic specialization
+//!   (`pub trait IntoView: leptos::IntoView<Dom>`) so user code writes
+//!   `impl IntoView` without the `<R>` parameter.
+//! - [`children`] — typed children props (`TypedChildren<T, R>`,
+//!   `TypedChildrenFn<T, R>`, `TypedChildrenMut<T, R>`). The fork
+//!   deliberately drops upstream's untyped `Children = Box<dyn FnOnce
+//!   () -> AnyView>` shape — see "Native vs upstream" below.
+//! - [`component`] — the `Props` / `ComponentConstructor` plumbing
+//!   the `#[component]` proc-macro emits against.
+//! - [`control_flow`] — `<Show>`, `<ShowLet>`, `<For>`. Branching
+//!   components ported against the new `Render<R>` shape. **Caveat:**
+//!   `<For>` is currently *unkeyed* (`Vec<T>: Render<R>` position-
+//!   based diff). Keyed iteration is on the punch list.
+//! - [`error_boundary`] — `<ErrorBoundary>` + the `Errors` map.
+//!   Catches `Result::Err` thrown by descendant `Result<T, E>:
+//!   Render<R>` impls via the `throw_error` hook system.
+//! - [`text_prop`] — `TextProp` / `OptionTextPropExt` for component
+//!   props that take "string or signal-of-string".
+//! - [`context`] — `provide_context` / `use_context` re-exports +
+//!   the `<Provider>` component (per-subtree context override).
+//! - [`logging`] — `log!`, `warn!`, `error!`, `debug_warn!` macros.
+//!   Plain `println!`/`eprintln!` on native (no `web_sys::console`).
 //!
-//! Components still on the Phase 8 punch list (require R-genericization
-//! against the new generic `Render<R>` in their `Render` impls and
-//! `IntoView<R>` bounds, plus a renderer-agnostic replacement for
-//! `tachys::either::Either`): `Show`, `ShowLet`, `For`, `children`,
-//! `error_boundary`, `suspense`, `transition`, `animated_show`,
-//! `portal`. The source files for `Show`, `ShowLet`, `For`, `children`
-//! remain on disk under their original names (no `mod` line here)
-//! pending refactor; the others were deleted in Phase 7 and will be
-//! ported back in from `/Users/seph/src/leptos-upstream/leptos/src/`
-//! against the new shape.
+//! ## A minimum viable example
+//!
+//! ```ignore
+//! // Cargo.toml: leptos = { package = "leptos_cocoa", path = "..." }
+//! use leptos::prelude::*;
+//!
+//! #[component]
+//! fn Counter(initial: i32) -> impl IntoView {
+//!     let count = RwSignal::new(initial);
+//!     view! {
+//!         <vstack padding=16.0 gap=12.0>
+//!             <label>{move || format!("Count: {}", count.get())}</label>
+//!             <hstack gap=8.0>
+//!                 <button on:click=move |_| count.update(|n| *n -= 1)>"-1"</button>
+//!                 <button on:click=move |_| count.set(0)>"Reset"</button>
+//!                 <button on:click=move |_| count.update(|n| *n += 1)>"+1"</button>
+//!             </hstack>
+//!         </vstack>
+//!     }
+//! }
+//!
+//! fn main() {
+//!     mount_to_window("Counter", (320.0, 200.0), || {
+//!         view! { <Counter initial=0 /> }
+//!     });
+//! }
+//! ```
+//!
+//! ## Native vs upstream
+//!
+//! This is **not a drop-in** for upstream Leptos. The fork removes
+//! everything web/SSR/hydration-specific because the native ports
+//! have no use for it. Notable removals:
+//!
+//! - **No `RenderHtml`** trait. `IntoView<R>` only requires
+//!   `Render<R> + Send`. Native has no SSR step.
+//! - **No `AnyView` / type-erased `Children`.** Each binary has
+//!   exactly one renderer; concrete view types pass through the
+//!   component graph unmolested. Components that need to accept
+//!   arbitrary children take `TypedChildren<C, R>` with a generic
+//!   `C` parameter.
+//! - **No `Suspense` / `Resource` / `Action::server_action`.** No
+//!   server functions, so no async-data-bound view-rendering story.
+//!   `task::spawn` exists for fire-and-forget futures but doesn't
+//!   integrate with view rendering.
+//! - **No `<Transition>` / `<AnimatedShow>`.** The upstream versions
+//!   are tied to web `setTimeout` plumbing; native equivalents will
+//!   want to integrate with CoreAnimation (macOS/iOS) or GTK
+//!   transitions (Linux). Deferred until designed.
+//! - **No `<Slots>`.** Punch-list item.
+//! - **`<Show>` and `<ShowLet>` lost their `fallback` props.**
+//!   Upstream's used `ViewFn` (backed by `AnyView`); a typed
+//!   replacement is on the punch list.
+//!
+//! See the platform crate's docs (`leptos_cocoa`, `leptos_uikit`)
+//! for what each adds on top.
 
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(fn_traits))]
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(unboxed_closures))]
@@ -148,8 +222,6 @@ pub mod task {
     };
 }
 
-#[doc(hidden)]
-pub use serde_json;
 #[cfg(feature = "tracing")]
 #[doc(hidden)]
 pub use tracing;

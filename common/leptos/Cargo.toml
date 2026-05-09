@@ -18,8 +18,6 @@ reactive_graph = { workspace = true, features = ["effects"] }
 renderer = { workspace = true }
 futures = { workspace = true, default-features = true }
 send_wrapper = { workspace = true, default-features = true }
-serde = { workspace = true, default-features = true }
-serde_json = { workspace = true, default-features = true }
 paste = { workspace = true, default-features = true }
 rustc-hash = { workspace = true, default-features = true }
 slotmap = { workspace = true, default-features = true }
