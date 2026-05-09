@@ -1,13 +1,22 @@
-//! DOM-shaped façade over UIKit, used by tachys/leptos to render
-//! native iOS UIs.
+//! DOM-shaped façade over UIKit. The lowest layer of the iOS port —
+//! `leptos_uikit` builds on top of this. User code talks to
+//! `leptos_uikit::prelude::*` rather than to this crate directly.
 //!
-//! This crate is the lowest layer of the iOS port. It provides
-//! [`Node`], [`Element`], [`Text`], and [`Placeholder`] types that loosely
-//! mirror their web-sys equivalents in shape, but are backed directly by
-//! `UIView` (and subclasses such as `UIButton`, `UITextField`).
+//! Provides [`Node`], [`Element`], [`Text`], and [`Placeholder`] types
+//! that loosely mirror their `web_sys` equivalents in shape but are
+//! backed directly by `UIView` (and subclasses like `UIButton`,
+//! `UITextField`, `UISwitch`, `UISlider`). Plus the UIKit lifecycle
+//! glue (`AppDelegate`, `SceneDelegate`, `RootViewController`,
+//! `uiapplication_main`), a per-scene Taffy layout bridge with the
+//! same `intrinsicContentSize`-driven measure callback as the cocoa
+//! port, event-handler installation via UIControl target/action,
+//! `dispatch2`-backed spawner, NSUserDefaults-backed `local_storage`,
+//! NSTimer-backed `set_interval`, and the `Color` / `Date` /
+//! `KeyEvent` value types.
 //!
-//! Higher layers (`tachys`, `leptos`) target this façade rather than
-//! `web_sys` when building for iOS.
+//! `leptos_uikit::Dom` is the [`renderer::Renderer`] impl that drives
+//! this façade from a Render tree; this crate itself doesn't know
+//! about Render or the upper abstractions.
 //!
 //! # Threading
 //!

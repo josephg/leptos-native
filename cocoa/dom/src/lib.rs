@@ -1,13 +1,20 @@
-//! DOM-shaped façade over Cocoa/AppKit, used by tachys/leptos to render
-//! native macOS UIs.
+//! DOM-shaped façade over Cocoa/AppKit. The lowest layer of the macOS
+//! port — `leptos_cocoa` builds on top of this. User code talks to
+//! `leptos_cocoa::prelude::*` rather than to this crate directly.
 //!
-//! This crate is the lowest layer of the macOS port. It provides
-//! [`Node`], [`Element`], [`Text`], and [`Placeholder`] types that loosely
-//! mirror their web-sys equivalents in shape, but are backed directly by
-//! `NSView` (and subclasses such as `NSButton`, `NSTextField`).
+//! Provides [`Node`], [`Element`], [`Text`], and [`Placeholder`] types
+//! that loosely mirror their `web_sys` equivalents in shape but are
+//! backed directly by `NSView` (and subclasses like `NSButton`,
+//! `NSTextField`). Plus the AppKit lifecycle glue (`init_app`,
+//! `run_loop`, `open_window`), the Taffy layout bridge (per-window
+//! `TaffyTree` + `compute_layout` + `intrinsicContentSize` measure
+//! callback), event-handler installation (`on_click`, `on_text_change`,
+//! …), the `dispatch2`-backed spawner, `set_interval` / `local_storage`
+//! analogues, and the `Color` / `Date` / `KeyEvent` value types.
 //!
-//! Higher layers (`tachys`, `leptos`) target this façade rather than
-//! `web_sys` when building for macOS.
+//! `leptos_cocoa::Dom` is the [`renderer::Renderer`] impl that drives
+//! this façade from a Render tree; this crate itself doesn't know
+//! about Render or any of the upper abstractions.
 //!
 //! # Threading
 //!

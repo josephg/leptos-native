@@ -1,179 +1,152 @@
-<picture>
-    <source srcset="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_pref_dark_RGB.svg" media="(prefers-color-scheme: dark)">
-    <img src="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_RGB.svg" alt="Leptos Logo">
-</picture>
+# leptos-mac
 
-[![crates.io](https://img.shields.io/crates/v/leptos.svg)](https://crates.io/crates/leptos)
-[![docs.rs](https://docs.rs/leptos/badge.svg)](https://docs.rs/leptos)
-![Crates.io MSRV](https://img.shields.io/crates/msrv/leptos)
-[![Discord](https://img.shields.io/discord/1031524867910148188?color=%237289DA&label=discord)](https://discord.gg/YdRAhS7eQB)
-[![Matrix](https://img.shields.io/badge/Matrix-leptos-grey?logo=matrix&labelColor=white&logoColor=black)](https://matrix.to/#/#leptos:matrix.org)
-
-[Website](https://leptos.dev) | [Book](https://leptos-rs.github.io/leptos/) | [Docs.rs](https://docs.rs/leptos/latest/leptos/) | [Playground](https://codesandbox.io/p/devbox/playground-j23dz7?file=%2Fsrc%2Fmain.rs) | [Discord](https://discord.gg/YdRAhS7eQB)
-
-You can find a list of useful libraries and example projects at [`awesome-leptos`](https://github.com/leptos-rs/awesome-leptos).
-
-# Leptos
+A native-only fork of [Leptos](https://leptos.dev) targeting macOS
+(AppKit), iOS (UIKit), and Linux (GTK4). The same `view!{}` macro,
+`#[component]` attribute, and fine-grained reactive signals you'd
+use on the web drive a real native UI on each platform — no
+embedded WebView, no client-server split, no WASM.
 
 ```rust
-use leptos::*;
+// Cargo.toml: leptos = { package = "leptos_cocoa" }   (or leptos_uikit / leptos_gtk)
+use leptos::prelude::*;
 
 #[component]
-pub fn SimpleCounter(initial_value: i32) -> impl IntoView {
-    // create a reactive signal with the initial value
-    let (value, set_value) = signal(initial_value);
-
-    // create event handlers for our buttons
-    // note that `value` and `set_value` are `Copy`, so it's super easy to move them into closures
-    let clear = move |_| set_value(0);
-    let decrement = move |_| set_value.update(|value| *value -= 1);
-    let increment = move |_| set_value.update(|value| *value += 1);
-
-    // create user interfaces with the declarative `view!` macro
+fn Counter() -> impl IntoView {
+    let count = RwSignal::new(0);
     view! {
-        <div>
-            <button on:click=clear>Clear</button>
-            <button on:click=decrement>-1</button>
-            // text nodes can be quoted or unquoted
-            <span>"Value: " {value} "!"</span>
-            <button on:click=increment>+1</button>
-        </div>
+        <vstack padding=16.0 gap=12.0>
+            <label>{move || format!("Count: {}", count.get())}</label>
+            <hstack gap=8.0>
+                <button on:click=move |_| count.update(|n| *n -= 1)>"-1"</button>
+                <button on:click=move |_| count.set(0)>"Reset"</button>
+                <button on:click=move |_| count.update(|n| *n += 1)>"+1"</button>
+            </hstack>
+        </vstack>
     }
 }
 
-// we also support a builder syntax rather than the JSX-like `view` macro
-#[component]
-pub fn SimpleCounterWithBuilder(initial_value: i32) -> impl IntoView {
-    use leptos::html::*;
-
-    let (value, set_value) = signal(initial_value);
-    let clear = move |_| set_value(0);
-    let decrement = move |_| set_value.update(|value| *value -= 1);
-    let increment = move |_| set_value.update(|value| *value += 1);
-
-    // the `view` macro above expands to this builder syntax
-    div().child((
-        button().on(ev::click, clear).child("Clear"),
-        button().on(ev::click, decrement).child("-1"),
-        span().child(("Value: ", value, "!")),
-        button().on(ev::click, increment).child("+1")
-    ))
-}
-
-// Easy to use with Trunk (trunk-rs.github.io/trunk) or with a simple wasm-bindgen setup
-pub fn main() {
-    mount_to_body(|| view! {
-        <SimpleCounter initial_value=3 />
-    })
+fn main() {
+    mount_to_window("Counter", (320.0, 200.0), || view! { <Counter /> });
 }
 ```
 
-## About the Framework
+That program produces a native AppKit window with three NSButtons
+on macOS (or three UIButtons on iOS, or three GtkButtons on Linux,
+depending on which `leptos_<platform>` crate the example depends on).
 
-Leptos is a full-stack, isomorphic Rust web framework leveraging fine-grained reactivity to build declarative user interfaces.
+## Why a fork
 
-## What does that mean?
+Upstream Leptos is built around the SSR/hydration shape: server
+renders HTML, the client hydrates an interactive shell, server
+functions bridge the two. That whole architecture is the wrong fit
+for a native app — there's no server, no DOM, no WASM-in-a-browser.
+This fork **deletes** the web-specific layers (`tachys/html`,
+`leptos_router`, `leptos_meta`, `server_fn`, `hydration_context`,
+SSR/CSR/hydrate Cargo features, …) and replaces the renderer with
+target-specific platform impls.
 
-- **Full-stack**: Leptos can be used to build apps that run in the browser (client-side rendering), on the server (server-side rendering), or by rendering HTML on the server and then adding interactivity in the browser (server-side rendering with hydration). This includes support for HTTP streaming of both data ([`Resource`s](https://docs.rs/leptos/latest/leptos/prelude/struct.Resource.html)) and HTML (out-of-order or in-order streaming of [`<Suspense/>`](https://docs.rs/leptos/latest/leptos/suspense/fn.Suspense.html) components.)
-- **Isomorphic**: Leptos provides primitives to write isomorphic [server functions](https://docs.rs/server_fn/latest/server_fn/), i.e., functions that can be called with the “same shape” on the client or server, but only run on the server. This means you can write your server-only logic (database requests, authentication etc.) alongside the client-side components that will consume it, and call server functions as if they were running in the browser, without needing to create and maintain a separate REST or other API.
-- **Web**: Leptos is built on the Web platform and Web standards. The [router](https://docs.rs/leptos_router/latest/leptos_router/) is designed to use Web fundamentals (like links and forms) and build on top of them rather than trying to replace them.
-- **Framework**: Leptos provides most of what you need to build a modern web app: a reactive system, templating library, and a router that works on both the server and client side.
-- **Fine-grained reactivity**: The entire framework is built from reactive primitives. This allows for extremely performant code with minimal overhead: when a reactive signal’s value changes, it can update a single text node, toggle a single class, or remove an element from the DOM without any other code running. (So, no virtual DOM overhead!)
-- **Declarative**: Tell Leptos how you want the page to look, and let the framework tell the browser how to do it.
+Greg Johnston (Leptos author) gave explicit blessing to fork rather
+than upstream — the divergence is too sharp for a shared codebase.
 
-## Learn more
+## Workspace layout
 
-Here are some resources for learning more about Leptos:
-
-- [Book](https://leptos-rs.github.io/leptos/) (work in progress)
-- [Examples](https://github.com/leptos-rs/leptos/tree/main/examples)
-- [API Documentation](https://docs.rs/leptos/latest/leptos/)
-- [Common Bugs](https://github.com/leptos-rs/leptos/tree/main/docs/COMMON_BUGS.md) (and how to fix them!)
-
-### Random numbers on wasm (`rand` / `getrandom`)
-
-When you compile a Leptos app to `wasm32-unknown-unknown`, `rand` and `getrandom` need a JavaScript-backed source of randomness. If that backend isn’t enabled, your build can fail or randomness just won’t work in the browser.
-
-Leptos itself takes care of this for its own code, but that does **not** automatically configure your app’s own `rand` / `getrandom` dependencies. If you use them directly, you need to turn on the JS backend yourself.
-
-A simple setup in your `Cargo.toml` might look like this:
-
-```toml
-[dependencies]
-# Make sure getrandom works on wasm by enabling its JS backend
-getrandom = { version = "0.2", features = ["js"] }
-rand      = { version = "0.8", features = ["small_rng"] }
+```
+common/
+  reactive_graph/        ← unchanged from upstream (vendored)
+  reactive_stores/       ← unchanged
+  reactive_stores_macro/ ← unchanged
+  renderer/              ← was tachys; stripped + R-genericized
+                            (Render<R>, Mountable<R>, Renderer trait)
+  leptos_macro/          ← view!{}, #[component] proc macros
+  leptos/                ← renderer-agnostic core: IntoView<R>,
+                            Show/For/ErrorBoundary/Provider, children,
+                            etc. NO RenderHtml, NO AnyView, NO SSR.
+cocoa/
+  dom/                   ← `cocoa_dom`: DOM-shaped façade over AppKit
+  leptos_cocoa/          ← `leptos_cocoa`: macOS Renderer impl +
+                            tachys-shaped re-export tree + builder
+                            API (button(), vstack(), …)
+  examples/              ← 18 working examples (counter, counters,
+                            error_boundary, etc.)
+uikit/
+  dom/                   ← `ios_dom`: same shape over UIKit
+  leptos_uikit/          ← `leptos_uikit`: iOS Renderer impl
+  examples/              ← 10 working iOS examples
+  xcuitests/             ← Swift XCTest harness (macOS host;
+                            re-targeting to iOS sim still TODO)
+gtk/
+  dom/                   ← `gtk_dom`: GTK4 façade
+  examples/              ← Stage 0–4 examples; tachys-builder layer
+                            in progress
 ```
 
-Some of the examples in this repo (for example `js-framework-benchmark` and `hackernews_js_fetch`) already do this, so you can use them as a reference if you’re unsure.
+## Per-platform getting started
 
-## `cargo-leptos`
+- **macOS** — see [`README_macos.md`](./README_macos.md). AppKit via
+  the [`objc2`](https://crates.io/crates/objc2) crate family. Layout
+  via [Taffy](https://crates.io/crates/taffy).
+- **iOS** — see [`README_ios.md`](./README_ios.md). UIKit; same
+  layout engine. Each example ships a `run_ios.sh` that bundles a
+  `.app`, installs on the booted simulator, and launches.
+- **Linux** — see [`README_gtk.md`](./README_gtk.md). GTK4 via
+  [`gtk4-rs`](https://crates.io/crates/gtk4); GTK does its own
+  layout so no Taffy bridge here.
 
-[`cargo-leptos`](https://github.com/leptos-rs/cargo-leptos) is a build tool that's designed to make it easy to build apps that run on both the client and the server, with seamless integration. The best way to get started with a real Leptos project right now is to use `cargo-leptos` and our starter templates for [Actix](https://github.com/leptos-rs/start) or [Axum](https://github.com/leptos-rs/start-axum).
+## Build & test
 
-```bash
-cargo install cargo-leptos --locked
-cargo leptos new --git https://github.com/leptos-rs/start-axum
-cd [your project name]
-cargo leptos watch
+```sh
+# Workspace (cocoa side + common crates)
+cargo build --workspace
+cargo test                                   # 53 binaries, ~250 tests
+
+# Run a cocoa example
+cargo run --manifest-path cocoa/examples/counter/Cargo.toml
+
+# iOS — needs a booted simulator
+cd uikit/examples/counter && ./run_ios.sh         # interactive
+cd uikit/examples/counter && ./run_ios.sh -t 3    # auto-terminate after 3s
+
+# iOS layout regression tests run on the simulator
+cargo test --manifest-path uikit/dom/Cargo.toml \
+  --target aarch64-apple-ios-sim --test layout
 ```
 
-Open browser to [http://localhost:3000/](http://localhost:3000/).
+## What's working / what isn't
 
-## FAQs
+- ✅ **macOS:** 18/22 examples build and run. Counter, counters,
+  greeter, persistent_counter, error_boundary, two_windows
+  (multi-window), showcase (every supported control), all
+  end-to-end.
+- ✅ **iOS:** 10/10 examples build for the simulator. Counter etc.
+  launch + render correctly via `run_ios.sh`.
+- 🚧 **Linux/GTK:** lower-level direct-`gtk_dom` examples work; the
+  `leptos_gtk` builder layer (analogous to `leptos_cocoa` /
+  `leptos_uikit`) is the next port.
+- ❌ **Deferred features** (kept off the punch list pending design
+  work):
+  - `<Slots>` — multi-named-children components.
+  - `Resource` / `Suspense` — async-data view rendering. Upstream
+    leans on the SSR streaming story; native equivalents need a
+    different design.
+  - `<Transition>` / `<AnimatedShow>` — need CoreAnimation
+    (macOS/iOS) or GTK transition integration.
+  - Type-erased `AnyView` / untyped `Children`. Components currently
+    take `TypedChildren<C, R>` with a generic `C`.
+  - Keyed `<For>` diffing. The current `<For>` is unkeyed
+    (position-based diff via `Vec<T>: Render<R>`); rows reorder
+    correctly but per-row state can't follow keys yet.
 
-### What’s up with the name?
+## Layout reference
 
-_Leptos_ (λεπτός) is an ancient Greek word meaning “thin, light, refined, fine-grained.” To me, a classicist and not a dog owner, it evokes the lightweight reactive system that powers the framework. I've since learned the same word is at the root of the medical term “leptospirosis,” a blood infection that affects humans and animals... My bad. No dogs were harmed in the creation of this framework.
+The native-side architecture is documented in three places:
 
-### Is it production ready?
-
-People usually mean one of three things by this question.
-
-1. **Are the APIs stable?** i.e., will I have to rewrite my whole app from Leptos 0.1 to 0.2 to 0.3 to 0.4, or can I write it now and benefit from new features and updates as new versions come?
-
-The APIs are basically settled. We’re adding new features, but we’re very happy with where the type system and patterns have landed. I would not expect major breaking changes to your code to adapt to future releases, in terms of architecture.
-
-2. **Are there bugs?**
-
-Yes, I’m sure there are. You can see from the state of our issue tracker over time that there aren’t that _many_ bugs and they’re usually resolved pretty quickly. But for sure, there may be moments where you encounter something that requires a fix at the framework level, which may not be immediately resolved.
-
-3. **Am I a consumer or a contributor?**
-
-This may be the big one: “production ready” implies a certain orientation to a library: that you can basically use it, without any special knowledge of its internals or ability to contribute. Everyone has this at some level in their stack: for example I (@gbj) don’t have the capacity or knowledge to contribute to something like `wasm-bindgen` at this point: I simply rely on it to work.
-
-There are several people in the community using Leptos right now for many websites at work, who have also become significant contributors. There may be missing features that you need, and you may end up building them! But, if you're willing to contribute a few missing pieces along the way, the framework is most definitely usable for production applications, especially given the ecosystem of libraries that have sprung up around it.
-
-### Can I use this for native GUI?
-
-Sure! Obviously the `view` macro is for generating DOM nodes but you can use the reactive system to drive any native GUI toolkit that uses the same kind of object-oriented, event-callback-based framework as the DOM pretty easily. The principles are the same:
-
-- Use signals, derived signals, and memos to create your reactive system
-- Create GUI widgets
-- Use event listeners to update signals
-- Create effects to update the UI
-
-The 0.7 update originally set out to create a "generic rendering" approach that would allow us to reuse most of the same view logic to do all of the above. Unfortunately, this has had to be shelved for now due to difficulties encountered by the Rust compiler when building larger-scale applications with the number of generics spread throughout the codebase that this required. It's an approach I'm looking forward to exploring again in the future; feel free to reach out if you're interested in this kind of work.
-
-### How is this different from Yew?
-
-Yew is the most-used library for Rust web UI development, but there are several differences between Yew and Leptos, in philosophy, approach, and performance.
-
-- **VDOM vs. fine-grained:** Yew is built on the virtual DOM (VDOM) model: state changes cause components to re-render, generating a new virtual DOM tree. Yew diffs this against the previous VDOM, and applies those patches to the actual DOM. Component functions rerun whenever state changes. Leptos takes an entirely different approach. Components run once, creating (and returning) actual DOM nodes and setting up a reactive system to update those DOM nodes.
-- **Performance:** This has huge performance implications: Leptos is simply much faster at both creating and updating the UI than Yew is.
-- **Server integration:** Yew was created in an era in which browser-rendered single-page apps (SPAs) were the dominant paradigm. While Leptos supports client-side rendering, it also focuses on integrating with the server side of your application via server functions and multiple modes of serving HTML, including out-of-order streaming.
-
-### How is this different from Dioxus?
-
-Like Leptos, Dioxus is a framework for building UIs using web technologies. However, there are significant differences in approach and features.
-
-- **VDOM vs. fine-grained:** While Dioxus has a performant virtual DOM (VDOM), it still uses coarse-grained/component-scoped reactivity: changing a stateful value reruns the component function and diffs the old UI against the new one. Leptos components use a different mental model, creating (and returning) actual DOM nodes and setting up a reactive system to update those DOM nodes.
-- **Web vs. desktop priorities:** Dioxus uses Leptos server functions in its fullstack mode, but does not have the same `<Suspense>`-based support for things like streaming HTML rendering, or share the same focus on holistic web performance. Leptos tends to prioritize holistic web performance (streaming HTML rendering, smaller WASM binary sizes, etc.), whereas Dioxus has an unparalleled experience when building desktop apps, because your application logic runs as a native Rust binary.
-
-### How is this different from Sycamore?
-
-Sycamore and Leptos are both heavily influenced by SolidJS. At this point, Leptos has a larger community and ecosystem and is more actively developed. Other differences:
-
-- **Templating DSLs:** Sycamore uses a custom templating language for its views, while Leptos uses a JSX-like template format.
-- **`'static` signals:** One of Leptos’s main innovations was the creation of `Copy + 'static` signals, which have excellent ergonomics. Sycamore is in the process of adopting the same pattern, but this is not yet released.
-- **Perseus vs. server functions:** The Perseus metaframework provides an opinionated way to build Sycamore apps that include server functionality. Leptos instead provides primitives like server functions in the core of the framework.
+- **[`CLAUDE.md`](./CLAUDE.md)** — Top-level architecture, conventions,
+  failure-mode hierarchy, per-port specifics. Reference for ongoing
+  work.
+- **[`implementation_log.md`](./implementation_log.md)** —
+  Chronological design-decision log for the macOS port. Newest
+  entries at top; critical context for layout / eventing / multi-
+  window / macro plumbing.
+- **[`gtk_implementation_log.md`](./gtk_implementation_log.md)**,
+  **[`implementation_ios.md`](./implementation_ios.md)** — same shape
+  for the GTK + iOS ports.

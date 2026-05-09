@@ -5,7 +5,7 @@
 //! [`IntoView<R>`] trait, the component-system glue, control-flow
 //! components, and the `<ErrorBoundary>` machinery — but it does
 //! **not** render anything by itself. Rendering happens through a
-//! platform-specific [`renderer::Renderer`] impl provided by one of
+//! platform-specific [`Renderer`](renderer::renderer::Renderer) impl provided by one of
 //! the sibling crates:
 //!
 //! | Platform | Crate         | Backend  |
