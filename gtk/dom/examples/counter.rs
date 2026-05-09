@@ -7,7 +7,7 @@
 //! Run with:
 //!     cargo run -p gtk_dom --example counter
 
-#[cfg(target_os = "linux")]
+#[cfg(feature = "gtk")]
 fn main() {
     use gtk_dom::{
         app::{init_app, run_loop},
@@ -94,7 +94,7 @@ fn main() {
     run_loop(&app);
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(feature = "gtk"))]
 fn main() {
     eprintln!("gtk_dom only runs on Linux");
 }

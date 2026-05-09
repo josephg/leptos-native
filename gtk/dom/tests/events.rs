@@ -4,7 +4,7 @@
 //! `on_text_end_editing` via direct GTK signal emission. No window or
 //! main loop required — `emit_by_name` synchronously dispatches.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

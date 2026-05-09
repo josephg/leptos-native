@@ -6,7 +6,7 @@
 //! GTK measure/allocate cycle isn't exercised here (that needs a
 //! display); we just verify the Taffy bridge sees the right tree.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

@@ -2,7 +2,6 @@
 //! `<text_field>`. Type into the field; the label below echoes
 //! whatever you type.
 
-#[cfg(target_os = "linux")]
 mod app {
     use leptos::prelude::*;
 
@@ -36,8 +35,4 @@ mod app {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn main() { app::main() }
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

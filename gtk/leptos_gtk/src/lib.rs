@@ -7,7 +7,7 @@
 //!
 //! The [`Dom`] unit type is this crate's [`renderer::Renderer`] impl.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 #![allow(missing_docs)]
 
 pub mod directive;

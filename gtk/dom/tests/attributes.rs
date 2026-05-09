@@ -5,7 +5,7 @@
 //! `remove_string_attribute` / `remove_bool_attribute` plus the
 //! `&str`-keyed Renderer-trait surface (`set_attribute(&str, &str)`).
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

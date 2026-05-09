@@ -7,7 +7,7 @@
 //! Run with:
 //!     cargo run -p gtk_dom --example hello_window
 
-#[cfg(target_os = "linux")]
+#[cfg(feature = "gtk")]
 fn main() {
     use gtk4::prelude::*;
     use gtk4::{Application, ApplicationWindow};
@@ -29,7 +29,7 @@ fn main() {
     app.run();
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(feature = "gtk"))]
 fn main() {
     eprintln!("gtk_dom only runs on Linux");
 }

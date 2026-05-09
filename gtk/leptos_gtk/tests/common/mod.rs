@@ -1,7 +1,7 @@
 //! Shared test helpers for `leptos_gtk`. Mirror of
 //! `cocoa/leptos_cocoa/tests/common/mod.rs`.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 #![allow(dead_code)]
 
 pub fn ensure_gtk_init() {

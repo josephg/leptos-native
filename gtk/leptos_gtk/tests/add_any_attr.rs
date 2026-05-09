@@ -1,7 +1,7 @@
 //! `AddAnyAttr<Dom>` regression tests for gtk builders. Mirrors
 //! `leptos_cocoa/tests/add_any_attr.rs`.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

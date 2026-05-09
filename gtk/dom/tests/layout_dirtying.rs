@@ -1,7 +1,7 @@
 //! mark_dirty discipline tests — every mutation must invalidate the
 //! Taffy cache so re-layout sees fresh measurements.
 
-#![cfg(target_os = "linux")]
+#![cfg(feature = "gtk")]
 
 mod common;
 

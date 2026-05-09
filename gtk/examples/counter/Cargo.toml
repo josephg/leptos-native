@@ -9,7 +9,7 @@ name = "counter"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { package = "leptos_gtk", path = "../../leptos_gtk" }
+leptos = { package = "leptos_gtk", path = "../../leptos_gtk", features = ["gtk"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
