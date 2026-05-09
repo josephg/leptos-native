@@ -9,19 +9,19 @@ fn App() -> impl IntoView {
     let count = RwSignal::new(30_usize);
 
     view! {
-        // grow=1 on the outer vstack tells the window's content
+        // flex_grow=1 on the outer vstack tells the window's content
         // root "give me all your height" — without this, the outer
         // vstack sizes to content and the scroll_view inside has no
         // bounded viewport to clip against, so it grows to its
         // content's natural height instead of scrolling.
-        <vstack padding=12.0 gap=8.0 grow=1.0>
+        <vstack padding=12.0 gap=8.0 flex_grow=1.0>
             <hstack gap=8.0>
                 <button on:click=move |_| count.update(|n| *n += 5)>"Add 5"</button>
                 <button on:click=move |_| count.update(|n| *n = n.saturating_sub(5))>"Remove 5"</button>
                 <label>{move || format!("{} rows", count.get())}</label>
             </hstack>
 
-            <scroll_view grow=1.0>
+            <scroll_view flex_grow=1.0>
                 <vstack gap=2.0>
                     <For
                         each=move || {

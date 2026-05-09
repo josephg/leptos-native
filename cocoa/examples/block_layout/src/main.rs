@@ -76,7 +76,7 @@ fn Article() -> impl IntoView {
     // container to provide visible breathing room between
     // headings, paragraphs, and figures.
     view! {
-        <scroll_view grow=1.0>
+        <scroll_view flex_grow=1.0>
             <block padding=32.0>
                 <vstack gap=18.0>
                     <Heading text="On the Inevitable Drift of Layout Engines"/>

@@ -15,6 +15,7 @@ use leptos_cocoa::cocoa::element::{button, hstack, label, vstack};
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
+use renderer::attrs::WithLayout;
 use renderer::view::{Mountable, Render};
 
 /// Spin up a fresh reactive owner + the spawner the cocoa effect

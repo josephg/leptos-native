@@ -9,73 +9,29 @@
 //!   closure whenever any signal it reads changes, and updates the
 //!   underlying NSView property each time.
 //!
-//! The `RenderEffect` is owned by the element's `State` so it lives
-//! exactly as long as the element is mounted.
+//! The [`MaybeReactive`] enum and the [`install`] driver are
+//! re-exports from `renderer-common` (`renderer::attrs`) — they're
+//! shared with every native backend. The [`IntoMaybeReactive`] trait,
+//! however, is **port-local**: it lives in this module so we can
+//! provide impls for AppKit-foreign types like `NSTextAlignment` and
+//! Taffy-foreign types like `FlexDirection` without orphan-rule
+//! violations. Renderer-common's `WithLayout` / `WithUniversal`
+//! default methods use a separately-defined trait of the same name
+//! that only covers renderer-common-owned types (f32, Dim, AlignSelf,
+//! …); the two traits coexist because each builder method's bound
+//! pins the trait it wants explicitly.
+//!
+//! The `RenderEffect` returned by `install` is owned by the
+//! element's `State`, so it lives exactly as long as the element is
+//! mounted.
 
-use reactive_graph::effect::RenderEffect;
+pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 
-/// Either a static value or a closure that produces one reactively.
-///
-/// The closure is `Send` so that `MaybeReactive<T>` itself is `Send`,
-/// which is required by leptos's `IntoView` blanket impl. Most user
-/// closures are Send already (reactive_graph signals are Send).
-///
-/// `Fn` (not `FnMut`): we only ever READ the value through this
-/// closure — `RenderEffect` re-runs the closure on each signal
-/// change to fetch a fresh value, never mutates closure state.
-pub enum MaybeReactive<T: 'static> {
-    Static(T),
-    Reactive(Box<dyn Fn() -> T + Send + 'static>),
-}
-
-/// Conversion trait so attribute setters can take either form
-/// transparently.
+/// Conversion trait so attribute setters can take either a bare
+/// value or a `Fn() -> T` closure transparently. Port-local —
+/// see the module docs for why.
 pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
-}
-
-/// A dimension value for sizing (`width`, `height`, `min_width`,
-/// `max_width`, `min_height`, `max_height`). Mirrors Taffy's
-/// `Dimension` but with a more compact constructor surface.
-///
-/// - `Px(v)` — fixed length in points.
-/// - `Pct(v)` — fraction of the parent's content width/height,
-///   `0.0..=1.0`. (`Pct(1.0)` = 100%.)
-/// - `Auto` — let the layout engine decide (Taffy's default).
-///
-/// `From<f32>` constructs a `Px` so existing call sites that pass
-/// raw floats keep working — `width(520.0)` and `width(Dim::pct(0.5))`
-/// are both valid.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Dim {
-    Px(f32),
-    Pct(f32),
-    Auto,
-}
-
-impl Dim {
-    pub const fn px(v: f32) -> Self {
-        Self::Px(v)
-    }
-    pub const fn pct(v: f32) -> Self {
-        Self::Pct(v)
-    }
-    pub const AUTO: Self = Self::Auto;
-
-    pub fn to_dimension(self) -> cocoa_dom::layout::Dimension {
-        use cocoa_dom::layout::Dimension as D;
-        match self {
-            Self::Px(v) => D::length(v),
-            Self::Pct(v) => D::percent(v),
-            Self::Auto => D::auto(),
-        }
-    }
-}
-
-impl From<f32> for Dim {
-    fn from(v: f32) -> Self {
-        Self::Px(v)
-    }
 }
 
 // Static-value impls. `&str` and `String` have explicit impls so
@@ -364,31 +320,5 @@ where
         self,
     ) -> MaybeReactive<cocoa_dom::NSDatePickerStyle> {
         MaybeReactive::Reactive(Box::new(self))
-    }
-}
-
-/// Drives `apply` whenever the underlying signal(s) change.
-///
-/// For `Static`, calls `apply(value)` once and returns `None`.
-/// For `Reactive`, builds a [`RenderEffect`] that calls
-/// `apply(closure())` on every reactive run. The effect's internal
-/// constructor runs the closure synchronously inside the reactive
-/// observer, so the initial value is set before this returns.
-pub fn install<T: 'static>(
-    value: MaybeReactive<T>,
-    mut apply: impl FnMut(T) + 'static,
-) -> Option<RenderEffect<()>> {
-    match value {
-        MaybeReactive::Static(v) => {
-            apply(v);
-            None
-        }
-        MaybeReactive::Reactive(f) => {
-            let effect = RenderEffect::new(move |_prev| {
-                let v = f();
-                apply(v);
-            });
-            Some(effect)
-        }
     }
 }

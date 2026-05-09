@@ -13,10 +13,20 @@
 /// Commonly-used traits.
 pub mod prelude {
     pub use crate::{
+        attrs::{
+            AlignSelf, Dim, IntoMaybeReactive, LayoutAttrs, MaybeReactive,
+            TextAttrs, UniversalAttrs, WithLayout, WithText, WithUniversal,
+        },
         renderer::Renderer,
         view::{AddAnyAttr, IntoRender, Mountable, Render},
     };
 }
+
+/// Cross-backend attribute plumbing: `MaybeReactive`, `Dim`,
+/// `WithLayout` / `WithUniversal` / `WithText` traits, and the
+/// `LayoutAttrs` / `UniversalAttrs` / `TextAttrs` structs each
+/// builder embeds.
+pub mod attrs;
 
 /// Defines the [`Renderer`](renderer::Renderer) trait — the interface each
 /// platform implements to provide concrete `Element`/`Node`/`Text`/

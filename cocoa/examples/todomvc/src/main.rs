@@ -133,7 +133,7 @@ fn TodoMVC() -> impl IntoView {
                 on:keydown=add_on_enter
             />
 
-            <scroll_view grow=1.0>
+            <scroll_view flex_grow=1.0>
                 <vstack gap=4.0>
                     <For
                         each=move || todos.with(|t| t.0.clone())
@@ -207,7 +207,7 @@ fn TodoRow(todo: Todo) -> impl IntoView {
                 bind:value=edit_text
                 on:keydown=on_key
                 on:change=move |_| commit()
-                grow=1.0
+                flex_grow=1.0
             />
             <button on:click=move |_| parent_todos.update(|t| t.remove(id))>
                 "Delete"

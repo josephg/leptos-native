@@ -136,6 +136,16 @@ pub mod prelude {
         bind::{BindAttribute, IntoSignal},
         element::{
             button, hstack, label, stack_view, text_field, view, vstack,
+            // Shadow the renderer-common `WithText` (re-exported via
+            // `crate::core::prelude::*` above) with the port-local
+            // one. The renderer trait is generic over `<C, A>` and
+            // uses renderer-common's `IntoMaybeReactive`, which has no
+            // impls for `Color` / `NSTextAlignment`. The port-local
+            // trait pins those types and uses our local
+            // `IntoMaybeReactive` (cocoa/attr.rs). Examples using
+            // `font_size=...`, `alignment=...`, `text_color=...` need
+            // this in scope.
+            WithText,
         },
         node_ref::NodeRef,
         AlignItems, FlexDirection, JustifyContent,
