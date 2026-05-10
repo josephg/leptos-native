@@ -164,6 +164,8 @@ pub fn queue_root_resize(tree: &TreeRef) {
     if let Some(widget) = tree.view(root_id) {
         widget.queue_resize();
     }
+    #[cfg(feature = "debug-overlay")]
+    crate::debug_overlay::mark_overlays_dirty();
 }
 
 // ---------------------------------------------------------------------

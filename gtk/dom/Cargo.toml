@@ -15,6 +15,10 @@ default = []
 # Without this feature, the crate compiles to empty so its presence
 # in the workspace doesn't force gtk4 onto every build.
 gtk = ["dep:gtk4", "dep:glib", "dep:gio", "dep:any_spawner", "dep:taffy", "dep:native_layout"]
+# Strokes a 1px outline around every Taffy-tracked node, toggled with
+# the `~` key. See `gtk_dom::debug_overlay`. Off by default — flip on
+# per-binary in the example's Cargo.toml when debugging layout.
+debug-overlay = ["gtk"]
 
 [dependencies]
 renderer = { workspace = true }

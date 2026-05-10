@@ -66,7 +66,20 @@ pub fn open_window(
         /* is_root */ true,
     );
 
-    gtk_window.set_child(Some(content_root.widget()));
+    #[cfg(feature = "debug-overlay")]
+    {
+        let overlay = crate::debug_overlay::install(
+            &gtk_window,
+            content_root.widget(),
+            &tree,
+            root_id,
+        );
+        gtk_window.set_child(Some(&overlay));
+    }
+    #[cfg(not(feature = "debug-overlay"))]
+    {
+        gtk_window.set_child(Some(content_root.widget()));
+    }
 
     OpenedWindow {
         gtk_window,

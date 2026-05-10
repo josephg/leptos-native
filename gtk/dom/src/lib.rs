@@ -26,6 +26,8 @@
 #![cfg(feature = "gtk")]
 
 pub mod app;
+#[cfg(feature = "debug-overlay")]
+pub mod debug_overlay;
 pub mod event;
 pub mod layout;
 pub mod node;
