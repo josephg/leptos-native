@@ -201,7 +201,7 @@ fn walk_inner(
     // something inferable from the rendered frame.
     let (loc_x, loc_y, size_w, size_h, pad_t, pad_r, pad_b, pad_l, kids, view) = {
         let layout = tree.layout(node_id).unwrap_or_default();
-        let kids: Vec<NodeId> = tree.children(node_id);
+        let kids: Vec<NodeId> = tree.children(node_id).to_vec();
         let view = tree.get_node_context(node_id).map(|c| (*c.view).clone());
         let frame = view.as_ref().map(|v| v.frame());
         let (lx, ly, sw, sh) = match frame {

@@ -168,8 +168,11 @@ fn allocate_children(tree: &TreeRef, parent_id: NodeId, parent_widget: &gtk4::Wi
     // call dispatches through GTK and may itself re-enter our
     // LayoutManagerImpl::allocate (for nested containers); avoid
     // holding any tree borrows across the call.
-    let plan: Vec<(gtk4::Widget, native_layout::Layout)> = tree
-        .children(parent_id)
+    // Snapshot child IDs to drop the `Ref` from `children()` before
+    // calling `widget.allocate(...)` below (which can reenter our
+    // tree code).
+    let child_ids = tree.children(parent_id).to_vec();
+    let plan: Vec<(gtk4::Widget, native_layout::Layout)> = child_ids
         .into_iter()
         .filter_map(|cid| {
             let layout = tree.layout(cid)?;

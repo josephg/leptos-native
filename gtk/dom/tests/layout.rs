@@ -339,6 +339,54 @@ fn nested_vstack_collapses_after_removal() {
     frame_eq(&tree, &footer, 0.0, 80.0, 300.0, 30.0);
 }
 
+/// REGRESSION: when a label's text changes from "0" to "-1" the
+/// label's intrinsic width should grow, and the next compute_layout
+/// pass should reflect the new width — not the cached one. If the
+/// dirty bit isn't propagating, Taffy returns the old layout and the
+/// label is allocated too narrow, forcing GTK Label to wrap "-1" to
+/// two lines.
+fn label_text_change_reflowed_on_relayout() {
+    use gtk4::prelude::*;
+    let root = Element::create("view");
+    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    let _tree = fresh_tree(&root);
+
+    let label = Element::create("label");
+    label.set_attribute("value", "0");
+    root.insert_node(label.as_node(), None);
+
+    layout::compute_layout(root.as_node(), (300.0, 50.0));
+    let lh = label
+        .as_node()
+        .layout_slot()
+        .borrow()
+        .handle
+        .clone()
+        .expect("label registered");
+    let w_zero = _tree.layout(lh.node_id).expect("layout computed").size.width;
+    let raw_zero = label
+        .widget()
+        .downcast_ref::<gtk4::Label>()
+        .map(|l| l.measure(gtk4::Orientation::Horizontal, -1).1)
+        .unwrap_or(-1);
+
+    label.set_attribute("value", "-1");
+    let raw_minus = label
+        .widget()
+        .downcast_ref::<gtk4::Label>()
+        .map(|l| l.measure(gtk4::Orientation::Horizontal, -1).1)
+        .unwrap_or(-1);
+    layout::compute_layout(root.as_node(), (300.0, 50.0));
+    let w_minus_one = _tree.layout(lh.node_id).expect("layout computed").size.width;
+
+    assert!(
+        w_minus_one >= raw_minus as f32,
+        "Taffy width {w_minus_one} should at least match GTK natural \
+         width {raw_minus} after text change. (raw \"0\" -> \"-1\": \
+         {raw_zero} -> {raw_minus}; Taffy: {w_zero} -> {w_minus_one})"
+    );
+}
+
 fn zero_size_available_no_panic() {
     let root = Element::create("view");
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
@@ -371,6 +419,10 @@ fn main() {
             nested_containers_inner_fits_within_outer,
         ),
         ("zero_children_no_panic", zero_children_no_panic),
+        (
+            "label_text_change_reflowed_on_relayout",
+            label_text_change_reflowed_on_relayout,
+        ),
         (
             "removing_child_collapses_remaining_layout",
             removing_child_collapses_remaining_layout,

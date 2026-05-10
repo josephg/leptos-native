@@ -373,11 +373,14 @@ fn measure_leaf_size(
         _ => None,
     };
 
-    let (_, nat_w, _, _) = if let Some(h) = known.height {
-        widget.measure(gtk4::Orientation::Horizontal, h as i32)
-    } else {
-        widget.measure(gtk4::Orientation::Horizontal, -1)
-    };
+    // Always ask for natural width with `-1` (unconstrained-height).
+    // Passing `known.height` here would be telling GTK "what's the
+    // width that fits in this height" — for wrap=true Labels that
+    // wraps the text into the smallest column that fits vertically,
+    // returning a width far below the text's natural extent. We want
+    // the un-wrapped natural width; the parent's flex layout decides
+    // whether to clamp it.
+    let (_, nat_w, _, _) = widget.measure(gtk4::Orientation::Horizontal, -1);
     let mut w = known.width.unwrap_or(nat_w as f32);
 
     // For editable text entries, the natural width tracks content
@@ -397,8 +400,5 @@ fn measure_leaf_size(
         widget.measure(gtk4::Orientation::Vertical, height_for);
     let h = known.height.unwrap_or(nat_h as f32);
 
-    Size {
-        width: w.max(0.0),
-        height: h.max(0.0),
-    }
+    Size { width: w.max(0.0), height: h.max(0.0) }
 }

@@ -918,6 +918,7 @@ dependencies = [
  "any_spawner",
  "dispatch2",
  "futures",
+ "native_layout",
  "objc2",
  "objc2-foundation",
  "objc2-quartz-core",

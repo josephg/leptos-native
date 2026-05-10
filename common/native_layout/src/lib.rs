@@ -37,20 +37,18 @@
 //! in main-loop / dispatch concerns that don't generalise.
 
 use slotmap::{DefaultKey, SlotMap};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    rc::Rc,
+};
 
 pub use taffy::{
     AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId, Point,
-    Position, Rect, Size, Style,
+    JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
+    Point, Position, Rect, Size, Style,
 };
-/// Re-export of the `taffy` crate so callers don't need to add it
-/// separately for types we don't re-export at the top level.
-pub use taffy;
 #[cfg(feature = "block_layout")]
 pub use taffy::Display;
-
-pub use taffy::Layout;
 use taffy::{
     compute_cached_layout, compute_flexbox_layout, compute_hidden_layout,
     compute_leaf_layout, compute_root_layout, round_layout, Cache, CacheTree,
@@ -145,6 +143,12 @@ pub type TreeRef<B> = Rc<LayoutTree<B>>;
 /// Embedded by each port's element wrapper. While `handle` is
 /// `None`, style mutations stay local; once `handle` is `Some`,
 /// they're also pushed into the tree.
+///
+/// `meta` is the per-node backend metadata that gets copied into
+/// the tree on registration. Set it before `register_in_tree`; once
+/// the node has joined a tree, the slot's copy and the tree's copy
+/// can drift if you mutate the slot directly. Use
+/// [`LayoutTree::set_meta`] to update a registered node's metadata.
 #[derive(Debug)]
 pub struct NodeLayout<B: LayoutBackend> {
     pub style: Style,
@@ -274,14 +278,18 @@ impl<B: LayoutBackend> LayoutTree<B> {
     /// Remove a node from the tree. Detaches it from any parent it
     /// was under; orphans its descendants. Callers typically remove
     /// leaves first today.
+    ///
+    /// Marks the (former) parent dirty so its cached flex layout
+    /// is invalidated — without this, `compute_layout` would return
+    /// a stale parent layout that still references the removed child.
     pub fn remove(&self, id: NodeId) {
-        self.with_state_mut(|s| {
+        let parent = self.with_state_mut(|s| {
             let Some((parent, kids)) = s
                 .nodes
                 .get(key(id))
                 .map(|n| (n.parent, n.children.clone()))
             else {
-                return;
+                return None;
             };
             if let Some(p) = parent {
                 if let Some(p_data) = s.nodes.get_mut(key(p)) {
@@ -294,32 +302,74 @@ impl<B: LayoutBackend> LayoutTree<B> {
                 }
             }
             s.nodes.remove(key(id));
+            parent
         });
+        if let Some(p) = parent {
+            self.mark_dirty(p);
+        }
     }
 
-    /// Add a child edge. If the edge already exists, no-op (the
-    /// existing position is preserved — Mountable cascades visit
-    /// children in construction order, which is the order we already
-    /// have).
+    /// Add a child edge. Idempotent: if `child` is already under
+    /// `parent`, no-op.
+    ///
+    /// If `child` is currently a child of a *different* parent, it's
+    /// detached from that one first — same invariant as `addSubview:`
+    /// on AppKit/UIKit, where a view can only have one superview.
     pub fn add_child(&self, parent: NodeId, child: NodeId) {
-        self.with_state_mut(|s| {
-            if let Some(p) = s.nodes.get_mut(key(parent)) {
-                if p.children.contains(&child) {
-                    return;
+        let changed = self.with_state_mut(|s| {
+            // Detach from previous parent if it was somewhere else.
+            let prev_parent = s.nodes.get(key(child)).and_then(|c| c.parent);
+            if prev_parent == Some(parent) {
+                let already = s
+                    .nodes
+                    .get(key(parent))
+                    .map(|p| p.children.contains(&child))
+                    .unwrap_or(false);
+                if already {
+                    return None;
                 }
-                p.children.push(child);
+            } else if let Some(prev) = prev_parent {
+                if let Some(p_data) = s.nodes.get_mut(key(prev)) {
+                    p_data.children.retain(|c| *c != child);
+                }
+            }
+            if let Some(p) = s.nodes.get_mut(key(parent)) {
+                if !p.children.contains(&child) {
+                    p.children.push(child);
+                }
             }
             if let Some(c) = s.nodes.get_mut(key(child)) {
                 c.parent = Some(parent);
             }
+            Some(prev_parent)
         });
-        self.mark_dirty(parent);
+        match changed {
+            None => {} // no-op, no dirty
+            Some(prev) => {
+                self.mark_dirty(parent);
+                if let Some(prev) = prev {
+                    if prev != parent {
+                        self.mark_dirty(prev);
+                    }
+                }
+            }
+        }
     }
 
     /// Place `child` at exactly `idx` under `parent`. If `child` was
     /// already a child of `parent` at a different index, it's moved.
+    /// If `child` was a child of a *different* parent, it's detached
+    /// from there first.
     pub fn insert_child_at_index(&self, parent: NodeId, idx: usize, child: NodeId) {
-        self.with_state_mut(|s| {
+        let prev_parent = self.with_state_mut(|s| {
+            let prev = s.nodes.get(key(child)).and_then(|c| c.parent);
+            if prev != Some(parent) {
+                if let Some(prev) = prev {
+                    if let Some(p_data) = s.nodes.get_mut(key(prev)) {
+                        p_data.children.retain(|c| *c != child);
+                    }
+                }
+            }
             if let Some(p) = s.nodes.get_mut(key(parent)) {
                 p.children.retain(|c| *c != child);
                 let i = idx.min(p.children.len());
@@ -328,8 +378,14 @@ impl<B: LayoutBackend> LayoutTree<B> {
             if let Some(c) = s.nodes.get_mut(key(child)) {
                 c.parent = Some(parent);
             }
+            prev
         });
         self.mark_dirty(parent);
+        if let Some(prev) = prev_parent {
+            if prev != parent {
+                self.mark_dirty(prev);
+            }
+        }
     }
 
     pub fn remove_child(&self, parent: NodeId, child: NodeId) {
@@ -407,8 +463,30 @@ impl<B: LayoutBackend> LayoutTree<B> {
         self.with_node(id, |n| n.parent).flatten()
     }
 
-    pub fn children(&self, id: NodeId) -> Vec<NodeId> {
-        self.with_node(id, |n| n.children.clone()).unwrap_or_default()
+    /// Borrowed view of `id`'s children. Returns an empty slice if
+    /// the node isn't in the tree.
+    ///
+    /// The returned [`Ref`] holds a shared borrow on the tree's
+    /// internal storage for its lifetime — fine for plain iteration,
+    /// but if you need to call mutating methods on the tree (`set_*`,
+    /// `add_child`, `run_layout_pass`, …) during the loop body,
+    /// `to_vec()` first to release the borrow:
+    ///
+    /// ```ignore
+    /// // Read-only walk: zero-copy.
+    /// for &child in tree.children(id).iter() { … }
+    ///
+    /// // Recursion that may mutate: collect first.
+    /// let kids: Vec<_> = tree.children(id).to_vec();
+    /// for child in kids { tree.set_style(child, …); }
+    /// ```
+    pub fn children(&self, id: NodeId) -> Ref<'_, [NodeId]> {
+        Ref::map(self.state.borrow(), |s| {
+            s.nodes
+                .get(key(id))
+                .map(|n| n.children.as_slice())
+                .unwrap_or(&[])
+        })
     }
 
     pub fn dirty(&self, id: NodeId) -> bool {
@@ -431,6 +509,36 @@ impl<B: LayoutBackend> LayoutTree<B> {
     /// clone.
     pub fn view(&self, id: NodeId) -> Option<B::View> {
         self.with_node(id, |n| n.view.clone())
+    }
+
+    /// Cheap accessor for the per-node backend metadata. Used by
+    /// scroll-view detection and similar dispatch where pulling the
+    /// `View` clone is wasted work.
+    pub fn meta(&self, id: NodeId) -> Option<B::NodeMeta> {
+        self.with_node(id, |n| n.meta.clone())
+    }
+
+    /// Walk the subtree rooted at `id` in pre-order and call
+    /// `visitor(node_id, layout, view)` for each node that has both
+    /// a stored layout and a view. Used by ports whose frame-
+    /// application strategy is "set every node's frame" (cocoa, iOS).
+    /// GTK doesn't use this — its allocate cycle drives recursion
+    /// itself.
+    pub fn walk_subtree(
+        &self,
+        id: NodeId,
+        visitor: &mut impl FnMut(NodeId, Layout, B::View),
+    ) {
+        if let (Some(layout), Some(view)) = (self.layout(id), self.view(id)) {
+            visitor(id, layout, view);
+        }
+        // Snapshot children before recursing so the visitor can call
+        // mutating tree methods (e.g. `set_style`) without conflicting
+        // with the outstanding `Ref` from `children()`.
+        let kids = self.children(id).to_vec();
+        for child in kids {
+            self.walk_subtree(child, visitor);
+        }
     }
 
 }
@@ -518,15 +626,21 @@ impl<B: LayoutBackend> LayoutPartialTree for LayoutState<B> {
                     // adjustments), but inject baselines from the
                     // backend so flexbox `align_items: Baseline` gets
                     // real data.
-                    let style = this.nodes[k].style.clone();
-                    let view = this.nodes[k].view.clone();
+                    //
+                    // We hold an immutable borrow on `this.nodes[k]`
+                    // across the call — `compute_leaf_layout`'s
+                    // `MeasureFunction` is `FnOnce` and runs
+                    // synchronously, so the closure's borrow of
+                    // `node.view` can't outlive this call. Avoids
+                    // cloning style + view per leaf measure.
+                    let node = &this.nodes[k];
                     let mut out = compute_leaf_layout(
                         inputs,
-                        &style,
+                        &node.style,
                         |_, _| 0.0,
-                        |known, avail| B::measure_leaf(&view, known, avail),
+                        |known, avail| B::measure_leaf(&node.view, known, avail),
                     );
-                    out.first_baselines.y = B::first_baseline(&view);
+                    out.first_baselines.y = B::first_baseline(&node.view);
                     out
                 }
             }

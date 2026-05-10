@@ -29,7 +29,8 @@ objc2 = "0.6"
 dispatch2 = "0.3"
 any_spawner = { workspace = true }
 futures = { workspace = true, default-features = true }
-taffy = { version = "0.10", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
+taffy = { workspace = true }
+native_layout = { workspace = true }
 objc2-foundation = { version = "0.3", features = [
     "NSGeometry",
     "NSString",

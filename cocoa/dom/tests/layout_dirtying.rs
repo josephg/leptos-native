@@ -185,10 +185,13 @@ fn insert_child_at_is_idempotent() {
 
     // Order should be [b, a] now.
     let lh = root.as_node().layout_slot().borrow().handle.clone().unwrap();
-    let kids = tree.children(lh.node_id);
     let a_id = a.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
     let b_id = b.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
-    assert_eq!(kids, vec![b_id, a_id], "child order wrong after reorder");
+    assert_eq!(
+        *tree.children(lh.node_id),
+        [b_id, a_id],
+        "child order wrong after reorder"
+    );
 }
 
 /// Replays the operations a keyed-`<For>` move performs against the

@@ -297,9 +297,7 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
 }
 
 fn is_scroll_view(tree: &TreeRef, id: NodeId) -> bool {
-    tree.get_node_context(id)
-        .map(|c| c.meta.is_scroll_view)
-        .unwrap_or(false)
+    tree.meta(id).map(|m| m.is_scroll_view).unwrap_or(false)
 }
 
 /// Walk the tree from `root`. For each scroll-view, run a second
@@ -342,7 +340,11 @@ fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
         return;
     }
 
-    for child in tree.children(root) {
+    // Collect before recursing — `relayout_scroll_views` may call
+    // `set_style` on the way back down, which would conflict with
+    // an outstanding `Ref` from `children`.
+    let kids = tree.children(root).to_vec();
+    for child in kids {
         relayout_scroll_views(tree, child);
     }
 }
@@ -361,7 +363,7 @@ fn fixup_scroll_view_documents(tree: &TreeRef, root: NodeId) {
                 let viewport = tree.layout(root).unwrap_or_default();
                 let mut max_x: f32 = 0.0;
                 let mut max_y: f32 = 0.0;
-                for child_id in tree.children(root) {
+                for &child_id in tree.children(root).iter() {
                     let Some(cl) = tree.layout(child_id) else { continue };
                     max_x = max_x.max(cl.location.x + cl.size.width);
                     max_y = max_y.max(cl.location.y + cl.size.height);
@@ -377,25 +379,17 @@ fn fixup_scroll_view_documents(tree: &TreeRef, root: NodeId) {
         return;
     }
 
-    for child in tree.children(root) {
+    for &child in tree.children(root).iter() {
         fixup_scroll_view_documents(tree, child);
     }
 }
 
 /// Walk the subtree rooted at `id`, calling `setFrame:` on each
 /// node's NSView with its Taffy-computed layout.
-///
-/// Each port writes its own apply pass — cocoa's setFrame works at
-/// any time so we just recurse, but GTK has to drive frame
-/// application through `widget.allocate(...)` calls inside its
-/// LayoutManager's `allocate` callback.
 fn apply_layout(tree: &TreeRef, id: NodeId) {
-    if let (Some(layout), Some(view)) = (tree.layout(id), tree.view(id)) {
+    tree.walk_subtree(id, &mut |_id, layout, view| {
         set_frame_from_layout(&view, &layout);
-    }
-    for child in tree.children(id) {
-        apply_layout(tree, child);
-    }
+    });
 }
 
 // ---------------------------------------------------------------------

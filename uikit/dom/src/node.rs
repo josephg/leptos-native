@@ -146,11 +146,8 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let layout = NodeLayout {
-            style: Style::default(),
-            handle: Some(handle),
-            is_scroll_view: false,
-        };
+        let mut layout = NodeLayout::new(Style::default());
+        layout.handle = Some(handle);
         Node {
             view: SendWrapper::new(view),
             layout: SendWrapper::new(Rc::new(RefCell::new(layout))),
@@ -440,7 +437,7 @@ impl Element {
 
         let node = Node::from_view(view, NodeKind::Element, default_style);
         if tag == "scroll_view" {
-            node.layout_slot().borrow_mut().is_scroll_view = true;
+            node.layout_slot().borrow_mut().meta.is_scroll_view = true;
         }
 
         Element { node }
@@ -464,7 +461,7 @@ impl Element {
     pub fn subview_parent(&self) -> Retained<UIView> {
         let direct = self.ui_view();
         let routes_to_doc =
-            self.node.layout_slot().borrow().is_scroll_view;
+            self.node.layout_slot().borrow().meta.is_scroll_view;
         if routes_to_doc {
             if let Some(scroll) =
                 downcast::<objc2_ui_kit::UIScrollView>(direct)
