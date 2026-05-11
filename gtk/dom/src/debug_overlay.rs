@@ -121,6 +121,25 @@ fn fill_rect(snap: &gtk4::Snapshot, rect: gtk4::graphene::Rect, color: [f32; 4])
     snap.append_color(&rgba(color), &rect);
 }
 
+/// Whether Taffy actually consults `first_baseline(node)` during the
+/// layout pass. True when either the node's own `align_self` is
+/// `Baseline`, or its flex parent's `align_items` is `Baseline`.
+fn baseline_in_use(tree: &TreeRef, node_id: NodeId) -> bool {
+    let style = match tree.style(node_id) {
+        Some(s) => s,
+        None => return false,
+    };
+    if style.align_self == Some(native_layout::AlignItems::Baseline) {
+        return true;
+    }
+    let Some(parent_id) = tree.parent(node_id) else { return false };
+    let parent_style = match tree.style(parent_id) {
+        Some(s) => s,
+        None => return false,
+    };
+    parent_style.align_items == Some(native_layout::AlignItems::Baseline)
+}
+
 fn walk(
     tree: &TreeRef,
     node_id: NodeId,
@@ -152,14 +171,21 @@ fn walk(
                 stroke_rect(snap, r, [0.2, 0.7, 1.0, 0.85]);
             }
 
-            // Green = leaf's reported text baseline.
-            if let Some(bo) =
-                <crate::layout::GtkBackend as native_layout::LayoutBackend>::first_baseline(&view)
-            {
-                if bo > 0.0 && bo < rect.height() {
-                    let y = rect.y() + bo;
-                    let r = gtk4::graphene::Rect::new(rect.x(), y, rect.width(), 1.0);
-                    fill_rect(snap, r, [0.2, 1.0, 0.4, 0.9]);
+            // Green = leaf's reported text baseline. Only drawn when
+            // baseline alignment is actually in play — otherwise the
+            // value isn't being consumed by layout, and GTK's natural
+            // baseline (queried at unconstrained height) can be off
+            // for widgets whose final allocation differs from their
+            // natural size.
+            if baseline_in_use(tree, node_id) {
+                if let Some(bo) =
+                    <crate::layout::GtkBackend as native_layout::LayoutBackend>::first_baseline(&view)
+                {
+                    if bo > 0.0 && bo < rect.height() {
+                        let y = rect.y() + bo;
+                        let r = gtk4::graphene::Rect::new(rect.x(), y, rect.width(), 1.0);
+                        fill_rect(snap, r, [0.2, 1.0, 0.4, 0.9]);
+                    }
                 }
             }
         }

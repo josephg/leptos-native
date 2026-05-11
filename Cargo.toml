@@ -41,7 +41,7 @@ members = [
 
   # iOS examples
   "uikit/examples/*",
-  
+
   # GTK examples — analogous to the cocoa examples list. Each
   # example's `[target.'cfg(target_os = "linux")'.dependencies]`
   # gates the leptos_gtk dep so they compile to empty rlibs on
@@ -194,6 +194,8 @@ subsecond = { default-features = false, version = "0.7" }
 codegen-units = 1
 lto = true
 opt-level = 'z'
+#strip = true
+#panic = "abort"
 
 [workspace.metadata.cargo-all-features]
 max_combination_size = 2
