@@ -111,6 +111,69 @@ impl From<f32> for Dim {
 }
 
 // ---------------------------------------------------------------------
+// Edges — per-side padding / margin
+// ---------------------------------------------------------------------
+
+/// Per-side inset, in points. Used by `padding` and `margin`.
+///
+/// Construction:
+/// - `Edges::all(n)` — uniform on all four sides.
+/// - `Edges::axis(h, v)` — horizontal then vertical pair (`h` =
+///   left+right, `v` = top+bottom). The argument order is fixed in
+///   the method name (`axis` = "horizontal-axis, vertical-axis")
+///   rather than implicit in a tuple, so call sites read
+///   unambiguously.
+/// - `Edges::trbl(t, r, b, l)` — explicit per-side, CSS-shorthand
+///   order.
+/// - Builder form: `Edges::ZERO.top(8.0).left(12.0)`.
+/// - `From<f32>` lifts a uniform value: `padding=8.0` ⇒
+///   `Edges::all(8.0)`.
+///
+/// Tuple `From` impls are **deliberately not provided**: `(h, v)`
+/// vs `(v, h)` and `(t, r, b, l)` vs CSS's other shorthand
+/// orderings is a famous source of bugs. Use the named
+/// constructors.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Edges {
+    pub top:    f32,
+    pub right:  f32,
+    pub bottom: f32,
+    pub left:   f32,
+}
+
+impl Edges {
+    pub const ZERO: Self = Self { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 };
+
+    pub const fn all(n: f32) -> Self {
+        Self { top: n, right: n, bottom: n, left: n }
+    }
+
+    /// `axis(h, v)` — `h` left+right, `v` top+bottom. The named
+    /// method makes the order explicit at the call site
+    /// (`Edges::axis(16.0, 8.0)` → 16 horizontal, 8 vertical).
+    pub const fn axis(h: f32, v: f32) -> Self {
+        Self { top: v, right: h, bottom: v, left: h }
+    }
+
+    /// Per-side `top right bottom left` — matches CSS shorthand
+    /// `padding: 8px 12px 8px 12px;`.
+    pub const fn trbl(t: f32, r: f32, b: f32, l: f32) -> Self {
+        Self { top: t, right: r, bottom: b, left: l }
+    }
+
+    /// `Edges::ZERO.top(8.0)` — only the top edge. Builder methods
+    /// for each side; pair to set arbitrary subsets.
+    pub const fn top(mut self, n: f32) -> Self { self.top = n; self }
+    pub const fn right(mut self, n: f32) -> Self { self.right = n; self }
+    pub const fn bottom(mut self, n: f32) -> Self { self.bottom = n; self }
+    pub const fn left(mut self, n: f32) -> Self { self.left = n; self }
+}
+
+impl From<f32> for Edges {
+    fn from(n: f32) -> Self { Self::all(n) }
+}
+
+// ---------------------------------------------------------------------
 // AlignSelf — flex item cross-axis alignment override
 // ---------------------------------------------------------------------
 
@@ -226,7 +289,7 @@ macro_rules! impl_pair {
 }
 
 impl_pair!(
-    String, bool, i32, f32, f64, usize, Dim, AlignSelf, GridLine,
+    String, bool, i32, f32, f64, usize, Dim, AlignSelf, GridLine, Edges,
 );
 
 // Sugar: pass raw integer literals to grid_column / grid_row methods
@@ -254,6 +317,16 @@ impl IntoMaybeReactive<String> for &str {
 impl IntoMaybeReactive<Dim> for f32 {
     fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
         MaybeReactive::Static(Dim::Px(self))
+    }
+}
+
+// f32 → Edges so call sites can keep `padding=8.0` shorthand for
+// uniform padding. The reactive form is `move || Edges::all(...)`
+// rather than `move || 8.0_f32` — keeping the lift unambiguous
+// (we don't infer "uniform" from a closure returning f32).
+impl IntoMaybeReactive<Edges> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<Edges> {
+        MaybeReactive::Static(Edges::all(self))
     }
 }
 
@@ -348,16 +421,20 @@ pub trait WithText<C: 'static, A: 'static>: Sized {
 /// edge values aren't supported here yet.
 #[derive(Default)]
 pub struct LayoutAttrs {
-    pub padding: Option<MaybeReactive<f32>>,
-    pub margin: Option<MaybeReactive<f32>>,
+    pub padding: Option<MaybeReactive<Edges>>,
+    pub margin: Option<MaybeReactive<Edges>>,
     pub width: Option<MaybeReactive<Dim>>,
     pub height: Option<MaybeReactive<Dim>>,
     pub min_width: Option<MaybeReactive<Dim>>,
     pub min_height: Option<MaybeReactive<Dim>>,
     pub max_width: Option<MaybeReactive<Dim>>,
     pub max_height: Option<MaybeReactive<Dim>>,
-    pub flex_grow: Option<MaybeReactive<f32>>,
-    pub align_self: Option<MaybeReactive<AlignSelf>>,
+    // Flex-item sizing (active when this element is a child of a
+    // flex container — `<vstack>` / `<hstack>` / `<view>`).
+    pub flex_grow:   Option<MaybeReactive<f32>>,
+    pub flex_shrink: Option<MaybeReactive<f32>>,
+    pub flex_basis:  Option<MaybeReactive<f32>>,
+    pub align_self:  Option<MaybeReactive<AlignSelf>>,
 
     // Grid placement (no-op when the parent isn't a grid).
     pub grid_column_start: Option<MaybeReactive<GridLine>>,
@@ -372,12 +449,18 @@ pub struct LayoutAttrs {
 pub trait WithLayout: Sized {
     fn layout_mut(&mut self) -> &mut LayoutAttrs;
 
-    fn padding<V: IntoMaybeReactive<f32>>(mut self, p: V) -> Self {
+    /// Inner padding. Accepts any of:
+    /// - `padding=8.0` — uniform (via `From<f32> for Edges`).
+    /// - `padding=(16.0, 8.0)` — `(horizontal, vertical)`.
+    /// - `padding=(t, r, b, l)` — explicit per-side.
+    /// - `padding=Edges::ZERO.with_top(8.0)` — builder form.
+    fn padding<V: IntoMaybeReactive<Edges>>(mut self, p: V) -> Self {
         self.layout_mut().padding = Some(p.into_maybe_reactive());
         self
     }
 
-    fn margin<V: IntoMaybeReactive<f32>>(mut self, m: V) -> Self {
+    /// Outer margin. Same shapes as `padding`.
+    fn margin<V: IntoMaybeReactive<Edges>>(mut self, m: V) -> Self {
         self.layout_mut().margin = Some(m.into_maybe_reactive());
         self
     }
@@ -419,9 +502,45 @@ pub trait WithLayout: Sized {
         self
     }
 
+    /// Flex shrink factor. Taffy default is `1` (will shrink to
+    /// fit). Set to `0` to refuse shrinking — used by [`size`] to
+    /// keep fixed-size chrome rigid even when a sibling overflows.
+    fn flex_shrink<V: IntoMaybeReactive<f32>>(mut self, s: V) -> Self {
+        self.layout_mut().flex_shrink = Some(s.into_maybe_reactive());
+        self
+    }
+
+    /// Flex basis — the element's initial main-axis size before
+    /// `flex_grow` / `flex_shrink` distribute remaining space.
+    fn flex_basis<V: IntoMaybeReactive<f32>>(mut self, b: V) -> Self {
+        self.layout_mut().flex_basis = Some(b.into_maybe_reactive());
+        self
+    }
+
     /// Per-child override of the parent flex container's `align_items`.
     fn align_self<V: IntoMaybeReactive<AlignSelf>>(mut self, a: V) -> Self {
         self.layout_mut().align_self = Some(a.into_maybe_reactive());
+        self
+    }
+
+    /// Lock the element to an `n×n` square that flex layout can't
+    /// squeeze. Sets `width`, `height`, `min_width`, `min_height`,
+    /// and `flex_shrink=0` simultaneously — the magic five that
+    /// keep an avatar/icon/checkbox rigid even when a sibling
+    /// would otherwise compress it along the flex axis.
+    ///
+    /// Static-only: reactive square sizing would mean cloning the
+    /// same closure into five separate reactive setters, which
+    /// requires `Sync` and `Clone` on the user's closure. The
+    /// trade-off isn't worth it for the rare case; if you need
+    /// reactive size, set `width`/`height` directly.
+    fn size(mut self, n: f32) -> Self {
+        let l = self.layout_mut();
+        l.width       = Some(MaybeReactive::Static(Dim::Px(n)));
+        l.height      = Some(MaybeReactive::Static(Dim::Px(n)));
+        l.min_width   = Some(MaybeReactive::Static(Dim::Px(n)));
+        l.min_height  = Some(MaybeReactive::Static(Dim::Px(n)));
+        l.flex_shrink = Some(MaybeReactive::Static(0.0));
         self
     }
 
@@ -499,5 +618,121 @@ pub trait WithLayout: Sized {
         l.grid_row_start = Some(MaybeReactive::Static(GridLine::Auto));
         l.grid_row_end   = Some(MaybeReactive::Static(GridLine::Span(n)));
         self
+    }
+}
+
+// ---------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- Edges ------------------------------------------------------
+
+    #[test]
+    fn edges_zero_is_zero() {
+        let e = Edges::ZERO;
+        assert_eq!(e.top, 0.0);
+        assert_eq!(e.right, 0.0);
+        assert_eq!(e.bottom, 0.0);
+        assert_eq!(e.left, 0.0);
+    }
+
+    #[test]
+    fn edges_all_is_uniform() {
+        let e = Edges::all(8.0);
+        assert_eq!(e, Edges { top: 8.0, right: 8.0, bottom: 8.0, left: 8.0 });
+    }
+
+    #[test]
+    fn edges_axis_maps_h_to_left_right_and_v_to_top_bottom() {
+        // `axis(h, v)` — explicit in the name. h goes to left+right,
+        // v goes to top+bottom. Documented at call site; verify here.
+        let e = Edges::axis(16.0, 8.0);
+        assert_eq!(e.left, 16.0);
+        assert_eq!(e.right, 16.0);
+        assert_eq!(e.top, 8.0);
+        assert_eq!(e.bottom, 8.0);
+    }
+
+    #[test]
+    fn edges_trbl_is_top_right_bottom_left() {
+        let e = Edges::trbl(1.0, 2.0, 3.0, 4.0);
+        assert_eq!(e.top, 1.0);
+        assert_eq!(e.right, 2.0);
+        assert_eq!(e.bottom, 3.0);
+        assert_eq!(e.left, 4.0);
+    }
+
+    #[test]
+    fn edges_builder_per_side() {
+        let e = Edges::ZERO.top(1.0).right(2.0).bottom(3.0).left(4.0);
+        assert_eq!(e, Edges::trbl(1.0, 2.0, 3.0, 4.0));
+    }
+
+    #[test]
+    fn edges_builder_is_const() {
+        // The whole builder chain is `const fn`; this constructs at
+        // compile time. If any method loses `const` we lose const
+        // construction across the whole pipeline.
+        const E: Edges = Edges::ZERO.top(8.0).left(12.0);
+        assert_eq!(E.top, 8.0);
+        assert_eq!(E.left, 12.0);
+        assert_eq!(E.right, 0.0);
+        assert_eq!(E.bottom, 0.0);
+    }
+
+    #[test]
+    fn edges_from_f32_is_uniform() {
+        let e: Edges = 5.0.into();
+        assert_eq!(e, Edges::all(5.0));
+    }
+
+    #[test]
+    fn into_maybe_reactive_for_f32_to_edges_is_uniform_static() {
+        // `padding=8.0` ⇒ `MaybeReactive::Static(Edges::all(8.0))`.
+        // f32 implements `IntoMaybeReactive<T>` for several Ts
+        // (f32, Dim, Edges), so the target type needs to be named.
+        let mr: MaybeReactive<Edges> =
+            <f32 as IntoMaybeReactive<Edges>>::into_maybe_reactive(8.0);
+        match mr {
+            MaybeReactive::Static(e) => assert_eq!(e, Edges::all(8.0)),
+            MaybeReactive::Reactive(_) => panic!("expected Static"),
+        }
+    }
+
+    // ---- Dim / GridLine sanity --------------------------------------
+
+    #[test]
+    fn dim_from_f32_is_px() {
+        let d: Dim = Dim::from(120.0_f32);
+        assert_eq!(d, Dim::Px(120.0));
+    }
+
+    #[test]
+    fn grid_line_from_i32_clamps_to_i16_or_panics() {
+        // i32 within i16 range: passes through.
+        let g: GridLine = 5_i32.into();
+        assert_eq!(g, GridLine::Line(5));
+        let g: GridLine = (-3_i32).into();
+        assert_eq!(g, GridLine::Line(-3));
+    }
+
+    #[test]
+    #[should_panic(expected = "out of range for i16")]
+    fn grid_line_from_oversized_i32_panics() {
+        let _: GridLine = 50_000_i32.into();
+    }
+
+    #[test]
+    fn span_helper_is_span_variant() {
+        assert_eq!(span(3), GridLine::Span(3));
+    }
+
+    #[test]
+    fn auto_line_helper_is_auto_variant() {
+        assert_eq!(auto_line(), GridLine::Auto);
     }
 }

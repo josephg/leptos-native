@@ -1186,23 +1186,81 @@ impl Element {
         }
     }
 
-    /// Set the font size (in points) on a text-bearing view. Uses
-    /// the system font at the given size; size mapping is verbatim
-    /// (no Dynamic Type scaling). No-op on others.
+    /// Set the font size (in points) on a text-bearing view.
+    /// **Preserves every symbolic trait** on the existing font —
+    /// bold, italic, condensed, expanded, monospace, vertical, etc.
+    /// Only the point size changes. No-op on non-text views.
     pub fn set_font_size(&self, points: f64) {
+        let traits = self.read_font_traits();
+        self.apply_font(points, traits);
+    }
+
+    /// Toggle bold weight on a text-bearing view. Preserves the
+    /// current point size and every other symbolic trait.
+    pub fn set_bold(&self, bold: bool) {
+        use objc2_app_kit::NSFontDescriptorSymbolicTraits;
+        let pts = self
+            .read_font_point_size()
+            .unwrap_or_else(|| objc2_app_kit::NSFont::systemFontSize());
+        let mut traits = self.read_font_traits();
+        if bold {
+            traits |= NSFontDescriptorSymbolicTraits::TraitBold;
+        } else {
+            traits &= !NSFontDescriptorSymbolicTraits::TraitBold;
+        }
+        self.apply_font(pts, traits);
+    }
+
+    /// Toggle italic on a text-bearing view. Preserves point size
+    /// and other symbolic traits.
+    pub fn set_italic(&self, italic: bool) {
+        use objc2_app_kit::NSFontDescriptorSymbolicTraits;
+        let pts = self
+            .read_font_point_size()
+            .unwrap_or_else(|| objc2_app_kit::NSFont::systemFontSize());
+        let mut traits = self.read_font_traits();
+        if italic {
+            traits |= NSFontDescriptorSymbolicTraits::TraitItalic;
+        } else {
+            traits &= !NSFontDescriptorSymbolicTraits::TraitItalic;
+        }
+        self.apply_font(pts, traits);
+    }
+
+    /// Build a font at `points` carrying `traits` (bold, italic,
+    /// condensed, etc.) and install it on whichever text-bearing
+    /// widget this view backs. Uses
+    /// `NSFontDescriptor.fontDescriptorWithSymbolicTraits:` so the
+    /// trait bits go through unchanged — no NSFontManager
+    /// translation layer.
+    fn apply_font(
+        &self,
+        points: f64,
+        traits: objc2_app_kit::NSFontDescriptorSymbolicTraits,
+    ) {
         use objc2_app_kit::NSFont;
-        let font = NSFont::systemFontOfSize(points);
+        let plain = NSFont::systemFontOfSize(points);
+        // Start from the plain system-font descriptor; layer the
+        // requested symbolic traits on. The resulting descriptor
+        // may resolve to a substitute font (e.g. SF Mono for the
+        // MonoSpace trait); we only use it if the new descriptor
+        // can be turned back into a concrete NSFont. Otherwise
+        // fall back to the plain font — better than a panic.
+        let font = if traits.is_empty() {
+            plain
+        } else {
+            let base = plain.fontDescriptor();
+            let with_traits = base.fontDescriptorWithSymbolicTraits(traits);
+            NSFont::fontWithDescriptor_size(&with_traits, points)
+                .unwrap_or(plain)
+        };
 
         let view = self.ns_view();
         if let Some(field) = downcast::<NSTextField>(view) {
             field.setFont(Some(&font));
-            return;
-        }
-        if let Some(button) = downcast::<NSButton>(view) {
+        } else if let Some(button) = downcast::<NSButton>(view) {
             button.setFont(Some(&font));
-            return;
-        }
-        if let Some(scroll) =
+        } else if let Some(scroll) =
             downcast::<objc2_app_kit::NSScrollView>(view)
         {
             if let Some(doc) = scroll.documentView() {
@@ -1215,6 +1273,36 @@ impl Element {
             }
         }
         crate::layout::schedule_relayout(&self.node);
+    }
+
+    fn read_font_point_size(&self) -> Option<f64> {
+        let view = self.ns_view();
+        if let Some(field) = downcast::<NSTextField>(view) {
+            return field.font().map(|f| f.pointSize());
+        }
+        if let Some(button) = downcast::<NSButton>(view) {
+            return button.font().map(|f| f.pointSize());
+        }
+        None
+    }
+
+    /// Read the symbolic traits (bold, italic, condensed, ...) of
+    /// the view's current font. Returns the empty bitset when there
+    /// is no font (non-text view), or when no traits are active.
+    fn read_font_traits(&self) -> objc2_app_kit::NSFontDescriptorSymbolicTraits {
+        use objc2_app_kit::NSFontDescriptorSymbolicTraits;
+        let view = self.ns_view();
+        let font = if let Some(field) = downcast::<NSTextField>(view) {
+            field.font()
+        } else if let Some(button) = downcast::<NSButton>(view) {
+            button.font()
+        } else {
+            None
+        };
+        match font {
+            Some(f) => f.fontDescriptor().symbolicTraits(),
+            None => NSFontDescriptorSymbolicTraits::empty(),
+        }
     }
 
     // -----------------------------------------------------------------
@@ -1242,6 +1330,25 @@ impl Element {
         }
     }
 
+    /// Apply a custom title color to an NSButton via the
+    /// `contentTintColor` property. Recolors both the title text
+    /// and any template-image bitmaps; no `attributedTitle`
+    /// round-trip required. No-op on non-buttons.
+    ///
+    /// **macOS deployment target**: `contentTintColor` was added in
+    /// macOS 10.14 (Mojave). The crate's effective MSRV is whatever
+    /// `objc2-app-kit` requires (currently 10.13). Pre-10.14
+    /// targets would `respondsToSelector:` away the call — we
+    /// don't currently guard it. If you need pre-Mojave support,
+    /// drop back to a manually-applied `attributedTitle`.
+    pub fn set_button_title_color(&self, color: crate::Color) {
+        let Some(button) = downcast::<NSButton>(self.ns_view()) else {
+            return;
+        };
+        let ns_color = color.to_nscolor();
+        button.setContentTintColor(Some(&ns_color));
+    }
+
     /// Toggle whether an NSTextField draws a border / bezel.
     /// `bordered=false` matches a label-style appearance even on
     /// editable fields. No-op on non-NSTextField.
@@ -1265,6 +1372,75 @@ impl Element {
         if let Some(f) = downcast::<NSTextField>(self.ns_view()) {
             f.setSelectable(selectable);
         }
+    }
+
+    /// Set the line-break behaviour on a text view.
+    /// `LineBreak::WORD_WRAP` / `CHAR_WRAP` allow wrapping;
+    /// `TRUNCATE_HEAD/TAIL/MIDDLE` keep one line with an ellipsis;
+    /// `CLIP` truncates silently with no indicator. Supports
+    /// **both** NSTextField (labels, text fields) and NSTextView
+    /// (scroll_view-wrapped multi-line editor). No-op on other
+    /// view kinds.
+    pub fn set_line_break(&self, mode: crate::LineBreak) {
+        use objc2_app_kit::NSLineBreakMode;
+        let wraps = matches!(
+            mode.0,
+            NSLineBreakMode::ByWordWrapping | NSLineBreakMode::ByCharWrapping
+        );
+        let view = self.ns_view();
+        if let Some(f) = downcast::<NSTextField>(view) {
+            f.setUsesSingleLineMode(!wraps);
+            f.cell()
+                .expect("NSTextField always has a cell")
+                .setLineBreakMode(mode.0);
+            // 0 = "as many as needed"; the truncate modes are
+            // effectively single-line via setUsesSingleLineMode.
+            f.setMaximumNumberOfLines(0);
+            crate::layout::schedule_relayout(&self.node);
+            return;
+        }
+        // NSTextView lives inside an NSScrollView (our <text_view>
+        // tag). Its text-container governs line breaking.
+        if let Some(scroll) =
+            downcast::<objc2_app_kit::NSScrollView>(view)
+        {
+            if let Some(doc) = scroll.documentView() {
+                let any: &AnyObject = &doc;
+                if let Some(tv) =
+                    any.downcast_ref::<objc2_app_kit::NSTextView>()
+                {
+                    // SAFETY: textContainer is unsafe in objc2 because
+                    // the returned pointer could in principle be
+                    // null; for an NSTextView that has been added to
+                    // the view hierarchy (which all our text_views
+                    // are at this point), the container is always
+                    // present. Treat None as "no-op" defensively.
+                    if let Some(container) =
+                        unsafe { tv.textContainer() }
+                    {
+                        container.setLineBreakMode(mode.0);
+                        // Truncation modes need a finite width and
+                        // unbounded height to surface the ellipsis;
+                        // wrapping modes already have that shape by
+                        // default. Keep the existing geometry — we
+                        // only touch line-break mode.
+                    }
+                    crate::layout::schedule_relayout(&self.node);
+                }
+            }
+        }
+    }
+
+    /// Shorthand for `set_line_break(ByWordWrapping/ByTruncatingTail)`
+    /// — kept for source-compat with the older `Label::multiline(true)`
+    /// builder method. New call sites should prefer
+    /// `set_line_break` directly.
+    pub fn set_multiline(&self, multi: bool) {
+        self.set_line_break(if multi {
+            crate::LineBreak::WORD_WRAP
+        } else {
+            crate::LineBreak::TRUNCATE_TAIL
+        });
     }
 
     /// Switch an NSSlider between horizontal and vertical

@@ -39,12 +39,13 @@ pub mod node;
 pub mod objc_enums;
 pub mod renderer;
 pub mod spawner;
+pub mod split_window;
 pub mod storage;
 pub mod window;
 
 pub use color::Color;
 pub use date::Date;
-pub use objc_enums::{DatePickerStyle, SegmentStyle, TextAlignment};
+pub use objc_enums::{DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };

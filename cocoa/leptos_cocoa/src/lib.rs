@@ -96,6 +96,35 @@ pub trait IntoView: leptos::IntoView<Dom> {}
 impl<T: leptos::IntoView<Dom>> IntoView for T {}
 
 /// User prelude — the items end-user examples bring into scope.
+///
+/// Built around `use leptos::prelude::*;` resolving to this module
+/// when the example's `Cargo.toml` aliases `leptos = "leptos_cocoa"`.
+/// The contents fall into these groups:
+///
+/// - **Reactive core** (re-exported from `leptos`): `RwSignal`,
+///   `Memo`, `Effect`, `provide_context`/`use_context`, the
+///   `#[component]` and `view!{}` macros, `<Show>`, `<Switch>` /
+///   `<Match>`, `<For>`, `IntoView`, etc.
+/// - **Mounting**: [`mount_to_window`](crate::mount::mount_to_window),
+///   [`run`](crate::mount::run).
+/// - **Element builders**: `button()`, `vstack()`, `hstack()`,
+///   `view()`, `stack_view()`, `grid()`, `label()`, `text_field()`.
+///   Used directly *or* via the `view!` macro's element syntax.
+/// - **Attribute traits**: `WithLayout` / `WithUniversal` / cocoa-
+///   port `WithText` for chainable setters
+///   (`.padding(8.0).flex_grow(1.0).text_color(c)` etc.).
+/// - **Style enums**: `AlignItems`, `JustifyContent`, `FlexDirection`,
+///   `FlexWrap`, `Edges`, `Dim`, `AlignSelf`, `GridLine`,
+///   `LineBreak`, `TextAlignment`, `Color`.
+/// - **Grid helpers**: `fr`, `length`, `auto`, `percent`,
+///   `min_content`, `max_content`, `minmax`, `fit_content`,
+///   `repeat`, `span`, `auto_line`.
+/// - **Native helpers**: `local_storage`, `set_interval`,
+///   `KeyEvent`, `Storage`.
+///
+/// Anything not listed lives at `leptos::core::*` (the inner
+/// `common/leptos` crate, re-exported as `core`) or `leptos::reactive::*`
+/// (reactive_graph). The prelude only pulls in the day-to-day surface.
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our cocoa-specialized
     // overrides below shadow it (specifically `IntoView`).
@@ -107,7 +136,12 @@ pub mod prelude {
     pub use crate::IntoView;
 
     // Mounting
-    pub use crate::mount::{mount_to_window, run};
+    pub use crate::mount::{mount_to_split_window, mount_to_window, run};
+
+    // Split-view builders + the pane-behavior enum.
+    pub use crate::cocoa::split::{
+        split_pane, split_view, PaneBehavior, SplitPane, SplitView,
+    };
 
     // Cocoa-flavoured element builders, exposed as bare functions
     // (`button()`, `vstack()`, etc.) so user code that writes them
@@ -129,7 +163,7 @@ pub mod prelude {
             WithText,
         },
         node_ref::NodeRef,
-        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+        AlignContent, AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
         TrackSizingFunction,
     };
@@ -146,13 +180,14 @@ pub mod prelude {
     // Grid placement attrs (added to every element via `WithLayout`).
     // Re-exported so user code can pass `GridLine::Auto` explicitly,
     // or use `span(n)` / integer literals via `Into<GridLine>`.
-    pub use renderer::attrs::{auto_line, GridLine};
+    pub use renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine};
 
     // cocoa_dom helpers commonly used by examples (timers, persistent
     // storage, native colour types, key events).
     pub use cocoa_dom::{
         local_storage, set_interval, set_interval_with_handle, Color,
-        IntervalError, IntervalHandle, KeyEvent, Storage, StorageError,
+        IntervalError, IntervalHandle, KeyEvent, LineBreak, Storage,
+        StorageError, TextAlignment,
     };
     pub use crate::Dom;
 }

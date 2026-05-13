@@ -21,10 +21,10 @@
 //! element's `State`, so it lives exactly as long as the element
 //! is mounted.
 
-pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
+pub use renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeReactive};
 use cocoa_dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
-    Color, Date, DatePickerStyle, SegmentStyle, TextAlignment,
+    Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment,
 };
 
 /// Conversion trait so attribute setters can take either a bare
@@ -61,9 +61,9 @@ macro_rules! impl_pair {
 }
 
 impl_pair!(
-    String, bool, i32, f32, f64, usize, Dim,
+    String, bool, i32, f32, f64, usize, Dim, Edges,
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
-    Color, Date, TextAlignment, SegmentStyle, DatePickerStyle,
+    Color, Date, TextAlignment, LineBreak, SegmentStyle, DatePickerStyle,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.
@@ -81,5 +81,17 @@ impl IntoMaybeReactive<String> for &str {
 impl IntoMaybeReactive<Dim> for f32 {
     fn into_maybe_reactive(self) -> MaybeReactive<Dim> {
         MaybeReactive::Static(Dim::Px(self))
+    }
+}
+
+/// `f32` → `Edges::all(...)` so `padding=8.0` keeps working as
+/// shorthand for uniform padding even though the field type is
+/// `Edges`. This impl is duplicated from `renderer::attrs` because
+/// the orphan rule blocks closure-form `IntoMaybeReactive` impls
+/// from existing in the renderer crate (the trait can't be foreign
+/// to *both* the impl and the type) — see the `attr.rs` module doc.
+impl IntoMaybeReactive<Edges> for f32 {
+    fn into_maybe_reactive(self) -> MaybeReactive<Edges> {
+        MaybeReactive::Static(Edges::all(self))
     }
 }

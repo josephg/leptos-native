@@ -65,3 +65,8 @@ harness = false
 name = "two_handlers"
 path = "tests/two_handlers.rs"
 harness = false
+
+[[test]]
+name = "switch"
+path = "tests/switch.rs"
+harness = false

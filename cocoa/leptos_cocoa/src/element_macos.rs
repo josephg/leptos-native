@@ -18,3 +18,8 @@ pub use crate::cocoa::element::{
     segmented_control, slider, stack, stack_view, stepper, text_field,
     text_view, view, vstack,
 };
+
+// Split-view: `<split_view>` + `<split_pane>` — native
+// `NSSplitViewController` panes, each with their own Taffy tree.
+// Must be used with `mount_to_split_window` (not `mount_to_window`).
+pub use crate::cocoa::split::{split_pane, split_view};

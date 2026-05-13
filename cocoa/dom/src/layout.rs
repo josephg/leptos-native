@@ -249,7 +249,31 @@ pub fn set_style(node: &Node, style: Style) {
 
 /// Compute layout for the subtree rooted at `root`, then walk it and
 /// assign frames to each NSView.
+///
+/// **Applies a frame to the root node itself.** Use
+/// [`compute_layout_children`] instead when the root's frame is
+/// owned by an outer layout system (e.g. a pane root inside an
+/// `NSSplitView` whose Auto-Layout pass already positioned the
+/// FlippedView). Calling this on a pane-root would fight the
+/// outer system and reset origin to `(0, 0)` every tick.
 pub fn compute_layout(root: &Node, available_size: NSSize) {
+    compute_layout_inner(root, available_size, /*apply_root_frame=*/ true)
+}
+
+/// Like [`compute_layout`] but **skips writing a frame for the
+/// root NSView**. The root's frame stays as set by the caller
+/// (NSSplitView's Auto-Layout pass, in practice). Taffy still
+/// computes the layout using `available_size`, and frames are
+/// applied to every descendant.
+pub fn compute_layout_children(root: &Node, available_size: NSSize) {
+    compute_layout_inner(root, available_size, /*apply_root_frame=*/ false)
+}
+
+fn compute_layout_inner(
+    root: &Node,
+    available_size: NSSize,
+    apply_root_frame: bool,
+) {
     if layout_debug_enabled() {
         eprintln!(
             "[compute_layout] avail {:.0}x{:.0}",
@@ -284,7 +308,11 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
     // view's own final layout to the first-pass viewport size.
     relayout_scroll_views(&handle.tree, handle.node_id);
 
-    apply_frames(&handle.tree, handle.node_id);
+    if apply_root_frame {
+        apply_frames(&handle.tree, handle.node_id);
+    } else {
+        apply_frames_descendants_only(&handle.tree, handle.node_id);
+    }
 
     // Cocoa-specific: bound each `<scroll_view>` documentView to its
     // children's content extent so NSScrollView shows scroll bars
@@ -388,6 +416,18 @@ fn fixup_scroll_view_documents(tree: &TreeRef, root: NodeId) {
 fn apply_frames(tree: &TreeRef, id: NodeId) {
     tree.walk_subtree(id, &mut |_id, layout, view| {
         set_frame_from_layout(&view, &layout);
+    });
+}
+
+/// Same as [`apply_frames`] but skips the root id itself — only
+/// descendants get frames assigned. Used by
+/// [`compute_layout_children`] for pane-roots whose outer frame is
+/// owned by Auto-Layout (e.g. NSSplitView panes).
+fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
+    tree.walk_subtree(root_id, &mut |id, layout, view| {
+        if id != root_id {
+            set_frame_from_layout(&view, &layout);
+        }
     });
 }
 
@@ -575,5 +615,45 @@ pub fn set_clip(node: &Node, clip: bool) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         layer.setMasksToBounds(clip);
+    }
+}
+
+/// Round the view's CALayer corners by `radius` points. 0 disables.
+/// Layer-backed conveniences imply `setWantsLayer(true)` like
+/// [`set_background_color`].
+///
+/// Does **not** enable `masksToBounds`: the CALayer's
+/// `backgroundColor` already honors `cornerRadius`, so a rounded
+/// background shows up without it. Use [`set_clip`] separately when
+/// you need child views to clip to the rounded shape (common on
+/// container stacks; almost never wanted on buttons, where masking
+/// can chew into the rendered title near the corners).
+pub fn set_corner_radius(node: &Node, radius: f32) {
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        layer.setCornerRadius(radius as f64);
+    }
+}
+
+/// Set the CALayer border width in points. `0` disables the border.
+/// Border color defaults to opaque black when set the first time;
+/// pair with [`set_border_color`] for non-default colors.
+pub fn set_border_width(node: &Node, width: f32) {
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        layer.setBorderWidth(width as f64);
+    }
+}
+
+/// Set the CALayer border color. No effect unless [`set_border_width`]
+/// has been called with a width > 0.
+pub fn set_border_color(node: &Node, color: crate::Color) {
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        let ns = color.to_nscolor();
+        layer.setBorderColor(Some(&ns.CGColor()));
     }
 }

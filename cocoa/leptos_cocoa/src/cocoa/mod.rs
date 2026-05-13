@@ -16,6 +16,7 @@ pub mod bind;
 pub(crate) mod directives;
 pub mod element;
 pub mod node_ref;
+pub mod split;
 pub mod window;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
@@ -29,6 +30,6 @@ pub use window::{window, Window};
 // Convenient passthrough of the most common style enums so users
 // don't have to import them from `cocoa_dom::layout` separately.
 pub use cocoa_dom::layout::{
-    AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+    AlignContent, AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
     GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
 };

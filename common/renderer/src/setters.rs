@@ -29,7 +29,7 @@ use crate::layout::{
     TrackSizingFunction,
 };
 use crate::attrs::{
-    install, AlignSelf, Dim, GridLine, LayoutAttrs, RenderEffect,
+    install, AlignSelf, Dim, Edges, GridLine, LayoutAttrs, RenderEffect,
     UniversalAttrs,
 };
 
@@ -129,25 +129,27 @@ pub fn set_max_height<N: LayoutNodeOps>(node: &N, px: f32) {
     node.schedule_relayout();
 }
 
-pub fn set_padding<N: LayoutNodeOps>(node: &N, all_px: f32) {
+pub fn set_padding<N: LayoutNodeOps>(node: &N, e: impl Into<Edges>) {
+    let e = e.into();
     node.update_style(|s| {
         s.padding = Rect {
-            left: LengthPercentage::length(all_px),
-            right: LengthPercentage::length(all_px),
-            top: LengthPercentage::length(all_px),
-            bottom: LengthPercentage::length(all_px),
+            left:   LengthPercentage::length(e.left),
+            right:  LengthPercentage::length(e.right),
+            top:    LengthPercentage::length(e.top),
+            bottom: LengthPercentage::length(e.bottom),
         };
     });
     node.schedule_relayout();
 }
 
-pub fn set_margin<N: LayoutNodeOps>(node: &N, all_px: f32) {
+pub fn set_margin<N: LayoutNodeOps>(node: &N, e: impl Into<Edges>) {
+    let e = e.into();
     node.update_style(|s| {
         s.margin = Rect {
-            left: LengthPercentageAuto::length(all_px),
-            right: LengthPercentageAuto::length(all_px),
-            top: LengthPercentageAuto::length(all_px),
-            bottom: LengthPercentageAuto::length(all_px),
+            left:   LengthPercentageAuto::length(e.left),
+            right:  LengthPercentageAuto::length(e.right),
+            top:    LengthPercentageAuto::length(e.top),
+            bottom: LengthPercentageAuto::length(e.bottom),
         };
     });
     node.schedule_relayout();
@@ -387,7 +389,9 @@ where
     install_setter!(attrs.min_height, set_min_size_height);
     install_setter!(attrs.max_width, set_max_size_width);
     install_setter!(attrs.max_height, set_max_size_height);
-    install_setter!(attrs.flex_grow, set_flex_grow);
+    install_setter!(attrs.flex_grow,   set_flex_grow);
+    install_setter!(attrs.flex_shrink, set_flex_shrink);
+    install_setter!(attrs.flex_basis,  set_flex_basis);
 
     // `align_self` converts `AlignSelf` → `Option<AlignItems>` before
     // applying; doesn't fit the bare-setter macro.

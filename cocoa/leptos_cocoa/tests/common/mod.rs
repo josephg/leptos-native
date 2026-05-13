@@ -20,6 +20,26 @@ use objc2::{msg_send, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSView};
 use objc2_foundation::{NSNotification, NSString};
 
+/// Pump the main dispatch queue until everything previously
+/// scheduled has run. `RenderEffect` delivers its re-run
+/// notifications via `DispatchQueue::main().exec_async(...)`, and
+/// in test mode (no NSApp run loop) nothing drains the queue on
+/// its own.
+///
+/// We block-and-drain in a loop with a short timeout per pass.
+/// Bounded iteration count so a runaway test eventually unblocks.
+pub fn pump_runloop_once() {
+    use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
+    let rl = unsafe { NSRunLoop::mainRunLoop() };
+    // 50ms is enough to drain queued dispatch tasks in practice;
+    // we loop a few times so a chain of effects (each scheduling
+    // the next) all settle.
+    for _ in 0..8 {
+        let limit = unsafe { NSDate::dateWithTimeIntervalSinceNow(0.005) };
+        unsafe { rl.runMode_beforeDate(NSDefaultRunLoopMode, &limit) };
+    }
+}
+
 /// `MainThreadMarker` for the test runner's main thread. Panics if
 /// the test isn't running on the main thread.
 pub fn test_mtm() -> MainThreadMarker {

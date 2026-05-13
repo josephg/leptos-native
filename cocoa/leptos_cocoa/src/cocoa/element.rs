@@ -14,13 +14,15 @@ use renderer::view::{Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
     layout::{
-        set_align_content, set_align_items, set_background_color, set_clip,
-        set_column_gap, set_flex_basis, set_flex_direction, set_flex_shrink,
-        set_flex_wrap, set_gap, set_grid_auto_columns, set_grid_auto_flow,
-        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
+        set_align_content, set_align_items, set_background_color,
+        set_border_color, set_border_width, set_clip, set_column_gap,
+        set_corner_radius, set_flex_direction, set_flex_wrap, set_gap,
+        set_grid_auto_columns, set_grid_auto_flow, set_grid_auto_rows,
+        set_grid_template_columns, set_grid_template_rows,
         set_justify_content, set_justify_items, set_row_gap, AlignContent,
         AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
-        GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
+        GridTemplateComponent, JustifyContent, JustifyItems,
+        TrackSizingFunction,
     },
     BoolAttr, Color, Element as CocoaElement, StringAttr,
 };
@@ -98,6 +100,26 @@ fn apply_text(el: &CocoaElement, attrs: CocoaText) -> Vec<RenderEffect<()>> {
 
 use renderer::apply_layout;
 
+/// `wire_attr!(effects, el, opt_value, setter)` — DRY out the
+/// `if let Some(v) = self.foo { ... install ... effects.push ... }`
+/// pattern that every `Render::build` repeats per attribute. The
+/// `setter` is a free fn that takes `(&Node, Value)`.
+///
+/// Named to *not* collide with the `install` free function (from
+/// `renderer::attrs`) that the macro itself invokes.
+macro_rules! wire_attr {
+    ($effects:expr, $el:expr, $opt:expr, $setter:expr) => {
+        if let Some(__v) = $opt {
+            let __e = $el.clone();
+            let __setter = $setter;
+            if let Some(__eff) = install(__v, move |__val| __setter(__e.as_node(), __val))
+            {
+                $effects.push(__eff);
+            }
+        }
+    };
+}
+
 // ---------------------------------------------------------------------
 // Generic State machinery
 // ---------------------------------------------------------------------
@@ -152,8 +174,8 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
         self.children.mount(&self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        crate::renderer_cocoa::insert_before_node(self.el.as_node(), child)
     }
 
     fn elements(&self) -> Vec<CocoaElement> {
@@ -165,34 +187,6 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
 // stack() — Taffy flexbox container (canonical linear layout primitive)
 // ---------------------------------------------------------------------
 
-/// Apply the flex-item style attrs (`grow`, `shrink`, `basis`,
-/// `width` / `min_width` / `max_width`, `height` / `min_height` /
-/// `max_height`) — meaningful on any element that participates in a
-/// flex parent's layout. Used by both `Stack` and `Block`.
-#[allow(clippy::too_many_arguments)]
-/// Install Stack/Block-specific flex-item attrs that aren't covered
-/// by [`LayoutAttrs`] / [`WithLayout`] (`flex_shrink`, `flex_basis`).
-fn apply_flex_item_extras(
-    el: &CocoaElement,
-    shrink: Option<MaybeReactive<f32>>,
-    basis: Option<MaybeReactive<f32>>,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(v) = shrink {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |s| set_flex_shrink(e.as_node(), s)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = basis {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |b| set_flex_basis(e.as_node(), b)) {
-            out.push(eff);
-        }
-    }
-    out
-}
-
 pub struct Stack<Children> {
     direction:        Option<MaybeReactive<FlexDirection>>,
     gap:              Option<MaybeReactive<f32>>,
@@ -201,10 +195,12 @@ pub struct Stack<Children> {
     align_content:    Option<MaybeReactive<AlignContent>>,
     justify_items:    Option<MaybeReactive<JustifyItems>>,
     wrap:             Option<MaybeReactive<FlexWrap>>,
-    shrink:           Option<MaybeReactive<f32>>,
-    basis:            Option<MaybeReactive<f32>>,
     background_color: Option<MaybeReactive<Color>>,
+    corner_radius:    Option<MaybeReactive<f32>>,
+    border_width:     Option<MaybeReactive<f32>>,
+    border_color:     Option<MaybeReactive<Color>>,
     clip:             Option<MaybeReactive<bool>>,
+    hidden:           Option<MaybeReactive<bool>>,
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
     children:         Children,
@@ -219,10 +215,12 @@ fn empty_stack() -> Stack<()> {
         align_content: None,
         justify_items: None,
         wrap: None,
-        shrink: None,
-        basis: None,
         background_color: None,
+        corner_radius: None,
+        border_width: None,
+        border_color: None,
         clip: None,
+        hidden: None,
         layout: LayoutAttrs::default(),
         universal: UniversalAttrs::default(),
         children: (),
@@ -327,21 +325,11 @@ impl<Ch> Stack<Ch> {
         self
     }
 
-    pub fn shrink<V>(mut self, s: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.shrink = Some(s.into_maybe_reactive());
-        self
-    }
-
-    pub fn basis<V>(mut self, b: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.basis = Some(b.into_maybe_reactive());
-        self
-    }
+    // `shrink` / `basis` / `size` removed from Stack's inherent
+    // surface — they live on the shared `WithLayout` trait now,
+    // available on every builder (Button, Label, ...) with
+    // identical semantics. Call `.flex_shrink(...)`,
+    // `.flex_basis(...)`, `.size(n)` from the trait instead.
 
     /// Solid background fill via CALayer. Switches the stack's
     /// underlying NSView to layer-backed.
@@ -350,6 +338,37 @@ impl<Ch> Stack<Ch> {
         V: IntoMaybeReactive<Color>,
     {
         self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Round the corners of the stack's background fill. CALayer's
+    /// `backgroundColor` honors `cornerRadius` directly, so the
+    /// rounded look needs nothing else. **Children are NOT clipped
+    /// to the rounded shape** — for that, pair with `clip=true`.
+    pub fn corner_radius<V>(mut self, r: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Border width in points. Pair with [`border_color`] (defaults
+    /// to opaque black).
+    pub fn border_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.border_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Border color. Has no effect unless [`border_width`] is > 0.
+    pub fn border_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.border_color = Some(c.into_maybe_reactive());
         self
     }
 
@@ -364,6 +383,18 @@ impl<Ch> Stack<Ch> {
         self
     }
 
+    /// Hide / show the stack via NSView's `isHidden`. A hidden view
+    /// is removed from layout *only at draw time* — Taffy still
+    /// reserves space for it. Pair with `width=0` (or rebuild the
+    /// view via `<Switch>`) to actually remove the slot.
+    pub fn hidden<V>(mut self, h: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.hidden = Some(h.into_maybe_reactive());
+        self
+    }
+
     pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh)> {
         Stack {
             direction: self.direction,
@@ -373,10 +404,12 @@ impl<Ch> Stack<Ch> {
             align_content: self.align_content,
             justify_items: self.justify_items,
             wrap: self.wrap,
-            shrink: self.shrink,
-            basis: self.basis,
             background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
             clip: self.clip,
+            hidden: self.hidden,
             layout: self.layout,
             universal: self.universal,
             children: (self.children, child),
@@ -407,71 +440,33 @@ where
         let direction = self
             .direction
             .unwrap_or(MaybeReactive::Static(FlexDirection::Column));
-        {
-            let e = el.clone();
-            if let Some(eff) = install(direction, move |d| {
-                set_flex_direction(e.as_node(), d)
+        wire_attr!(effects, el, Some(direction), set_flex_direction);
+        wire_attr!(effects, el, self.gap,             set_gap);
+        wire_attr!(effects, el, self.justify_content, set_justify_content);
+        wire_attr!(effects, el, self.align,           set_align_items);
+        wire_attr!(effects, el, self.wrap,            set_flex_wrap);
+        wire_attr!(effects, el, self.align_content,   set_align_content);
+        wire_attr!(effects, el, self.justify_items,   set_justify_items);
+        // flex_shrink / flex_basis are now applied via apply_layout
+        // (they're LayoutAttrs fields). Stack used to apply them
+        // itself; the unified path saves a separate helper.
+        wire_attr!(effects, el, self.background_color, set_background_color);
+        wire_attr!(effects, el, self.corner_radius,    set_corner_radius);
+        // Border width / color update independently — CALayer
+        // holds them as separate properties, so we don't need to
+        // re-apply the pair when either changes.
+        wire_attr!(effects, el, self.border_width, set_border_width);
+        wire_attr!(effects, el, self.border_color, set_border_color);
+        wire_attr!(effects, el, self.clip, set_clip);
+        // `hidden` goes through the element's BoolAttr surface
+        // rather than a Node-level setter, so it uses the longer
+        // form. Kept structurally consistent with the `enabled`
+        // pattern in other builders.
+        if let Some(h) = self.hidden {
+            let el_for = el.clone();
+            if let Some(eff) = install(h, move |v| {
+                el_for.set_bool_attribute(BoolAttr::Hidden, v);
             }) {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.gap {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.justify_content {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |j| set_justify_content(e.as_node(), j))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.align {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |a| set_align_items(e.as_node(), a))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.wrap {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |w| set_flex_wrap(e.as_node(), w))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.align_content {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.justify_items {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
-            {
-                effects.push(eff);
-            }
-        }
-        effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
-        if let Some(v) = self.background_color {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |c| set_background_color(e.as_node(), c))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.clip {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |c| set_clip(e.as_node(), c)) {
                 effects.push(eff);
             }
         }
@@ -823,6 +818,16 @@ pub struct Button {
     // Button-specific.
     bordered: Option<MaybeReactive<bool>>,
     key_equivalent: Option<MaybeReactive<String>>,
+    // Custom-paint extras — implemented via attributedTitle (for
+    // text color) and layer-backed CALayer (for background,
+    // corner_radius, and border). Setting any of these auto-flips
+    // `bordered` off so the bezel doesn't fight the custom look.
+    background_color: Option<MaybeReactive<Color>>,
+    corner_radius:    Option<MaybeReactive<f32>>,
+    border_width:     Option<MaybeReactive<f32>>,
+    border_color:     Option<MaybeReactive<Color>>,
+    text_color:       Option<MaybeReactive<Color>>,
+    bold:             Option<MaybeReactive<bool>>,
 }
 
 pub fn button() -> Button {
@@ -837,6 +842,12 @@ pub fn button() -> Button {
         text: CocoaText::default(),
         bordered: None,
         key_equivalent: None,
+        background_color: None,
+        corner_radius: None,
+        border_width: None,
+        border_color: None,
+        text_color: None,
+        bold: None,
     }
 }
 
@@ -918,6 +929,68 @@ impl Button {
         V: IntoMaybeReactive<String>,
     {
         self.key_equivalent = Some(key.into_maybe_reactive());
+        self
+    }
+
+    /// Custom background fill, via the underlying NSButton's
+    /// CALayer. Setting this implies `bordered=false` (unless the
+    /// caller also passes one) so the system bezel doesn't fight
+    /// the custom paint.
+    pub fn background_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Rounded corners — the CALayer's `cornerRadius`. Pairs well
+    /// with `background_color` and `bordered=false`.
+    pub fn corner_radius<V>(mut self, r: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// CALayer border width. `0.0` disables. Pair with
+    /// [`Self::border_color`] for non-default (black) borders.
+    pub fn border_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<f32>,
+    {
+        self.border_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// CALayer border color. Only visible when `border_width > 0`.
+    pub fn border_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.border_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Custom title color. Applied via `NSButton.contentTintColor`
+    /// (macOS 10.14+); no attributedTitle round-trip, so it
+    /// survives title and font_size changes automatically.
+    pub fn text_color<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.text_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Bold title — uses `boldSystemFontOfSize:` at the current
+    /// font size. Reactive.
+    pub fn bold<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.bold = Some(b.into_maybe_reactive());
         self
     }
 
@@ -1013,12 +1086,40 @@ where
             {
                 effects.push(eff);
             }
+        } else if self.background_color.is_some() || self.corner_radius.is_some() {
+            // Caller is doing custom paint — turn off the bezel so the
+            // CALayer fill isn't fighting it.
+            //
+            // NOTE: this runs once at build time, not reactively. If
+            // `background_color` is itself reactive and resolves to
+            // transparent at runtime, the bezel will still be off and
+            // the button will look unrimmed. That's fine for the
+            // chip / tag patterns we use this for; if a caller needs
+            // true reactive bezel control they should pass an
+            // explicit reactive `bordered=...` themselves.
+            el.set_button_bordered(false);
         }
         if let Some(k) = self.key_equivalent {
             let el_for = el.clone();
             if let Some(eff) =
                 install(k, move |v| el_for.set_key_equivalent(&v))
             {
+                effects.push(eff);
+            }
+        }
+        wire_attr!(effects, el, self.background_color, set_background_color);
+        wire_attr!(effects, el, self.corner_radius,    set_corner_radius);
+        wire_attr!(effects, el, self.border_width,     set_border_width);
+        wire_attr!(effects, el, self.border_color,     set_border_color);
+        if let Some(c) = self.text_color {
+            let e = el.clone();
+            if let Some(eff) = install(c, move |v| e.set_button_title_color(v)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.bold {
+            let e = el.clone();
+            if let Some(eff) = install(b, move |v| e.set_bold(v)) {
                 effects.push(eff);
             }
         }
@@ -1655,6 +1756,8 @@ pub struct Label {
     layout: LayoutAttrs,
     text: CocoaText,
     selectable: Option<MaybeReactive<bool>>,
+    bold: Option<MaybeReactive<bool>>,
+    line_break: Option<MaybeReactive<cocoa_dom::LineBreak>>,
 }
 
 impl Label {
@@ -1679,6 +1782,8 @@ pub fn label() -> Label {
         layout: LayoutAttrs::default(),
         text: CocoaText::default(),
         selectable: None,
+        bold: None,
+        line_break: None,
     }
 }
 
@@ -1749,6 +1854,51 @@ impl WithText for Label {
 }
 
 impl Label {
+    /// Use the bold system font of the current size. Reactive.
+    pub fn bold<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.bold = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Set the line-break mode. The full control over how the label
+    /// handles text that doesn't fit — wrap, truncate (head/tail/
+    /// middle), or clip. See [`cocoa_dom::LineBreak`].
+    pub fn line_break<V>(mut self, m: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::LineBreak>,
+    {
+        self.line_break = Some(m.into_maybe_reactive());
+        self
+    }
+
+    /// Shorthand: `multiline(true)` ⇒ `line_break(WORD_WRAP)`,
+    /// `multiline(false)` ⇒ `line_break(TRUNCATE_TAIL)`. Use
+    /// [`Self::line_break`] for the truncate-head / middle / clip
+    /// variants.
+    pub fn multiline<V>(self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        match b.into_maybe_reactive() {
+            MaybeReactive::Static(true) => {
+                self.line_break(cocoa_dom::LineBreak::WORD_WRAP)
+            }
+            MaybeReactive::Static(false) => {
+                self.line_break(cocoa_dom::LineBreak::TRUNCATE_TAIL)
+            }
+            MaybeReactive::Reactive(f) => self.line_break(move || {
+                if f() {
+                    cocoa_dom::LineBreak::WORD_WRAP
+                } else {
+                    cocoa_dom::LineBreak::TRUNCATE_TAIL
+                }
+            }),
+        }
+    }
+
     /// Allow the label's text to be selected (and copied with
     /// ⌘C). NSTextField labels are non-selectable by default.
     pub fn selectable<V>(mut self, b: V) -> Self
@@ -1792,14 +1942,26 @@ where
 
         if let Some(s) = self.selectable {
             let el_for = el.clone();
-            if let Some(eff) =
-                install(s, move |v| el_for.set_selectable(v))
-            {
+            if let Some(eff) = install(s, move |v| el_for.set_selectable(v)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(m) = self.line_break {
+            let el_for = el.clone();
+            if let Some(eff) = install(m, move |v| el_for.set_line_break(v)) {
                 effects.push(eff);
             }
         }
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
+        // Apply bold AFTER apply_text so font_size is set first; bold
+        // reads the current point size to preserve it.
+        if let Some(b) = self.bold {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |v| el_for.set_bold(v)) {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_layout(&el, self.layout));
 
         if let Some(r) = self.node_ref {

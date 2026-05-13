@@ -23,7 +23,13 @@ use cocoa_dom::{
     MainThreadMarker,
 };
 use reactive_graph::owner::Owner;
-use crate::{cocoa::window::window, Dom};
+use crate::{
+    cocoa::{
+        split::{IntoSplitView, SplitPaneList},
+        window::window,
+    },
+    Dom,
+};
 use renderer::view::Render;
 
 /// Run an AppKit application whose root view is built by `f`.
@@ -83,4 +89,66 @@ where
 {
     let title = title.to_owned();
     run(move || window().title(title).size(size.0, size.1).child(f()));
+}
+
+/// Open a window with an `NSSplitViewController` as its content
+/// view controller. The closure must return a [`SplitView`]
+/// configured with one or more `<split_pane>`s — each pane runs
+/// inside its own Taffy tree, while the AppKit-side split-view
+/// owns the panes' outer frames and animates collapse/expand for
+/// `Sidebar` / `Inspector` panes.
+///
+/// ```ignore
+/// mount_to_split_window("Untitled", (1100.0, 720.0), || {
+///     view! {
+///         <split_view vertical=true>
+///             <split_pane holding_priority=199.0>
+///                 <Canvas />
+///             </split_pane>
+///             <split_pane
+///                 behavior=PaneBehavior::Inspector
+///                 preferred_thickness=300.0
+///                 minimum_thickness=240.0
+///                 collapsed=move || sidebar_hidden.get()
+///             >
+///                 <Inspector />
+///             </split_pane>
+///         </split_view>
+///     }
+/// });
+/// ```
+pub fn mount_to_split_window<F, V, P>(title: &str, size: (f64, f64), f: F)
+where
+    F: FnOnce() -> V + 'static,
+    V: IntoSplitView<P> + 'static,
+    P: SplitPaneList,
+{
+    let mtm = MainThreadMarker::new()
+        .expect("mount_to_split_window must be called from the main thread");
+    let app = init_app(mtm);
+
+    // App-scoped reactive Owner. Same leak-on-purpose convention
+    // as `run` — the OS reclaims everything on app exit.
+    let owner = Owner::new();
+    owner.set();
+    std::mem::forget(owner);
+
+    // The closure body might be a `view!{}` macro invocation
+    // (which wraps the SplitView in `View<...>`) or a direct
+    // builder call. `IntoSplitView` handles both.
+    let split_view = f().into_split_view();
+    let (opened, state) = split_view.build_and_install(title, size, mtm);
+
+    opened.show(mtm);
+
+    // Leak the per-pane mount state + the opened window. Same
+    // convention as the rest of the mount machinery — main-loop
+    // lifetime ≈ process lifetime.
+    std::mem::forget(state);
+    std::mem::forget(opened);
+
+    run_loop(&app);
+
+    // Silence the warning about Dom being unused in this fn body.
+    let _: Option<Dom> = None;
 }

@@ -19,7 +19,7 @@
 //! and appears before the trait's first local type parameter. The
 //! shadow trait dodges this by being itself local.
 
-use objc2_app_kit::{NSDatePickerStyle, NSSegmentStyle, NSTextAlignment};
+use objc2_app_kit::{NSDatePickerStyle, NSLineBreakMode, NSSegmentStyle, NSTextAlignment};
 
 /// Text alignment within a label / text-field / text-view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,5 +75,31 @@ impl DatePickerStyle {
 
 impl From<NSDatePickerStyle> for DatePickerStyle {
     fn from(v: NSDatePickerStyle) -> Self { Self(v) }
+}
+
+/// How a label / text-field handles text that doesn't fit. Maps
+/// directly to `NSLineBreakMode`.
+///
+/// - `CLIP` — silently truncate, no indication.
+/// - `TRUNCATE_HEAD` / `TRUNCATE_TAIL` / `TRUNCATE_MIDDLE` — drop
+///   content from that end and show an ellipsis. `TRUNCATE_TAIL`
+///   is the most common for app titles / list rows.
+/// - `WORD_WRAP` / `CHAR_WRAP` — wrap across multiple lines.
+///   `WORD_WRAP` is what `Label::multiline(true)` selects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct LineBreak(pub NSLineBreakMode);
+
+impl LineBreak {
+    pub const WORD_WRAP:       Self = Self(NSLineBreakMode::ByWordWrapping);
+    pub const CHAR_WRAP:       Self = Self(NSLineBreakMode::ByCharWrapping);
+    pub const CLIP:            Self = Self(NSLineBreakMode::ByClipping);
+    pub const TRUNCATE_HEAD:   Self = Self(NSLineBreakMode::ByTruncatingHead);
+    pub const TRUNCATE_TAIL:   Self = Self(NSLineBreakMode::ByTruncatingTail);
+    pub const TRUNCATE_MIDDLE: Self = Self(NSLineBreakMode::ByTruncatingMiddle);
+}
+
+impl From<NSLineBreakMode> for LineBreak {
+    fn from(v: NSLineBreakMode) -> Self { Self(v) }
 }
 

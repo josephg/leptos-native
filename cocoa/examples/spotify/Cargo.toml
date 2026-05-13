@@ -1,0 +1,9 @@
+[package]
+name = "spotify_cocoa"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+cocoa_dom = { path = "../../dom" }

@@ -166,13 +166,15 @@ pub mod error {
     pub use throw_error::*;
 }
 
-/// Control-flow components like `<Show>`, `<ShowLet>`, `<For>`.
+/// Control-flow components like `<Show>`, `<ShowLet>`, `<For>`,
+/// `<Switch>` / `<Match>`.
 pub mod control_flow {
-    pub use crate::{for_loop::*, show::*, show_let::*};
+    pub use crate::{for_loop::*, show::*, show_let::*, switch::*};
 }
 mod for_loop;
 mod show;
 mod show_let;
+mod switch;
 
 /// Types for reactive string properties for components.
 pub mod text_prop;
@@ -184,7 +186,7 @@ pub use typed_builder;
 pub use typed_builder_macro;
 
 mod into_view;
-pub use into_view::IntoView;
+pub use into_view::{IntoView, View};
 
 mod provider;
 

@@ -70,7 +70,7 @@ fn padding_static_lands_in_padding_field() {
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
-    attrs.padding = Some(MaybeReactive::Static(8.0));
+    attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
     let effects = layout::apply_layout(&el, attrs);
     assert!(effects.is_empty(), "static value must not retain effects");
 
@@ -210,7 +210,9 @@ fn reactive_padding_re_runs_on_signal_change() {
 
         let pad = RwSignal::new(4.0_f32);
         let mut attrs = LayoutAttrs::default();
-        attrs.padding = Some(MaybeReactive::Reactive(Box::new(move || pad.get())));
+        attrs.padding = Some(MaybeReactive::Reactive(Box::new(move || {
+            renderer::attrs::Edges::all(pad.get())
+        })));
         let effects = layout::apply_layout(&el, attrs);
         assert_eq!(effects.len(), 1, "reactive value must retain one effect");
 

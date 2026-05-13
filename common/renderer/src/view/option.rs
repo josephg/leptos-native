@@ -17,6 +17,15 @@ where
     }
 
     fn rebuild(self, state: &mut Self::State) {
+        // `Option<T>` has a long-standing transition gap: going
+        // None → Some builds the new state but has no anchor to
+        // mount it (the old state was None — no view exists in
+        // the tree to position relative to). For control-flow
+        // primitives that need to toggle between rendered and
+        // nothing-rendered, use `Either<T, ()>` (where `()` builds
+        // a Placeholder that serves as the mount anchor) instead
+        // of `Option<T>`. `<Show>`, `<Switch>`, `<ShowLet>` all
+        // follow this pattern.
         match (self, state.as_mut()) {
             (Some(new), Some(s)) => new.rebuild(s),
             (Some(new), None) => *state = Some(new.build()),

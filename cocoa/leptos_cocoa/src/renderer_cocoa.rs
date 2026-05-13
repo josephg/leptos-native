@@ -84,13 +84,37 @@ impl RendererTrait for Dom {
     }
 
     fn get_parent(node: &Node) -> Option<Node> {
-        // The default `try_mount_before` impl on the trait calls
-        // get_parent. cocoa_dom's get_parent panics with a hydration
-        // message; here we return None so try_mount_before falls back.
-        // Real native callers (For/Vec) go through synthesise_parent_*
-        // helpers below, not this method.
-        let _ = node;
-        None
+        // Look up the parent NSView via `superview` and synthesise a
+        // Node wrapping it that's bound to the same Taffy tree as
+        // `node`. Used by `UnitState::insert_before_this` (the
+        // mount-anchor for `<Switch>` and other placeholder-based
+        // control-flow primitives transitioning out of their empty
+        // state) — without a real parent we couldn't mount the new
+        // view, and the transition would silently fail.
+        let parent_view = unsafe { node.ns_view().superview() }?;
+        let parent_handle: Option<cocoa_dom::layout::LayoutHandle> = {
+            let layout = node.layout_slot().borrow();
+            layout.handle.as_ref().and_then(|h| {
+                let parent_id = h.tree.parent(h.node_id)?;
+                Some(cocoa_dom::layout::LayoutHandle {
+                    tree: h.tree.clone(),
+                    node_id: parent_id,
+                })
+            })
+        };
+        let parent_node = match parent_handle {
+            Some(handle) => Node::from_view_with_handle(
+                parent_view,
+                cocoa_dom::NodeKind::Element,
+                handle,
+            ),
+            None => Node::from_view(
+                parent_view,
+                cocoa_dom::NodeKind::Element,
+                cocoa_dom::layout::Style::default(),
+            ),
+        };
+        Some(parent_node)
     }
 
     fn first_child(node: &Node) -> Option<Node> {
@@ -146,7 +170,7 @@ impl Dom {
 /// references the same Taffy tree + the parent `NodeId` that `before`
 /// lives under. If `before` isn't registered in any tree, the parent
 /// wrapper also has no handle — falls back to NSView-only mounting.
-fn synthesise_parent_element(
+pub(crate) fn synthesise_parent_element(
     parent_view: cocoa_dom::Retained<cocoa_dom::NSView>,
     before: &Node,
 ) -> Element {
@@ -185,6 +209,26 @@ fn synthesise_parent_element(
 // `Dom` parameter, so the impls are valid here).
 // ---------------------------------------------------------------------
 
+/// Shared body for [`Mountable::insert_before_this`] across the leaf
+/// types here — `Node`, `Element`, `Text`, `Placeholder`. Walks the
+/// NSView's superview, synthesises a parent `Element` wrapper, mounts
+/// `child` before `before` in that parent.
+///
+/// Returns `false` if `before` has no superview (it's detached or is
+/// the window's root content view). Callers fall back to mounting at
+/// a different anchor in that case.
+pub(crate) fn insert_before_node(
+    before: &Node,
+    child: &mut dyn Mountable<Dom>,
+) -> bool {
+    let Some(parent_view) = (unsafe { before.ns_view().superview() }) else {
+        return false;
+    };
+    let parent = synthesise_parent_element(parent_view, before);
+    child.mount(&parent, Some(before));
+    true
+}
+
 impl Mountable<Dom> for Node {
     fn unmount(&mut self) {
         self.teardown();
@@ -202,11 +246,8 @@ impl Mountable<Dom> for Node {
         CocoaRenderer::try_insert_node(parent, self, marker)
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        // No good way back from a raw NSView to a typed parent Element
-        // without the Taffy bookkeeping `synthesise_parent_element` does.
-        // Callers that need this go through Dom::try_mount_before.
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        insert_before_node(self, child)
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -223,8 +264,8 @@ impl Mountable<Dom> for Element {
         <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        insert_before_node(self.as_node(), child)
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -241,8 +282,8 @@ impl Mountable<Dom> for Text {
         <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        insert_before_node(self.as_node(), child)
     }
 
     fn elements(&self) -> Vec<Element> {
@@ -259,8 +300,8 @@ impl Mountable<Dom> for Placeholder {
         <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        insert_before_node(self.as_node(), child)
     }
 
     fn elements(&self) -> Vec<Element> {

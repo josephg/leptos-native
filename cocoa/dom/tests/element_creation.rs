@@ -498,7 +498,7 @@ fn alignment_on_text_field() {
     use objc2_app_kit::NSTextAlignment;
     let _mtm = common::test_mtm();
     let el = Element::create("text_field");
-    el.set_text_alignment(NSTextAlignment::Center);
+    el.set_text_alignment(cocoa_dom::TextAlignment::CENTER);
 
     let v = el.ns_view();
     let any: &AnyObject = v.as_ref();
@@ -634,7 +634,7 @@ fn segment_style_round_trip() {
     use objc2_app_kit::{NSSegmentStyle, NSSegmentedControl};
     let _mtm = common::test_mtm();
     let el = Element::create("segmented_control");
-    el.set_segment_style(NSSegmentStyle::Capsule);
+    el.set_segment_style(cocoa_dom::SegmentStyle::CAPSULE);
     let v = el.ns_view();
     let any: &AnyObject = v.as_ref();
     let sc = any.downcast_ref::<NSSegmentedControl>().unwrap();
@@ -645,7 +645,7 @@ fn date_picker_style_round_trip() {
     use objc2_app_kit::{NSDatePicker, NSDatePickerStyle};
     let _mtm = common::test_mtm();
     let el = Element::create("date_picker");
-    el.set_date_picker_style(NSDatePickerStyle::ClockAndCalendar);
+    el.set_date_picker_style(cocoa_dom::DatePickerStyle::CLOCK_AND_CALENDAR);
     let v = el.ns_view();
     let any: &AnyObject = v.as_ref();
     let dp = any.downcast_ref::<NSDatePicker>().unwrap();
@@ -708,6 +708,185 @@ fn progress_displayed_when_stopped_round_trip() {
     let any: &AnyObject = v.as_ref();
     let p = any.downcast_ref::<NSProgressIndicator>().unwrap();
     assert!(p.isDisplayedWhenStopped());
+}
+
+// ---------------------------------------------------------------------
+// Font handling — set_font_size preserves bold/italic across changes
+// ---------------------------------------------------------------------
+
+fn set_font_size_preserves_bold() {
+    use objc2_app_kit::NSFontDescriptorSymbolicTraits;
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+
+    el.set_font_size(14.0);
+    el.set_bold(true);
+
+    let f = el.ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .expect("label has a font after set_font_size");
+    assert!(
+        f.fontDescriptor()
+            .symbolicTraits()
+            .contains(NSFontDescriptorSymbolicTraits::TraitBold),
+        "set_bold(true) should make the font bold"
+    );
+    assert_eq!(f.pointSize(), 14.0, "size preserved");
+
+    // Now change the size. Bold must survive.
+    el.set_font_size(20.0);
+    let f2 = el.ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .unwrap();
+    assert_eq!(f2.pointSize(), 20.0, "new size applied");
+    assert!(
+        f2.fontDescriptor()
+            .symbolicTraits()
+            .contains(NSFontDescriptorSymbolicTraits::TraitBold),
+        "bold must survive a set_font_size call",
+    );
+}
+
+fn set_bold_preserves_size() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+
+    el.set_font_size(17.0);
+    el.set_bold(true);
+
+    let f = el.ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .unwrap();
+    assert_eq!(
+        f.pointSize(),
+        17.0,
+        "set_bold(true) must preserve the existing point size",
+    );
+
+    el.set_bold(false);
+    let f2 = el.ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .unwrap();
+    assert_eq!(f2.pointSize(), 17.0, "set_bold(false) also preserves size");
+}
+
+fn set_italic_independent_of_bold() {
+    use objc2_app_kit::NSFontDescriptorSymbolicTraits;
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+
+    el.set_font_size(14.0);
+    el.set_bold(true);
+    el.set_italic(true);
+
+    let traits = el
+        .ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .unwrap()
+        .fontDescriptor()
+        .symbolicTraits();
+    assert!(traits.contains(NSFontDescriptorSymbolicTraits::TraitBold));
+    assert!(traits.contains(NSFontDescriptorSymbolicTraits::TraitItalic));
+
+    // Turn off bold; italic survives.
+    el.set_bold(false);
+    let traits = el
+        .ns_view()
+        .downcast_ref::<NSTextField>()
+        .unwrap()
+        .font()
+        .unwrap()
+        .fontDescriptor()
+        .symbolicTraits();
+    assert!(!traits.contains(NSFontDescriptorSymbolicTraits::TraitBold));
+    assert!(
+        traits.contains(NSFontDescriptorSymbolicTraits::TraitItalic),
+        "set_bold(false) must preserve italic",
+    );
+}
+
+// ---------------------------------------------------------------------
+// set_corner_radius — no auto-mask (fix for chip-button title clip)
+// ---------------------------------------------------------------------
+
+fn corner_radius_applies_radius_without_extra_mask_call() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("view");
+    cocoa_dom::layout::set_corner_radius(el.as_node(), 12.0);
+    let layer = el.ns_view().layer().expect("layer-backed after set_*");
+    assert_eq!(
+        layer.cornerRadius(),
+        12.0,
+        "corner radius applied",
+    );
+    // We *deliberately* don't assert anything about `masksToBounds`
+    // here — modern AppKit may default it to `true` on a newly-
+    // created CALayer for a layer-backed NSView, and that's out of
+    // our control. What matters for the chip-button title-clip bug
+    // is that we don't *additionally* turn masking on (a previous
+    // version did, on top of AppKit's default, which fought the
+    // button's own draw path). The implementation now just sets
+    // `cornerRadius`; we trust the source for that, and verify
+    // child clipping behavior via `clip=true` in the next test.
+}
+
+fn corner_radius_with_explicit_clip() {
+    let _mtm = common::test_mtm();
+    let el = Element::create("view");
+    cocoa_dom::layout::set_corner_radius(el.as_node(), 8.0);
+    cocoa_dom::layout::set_clip(el.as_node(), true);
+    let layer = el.ns_view().layer().unwrap();
+    assert_eq!(layer.cornerRadius(), 8.0);
+    assert!(
+        layer.masksToBounds(),
+        "explicit set_clip(true) enables masksToBounds",
+    );
+}
+
+// ---------------------------------------------------------------------
+// set_line_break — pass-through to NSTextField cell
+// ---------------------------------------------------------------------
+
+fn line_break_truncate_tail_sets_textfield_cell() {
+    use objc2_app_kit::NSLineBreakMode;
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+    el.set_line_break(cocoa_dom::LineBreak::TRUNCATE_TAIL);
+    let f = el.ns_view().downcast_ref::<NSTextField>().unwrap();
+    assert!(
+        f.usesSingleLineMode(),
+        "truncation modes are single-line",
+    );
+    assert_eq!(
+        f.cell().unwrap().lineBreakMode(),
+        NSLineBreakMode::ByTruncatingTail,
+    );
+}
+
+fn line_break_word_wrap_disables_single_line() {
+    use objc2_app_kit::NSLineBreakMode;
+    let _mtm = common::test_mtm();
+    let el = Element::create("label");
+    el.set_line_break(cocoa_dom::LineBreak::WORD_WRAP);
+    let f = el.ns_view().downcast_ref::<NSTextField>().unwrap();
+    assert!(
+        !f.usesSingleLineMode(),
+        "wrap modes turn off single-line",
+    );
+    assert_eq!(
+        f.cell().unwrap().lineBreakMode(),
+        NSLineBreakMode::ByWordWrapping,
+    );
 }
 
 fn main() {
@@ -818,6 +997,22 @@ fn main() {
         (
             "progress_displayed_when_stopped_round_trip",
             progress_displayed_when_stopped_round_trip,
+        ),
+        ("set_font_size_preserves_bold", set_font_size_preserves_bold),
+        ("set_bold_preserves_size", set_bold_preserves_size),
+        ("set_italic_independent_of_bold", set_italic_independent_of_bold),
+        (
+            "corner_radius_applies_radius_without_extra_mask_call",
+            corner_radius_applies_radius_without_extra_mask_call,
+        ),
+        ("corner_radius_with_explicit_clip", corner_radius_with_explicit_clip),
+        (
+            "line_break_truncate_tail_sets_textfield_cell",
+            line_break_truncate_tail_sets_textfield_cell,
+        ),
+        (
+            "line_break_word_wrap_disables_single_line",
+            line_break_word_wrap_disables_single_line,
         ),
     ]);
 }

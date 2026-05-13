@@ -166,6 +166,32 @@ impl<R: Renderer, A, B> AddAnyAttr<R> for either_of::Either<A, B> {
     }
 }
 
+// `EitherOf3..8` mirror `Either<A, B>` — same panic-on-spread
+// behaviour so the N-arm Switch/Match output is usable as an
+// IntoView. `<Switch on:click=...>` would be ambiguous (which arm?),
+// so we panic with the same diagnostic.
+macro_rules! impl_addanyattr_eitherofn {
+    ($($name:ident<$($T:ident),+>),+ $(,)?) => {
+        $(
+            impl<R: Renderer, $($T),+> AddAnyAttr<R> for either_of::$name<$($T),+> {
+                #[track_caller]
+                fn add_any_attr<__A: ApplyAttr<R>>(self, _attr: __A) -> Self {
+                    panic_branching(concat!("`", stringify!($name), "`"))
+                }
+            }
+        )+
+    };
+}
+
+impl_addanyattr_eitherofn!(
+    EitherOf3<A, B, C>,
+    EitherOf4<A, B, C, D>,
+    EitherOf5<A, B, C, D, E>,
+    EitherOf6<A, B, C, D, E, F>,
+    EitherOf7<A, B, C, D, E, F, G>,
+    EitherOf8<A, B, C, D, E, F, G, H>,
+);
+
 impl<R: Renderer, T> AddAnyAttr<R> for Option<T> {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
