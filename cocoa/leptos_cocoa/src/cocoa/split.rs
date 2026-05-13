@@ -45,7 +45,6 @@
 //! regular `mount_to_window` flow.
 
 use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::cocoa::element::ElementState;
 use crate::Dom;
 use cocoa_dom::split_window::{OpenedSplitWindow, PaneSpec};
 use reactive_graph::effect::RenderEffect;
@@ -124,9 +123,11 @@ impl<Ch> SplitPane<Ch> {
     }
 
     /// Auto-Layout holding priority. Lower-priority panes lose
-    /// width first when the split-view resizes. Use 199 (one less
-    /// than `defaultLow=200`) on the content pane to keep
-    /// sidebars / inspectors at their preferred width.
+    /// width first when the split-view resizes. For "fixed
+    /// inspector + fluid content", give the content a *lower*
+    /// number than the inspector (Apple's sample uses 199 / 200,
+    /// but only the relative order matters — `NSLayoutPriority`'s
+    /// `defaultLow` is `250`).
     pub fn holding_priority(mut self, p: f32) -> Self {
         self.holding_priority = Some(p);
         self
@@ -253,9 +254,12 @@ pub trait Panes: Send + 'static {
 }
 
 /// Per-pane mount state — owns the child State and the optional
-/// collapse-signal effect.
+/// collapse-signal effect. Both fields exist solely to keep the
+/// resources alive for the SplitView's lifetime; dropping this
+/// struct unmounts the pane's children and cancels the collapsed
+/// subscription.
 pub struct PaneMountState<Ch: Render<Dom>> {
-    pub _child_state: ElementState<(), Ch::State>,
+    pub _child_state: Ch::State,
     pub _collapsed_effect: Option<RenderEffect<()>>,
 }
 
@@ -272,25 +276,25 @@ where
 {
     let SplitPane { collapsed, children, .. } = sp;
 
+    // Build and mount the children under the pane's FlippedView.
+    // The returned State must be retained for the pane's lifetime
+    // — dropping it would unmount and detach NSViews.
     let mut child_state = children.build();
     child_state.mount(&pane.root, None);
-    let wrapped = ElementState {
-        el: pane.root.clone(),
-        _effects: Vec::new(),
-        _attrs: std::marker::PhantomData,
-        children: child_state,
-    };
 
+    // Reactive collapse: install fires on every signal tick. The
+    // closure animates the pane open/closed via the AppKit
+    // animator proxy.
     let collapsed_effect = collapsed.and_then(|mr| {
         let item = pane.item.clone();
         install(mr, move |c: bool| {
             if item.isCollapsed() == c {
                 return;
             }
-            // Use the animator proxy so signal-driven collapse
-            // slides instead of snapping. The controller's built-
-            // in `toggleSidebar:` / `toggleInspector:` actions
-            // also animate via this path.
+            // Animator proxy → AppKit wraps the change in an
+            // `NSAnimationContext` so it slides instead of
+            // snapping. Same path the system's `toggleSidebar:` /
+            // `toggleInspector:` actions take.
             unsafe {
                 let animator: objc2::rc::Retained<
                     objc2_app_kit::NSSplitViewItem,
@@ -301,23 +305,17 @@ where
     });
 
     PaneMountState {
-        _child_state: wrapped,
+        _child_state: child_state,
         _collapsed_effect: collapsed_effect,
     }
 }
 
-// Empty pane list — degenerate case (`<split_view></split_view>`).
-// Unlikely in real code but trivial to support and keeps the
-// generic-`Panes` bound satisfiable for 0-pane SplitViews.
-impl Panes for () {
-    type State = ();
-    fn pane_count(&self) -> usize { 0 }
-    fn collect_specs(&self, _out: &mut Vec<PaneSpec>) {}
-    fn mount_into(self, _opened: &OpenedSplitWindow) -> Self::State {}
-}
+// No `Panes for ()` impl: the empty-`<split_view></split_view>`
+// case is handled by `SplitPaneList for ()` directly (see below),
+// never reaching the `((), Panes)` flat-tuple path.
 
 macro_rules! impl_panes_tuple {
-    ($($n:tt: $C:ident),+ $(,)?) => {
+    ($n:expr; $($idx:tt: $C:ident),+ $(,)?) => {
         impl<$($C),+> Panes for ( $(SplitPane<$C>,)+ )
         where
             $(
@@ -327,33 +325,27 @@ macro_rules! impl_panes_tuple {
         {
             type State = ( $(PaneMountState<$C>,)+ );
 
-            fn pane_count(&self) -> usize {
-                let mut count = 0;
-                $( let _ = self.$n; count += 1; )+
-                count
-            }
+            fn pane_count(&self) -> usize { $n }
 
             fn collect_specs(&self, out: &mut Vec<PaneSpec>) {
-                $( out.push(self.$n.to_spec()); )+
+                $( out.push(self.$idx.to_spec()); )+
             }
 
             fn mount_into(self, opened: &OpenedSplitWindow) -> Self::State {
-                // Pull each pane out of `self` and mount into the
-                // matching opened-pane index.
-                ( $( mount_one_pane(&opened.panes[$n], self.$n), )+ )
+                ( $( mount_one_pane(&opened.panes[$idx], self.$idx), )+ )
             }
         }
     };
 }
 
-impl_panes_tuple!(0: C0);
-impl_panes_tuple!(0: C0, 1: C1);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2, 3: C3);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2, 3: C3, 4: C4);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5, 6: C6);
-impl_panes_tuple!(0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5, 6: C6, 7: C7);
+impl_panes_tuple!(1; 0: C0);
+impl_panes_tuple!(2; 0: C0, 1: C1);
+impl_panes_tuple!(3; 0: C0, 1: C1, 2: C2);
+impl_panes_tuple!(4; 0: C0, 1: C1, 2: C2, 3: C3);
+impl_panes_tuple!(5; 0: C0, 1: C1, 2: C2, 3: C3, 4: C4);
+impl_panes_tuple!(6; 0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5);
+impl_panes_tuple!(7; 0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5, 6: C6);
+impl_panes_tuple!(8; 0: C0, 1: C1, 2: C2, 3: C3, 4: C4, 5: C5, 6: C6, 7: C7);
 
 /// `SplitPaneList` is the public bound on `SplitView<P>`. It
 /// adapts the macro-folded `((), Panes)` shape to the flat
@@ -434,6 +426,251 @@ impl<P: 'static> IntoSplitView<P> for SplitView<P> {
 impl<P: 'static> IntoSplitView<P> for leptos::View<SplitView<P>> {
     fn into_split_view(self) -> SplitView<P> {
         self.into_inner()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Pure-Rust unit tests
+// ---------------------------------------------------------------------
+//
+// These exercise the builder + trait-level logic without any
+// AppKit calls. Integration tests covering the live mount path
+// live in `cocoa/leptos_cocoa/tests/split_view.rs`.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cocoa_dom::split_window::{PaneBehavior, PaneSpec};
+
+    // ---- PaneSpec defaults --------------------------------------
+
+    #[test]
+    fn pane_spec_default_is_all_none_default_behavior() {
+        let s = PaneSpec::default();
+        assert_eq!(s.behavior, PaneBehavior::Default);
+        assert_eq!(s.collapsed, false);
+        assert!(s.can_collapse.is_none());
+        assert!(s.preferred_thickness.is_none());
+        assert!(s.minimum_thickness.is_none());
+        assert!(s.maximum_thickness.is_none());
+        assert!(s.holding_priority.is_none());
+    }
+
+    // ---- SplitPane builder --------------------------------------
+
+    #[test]
+    fn split_pane_default_builder_state() {
+        let p: SplitPane<()> = split_pane();
+        assert_eq!(p.behavior, PaneBehavior::Default);
+        assert!(p.preferred_thickness.is_none());
+        assert!(p.minimum_thickness.is_none());
+        assert!(p.maximum_thickness.is_none());
+        assert!(p.holding_priority.is_none());
+        assert!(p.can_collapse.is_none());
+        assert!(p.collapsed.is_none());
+    }
+
+    #[test]
+    fn split_pane_builder_chaining_sets_each_field() {
+        let p: SplitPane<()> = split_pane()
+            .behavior(PaneBehavior::Inspector)
+            .preferred_thickness(300.0)
+            .minimum_thickness(200.0)
+            .maximum_thickness(500.0)
+            .holding_priority(199.0)
+            .can_collapse(true)
+            .collapsed(true);
+        assert_eq!(p.behavior, PaneBehavior::Inspector);
+        assert_eq!(p.preferred_thickness, Some(300.0));
+        assert_eq!(p.minimum_thickness, Some(200.0));
+        assert_eq!(p.maximum_thickness, Some(500.0));
+        assert_eq!(p.holding_priority, Some(199.0));
+        assert_eq!(p.can_collapse, Some(true));
+        assert!(matches!(p.collapsed, Some(MaybeReactive::Static(true))));
+    }
+
+    // ---- to_spec translation ------------------------------------
+
+    #[test]
+    fn to_spec_forwards_all_static_fields() {
+        let p: SplitPane<()> = split_pane()
+            .behavior(PaneBehavior::Sidebar)
+            .preferred_thickness(220.0)
+            .minimum_thickness(180.0)
+            .maximum_thickness(360.0)
+            .holding_priority(200.0)
+            .can_collapse(false)
+            .collapsed(false);
+        let s = p.to_spec();
+        assert_eq!(s.behavior, PaneBehavior::Sidebar);
+        assert_eq!(s.preferred_thickness, Some(220.0));
+        assert_eq!(s.minimum_thickness, Some(180.0));
+        assert_eq!(s.maximum_thickness, Some(360.0));
+        assert_eq!(s.holding_priority, Some(200.0));
+        assert_eq!(s.can_collapse, Some(false));
+        assert_eq!(s.collapsed, false);
+    }
+
+    #[test]
+    fn to_spec_with_no_options_set_returns_default_shape() {
+        let p: SplitPane<()> = split_pane();
+        let s = p.to_spec();
+        assert_eq!(s.behavior, PaneBehavior::Default);
+        assert_eq!(s.collapsed, false);
+        assert!(s.preferred_thickness.is_none());
+        assert!(s.minimum_thickness.is_none());
+        assert!(s.maximum_thickness.is_none());
+        assert!(s.holding_priority.is_none());
+        assert!(s.can_collapse.is_none());
+    }
+
+    #[test]
+    fn to_spec_samples_reactive_collapsed_via_untrack() {
+        // The reactive closure is sampled once at to_spec-time so
+        // the initial PaneSpec.collapsed matches the signal's
+        // current value. The sample happens inside `untrack(...)`
+        // — the to_spec call doesn't subscribe the surrounding
+        // reactive context. We verify by reading the sampled bool.
+        use reactive_graph::owner::Owner;
+        use reactive_graph::signal::RwSignal;
+        use reactive_graph::traits::{Get, Set};
+
+        let _owner = Owner::new();
+        _owner.set();
+
+        let sig = RwSignal::new(true);
+        let p: SplitPane<()> = split_pane()
+            .collapsed(move || sig.get());
+        assert!(p.to_spec().collapsed, "reactive=true sampled as true");
+
+        sig.set(false);
+        // to_spec is called fresh, so the second sample sees the
+        // new value.
+        let p: SplitPane<()> = split_pane()
+            .collapsed(move || sig.get());
+        assert!(!p.to_spec().collapsed, "reactive=false sampled as false");
+    }
+
+    // ---- Panes trait — pane_count, collect_specs ---------------
+
+    fn make_pane(behavior: PaneBehavior, preferred: f64) -> SplitPane<()> {
+        split_pane()
+            .behavior(behavior)
+            .preferred_thickness(preferred)
+    }
+
+    #[test]
+    fn panes_arity_1_reports_one_pane() {
+        let tuple = (make_pane(PaneBehavior::Default, 100.0),);
+        assert_eq!(tuple.pane_count(), 1);
+    }
+
+    #[test]
+    fn panes_arity_2_reports_two() {
+        let tuple = (
+            make_pane(PaneBehavior::Default, 100.0),
+            make_pane(PaneBehavior::Inspector, 200.0),
+        );
+        assert_eq!(tuple.pane_count(), 2);
+    }
+
+    #[test]
+    fn panes_arity_8_reports_eight() {
+        let tuple = (
+            make_pane(PaneBehavior::Default, 1.0),
+            make_pane(PaneBehavior::Default, 2.0),
+            make_pane(PaneBehavior::Default, 3.0),
+            make_pane(PaneBehavior::Default, 4.0),
+            make_pane(PaneBehavior::Default, 5.0),
+            make_pane(PaneBehavior::Default, 6.0),
+            make_pane(PaneBehavior::Default, 7.0),
+            make_pane(PaneBehavior::Default, 8.0),
+        );
+        assert_eq!(tuple.pane_count(), 8);
+    }
+
+    #[test]
+    fn collect_specs_produces_specs_left_to_right() {
+        let tuple = (
+            make_pane(PaneBehavior::Sidebar,     100.0),
+            make_pane(PaneBehavior::Default,     200.0),
+            make_pane(PaneBehavior::Inspector,   300.0),
+        );
+        let mut out = Vec::new();
+        tuple.collect_specs(&mut out);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].behavior, PaneBehavior::Sidebar);
+        assert_eq!(out[0].preferred_thickness, Some(100.0));
+        assert_eq!(out[1].behavior, PaneBehavior::Default);
+        assert_eq!(out[1].preferred_thickness, Some(200.0));
+        assert_eq!(out[2].behavior, PaneBehavior::Inspector);
+        assert_eq!(out[2].preferred_thickness, Some(300.0));
+    }
+
+    // ---- SplitPaneList adapter — single / multi / empty --------
+
+    #[test]
+    fn split_pane_list_single_routes_to_one_pane() {
+        // Macro-emitted shape for `<split_view><split_pane/></split_view>`.
+        let panes = ((), make_pane(PaneBehavior::Inspector, 250.0));
+        assert_eq!(panes.pane_count(), 1);
+        let mut out = Vec::new();
+        panes.collect_specs(&mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].behavior, PaneBehavior::Inspector);
+        assert_eq!(out[0].preferred_thickness, Some(250.0));
+    }
+
+    #[test]
+    fn split_pane_list_multi_routes_to_panes_trait() {
+        // Macro-emitted shape for two children.
+        let panes = (
+            (),
+            (
+                make_pane(PaneBehavior::Default, 100.0),
+                make_pane(PaneBehavior::Inspector, 300.0),
+            ),
+        );
+        assert_eq!(panes.pane_count(), 2);
+        let mut out = Vec::new();
+        panes.collect_specs(&mut out);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].behavior, PaneBehavior::Default);
+        assert_eq!(out[1].behavior, PaneBehavior::Inspector);
+    }
+
+    #[test]
+    fn split_pane_list_empty_reports_zero() {
+        let panes: () = ();
+        assert_eq!(panes.pane_count(), 0);
+        let mut out = Vec::new();
+        panes.collect_specs(&mut out);
+        assert!(out.is_empty());
+    }
+
+    // ---- SplitView builder shape -------------------------------
+
+    #[test]
+    fn split_view_default_is_vertical_no_panes() {
+        let s = split_view();
+        assert_eq!(s.vertical, true);
+        // panes: () — confirm by constraining the type.
+        let _: SplitView<()> = s;
+    }
+
+    #[test]
+    fn split_view_vertical_setter() {
+        let s = split_view().vertical(false);
+        assert_eq!(s.vertical, false);
+    }
+
+    #[test]
+    fn split_view_child_appends_to_panes_tuple() {
+        let p = make_pane(PaneBehavior::Inspector, 200.0);
+        let sv = split_view().child(p);
+        // panes type is ((), SplitPane<()>) — confirm via pane_count
+        // (which goes through the SplitPaneList single-pane impl).
+        assert_eq!(sv.panes.pane_count(), 1);
     }
 }
 

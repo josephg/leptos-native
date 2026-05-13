@@ -4,7 +4,7 @@
 //! `mount_to`, etc., which take a closure returning an `IntoView`
 //! and attach the resulting state to a DOM element.
 //!
-//! On macOS we have two entry points:
+//! On macOS we have three entry points:
 //!
 //!  - [`run`] — general purpose. Takes any tachys `Render` value,
 //!    builds it, then runs the AppKit run loop. Use this when your
@@ -15,8 +15,15 @@
 //!    case. Wraps the user's content in a `window()` with the given
 //!    title and size and delegates to [`run`].
 //!
-//! Both block until the app terminates (Cmd-Q or the user closes the
-//! last window).
+//!  - [`mount_to_split_window`] — opens a window whose
+//!    `contentViewController` is an `NSSplitViewController`. The
+//!    closure returns a `<split_view>` element configured with
+//!    [`split_pane`](crate::cocoa::split::split_pane) children;
+//!    each pane has its own Taffy tree while AppKit drives the
+//!    outer frames and collapse/expand animations.
+//!
+//! All three block until the app terminates (Cmd-Q or the user
+//! closes the last window).
 
 use cocoa_dom::{
     app::{init_app, run_loop},
@@ -31,6 +38,12 @@ use crate::{
     Dom,
 };
 use renderer::view::Render;
+
+// `Dom` is used as a generic parameter in `Render<Dom>` bounds below.
+// Suppressing the "unused import" warning at the source rather than
+// inventing a `let _: Option<Dom>` line at function-body scope.
+#[allow(unused_imports)]
+use Dom as _ResolveDom;
 
 /// Run an AppKit application whose root view is built by `f`.
 ///
@@ -148,7 +161,4 @@ where
     std::mem::forget(opened);
 
     run_loop(&app);
-
-    // Silence the warning about Dom being unused in this fn body.
-    let _: Option<Dom> = None;
 }

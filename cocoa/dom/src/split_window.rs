@@ -60,9 +60,8 @@ use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
-    NSBackingStoreType, NSLayoutAttribute, NSLayoutConstraint, NSSplitViewController,
-    NSSplitViewItem, NSSplitViewItemBehavior, NSViewController, NSWindow,
-    NSWindowStyleMask,
+    NSBackingStoreType, NSSplitViewController, NSSplitViewItem, NSViewController,
+    NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
@@ -89,21 +88,11 @@ pub enum PaneBehavior {
     Inspector,
 }
 
-impl PaneBehavior {
-    /// Map to the AppKit enum. `init(<behavior>WithViewController:)`
-    /// constructors set this implicitly; the conversion exists so
-    /// callers reading `NSSplitViewItem.behavior` can compare
-    /// against our enum.
-    #[allow(dead_code)]
-    pub(crate) fn to_appkit(self) -> NSSplitViewItemBehavior {
-        match self {
-            Self::Default     => NSSplitViewItemBehavior::Default,
-            Self::Sidebar     => NSSplitViewItemBehavior::Sidebar,
-            Self::ContentList => NSSplitViewItemBehavior::ContentList,
-            Self::Inspector   => NSSplitViewItemBehavior::Inspector,
-        }
-    }
-}
+// PaneBehavior intentionally has no `to_appkit` mapping yet — the
+// `init(<behavior>WithViewController:)` constructors set the
+// underlying NSSplitViewItem.behavior implicitly. If we later
+// need to read the behavior back from the item, add a conversion
+// here.
 
 // ---------------------------------------------------------------------
 // PaneSpec — caller-supplied configuration for a single pane
@@ -134,10 +123,13 @@ pub struct PaneSpec {
     /// Upper bound. The pane can't grow past this.
     pub maximum_thickness: Option<f64>,
     /// Auto-Layout holding priority. Lower priority loses width
-    /// first when the split view resizes — Apple recommends the
-    /// content pane be `defaultLow - 1` (199) and sidebars be
-    /// `defaultLow` (200) for the "fixed sidebar, fluid content"
-    /// shape.
+    /// first when the split view resizes — the typical pattern for
+    /// "fixed sidebar / inspector, fluid content" is to set the
+    /// content pane to a *lower* priority than the sidebar/
+    /// inspector (so the content shrinks first). Apple's sample
+    /// uses `199` and `200`; the absolute values don't matter,
+    /// only the relative order. `NSLayoutPriorityDefaultLow` is
+    /// `250`; `defaultHigh` is `750`; `required` is `1000`.
     pub holding_priority: Option<f32>,
 }
 
@@ -159,9 +151,15 @@ impl Default for PaneSpec {
 // PaneViewController — per-pane NSViewController
 // ---------------------------------------------------------------------
 
+/// Backing state for [`PaneViewController`] — the controller's
+/// ivars. The struct itself must be `pub` because `define_class!`
+/// exposes it through the controller's class definition, but the
+/// fields are crate-private: callers go through the wrapping
+/// [`Pane`] handle returned by [`open_split_window`].
 pub struct PaneState {
-    pub root: Node,
-    pub tree: TreeRef,
+    pub(crate) root: Node,
+    #[allow(dead_code)] // retained to keep the Taffy tree alive for the pane's lifetime
+    pub(crate) tree: TreeRef,
 }
 
 define_class!(
@@ -194,6 +192,14 @@ define_class!(
         /// Taffy with the pane's bounds size; descendant frames get
         /// updated. The pane's own frame is owned by Auto-Layout
         /// and **not** touched (`compute_layout_children`).
+        ///
+        /// **Skips zero-sized passes.** Each frame of a collapse
+        /// animation fires viewDidLayout with `size.width = 0` (or
+        /// height for horizontal splits), and the fully-collapsed
+        /// resting state has both at 0. Running Taffy at 0×0 emits
+        /// zero-sized frames that get cached and have to be
+        /// undone on uncollapse — and we'd waste CPU on a pane the
+        /// user isn't looking at anyway.
         #[unsafe(method(viewDidLayout))]
         fn view_did_layout(&self) {
             unsafe {
@@ -201,6 +207,9 @@ define_class!(
             }
             let state = self.ivars();
             let size = state.root.ns_view().frame().size;
+            if size.width <= 0.0 || size.height <= 0.0 {
+                return;
+            }
             layout::compute_layout_children(&state.root, size);
         }
     }
@@ -254,23 +263,46 @@ impl OpenedSplitWindow {
 
     /// Collapse / expand the first **inspector** pane. Wraps
     /// `NSSplitViewController.toggleInspector:` (macOS 14+) for the
-    /// system's standard animation. No-op if no pane has
-    /// `PaneBehavior::Inspector`.
+    /// system's standard animation. **No-op on macOS < 14** (the
+    /// selector doesn't exist; we guard with `respondsToSelector:`
+    /// rather than letting AppKit raise an exception). Also no-op
+    /// if no pane has `PaneBehavior::Inspector`.
     pub fn toggle_inspector(&self) {
-        let sel = objc2::sel!(toggleInspector:);
-        let _: () = unsafe {
-            msg_send![&*self.split_controller, performSelector: sel, withObject: std::ptr::null::<NSObject>()]
-        };
+        self.perform_optional(objc2::sel!(toggleInspector:));
     }
 
     /// Collapse / expand the first **sidebar** pane. Wraps
-    /// `NSSplitViewController.toggleSidebar:`. No-op if no pane has
-    /// `PaneBehavior::Sidebar`.
+    /// `NSSplitViewController.toggleSidebar:` (macOS 11+). No-op if
+    /// no pane has `PaneBehavior::Sidebar`.
     pub fn toggle_sidebar(&self) {
-        let sel = objc2::sel!(toggleSidebar:);
-        let _: () = unsafe {
-            msg_send![&*self.split_controller, performSelector: sel, withObject: std::ptr::null::<NSObject>()]
+        self.perform_optional(objc2::sel!(toggleSidebar:));
+    }
+
+    /// Invoke a no-arg selector on the split controller IF the
+    /// controller actually responds to it. Used to call
+    /// `toggleInspector:` (macOS 14+) and `toggleSidebar:` (11+)
+    /// without crashing on older systems that don't have one or
+    /// the other.
+    fn perform_optional(&self, sel: objc2::runtime::Sel) {
+        let responds: bool = unsafe {
+            msg_send![&*self.split_controller, respondsToSelector: sel]
         };
+        if !responds {
+            return;
+        }
+        // `performSelector:withObject:` is declared to return `id`
+        // (objc type code `@`) — bind the result to a raw pointer so
+        // objc2's runtime type-check matches the actual signature.
+        // For toggleSidebar: / toggleInspector: the underlying
+        // selector returns void, so the id we get is always nil; we
+        // intentionally discard it.
+        unsafe {
+            let _ret: *mut objc2::runtime::AnyObject = msg_send![
+                &*self.split_controller,
+                performSelector: sel,
+                withObject: std::ptr::null::<NSObject>()
+            ];
+        }
     }
 
     /// Set the collapsed state of a pane by index. Animates via
@@ -357,20 +389,26 @@ pub fn open_split_window(
         panes.push(pane);
     }
 
-    // `setContentViewController:` makes the window track the
-    // controller's fitting size. With no intrinsic content yet, the
-    // window collapses to (0, 0). Set a preferred size on the
-    // controller (matches our requested window size) so the
-    // initial layout pass has a definite target — once content is
-    // mounted the user can resize freely.
-    split_controller.setPreferredContentSize(NSSize::new(size.0, size.1));
-    nswindow.setContentViewController(Some(
-        split_controller.as_ref(),
-    ));
-    // Re-impose the requested window size; setContentViewController
-    // sometimes shrinks the window to the controller's fitting size
-    // before the preferred-content-size constraint can take effect.
-    nswindow.setContentSize(NSSize::new(size.0, size.1));
+    // Three-step wiring to land the window at the requested size:
+    //
+    // 1. `setPreferredContentSize` on the controller — establishes
+    //    the size NSSplitViewController solves toward when it has
+    //    no other intrinsic-size info. Without this, the controller
+    //    reports `(0, 0)` and step 2 shrinks the window.
+    // 2. `setContentViewController:` — installs the controller and
+    //    its view as the window's contentView. AppKit then resizes
+    //    the window to fit the controller's fitting size, which
+    //    is the preferred content size from step 1.
+    // 3. `setContentSize` — defensive belt-and-braces: in practice
+    //    step 2 produces the right size, but AppKit has, on some
+    //    macOS versions, been observed to apply a stale fitting
+    //    size before the preferred-content-size constraint
+    //    propagates. Re-applying the requested size explicitly
+    //    here closes that timing gap.
+    let target = NSSize::new(size.0, size.1);
+    split_controller.setPreferredContentSize(target);
+    nswindow.setContentViewController(Some(split_controller.as_ref()));
+    nswindow.setContentSize(target);
 
     OpenedSplitWindow {
         nswindow,

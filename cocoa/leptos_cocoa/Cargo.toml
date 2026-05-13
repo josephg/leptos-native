@@ -70,3 +70,8 @@ harness = false
 name = "switch"
 path = "tests/switch.rs"
 harness = false
+
+[[test]]
+name = "split_view"
+path = "tests/split_view.rs"
+harness = false
