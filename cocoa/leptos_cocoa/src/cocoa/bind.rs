@@ -14,7 +14,7 @@
 #![allow(missing_docs)]
 
 use crate::cocoa::element::{
-    Checkbox, ColorWell, DatePicker, Label, PopUpButton, SegmentedControl,
+    Checkbox, ColorWell, DatePicker, PopUpButton, SegmentedControl,
     Slider, Stepper, TextField, TextView,
 };
 use cocoa_dom::{BoolAttr, Element as CocoaElement, StringAttr};
@@ -300,23 +300,20 @@ pub(crate) fn install_slider_value_bind(
 }
 
 // ---------------------------------------------------------------------
-// PopUpButton — bind:selection=usize signal (selected index)
+// PopUpButton / SegmentedControl — bind:value=usize signal
+// (selected index)
 // ---------------------------------------------------------------------
+//
+// Earlier revisions exposed a custom `bind:selection=` key for these
+// two controls. P1 of API_REVIEW.md folded them under `bind:value=`:
+// the type of the signal (`usize`) is enough to disambiguate from
+// the other `bind:value=` impls.
 
-/// Custom `selection` AttributeKey (not in upstream HTML attribute
-/// list — added here to drive `bind:selection=` from the macro).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Selection;
-
-impl crate::keys::AttributeKey for Selection {
-    const KEY: &'static str = "selection";
-}
-
-impl<Sig> BindAttribute<Selection, Sig> for PopUpButton
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for PopUpButton
 where
     Sig: IntoSignal<usize>,
 {
-    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_selection(BoundIndex { getter, setter });
@@ -324,11 +321,11 @@ where
     }
 }
 
-impl<Sig> BindAttribute<Selection, Sig> for SegmentedControl
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for SegmentedControl
 where
     Sig: IntoSignal<usize>,
 {
-    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_selection(BoundIndex { getter, setter });
@@ -489,24 +486,7 @@ pub(crate) fn install_checkbox_checked_bind(
     })
 }
 
-// ---------------------------------------------------------------------
-// Label — bind:value=String-ish signal (read-only sink, but useful
-// for symmetry).
-// ---------------------------------------------------------------------
-
-impl<Sig> BindAttribute<crate::keys::Value, Sig> for Label
-where
-    Sig: IntoSignal<String>,
-{
-    fn bind(
-        mut self,
-        _key: crate::keys::Value,
-        signal: Sig,
-    ) -> Self {
-        // For a label, only the get-direction is meaningful.
-        // Reuse `.text(closure)` plumbing.
-        let getter = signal.into_get();
-        self.set_pending_bind_text(getter);
-        self
-    }
-}
+// Label deliberately does NOT have a `bind:value=` impl. A label is a
+// read-only sink — the `bind:` syntax implies two-way binding, which
+// doesn't apply. Users that want signal-driven label text should write
+// `<label>{move || sig.get()}</label>` directly.

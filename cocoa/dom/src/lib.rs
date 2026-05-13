@@ -35,6 +35,7 @@ pub mod flipped_view;
 pub mod interval;
 pub mod key_event;
 pub mod layout;
+pub mod menu;
 pub mod node;
 pub mod objc_enums;
 pub mod renderer;

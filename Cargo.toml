@@ -29,6 +29,7 @@ members = [
   "cocoa/examples/greeter",
   "cocoa/examples/grid",
   "cocoa/examples/login_form",
+  "cocoa/examples/menu_demo",
   "cocoa/examples/pages",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",
@@ -54,6 +55,7 @@ members = [
   "gtk/examples/greeter",
   "gtk/examples/grid",
   "gtk/examples/login_form",
+  "gtk/examples/menu_demo",
   "gtk/examples/settings",
 ]
 
@@ -81,6 +83,7 @@ default-members = [
   "cocoa/examples/greeter",
   "cocoa/examples/grid",
   "cocoa/examples/login_form",
+  "cocoa/examples/menu_demo",
   "cocoa/examples/pages",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",

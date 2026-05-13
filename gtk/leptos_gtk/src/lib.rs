@@ -122,6 +122,20 @@ pub mod prelude {
         TrackSizingFunction,
     };
 
+    // Menu builders + portable Modifiers. `<menu_bar>` is a
+    // top-level sibling of `<window>` in `run()`; nested `<menu>`s
+    // and `<menu_item>`s describe the contents.
+    pub use crate::gtk::menu::{
+        menu, menu_bar, menu_item, menu_separator, Menu, MenuBar, MenuItem,
+        MenuSeparator,
+    };
+    pub use renderer::menu::Modifiers;
+
+    // Explicit window builder — needed when `run()` (not
+    // `mount_to_window`) is used to compose a `<menu_bar>` + window
+    // tuple at the top level.
+    pub use crate::gtk::window::{window, Window};
+
     pub use renderer::{
         auto, fit_content, fr, length, max_content, min_content, minmax,
         percent, repeat,

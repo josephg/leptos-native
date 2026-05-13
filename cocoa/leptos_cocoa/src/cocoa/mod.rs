@@ -1,8 +1,8 @@
 //! Cocoa-flavoured element builders, the macOS analogue of
 //! [`crate::html::element`]. Each tag here corresponds 1:1 to an
 //! AppKit class; tag names drop the `NS` prefix and are snake_case
-//! (`view` → NSView, `button` → NSButton, `stack_view` → flipped
-//! NSView with column flex default, etc.).
+//! (`button` → NSButton, `stack` → flipped NSView with flex layout,
+//! etc.).
 //!
 //! The element types implement tachys' [`Render`](crate::view::Render)
 //! trait, so they compose with the rest of the view-tree machinery
@@ -15,6 +15,7 @@ pub mod attr;
 pub mod bind;
 pub(crate) mod directives;
 pub mod element;
+pub mod menu;
 pub mod node_ref;
 pub mod split;
 pub mod window;
@@ -22,7 +23,7 @@ pub mod window;
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
-    button, grid, hstack, label, stack_view, text_field, view, vstack,
+    button, grid, hstack, label, stack, text_field, vstack,
 };
 pub use node_ref::NodeRef;
 pub use window::{window, Window};

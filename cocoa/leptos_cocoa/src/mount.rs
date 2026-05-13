@@ -59,8 +59,8 @@ use Dom as _ResolveDom;
 /// use leptos::prelude::*;
 /// use leptos::tachys::cocoa::window::window;
 /// run(|| (
-///     window().title("Main").size(640.0, 480.0).child(/* main view */),
-///     window().title("Inspector").size(280.0, 600.0).child(/* inspector */),
+///     window().title("Main").size((640.0, 480.0)).child(/* main view */),
+///     window().title("Inspector").size((280.0, 600.0)).child(/* inspector */),
 /// ));
 /// ```
 pub fn run<F, V>(f: F)
@@ -101,7 +101,7 @@ where
     V: Render<Dom> + 'static,
 {
     let title = title.to_owned();
-    run(move || window().title(title).size(size.0, size.1).child(f()));
+    run(move || window().title(title).size(size).child(f()));
 }
 
 /// Open a window with an `NSSplitViewController` as its content

@@ -5,6 +5,218 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-14 — Native menus (`<menu_bar>` / `<menu>` / `<menu_item>`)
+
+Cross-cutting: see also `gtk_implementation_log.md` for the GTK side
+of the same feature.
+
+Added a declarative menu surface so apps can install a real macOS
+menu bar from inside `view!{}`:
+
+```rust
+run(|| view! {
+    <menu_bar>
+        <menu title="File">
+            <menu_item title="New" shortcut="n" on:action=new_handler />
+            <menu_separator/>
+            <menu_item title="Reset" shortcut="r"
+                       modifiers=Modifiers::CMD_SHIFT
+                       on:action=move |_| ... />
+        </menu>
+    </menu_bar>
+    <window title="…">...</window>
+});
+```
+
+**Two mount cascades, not one.** Menus aren't NSViews and don't go
+through `cocoa_dom::Element` / Taffy. So menu children participate
+in a port-local `MenuMountable` trait in
+`leptos_cocoa::cocoa::menu` that's structurally analogous to
+`Mountable<Dom>` but threads a `MenuParent<'a> { Bar(&MenuBar),
+Menu(&Menu) }` instead of an `(&Element, Option<&Node>)`. Tuple /
+`Option<T>` / `Vec<T>` impls of `MenuMountable` carry the cascade
+through the macro's flat-tuple grouping and through
+`<Show>`-style conditional output.
+
+`MenuBar<C>` is the only menu builder that's `Render<Dom>` — it
+sits as a top-level sibling of `<window>` inside `run()`'s root
+tuple. Its `Render::build` walks the menu cascade, then calls
+`NSApplication::setMainMenu:`. `Menu<C>` and `MenuItem` are *not*
+`Render<Dom>` — using `<menu>` or `<menu_item>` outside `<menu_bar>`
+is a compile error rather than a runtime panic.
+
+**Replace, don't extend.** v1 user-installed `<menu_bar>` overrides
+the App+Edit baseline `install_default_menu` previously set in
+`cocoa_dom::app::init_app`. Apps that don't declare a menu bar
+still get the baseline. The longer-term plan is a
+`<standard_menu kind=AppMenu/>` / `<standard_menu kind=EditMenu/>`
+builder so users can drop the canonical Apple-style menus into
+their own bar — punted until we pick a real example app to flesh
+out the full menu bar (File / Edit / View / Window / Help) and
+design the defaults API around it.
+
+**`on:action`, not `on:click`.** Menu items fire from mouse, keyboard
+shortcut, voice control, and a11y activation; "click" is the wrong
+mental model. The descriptor is `event_macos::ActionEvent` with a
+new `PendingHandler::Action` variant. The variant panics in
+`apply_to` — menu items route handlers directly to
+`cocoa_dom::menu::MenuItem::set_action` rather than through the
+NSView-backed `Element` path. Added `"action"` to the macro's
+`TYPED_EVENTS` list in `common/leptos_macro/src/view/mod.rs` so
+the parser doesn't fall back to `Custom::new("action")`.
+
+**Single handler per menu item.** Same contract as
+`on_control_action` for NSButton — the second `set_action` install
+on a menu item panics rather than silently overwriting. NSMenuItem
+has one target/action slot; fanning out would mean an extra ObjC
+wrapper class for the 99% case of one handler.
+
+**Handler-store reuse with pointer-as-key.** Menu items aren't NSViews,
+but `cocoa_dom::event`'s `HANDLER_STORE` keys on `usize` pointer
+identity. `MenuItem::set_action` casts its `&NSMenuItem` to
+`&NSView` *only* to feed the existing `keep_target_alive` /
+`drop_handlers_for` helpers — the pointer is hashed, never
+dereferenced. This avoids parallel storage for menu retain-keeping
+while reusing the same teardown machinery (handler closures drop
+when `MenuItemState` drops, via the explicit `Drop` impl that calls
+`item.drop_handlers()`).
+
+**Reactive `checked=` works.** Drives NSMenuItem's
+`state: NSControlStateValueOn/Off`. Reactive titles update the
+NSMenu's title *and* the wrapper item's title (the latter is what
+the menu bar actually displays — AppKit syncs from submenu to
+wrapper on first attach, not afterward).
+
+**Dynamic `<For>` / reactive child lists deferred.** `<For>` requires
+its children to implement `Render<R>`, and we deliberately don't
+impl Render for `MenuItem`. A static `Vec<MenuItem>` works fine
+(the `MenuMountable for Vec<T>` impl). Dynamic, reconcile-driven
+submenu repopulation is a v2 feature — it'd need either a
+`MenuMountable for Fn() -> impl MenuMountable` impl with a
+remove-and-rebuild strategy, or a keyed reconciler analog of `For`.
+
+**`<window>` is now also a macro tag.** Until now examples used
+`window()` directly (imported from `leptos::tachys::cocoa::window`)
+because no example needed `<window>` siblings to `<menu_bar>`.
+Added `window` to `element_macos.rs` so the macro path resolves.
+`Window::size` now takes one argument (an `impl Into<WindowSize>`)
+instead of two — the macro can only emit single-value attribute
+expressions, so `<window size=(420.0, 240.0)>` needed a tuple-typed
+attr. `mount_to_window`'s `(f64, f64)` signature is unchanged at
+the public surface (it converts internally).
+
+**Files touched.** Cocoa side:
+`cocoa/dom/src/menu.rs` (new),
+`cocoa/dom/src/lib.rs` (mod export),
+`cocoa/leptos_cocoa/src/cocoa/menu.rs` (new),
+`cocoa/leptos_cocoa/src/cocoa/mod.rs`,
+`cocoa/leptos_cocoa/src/element_macos.rs`,
+`cocoa/leptos_cocoa/src/event_macos.rs`,
+`cocoa/leptos_cocoa/src/lib.rs` (prelude),
+`cocoa/leptos_cocoa/src/cocoa/window.rs` (`WindowSize` + reactive support),
+`cocoa/leptos_cocoa/src/mount.rs` (`size(…)` one-arg).
+Cross-cutting:
+`common/renderer/src/menu.rs` (`Modifiers`),
+`common/renderer/src/lib.rs` (`pub mod menu`),
+`common/leptos_macro/src/view/mod.rs` (`"action"` in `TYPED_EVENTS`).
+Example: `cocoa/examples/menu_demo/`.
+
+---
+
+## 2026-05-14 — API_REVIEW P1+P2 sweep
+
+Companion: `API_REVIEW.md`. The pre-1.0 cleanup pass driven by the
+API review document. Folded a pile of small inconsistencies into a
+coherent shape; deferred two items to P3 with notes.
+
+**Decoration trait (`WithDecoration<C>`).** `background_color`,
+`corner_radius`, `border_width`, `border_color`, and `clip` were
+inherent methods on Stack, partly on Grid, and on Button. Now they
+live on a shared trait — every builder gets them. `DecorationAttrs<C>`
+struct + port-local `WithDecoration` shadow (pins `C = Color` for
+the cocoa port, same orphan-rule reason as `WithText`). The
+`apply_decoration<E, C>` driver in `renderer::setters` walks the
+struct and installs reactive effects through a `DecorationElement<C>`
+trait that each port impls on its Element. Cocoa's impl forwards to
+the existing `set_background_color` / `set_corner_radius` /
+`set_border_*` / `set_clip` free fns in `cocoa_dom::layout`.
+
+**`hidden=` collapses the slot.** Previously `Stack::hidden(true)`
+called NSView's `isHidden` but Taffy kept the slot reserved — a
+classic looks-right, behaves-wrong footgun. Moved `hidden` onto
+`WithLayout` (so it's available on every builder) and wired the
+setter to update Taffy `display: None` *and* the underlying view's
+`isHidden`. Restoring `hidden=false` reads the node's "natural"
+display (captured at install time) so a Grid container goes back to
+`Display::Grid`, a flex container back to `Display::Flex`. Required
+adding `LayoutNodeOps::with_style` (read-only peek) and
+`LayoutElement::set_view_hidden`. Test:
+`hidden_collapses_layout_slot` in `cocoa/leptos_cocoa/tests/layout.rs`.
+
+**`bind:value=` unified.** Dropped the cocoa-local `Selection`
+attribute key. PopUpButton and SegmentedControl now bind via
+`bind:value=signal_of_usize` — the signal's `usize` type
+disambiguates from the `String` / `f64` / `Color` / `Date` /
+`bool` variants. One less attribute key for users to remember.
+
+**Static attrs made reactive.** `TextField::placeholder`,
+`Slider::min_value` / `max_value`, `Stepper::min_value` /
+`max_value` / `increment`, `ProgressIndicator::max_value` /
+`indeterminate`: all now `MaybeReactive<T>` and install via
+`renderer::install`. Grid track lists (`columns` / `rows` /
+`auto_*`) stay static for now (would need a `Vec<...>`
+IntoMaybeReactive impl; animating tracks is a v2 thing —
+documented inline).
+
+**Window lifecycle.** Reactive `title=`, `size=`, and a new reactive
+`position=`. `on:close=fn` for cleanup hooks (saves state on
+windowWillClose). New `WindowHandle` (NodeRef-style) so components
+can programmatically close their own window. Window's
+`Render::build` installs effects for each reactive attr; the
+effects live in `WindowState` and unsubscribe on drop. The
+delegate's close handler now runs in order: children.unmount() →
+content_root.teardown() → user's on_close.
+
+**Cleanups.**
+- Dropped `view()`, `<view>`, `stack_view()`, `<stack_view>` builder
+  aliases. `<stack>` is the canonical generic container; `<vstack>`
+  / `<hstack>` are the directional variants.
+- Dropped `Label::bind:value=` — "two-way binding to a read-only
+  sink" was a category error. Users write `<label>{move ||
+  sig.get()}</label>` instead.
+- Dropped `tachys::cocoa::*` dual import path. Only
+  `tachys::html::element::*` remains (matches the `view!{}` macro's
+  emission path).
+- Hid `cocoa_dom::` from user code. `Color`, `Date`, `Element`,
+  `KeyEvent`, `LineBreak`, `TextAlignment`, `SegmentStyle`,
+  `DatePickerStyle` are all re-exported from `leptos::prelude`;
+  examples no longer import from `cocoa_dom::` directly.
+- Unified `Grid::align_items()` → `Grid::align()` matching Stack.
+
+**Deferred to P3.**
+- **Split-view fold.** Making `<split_view>` a regular Render<Dom>
+  child of `<window>` instead of a separate `mount_to_split_window`
+  entry point. The natural design — `WindowChild` trait with
+  blanket+specific impls — hits Rust coherence without
+  specialization. Alternatives (newtype wrapping, parent-window
+  walk-up in `SplitView::Mountable::mount`) are tractable but
+  bigger than the P1+P2 scope.
+- **`child()` semantics on Button/Label/Checkbox.** Currently they
+  only accept `IntoMaybeReactive<String>`, so `<label>{move ||
+  some_result}</label>` is a type error. The right answer is open:
+  Label probably shouldn't accept arbitrary children (it's a leaf
+  view of a string), but Button *should* (image + text patterns,
+  SF Symbols). Needs research on NSButton's `image:` /
+  `attributedTitle:` / custom-view-subview paths before committing
+  to an API shape.
+- **Animation primitive** (`.animation(duration, curve)` modifier
+  or `<Animated value=…>`). CoreAnimation has the moving parts;
+  open questions on per-attribute opt-in vs per-builder default
+  and how non-animatable values (enums) interpolate. Deferred to
+  P3 with design notes in `API_REVIEW.md` appendix A.
+
+---
+
 ## 2026-05-12 — `<grid>` container (Taffy CSS-Grid)
 
 (Cross-cutting — same entry in `gtk_implementation_log.md`.)

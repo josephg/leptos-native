@@ -41,8 +41,8 @@ mod app {
         let volume = RwSignal::new(0.42_f64);
         let priority = RwSignal::new(1_usize);
         let theme = RwSignal::new(0_usize);
-        let color = RwSignal::new(cocoa_dom::Color::rgb(0.2, 0.6, 1.0));
-        let date = RwSignal::new(cocoa_dom::Date::now());
+        let color = RwSignal::new(Color::rgb(0.2, 0.6, 1.0));
+        let date = RwSignal::new(Date::now());
         let count = RwSignal::new(5.0_f64);
         let progress = RwSignal::new(0.35_f64);
         let notes = RwSignal::new(
@@ -85,13 +85,13 @@ mod app {
                         <label>{move || format!("Volume: {:.0}%", volume.get() * 100.0)}</label>
                     </Section>
 
-                    <Section title="Pop-up button — bind:selection">
-                        <pop_up_button items=priorities.clone() bind:selection=priority />
+                    <Section title="Pop-up button — bind:value (usize)">
+                        <pop_up_button items=priorities.clone() bind:value=priority />
                         <label>{move || format!("Priority idx: {}", priority.get())}</label>
                     </Section>
 
-                    <Section title="Segmented control — bind:selection">
-                        <segmented_control items=themes.clone() bind:selection=theme />
+                    <Section title="Segmented control — bind:value (usize)">
+                        <segmented_control items=themes.clone() bind:value=theme />
                         <label>{move || format!("Theme idx: {}", theme.get())}</label>
                     </Section>
 

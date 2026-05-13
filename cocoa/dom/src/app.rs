@@ -47,6 +47,25 @@ pub fn run_loop(app: &NSApplication) {
     app.run();
 }
 
+/// Programmatically quit the application. Calls
+/// `NSApplication::terminate:` on the shared app object, which goes
+/// through the normal AppKit shutdown sequence (asks the delegate
+/// via `applicationShouldTerminate:`, posts `windowWillClose:` on
+/// each window, etc.) before exiting.
+///
+/// Use this from `on:action` handlers on a Quit menu item:
+///
+/// ```ignore
+/// <menu_item title="Quit MyApp" shortcut="q" on:action=move |_| quit() />
+/// ```
+///
+/// Must run on the main thread (panics otherwise).
+pub fn quit() {
+    let mtm = objc2::MainThreadMarker::new()
+        .expect("cocoa_dom::app::quit must run on the main thread");
+    NSApplication::sharedApplication(mtm).terminate(None);
+}
+
 // ---------------------------------------------------------------------
 // AppDelegate — quit on last-window-close
 // ---------------------------------------------------------------------

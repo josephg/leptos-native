@@ -3,9 +3,9 @@
 #[cfg(target_os = "macos")]
 mod app {
     use leptos::prelude::*;
-    use leptos::tachys::{
-        cocoa::element::{button, label, vstack},
-        html::event::click,
+    use leptos::tachys::html::{
+        element::{button, hstack, label, vstack},
+        event::click,
     };
 
     #[derive(Debug, Clone)]
@@ -19,8 +19,7 @@ mod app {
 
         let view = vstack().padding(16.0).gap(12.0).child((
             label().child(move || format!("Count: {}", count.get().value())),
-            // hstack-equivalent via tachys builder — use flex direction
-            leptos::tachys::cocoa::element::hstack().gap(8.0).child((
+            hstack().gap(8.0).child((
                 button()
                     .on(click, move |_| count.update(Count::clear))
                     .child("Clear"),

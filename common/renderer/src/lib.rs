@@ -14,8 +14,9 @@
 pub mod prelude {
     pub use crate::{
         attrs::{
-            AlignSelf, Dim, IntoMaybeReactive, LayoutAttrs, MaybeReactive,
-            TextAttrs, UniversalAttrs, WithLayout, WithText, WithUniversal,
+            AlignSelf, DecorationAttrs, Dim, IntoMaybeReactive, LayoutAttrs,
+            MaybeReactive, TextAttrs, UniversalAttrs, WithDecoration,
+            WithLayout, WithText, WithUniversal,
         },
         renderer::Renderer,
         view::{AddAnyAttr, IntoRender, Mountable, Render},
@@ -50,6 +51,12 @@ pub mod layout;
 /// [`setters::UniversalElement`] for its node / element types and
 /// reuses the generic functions.
 pub mod setters;
+
+/// Cross-backend menu types. Currently just [`menu::Modifiers`] —
+/// each port translates it to its platform-native modifier shape
+/// (`NSEventModifierFlags` on AppKit, GTK's `<Primary><Shift>` accel
+/// strings on GTK).
+pub mod menu;
 
 // Mirror the old `native_layout` crate root: re-export every layout
 // + setters item at the renderer root so consumer paths

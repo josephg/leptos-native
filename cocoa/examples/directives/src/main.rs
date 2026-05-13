@@ -4,7 +4,6 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use cocoa_dom::Element;
     use leptos::prelude::*;
 
     pub fn log_build(_el: Element) {

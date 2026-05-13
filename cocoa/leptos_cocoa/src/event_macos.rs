@@ -61,6 +61,22 @@ pub const keydown: KeyDownEvent = KeyDownEvent;
 pub struct KeyUpEvent;
 pub const keyup: KeyUpEvent = KeyUpEvent;
 
+/// Marker type for the menu-item `action` event — fires when the
+/// user picks a `<menu_item>` (mouse, keyboard shortcut, voice
+/// control, accessibility activation, …). The platform-native
+/// name: `NSMenuItem.action` on AppKit, `gio::Action.activate` on
+/// GTK. We deliberately don't call this `click` — menu items
+/// aren't mouse-bound.
+///
+/// Only `<menu_item>` accepts this event today. The
+/// `PendingHandler::Action` variant is consumed by the
+/// `MenuItem` builder's `Render::build` (it routes the closure to
+/// `cocoa_dom::menu::MenuItem::set_action`), not by
+/// `PendingHandler::apply_to` (which targets `cocoa_dom::Element`).
+pub struct ActionEvent;
+#[allow(non_upper_case_globals)]
+pub const action: ActionEvent = ActionEvent;
+
 /// Each event descriptor knows its payload type ([`EventType`]) and
 /// how to package a user-supplied handler into a [`PendingHandler`]
 /// the element can install in `Render::build`.
@@ -145,6 +161,16 @@ impl EventDescriptor for KeyUpEvent {
     }
 }
 
+impl EventDescriptor for ActionEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Action(Box::new(move || handler(())))
+    }
+}
+
 // ---------------------------------------------------------------------
 // Compile-time control/event compatibility
 // ---------------------------------------------------------------------
@@ -190,6 +216,13 @@ pub enum PendingHandler {
     Blur(Box<dyn FnMut() + Send + 'static>),
     KeyDown(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
     KeyUp(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
+    /// Menu-item activation — routed by `MenuItem::build` to
+    /// `cocoa_dom::menu::MenuItem::set_action`, *not* by
+    /// [`PendingHandler::apply_to`] (which targets NSView-backed
+    /// `cocoa_dom::Element`s). Hitting `apply_to` with this variant
+    /// panics — it means an `on:action` handler ended up on a
+    /// non-menu element somehow.
+    Action(Box<dyn FnMut() + Send + 'static>),
 }
 
 impl PendingHandler {
@@ -205,6 +238,16 @@ impl PendingHandler {
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
             PendingHandler::KeyDown(cb) => el.on_text_keydown(cb),
             PendingHandler::KeyUp(cb) => el.on_text_keyup(cb),
+            PendingHandler::Action(_) => {
+                panic!(
+                    "on:action handler reached PendingHandler::apply_to — \
+                     this should never happen. on:action is only valid \
+                     on <menu_item>, and the menu_item builder consumes \
+                     the handler directly rather than dispatching via \
+                     apply_to. If you're seeing this, on:action was \
+                     somehow installed on a non-menu element."
+                );
+            }
         }
     }
 }

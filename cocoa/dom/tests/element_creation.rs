@@ -417,7 +417,6 @@ fn kind_is_always_element() {
         "date_picker",
         "stepper",
         "progress_indicator",
-        "stack_view",
         "stack",
         "totally_unknown_xyz",
     ] {

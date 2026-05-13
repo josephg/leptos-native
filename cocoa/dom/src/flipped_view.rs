@@ -7,10 +7,11 @@
 //! interprets subview frames the way the layout engine produced them.
 //!
 //! Used as the backing view for tags that act as layout containers:
-//! `<view>`, `<stack_view>`, and the fallback for unknown tags. Leaf
-//! controls (`<button>`, `<label>`, `<text_field>`) still use their
-//! own AppKit classes — flippedness only affects how a view interprets
-//! its *children*, not how its parent interprets it.
+//! `<stack>` / `<vstack>` / `<hstack>` / `<grid>`, and the fallback
+//! for unknown tags. Leaf controls (`<button>`, `<label>`,
+//! `<text_field>`) still use their own AppKit classes — flippedness
+//! only affects how a view interprets its *children*, not how its
+//! parent interprets it.
 
 use objc2::{define_class, msg_send, rc::Retained, MainThreadOnly};
 use objc2_app_kit::NSView;

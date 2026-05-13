@@ -1073,9 +1073,13 @@ fn attribute_value(
 }
 
 // Keep list alphabetized for binary search
-const TYPED_EVENTS: [&str; 127] = [
+const TYPED_EVENTS: [&str; 128] = [
     "DOMContentLoaded",
     "abort",
+    // Native-only: fired by `<menu_item>` when activated via mouse,
+    // keyboard shortcut, voice control, or accessibility. Mapped on
+    // cocoa to NSMenuItem.action / on GTK to gio::Action.activate.
+    "action",
     "afterprint",
     "animationcancel",
     "animationend",

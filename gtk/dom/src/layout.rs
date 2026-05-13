@@ -210,12 +210,23 @@ impl renderer::LayoutNodeOps for Node {
     fn schedule_relayout(&self) {
         schedule_relayout(self);
     }
+    fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
+        let slot = self.layout_slot().borrow();
+        f(&slot.style)
+    }
 }
 
 impl renderer::LayoutElement for crate::node::Element {
     type Node = Node;
     fn as_node(&self) -> &Self::Node {
         crate::node::Element::as_node(self)
+    }
+    fn set_view_hidden(&self, hidden: bool) {
+        crate::node::Element::set_bool_attribute(
+            self,
+            crate::node::BoolAttr::Hidden,
+            hidden,
+        );
     }
 }
 impl renderer::UniversalElement for crate::node::Element {

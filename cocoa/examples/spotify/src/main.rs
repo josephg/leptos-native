@@ -8,7 +8,6 @@
 #[cfg(target_os = "macos")]
 mod app {
     use leptos::prelude::*;
-    use cocoa_dom::{Color, TextAlignment};
 
     // ---- palette ----------------------------------------------------
 

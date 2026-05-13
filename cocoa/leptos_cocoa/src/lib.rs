@@ -53,23 +53,20 @@ pub use leptos::typed_builder_macro;
 pub use leptos::callback;
 
 /// View-tree machinery + element builders + events under the path
-/// shape the `view!{}` macro emits (`::leptos::tachys::html::element::*`,
-/// `::leptos::tachys::view::*`).
+/// shape the `view!{}` macro emits
+/// (`::leptos::tachys::html::element::*`, `::leptos::tachys::view::*`).
 ///
 /// The web Leptos macro additionally routed tags whose names are real
-/// SVG elements (`<view>`, `<switch>`, ...) through `tachys::svg::*`
-/// and emitted `.attr(name, value)` for every attribute. On native
-/// there's no SVG renderer and no untyped `.attr()` slot, so this
-/// fork's macro routes every tag through `tachys::html::element::*`.
+/// SVG elements (`<switch>`, ...) through `tachys::svg::*` and emitted
+/// `.attr(name, value)` for every attribute. On native there's no SVG
+/// renderer and no untyped `.attr()` slot, so this fork's macro routes
+/// every tag through `tachys::html::element::*`.
+///
+/// User code reaching for a builder directly (no `view!{}`) should
+/// import it from this path (`leptos::tachys::html::element::button`,
+/// ...) or from `leptos::prelude` if the prelude re-exports it.
 pub mod tachys {
     pub use ::renderer::view;
-
-    /// Re-export of the cocoa builders/window/etc., for the
-    /// `::leptos::tachys::cocoa::*` paths some examples reference
-    /// directly.
-    pub mod cocoa {
-        pub use crate::cocoa::*;
-    }
 
     pub mod html {
         pub mod element {
@@ -108,7 +105,7 @@ impl<T: leptos::IntoView<Dom>> IntoView for T {}
 /// - **Mounting**: [`mount_to_window`](crate::mount::mount_to_window),
 ///   [`run`](crate::mount::run).
 /// - **Element builders**: `button()`, `vstack()`, `hstack()`,
-///   `view()`, `stack_view()`, `grid()`, `label()`, `text_field()`.
+///   `stack()`, `grid()`, `label()`, `text_field()`.
 ///   Used directly *or* via the `view!` macro's element syntax.
 /// - **Attribute traits**: `WithLayout` / `WithUniversal` / cocoa-
 ///   port `WithText` for chainable setters
@@ -143,6 +140,22 @@ pub mod prelude {
         split_pane, split_view, PaneBehavior, SplitPane, SplitView,
     };
 
+    // Window types (handle, size, position) so user code can
+    // construct a programmatic close handle or pass a (Width, Height)
+    // tuple via the typed constructors directly.
+    pub use crate::cocoa::window::{
+        WindowHandle, WindowPosition, WindowSize,
+    };
+
+    // Menu builders + portable Modifiers. `<menu_bar>` is a
+    // top-level sibling of `<window>` in `run()`; nested `<menu>`s
+    // and `<menu_item>`s describe the contents.
+    pub use crate::cocoa::menu::{
+        menu, menu_bar, menu_item, menu_separator, Menu, MenuBar, MenuItem,
+        MenuSeparator,
+    };
+    pub use renderer::menu::Modifiers;
+
     // Cocoa-flavoured element builders, exposed as bare functions
     // (`button()`, `vstack()`, etc.) so user code that writes them
     // directly (instead of via the `view!{}` macro) just works.
@@ -150,7 +163,7 @@ pub mod prelude {
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
         element::{
-            button, grid, hstack, label, stack_view, text_field, view, vstack,
+            button, grid, hstack, label, stack, text_field, vstack,
             // Shadow the renderer-common `WithText` (re-exported via
             // `crate::core::prelude::*` above) with the port-local
             // one. The renderer trait is generic over `<C, A>` and
@@ -161,6 +174,12 @@ pub mod prelude {
             // `font_size=...`, `alignment=...`, `text_color=...` need
             // this in scope.
             WithText,
+            // Same shadow pattern: port-local `WithDecoration` pins
+            // `C = Color` for the `IntoMaybeReactive` orphan-rule
+            // reasons. Adds `background_color` / `corner_radius` /
+            // `border_width` / `border_color` / `clip` to every
+            // builder.
+            WithDecoration,
         },
         node_ref::NodeRef,
         AlignContent, AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
@@ -182,12 +201,22 @@ pub mod prelude {
     // or use `span(n)` / integer literals via `Into<GridLine>`.
     pub use renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine};
 
-    // cocoa_dom helpers commonly used by examples (timers, persistent
-    // storage, native colour types, key events).
+    // Native value types + helpers commonly used by examples (timers,
+    // persistent storage, colour, date, key events, text/segment/date
+    // styling enums). User code should reach for these from the
+    // prelude, never directly from `cocoa_dom` — the implementation
+    // crate's path is not stable.
+    //
+    // `Element` is the imperative handle for directives and NodeRef
+    // (`use:directive=fn` calls `fn(el: Element)`; `NodeRef::get()` →
+    // `Option<Element>`).
     pub use cocoa_dom::{
-        local_storage, set_interval, set_interval_with_handle, Color,
-        IntervalError, IntervalHandle, KeyEvent, LineBreak, Storage,
-        StorageError, TextAlignment,
+        local_storage, set_interval, set_interval_with_handle, Color, Date,
+        DatePickerStyle, Element, IntervalError, IntervalHandle, KeyEvent,
+        LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
     };
+    // Programmatic shutdown. Wire to a Quit menu item's on:action,
+    // or call from anywhere on the main thread.
+    pub use cocoa_dom::app::quit;
     pub use crate::Dom;
 }

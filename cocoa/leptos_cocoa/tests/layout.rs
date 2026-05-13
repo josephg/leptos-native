@@ -179,6 +179,39 @@ fn vstack_label_plus_hstack_has_full_height() {
     });
 }
 
+/// REGRESSION: `hidden=true` should collapse the Taffy slot (CSS
+/// `display: none` semantics), not just hide the view while keeping
+/// the space reserved. Pre-P1 behaviour was a footgun — looked right
+/// but reserved space; users had to reach for `<Show>`.
+fn hidden_collapses_layout_slot() {
+    let _mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        // Two siblings in a vstack — second is hidden=true. The vstack's
+        // total height should be ~ label height (+ padding), NOT label
+        // + label + gap.
+        let view = vstack()
+            .padding(0.0)
+            .gap(8.0)
+            .child(label().text("visible"))
+            .child(label().text("collapsed").hidden(true));
+        with_mounted_view(view, (320.0, 200.0), |root| {
+            let subs = root.ns_view().subviews();
+            let outer = subs.iter().next().expect("vstack subview");
+            let frame = outer.frame();
+            // A single label intrinsic-sizes to ~16-18pt. Two labels +
+            // 8pt gap would be ~40+. Allow generous slop, but assert
+            // strictly less than the two-label total.
+            assert!(
+                frame.size.height < 30.0,
+                "hidden child wasn't collapsed: vstack height = {} \
+                 (expected ~one-label, ~18; two-label-with-gap would \
+                 be ~40+)",
+                frame.size.height,
+            );
+        });
+    });
+}
+
 fn main() {
     common::run_tests(&[
         (
@@ -193,5 +226,6 @@ fn main() {
             "vstack_label_plus_hstack_has_full_height",
             vstack_label_plus_hstack_has_full_height,
         ),
+        ("hidden_collapses_layout_slot", hidden_collapses_layout_slot),
     ]);
 }

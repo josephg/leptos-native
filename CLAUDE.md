@@ -287,8 +287,8 @@ re-exposes those paths, backed by the cocoa builders. **Don't
 change the macro** — just expand the facades when adding new tags
 or events.
 
-All tag names — including SVG-namespaced ones like `<view>` and
-`<switch>` — route through `tachys::html::element::*` on native.
+All tag names — including SVG-namespaced ones like `<switch>`
+— route through `tachys::html::element::*` on native.
 The web Leptos macro routed those through `tachys::svg::*` and
 emitted `.attr(name, value)` for every attribute; we stripped that
 path because no native builder has an `.attr()` shim. See the
@@ -568,11 +568,13 @@ those impls return `self` unchanged. We instead made them
   view never gets a viewport to clip against, so scroll bars never
   appear. The scroll view's children take their natural sizes via
   a separate Taffy pass; see `cocoa_dom::layout::relayout_scroll_views`.
-- **Use `<view>{closure_returning_Result}</view>`, not `<label>`.**
+- **Use `<stack>{closure_returning_Result}</stack>`, not `<label>`.**
   `Label::child` only accepts `IntoMaybeReactive<String>` (a leaf).
   To render a `Result<T, E>` (which `Render` impls handle by
-  throwing into the nearest `<ErrorBoundary>`), use `<view>` whose
-  `.child<NewCh: Render>` accepts arbitrary children.
+  throwing into the nearest `<ErrorBoundary>`), use `<stack>` whose
+  `.child<NewCh: Render>` accepts arbitrary children. (Whether
+  Label should accept generic children at all is an open P3
+  question — see API_REVIEW.md.)
 
 ### Linux / GTK specifics
 

@@ -1,0 +1,13 @@
+[package]
+name = "menu_demo_gtk"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+leptos = { package = "leptos_gtk", path = "../../leptos_gtk", features = ["gtk"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+] }

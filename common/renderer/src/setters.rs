@@ -29,9 +29,10 @@ use crate::layout::{
     TrackSizingFunction,
 };
 use crate::attrs::{
-    install, AlignSelf, Dim, Edges, GridLine, LayoutAttrs, RenderEffect,
-    UniversalAttrs,
+    install, AlignSelf, DecorationAttrs, Dim, Edges, GridLine, LayoutAttrs,
+    RenderEffect, UniversalAttrs,
 };
+use crate::layout::Display;
 
 // ---------------------------------------------------------------------
 // Port-specific glue trait
@@ -58,6 +59,11 @@ pub trait LayoutNodeOps {
     /// Mark this node (and its ancestors) dirty and queue a relayout
     /// pass for its tree.
     fn schedule_relayout(&self);
+
+    /// Read-only peek at the current `Style`. Provided so callers
+    /// like the `hidden=` wiring in [`apply_layout`] can capture
+    /// the node's natural `display` value to restore later.
+    fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R;
 }
 
 // ---------------------------------------------------------------------
@@ -344,6 +350,12 @@ pub fn set_max_size_height<N: LayoutNodeOps>(node: &N, d: Dim) {
 pub trait LayoutElement: Clone + 'static {
     type Node: LayoutNodeOps;
     fn as_node(&self) -> &Self::Node;
+
+    /// Toggle the underlying view's visibility. Used by `apply_layout`
+    /// when wiring `hidden=` so the OS-side view is also hidden, not
+    /// just the layout slot collapsed. NSView's `isHidden` /
+    /// UIView's `isHidden` / GtkWidget's `set_visible(!hidden)`.
+    fn set_view_hidden(&self, hidden: bool);
 }
 
 /// Element-level handles for opacity + tooltip. Tooltip has a default
@@ -352,6 +364,60 @@ pub trait LayoutElement: Clone + 'static {
 pub trait UniversalElement: Clone + 'static {
     fn set_alpha(&self, alpha: f64);
     fn set_tool_tip(&self, _tip: &str) {}
+}
+
+// ---------------------------------------------------------------------
+// Display (used by the `hidden=` attr — display: none collapses the
+// slot in Taffy in addition to whatever visual hiding the port does).
+// ---------------------------------------------------------------------
+
+pub fn set_display<N: LayoutNodeOps>(node: &N, display: Display) {
+    node.update_style(|s| s.display = display);
+    node.schedule_relayout();
+}
+
+// ---------------------------------------------------------------------
+// Decoration (background_color, corner_radius, border_*, clip)
+// ---------------------------------------------------------------------
+
+/// Port-side glue for [`apply_decoration`]. Each port implements this
+/// on its `Element` type by routing to its existing visual-state
+/// setters. `C` is the port's color type.
+pub trait DecorationElement<C: 'static>: Clone + 'static {
+    fn set_background_color(&self, color: C);
+    fn set_corner_radius(&self, radius: f32);
+    fn set_border_width(&self, width: f32);
+    fn set_border_color(&self, color: C);
+    fn set_clip(&self, clip: bool);
+}
+
+pub fn apply_decoration<E, C>(
+    el: &E,
+    attrs: DecorationAttrs<C>,
+) -> Vec<RenderEffect<()>>
+where
+    E: DecorationElement<C>,
+    C: 'static,
+{
+    let mut out = Vec::new();
+
+    macro_rules! install_setter {
+        ($field:expr, $method:ident) => {
+            if let Some(v) = $field {
+                let e = el.clone();
+                if let Some(eff) = install(v, move |x| e.$method(x)) {
+                    out.push(eff);
+                }
+            }
+        };
+    }
+
+    install_setter!(attrs.background_color, set_background_color);
+    install_setter!(attrs.corner_radius,    set_corner_radius);
+    install_setter!(attrs.border_width,     set_border_width);
+    install_setter!(attrs.border_color,     set_border_color);
+    install_setter!(attrs.clip,             set_clip);
+    out
 }
 
 // ---------------------------------------------------------------------
@@ -408,6 +474,27 @@ where
     install_setter!(attrs.grid_column_end, set_grid_column_end);
     install_setter!(attrs.grid_row_start, set_grid_row_start);
     install_setter!(attrs.grid_row_end, set_grid_row_end);
+
+    // `hidden=true` ⇒ Taffy `Display::None` (collapses the slot).
+    // `hidden=false` ⇒ restore whatever display the node was created
+    // with (Flex / Grid / Block / None). Capture the natural display
+    // once at install time.
+    if let Some(v) = attrs.hidden {
+        let natural = el.as_node().with_style(|s| s.display);
+        let e = el.clone();
+        if let Some(eff) = install(v, move |hide: bool| {
+            let next = if hide { Display::None } else { natural };
+            set_display(e.as_node(), next);
+            // The port also needs to update view-level visibility
+            // (NSView isHidden, UIView isHidden) so the actual
+            // pixels go away when we lay the element back into the
+            // tree at zero size. That's port-specific — we surface
+            // it via the LayoutElement's `set_view_hidden` hook.
+            e.set_view_hidden(hide);
+        }) {
+            out.push(eff);
+        }
+    }
 
     out
 }

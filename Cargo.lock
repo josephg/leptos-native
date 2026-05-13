@@ -1184,6 +1184,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "menu_demo_cocoa"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "menu_demo_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
+]
+
+[[package]]
 name = "num_cpus"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

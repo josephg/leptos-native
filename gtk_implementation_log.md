@@ -6,6 +6,71 @@ top.
 
 ---
 
+## 2026-05-14 — Native menus (`<menu_bar>` / `<menu>` / `<menu_item>`)
+
+Cross-cutting feature; the cross-port design rationale lives in
+`implementation_log.md`'s entry of the same date. This entry covers
+the GTK-specific deltas.
+
+**`gio::Menu` is declarative, `NSMenu` is imperative.** AppKit's
+menu objects mutate in place — set the title, the check-mark state,
+the action, then add to the parent menu. `gio::MenuItem` is
+immutable once attached to a `gio::Menu`. So reactive title
+updates (and the future reactive check / submenu shape) work by
+*replacing* the item at its index: `remove(i); insert_item(i, new)`.
+The Render layer carries the `(parent, index)` pair on each
+`MenuItemState` so the reactive setter can find itself.
+
+**Action wiring is by name, not by target.** Each `<menu_item>`
+allocates a process-unique action name `app.menuitem_N` (atomic
+counter in `gtk_dom::menu`), registers a `gio::SimpleAction` on the
+`gtk::Application`'s action group, and connects its
+`activate` signal to the user closure. `gtk_application_set_menubar`
+walks the `gio::Menu` model and binds `app.menuitem_N` references
+to the registered action. Keyboard accels go through
+`Application::set_accels_for_action("app.menuitem_N", &["<Primary>r"])`.
+
+**`MenuParent` carries both menu + app.** Unlike cocoa (where
+`NSApplication::sharedApplication` is a process-wide singleton),
+the GTK `gtk::Application` isn't globally addressable. The Render
+cascade threads `&gtk4::Application` through `MenuParent::{Bar,
+Menu}` so leaf items can `add_action` / `set_accels_for_action`
+on it. `MenuBar::build` discovers the app at the top via
+`gio::Application::default()` (downcast to `gtk::Application`),
+which works inside `run()`'s activate handler — anywhere else
+panics with a clear diagnostic.
+
+**Separators are sections.** GTK doesn't have a "separator" item
+kind; the convention is to group items into `gio::Menu` *sections*
+(via `append_section`). Adjacent sections render with a divider.
+`<menu_separator/>` appends an empty section, so subsequent items
+added to the parent menu visually start a new group. Functionally
+equivalent to AppKit's `+[NSMenuItem separatorItem]` but
+structurally different — worth knowing if you read the
+`gio::Menu` directly.
+
+**`set_checked` is a v1 stub.** `gio::SimpleAction` exposes
+check-mark state via stateful actions
+(`SimpleAction::new_stateful`), but rebinding an existing action
+to be stateful means rebuilding it — non-trivial for the
+build-once shape of our reactive setters. The `set_checked` method
+on `gtk_dom::menu::MenuItem` is wired through but no-ops today.
+Use a toggle via `on:action=…` + reactive `title=move || …` for
+the same UX in v1.
+
+**Files touched.** GTK side:
+`gtk/dom/src/menu.rs` (new),
+`gtk/dom/src/lib.rs` (mod export),
+`gtk/leptos_gtk/src/gtk/menu.rs` (new),
+`gtk/leptos_gtk/src/gtk/mod.rs`,
+`gtk/leptos_gtk/src/element_gtk.rs`,
+`gtk/leptos_gtk/src/event_gtk.rs` (`ActionEvent`),
+`gtk/leptos_gtk/src/lib.rs` (prelude + `window` re-export for
+`run()` users).
+Example: `gtk/examples/menu_demo/`.
+
+---
+
 ## 2026-05-12 — `<grid>` container (Taffy CSS-Grid)
 
 Cross-cutting addition. Full design notes in

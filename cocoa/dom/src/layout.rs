@@ -563,15 +563,26 @@ impl renderer::LayoutNodeOps for Node {
     fn schedule_relayout(&self) {
         schedule_relayout(self);
     }
+    fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
+        let slot = self.layout_slot().borrow();
+        f(&slot.style)
+    }
 }
 
-// `LayoutElement` / `UniversalElement` impls let
-// `renderer::apply_layout` and `apply_universal` install
-// reactive setters against a `cocoa_dom::Element` generically.
+// `LayoutElement` / `UniversalElement` / `DecorationElement` impls let
+// `renderer::apply_layout` / `apply_universal` / `apply_decoration`
+// install reactive setters against a `cocoa_dom::Element` generically.
 impl renderer::LayoutElement for crate::node::Element {
     type Node = Node;
     fn as_node(&self) -> &Self::Node {
         crate::node::Element::as_node(self)
+    }
+    fn set_view_hidden(&self, hidden: bool) {
+        crate::node::Element::set_bool_attribute(
+            self,
+            crate::node::BoolAttr::Hidden,
+            hidden,
+        );
     }
 }
 impl renderer::UniversalElement for crate::node::Element {
@@ -580,6 +591,23 @@ impl renderer::UniversalElement for crate::node::Element {
     }
     fn set_tool_tip(&self, tip: &str) {
         crate::node::Element::set_tool_tip(self, tip)
+    }
+}
+impl renderer::DecorationElement<crate::Color> for crate::node::Element {
+    fn set_background_color(&self, color: crate::Color) {
+        set_background_color(self.as_node(), color);
+    }
+    fn set_corner_radius(&self, radius: f32) {
+        set_corner_radius(self.as_node(), radius);
+    }
+    fn set_border_width(&self, width: f32) {
+        set_border_width(self.as_node(), width);
+    }
+    fn set_border_color(&self, color: crate::Color) {
+        set_border_color(self.as_node(), color);
+    }
+    fn set_clip(&self, clip: bool) {
+        set_clip(self.as_node(), clip);
     }
 }
 

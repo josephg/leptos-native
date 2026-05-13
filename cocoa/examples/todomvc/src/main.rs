@@ -95,7 +95,7 @@ fn TodoMVC() -> impl IntoView {
         let _ = el.focus();
     });
 
-    let add_on_enter = move |ev: cocoa_dom::KeyEvent| {
+    let add_on_enter = move |ev: KeyEvent| {
         if ev.key != "Enter" {
             return;
         }
@@ -185,7 +185,7 @@ fn TodoRow(todo: Todo) -> impl IntoView {
         }
     };
 
-    let on_key = move |ev: cocoa_dom::KeyEvent| {
+    let on_key = move |ev: KeyEvent| {
         if ev.key == "Enter" {
             commit();
         } else if ev.key == "Escape" {

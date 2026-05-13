@@ -410,6 +410,82 @@ pub trait WithText<C: 'static, A: 'static>: Sized {
 }
 
 // ---------------------------------------------------------------------
+// Decoration attrs (background_color, corner_radius, border, clip)
+// ---------------------------------------------------------------------
+
+/// "Rectangle styling" attrs available on every visual element —
+/// fill color, rounded corners, border, and a clip-to-bounds toggle.
+/// Generic over `C` because the color type is backend-specific
+/// (cocoa: `Color`; gtk: `gdk::RGBA`; etc.).
+pub struct DecorationAttrs<C: 'static> {
+    pub background_color: Option<MaybeReactive<C>>,
+    pub corner_radius:    Option<MaybeReactive<f32>>,
+    pub border_width:     Option<MaybeReactive<f32>>,
+    pub border_color:     Option<MaybeReactive<C>>,
+    /// CSS `overflow: hidden` — children extending past the element's
+    /// bounds are clipped at draw time. CALayer's `masksToBounds` on
+    /// AppKit; analogous mechanism per port.
+    pub clip:             Option<MaybeReactive<bool>>,
+}
+
+impl<C: 'static> Default for DecorationAttrs<C> {
+    fn default() -> Self {
+        Self {
+            background_color: None,
+            corner_radius:    None,
+            border_width:     None,
+            border_color:     None,
+            clip:             None,
+        }
+    }
+}
+
+/// Builder accessor for [`DecorationAttrs`]. Each builder picks the
+/// concrete `C` for its backend.
+///
+/// Like [`WithText`], each port typically defines a non-generic
+/// shadow trait (pinning `C = port::Color`) so the chainable setters
+/// can use the port-local [`IntoMaybeReactive`] machinery.
+pub trait WithDecoration<C: 'static>: Sized {
+    fn decoration_mut(&mut self) -> &mut DecorationAttrs<C>;
+
+    /// Layer-backed background fill.
+    fn background_color<V: IntoMaybeReactive<C>>(mut self, c: V) -> Self {
+        self.decoration_mut().background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Round the corners. Pair with [`Self::clip`]`(true)` to actually
+    /// clip children to the rounded shape; without `clip` the fill is
+    /// rounded but children draw through.
+    fn corner_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
+        self.decoration_mut().corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Border width in points. `0.0` disables. Pair with
+    /// [`Self::border_color`] for non-default (opaque black) borders.
+    fn border_width<V: IntoMaybeReactive<f32>>(mut self, w: V) -> Self {
+        self.decoration_mut().border_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Border color. Only visible when `border_width > 0`.
+    fn border_color<V: IntoMaybeReactive<C>>(mut self, c: V) -> Self {
+        self.decoration_mut().border_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// CSS `overflow: hidden`. Children outside the element's frame
+    /// are clipped at draw time. Layout still positions them at full
+    /// size.
+    fn clip<V: IntoMaybeReactive<bool>>(mut self, c: V) -> Self {
+        self.decoration_mut().clip = Some(c.into_maybe_reactive());
+        self
+    }
+}
+
+// ---------------------------------------------------------------------
 // Layout attrs (padding, margin, sizing, flex_grow, align_self)
 // ---------------------------------------------------------------------
 
@@ -441,6 +517,12 @@ pub struct LayoutAttrs {
     pub grid_column_end:   Option<MaybeReactive<GridLine>>,
     pub grid_row_start:    Option<MaybeReactive<GridLine>>,
     pub grid_row_end:      Option<MaybeReactive<GridLine>>,
+
+    /// `hidden=true` removes the element from layout (CSS `display:
+    /// none` — the slot collapses; siblings reflow as if the element
+    /// weren't there) AND hides the underlying view. `false` restores
+    /// the element to its normal display mode.
+    pub hidden: Option<MaybeReactive<bool>>,
 }
 
 /// Builder accessor for [`LayoutAttrs`]. Implementations expose
@@ -617,6 +699,19 @@ pub trait WithLayout: Sized {
         let l = self.layout_mut();
         l.grid_row_start = Some(MaybeReactive::Static(GridLine::Auto));
         l.grid_row_end   = Some(MaybeReactive::Static(GridLine::Span(n)));
+        self
+    }
+
+    /// Hide the element and remove it from layout — CSS `display: none`
+    /// semantics. The slot collapses; siblings reflow as if the element
+    /// weren't there. The underlying view is also marked hidden so it
+    /// doesn't draw. Setting `hidden=false` restores normal display.
+    ///
+    /// (Earlier this only set NSView's `isHidden`, which kept the slot
+    /// reserved. The current behaviour matches what most callers
+    /// actually want — and what `<Show>` would do, with less ceremony.)
+    fn hidden<V: IntoMaybeReactive<bool>>(mut self, h: V) -> Self {
+        self.layout_mut().hidden = Some(h.into_maybe_reactive());
         self
     }
 }

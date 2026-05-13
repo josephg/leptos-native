@@ -90,11 +90,11 @@ fn App() -> impl IntoView {
                         </vstack>
                     }
                 }>
-                    <view>
+                    <stack>
                         {move || Suspend::new(async move {
                             facts.await.map(|fs| fs.join("\n\n"))
                         })}
-                    </view>
+                    </stack>
                 </ErrorBoundary>
             </Transition>
         </vstack>

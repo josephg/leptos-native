@@ -34,6 +34,18 @@ pub const focus: FocusEvent = FocusEvent;
 pub struct BlurEvent;
 pub const blur: BlurEvent = BlurEvent;
 
+/// Marker type for the menu-item `action` event — fires when the
+/// user activates a `<menu_item>` (click, keyboard shortcut,
+/// accessibility). GTK: `gio::SimpleAction::activate`.
+///
+/// Only `<menu_item>` accepts this event. The
+/// `PendingHandler::Action` variant is consumed by the
+/// `MenuItem` builder's Render impl (it goes to
+/// `gtk_dom::menu::MenuItem::set_action`), not by
+/// `PendingHandler::apply_to` (which targets gtk_dom Elements).
+pub struct ActionEvent;
+pub const action: ActionEvent = ActionEvent;
+
 pub trait EventDescriptor {
     type EventType;
     fn into_pending<F>(handler: F) -> PendingHandler
@@ -91,6 +103,16 @@ impl EventDescriptor for BlurEvent {
     }
 }
 
+impl EventDescriptor for ActionEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Action(Box::new(move || handler(())))
+    }
+}
+
 // ---------------------------------------------------------------------
 // Compile-time control/event compatibility
 // ---------------------------------------------------------------------
@@ -109,6 +131,9 @@ pub enum PendingHandler {
     Change(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
+    /// Menu-item activation — see [`ActionEvent`]. Consumed by the
+    /// menu_item builder rather than by `apply_to`.
+    Action(Box<dyn FnMut() + Send + 'static>),
 }
 
 impl PendingHandler {
@@ -121,6 +146,11 @@ impl PendingHandler {
             PendingHandler::Change(cb) => el.on_text_end_editing(cb),
             PendingHandler::Focus(cb) => el.on_text_focus(cb),
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
+            PendingHandler::Action(_) => panic!(
+                "on:action handler reached PendingHandler::apply_to. \
+                 on:action is only valid on <menu_item>, and the \
+                 menu_item builder consumes the handler directly."
+            ),
         }
     }
 }

@@ -1,0 +1,543 @@
+//! `view!{}`-compatible menu builders: `<menu_bar>`, `<menu>`,
+//! `<menu_item>`, `<menu_separator/>`.
+//!
+//! Native menus live *off* the Taffy layout tree (they're not
+//! NSViews), so they have their own port-local mount cascade —
+//! [`MenuMountable`] — that parallels [`Mountable<Dom>`] but threads
+//! a [`MenuParent`] (either an `NSMenu` main-menu or a submenu)
+//! through the build.
+//!
+//! Three builder types:
+//!
+//! - [`MenuBar<C>`] — top-level container. The only menu builder
+//!   that implements [`Render<Dom>`]; siblings to `<window>` in
+//!   `run()` see it as just another renderable. Build-time:
+//!   constructs a fresh `cocoa_dom::menu::MenuBar`, descends into
+//!   children, then `setMainMenu:`s it on NSApp.
+//! - [`Menu<C>`] — submenu. Lives only as a child of [`MenuBar`]
+//!   or another [`Menu`] (compile error elsewhere — we don't
+//!   impl `Render<Dom>` for it).
+//! - [`MenuItem`] / [`MenuSeparator`] — leaves. Same compile-error
+//!   shape as `Menu`: outside `<menu>` they don't satisfy
+//!   `Render<Dom>` so they fail at the call site, not at runtime.
+//!
+//! Tuple / `Option` / `Vec` impls of `MenuMountable` propagate the
+//! cascade through the macro's flat-tuple grouping
+//! (`((), (m0, m1, …))`) and through `<For>`/`<Show>` outputs.
+
+use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
+use crate::event_macos::{
+    ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
+};
+use crate::Dom;
+use cocoa_dom::{
+    menu::{self as dom_menu, MenuBar as DomMenuBar},
+    Element as CocoaElement, MainThreadMarker, Node as CocoaNode,
+};
+use objc2::rc::Retained;
+use objc2_app_kit::{NSApplication, NSMenuItem};
+use objc2_foundation::NSString;
+use reactive_graph::effect::RenderEffect;
+use renderer::menu::Modifiers;
+use renderer::view::{Mountable, Render};
+
+// ---------------------------------------------------------------------
+// MenuParent + MenuMountable
+// ---------------------------------------------------------------------
+
+/// What you're attaching a child to: either the menu bar's top
+/// level (one wrapper-item per submenu) or an `NSMenu` proper (a
+/// vertical list of items + nested submenus).
+///
+/// Borrowed during the build cascade; never stored on the heap.
+pub enum MenuParent<'a> {
+    Bar(&'a DomMenuBar),
+    Menu(&'a dom_menu::Menu),
+}
+
+/// Port-local analogue of [`Mountable<Dom>`] for the menu tree.
+/// Implemented by every menu builder + the wrapper types the macro
+/// produces (`()`, tuples, `Option`, `Vec`).
+///
+/// Stays port-local because cocoa's parent shape (NSMenu*) is
+/// nothing like GTK's (`gio::Menu`). The trait will be mirrored —
+/// not shared — on the GTK side.
+pub trait MenuMountable: Send + 'static {
+    /// State retained for the lifetime of the menu (so reactive
+    /// effects and ActionTargets aren't dropped).
+    type State: 'static;
+
+    /// Build the item(s) and attach to `parent`. May install
+    /// reactive effects against the underlying menu/item handle.
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State;
+}
+
+// () — terminator for the children-tuple cascade.
+impl MenuMountable for () {
+    type State = ();
+    fn build_into_menu(
+        self,
+        _parent: &MenuParent,
+        _mtm: MainThreadMarker,
+    ) -> Self::State {
+    }
+}
+
+// (A, B) — flat tuples produced by the macro for >1 child.
+macro_rules! impl_tuple {
+    ($(($idx:tt, $T:ident)),+ $(,)?) => {
+        impl<$($T),+> MenuMountable for ($($T,)+)
+        where
+            $($T: MenuMountable,)+
+        {
+            type State = ($($T::State,)+);
+            fn build_into_menu(
+                self,
+                parent: &MenuParent,
+                mtm: MainThreadMarker,
+            ) -> Self::State {
+                ( $( self.$idx.build_into_menu(parent, mtm), )+ )
+            }
+        }
+    };
+}
+impl_tuple!((0, A));
+impl_tuple!((0, A), (1, B));
+impl_tuple!((0, A), (1, B), (2, C));
+impl_tuple!((0, A), (1, B), (2, C), (3, D));
+impl_tuple!((0, A), (1, B), (2, C), (3, D), (4, E));
+impl_tuple!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F));
+impl_tuple!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G));
+impl_tuple!((0, A), (1, B), (2, C), (3, D), (4, E), (5, F), (6, G), (7, H));
+
+// Option — for `<Show>`-like conditional rendering.
+impl<T: MenuMountable> MenuMountable for Option<T> {
+    type State = Option<T::State>;
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State {
+        self.map(|t| t.build_into_menu(parent, mtm))
+    }
+}
+
+// Vec — for `<For>`-driven item lists.
+impl<T: MenuMountable> MenuMountable for Vec<T> {
+    type State = Vec<T::State>;
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State {
+        self.into_iter()
+            .map(|t| t.build_into_menu(parent, mtm))
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------
+// MenuBar — top-level container, the only menu builder that's
+// Render<Dom>
+// ---------------------------------------------------------------------
+
+/// Top-level menu container. Sits as a sibling of `<window>` in
+/// `run()`'s root tuple. Use [`menu_bar`] to construct.
+pub struct MenuBar<Children> {
+    pub(crate) children: Children,
+}
+
+/// Construct an empty `<menu_bar>`. Add submenus via `.child(...)`
+/// or by writing `<menu>`s inside the `view!{}` form.
+pub fn menu_bar() -> MenuBar<()> {
+    MenuBar { children: () }
+}
+
+impl<C> MenuBar<C> {
+    pub fn child<NewC>(self, c: NewC) -> MenuBar<(C, NewC)> {
+        MenuBar {
+            children: (self.children, c),
+        }
+    }
+}
+
+#[doc(hidden)]
+pub struct MenuBarState<CS> {
+    _bar: DomMenuBar,
+    _children: CS,
+}
+
+impl<C> Render<Dom> for MenuBar<C>
+where
+    C: MenuMountable,
+{
+    type State = MenuBarState<C::State>;
+
+    fn build(self) -> Self::State {
+        let mtm = MainThreadMarker::new()
+            .expect("MenuBar::build must run on the main thread");
+        let bar = dom_menu::menu_bar(mtm);
+
+        // Descend into children first so the bar is fully populated
+        // before we install it on NSApp. Otherwise menu-bar paint
+        // would briefly flash an empty bar.
+        let children_state =
+            self.children.build_into_menu(&MenuParent::Bar(&bar), mtm);
+
+        // Install onto NSApp.mainMenu — overwrites whatever
+        // `init_app` previously set up (the App + Edit baseline).
+        // Per the design, v1 replaces rather than extends.
+        let app = NSApplication::sharedApplication(mtm);
+        bar.install(&app);
+
+        MenuBarState {
+            _bar: bar,
+            _children: children_state,
+        }
+    }
+
+    fn rebuild(self, _state: &mut Self::State) {
+        // Reactive titles/enabled/checked update via their own
+        // effects. Structural rebuild not supported yet.
+    }
+}
+
+impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
+    fn unmount(&mut self) {
+        // No-op for now: NSApp.mainMenu sticks around for the
+        // process lifetime by convention, and an explicit clear
+        // would race with the AppKit run loop's menu-tracking.
+    }
+    fn mount(
+        &mut self,
+        _parent: &CocoaElement,
+        _marker: Option<&CocoaNode>,
+    ) {
+        // The menu bar is its own root; nothing to attach under
+        // a view-tree parent.
+    }
+    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
+        false
+    }
+    fn elements(&self) -> Vec<CocoaElement> {
+        Vec::new()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Menu — submenu (NSMenu attached to a parent menu/bar item)
+// ---------------------------------------------------------------------
+
+/// One submenu: an `NSMenu` exposed in its parent as a single
+/// `NSMenuItem` whose `submenu:` is the underlying menu. Build via
+/// [`menu`].
+pub struct Menu<Children> {
+    pub(crate) title:    MaybeReactive<String>,
+    pub(crate) children: Children,
+}
+
+/// Start configuring a submenu. The title is required to be set
+/// before this enters the menu tree — see [`Menu::title`].
+pub fn menu() -> Menu<()> {
+    Menu {
+        title:    MaybeReactive::Static(String::new()),
+        children: (),
+    }
+}
+
+impl<C> Menu<C> {
+    pub fn title<V>(mut self, t: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.title = t.into_maybe_reactive();
+        self
+    }
+
+    pub fn child<NewC>(self, c: NewC) -> Menu<(C, NewC)> {
+        Menu {
+            title:    self.title,
+            children: (self.children, c),
+        }
+    }
+}
+
+#[doc(hidden)]
+pub struct MenuState<CS> {
+    _menu:         dom_menu::Menu,
+    _wrapper_item: Retained<NSMenuItem>,
+    _children:     CS,
+    _effects:      Vec<RenderEffect<()>>,
+}
+
+impl<C> MenuMountable for Menu<C>
+where
+    C: MenuMountable,
+{
+    type State = MenuState<C::State>;
+
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State {
+        // Build the underlying NSMenu. The title starts blank; the
+        // reactive setter below pushes the real value (and keeps
+        // updating it on signal changes).
+        let dom_menu_handle = dom_menu::menu("", mtm);
+
+        // Attach to parent and grab the wrapper item so we can
+        // update its title independently — AppKit reads the
+        // wrapper's title for menu-bar display, not the submenu's.
+        let wrapper_item = match parent {
+            MenuParent::Bar(bar) => bar.append_menu(&dom_menu_handle, mtm),
+            MenuParent::Menu(m) => m.append_submenu(&dom_menu_handle, mtm),
+        };
+
+        // Reactive title: update both the menu (used when the menu
+        // is reached via the keyboard / NSMenu API) and the
+        // wrapper item (used for the menu-bar / parent-menu label).
+        let mut effects = Vec::new();
+        let menu_for = dom_menu_handle.clone();
+        let wrapper_for = wrapper_item.clone();
+        if let Some(eff) = install(self.title, move |t| {
+            menu_for.set_title(&t);
+            wrapper_for.setTitle(&NSString::from_str(&t));
+        }) {
+            effects.push(eff);
+        }
+
+        // Descend into the submenu's children.
+        let children_state = self.children.build_into_menu(
+            &MenuParent::Menu(&dom_menu_handle),
+            mtm,
+        );
+
+        MenuState {
+            _menu:         dom_menu_handle,
+            _wrapper_item: wrapper_item,
+            _children:     children_state,
+            _effects:      effects,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// MenuItem — leaf command
+// ---------------------------------------------------------------------
+
+/// Leaf menu command. Title, enabled, checked, shortcut, and a
+/// single `on:action` handler. Build via [`menu_item`].
+pub struct MenuItem {
+    pub(crate) title:    MaybeReactive<String>,
+    pub(crate) enabled:  Option<MaybeReactive<bool>>,
+    pub(crate) checked:  Option<MaybeReactive<bool>>,
+    pub(crate) shortcut_key:       Option<String>,
+    pub(crate) shortcut_modifiers: Option<Modifiers>,
+    pub(crate) handlers: Vec<PendingHandler>,
+}
+
+/// Start configuring a leaf menu item. Title defaults to empty;
+/// callers should always set it (an empty menu item renders as a
+/// blank, unfocusable strip — rarely the intent).
+pub fn menu_item() -> MenuItem {
+    MenuItem {
+        title:    MaybeReactive::Static(String::new()),
+        enabled:  None,
+        checked:  None,
+        shortcut_key:       None,
+        shortcut_modifiers: None,
+        handlers: Vec::new(),
+    }
+}
+
+impl MenuItem {
+    pub fn title<V>(mut self, t: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.title = t.into_maybe_reactive();
+        self
+    }
+
+    pub fn enabled<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.enabled = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Show a check-mark when this is `true`. Reactive — flip the
+    /// signal and AppKit will tick / untick the item.
+    pub fn checked<V>(mut self, b: V) -> Self
+    where
+        V: IntoMaybeReactive<bool>,
+    {
+        self.checked = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Keyboard-equivalent character (e.g. `"r"` for the "R" key,
+    /// `""` to clear). Static — reactive shortcuts aren't useful
+    /// in practice and add bookkeeping cost.
+    ///
+    /// When set without an accompanying [`modifiers`](Self::modifiers)
+    /// call, defaults to [`Modifiers::CMD`].
+    pub fn shortcut(mut self, key: impl Into<String>) -> Self {
+        self.shortcut_key = Some(key.into());
+        self
+    }
+
+    /// Override the modifier flags for the shortcut. Only
+    /// meaningful when [`shortcut`](Self::shortcut) is also set.
+    pub fn modifiers(mut self, m: Modifiers) -> Self {
+        self.shortcut_modifiers = Some(m);
+        self
+    }
+
+    /// Inline `on:event=handler` from the macro. Only `on:action`
+    /// makes sense on a menu item; the [`SupportsEvent`] bound
+    /// rejects others at compile time.
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+// Compile-time control/event compatibility — `<menu_item on:click>`
+// won't compile.
+impl SupportsEvent<ActionEvent> for MenuItem {}
+
+#[doc(hidden)]
+pub struct MenuItemState {
+    _item:    dom_menu::MenuItem,
+    _effects: Vec<RenderEffect<()>>,
+}
+
+impl Drop for MenuItemState {
+    fn drop(&mut self) {
+        // Release any retained ActionTarget for this item so its
+        // closure can be dropped when the menu bar is torn down.
+        self._item.drop_handlers();
+    }
+}
+
+impl MenuMountable for MenuItem {
+    type State = MenuItemState;
+
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State {
+        let item = dom_menu::menu_item(mtm);
+        let mut effects = Vec::new();
+
+        // Title.
+        let it = item.clone();
+        if let Some(eff) = install(self.title, move |t| it.set_title(&t)) {
+            effects.push(eff);
+        }
+        // Enabled.
+        if let Some(e) = self.enabled {
+            let it = item.clone();
+            if let Some(eff) = install(e, move |b| it.set_enabled(b)) {
+                effects.push(eff);
+            }
+        }
+        // Checked.
+        if let Some(c) = self.checked {
+            let it = item.clone();
+            if let Some(eff) = install(c, move |b| it.set_checked(b)) {
+                effects.push(eff);
+            }
+        }
+        // Shortcut (static).
+        if let Some(key) = self.shortcut_key {
+            let mods = self.shortcut_modifiers.unwrap_or(Modifiers::CMD);
+            item.set_shortcut(&key, mods);
+        }
+
+        // Action handler — single one, since NSMenuItem has a
+        // single target/action slot. Iterating handlers (rather
+        // than expecting exactly one) future-proofs us for
+        // alternate event descriptors that might land here.
+        for h in self.handlers {
+            match h {
+                PendingHandler::Action(mut cb) => {
+                    item.set_action(move || cb(), mtm);
+                }
+                _ => panic!(
+                    "<menu_item> only supports on:action handlers. \
+                     Got a non-Action PendingHandler — likely because \
+                     SupportsEvent guarded inline `.on()` was bypassed \
+                     via the spread path."
+                ),
+            }
+        }
+
+        // Attach. <menu_item> directly under <menu_bar> is invalid
+        // — wrap in a <menu title=…> first.
+        match parent {
+            MenuParent::Menu(m) => m.append_item(&item),
+            MenuParent::Bar(_) => panic!(
+                "<menu_item> must be a child of <menu>, not directly \
+                 under <menu_bar>. Wrap your items in <menu title=\"…\"> \
+                 first."
+            ),
+        }
+
+        MenuItemState {
+            _item:    item,
+            _effects: effects,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// MenuSeparator — divider
+// ---------------------------------------------------------------------
+
+/// Horizontal divider between groups of related items. No
+/// configuration — use [`menu_separator`].
+pub struct MenuSeparator;
+
+/// Construct a menu separator (`+[NSMenuItem separatorItem]`).
+pub fn menu_separator() -> MenuSeparator {
+    MenuSeparator
+}
+
+#[doc(hidden)]
+pub struct MenuSeparatorState {
+    _item: dom_menu::MenuItem,
+}
+
+impl MenuMountable for MenuSeparator {
+    type State = MenuSeparatorState;
+
+    fn build_into_menu(
+        self,
+        parent: &MenuParent,
+        mtm: MainThreadMarker,
+    ) -> Self::State {
+        let item = dom_menu::menu_separator(mtm);
+        match parent {
+            MenuParent::Menu(m) => m.append_item(&item),
+            MenuParent::Bar(_) => panic!(
+                "<menu_separator/> must be a child of <menu>, not \
+                 directly under <menu_bar>."
+            ),
+        }
+        MenuSeparatorState { _item: item }
+    }
+}

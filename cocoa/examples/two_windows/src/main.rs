@@ -15,7 +15,7 @@
 #[cfg(target_os = "macos")]
 mod app {
     use leptos::prelude::*;
-    use leptos::tachys::cocoa::window::window;
+    use leptos::tachys::html::element::window;
 
     pub fn main() {
         // Two independent counters — each window has its own state, with
@@ -27,7 +27,7 @@ mod app {
         run(move || {
             (
                 // Window 1 — main counter
-                window().title("Main").size(360.0, 200.0).child(view! {
+                window().title("Main").size((360.0, 200.0)).child(view! {
                     <vstack padding=16.0 gap=12.0>
                         <label>{move || format!("Main count: {}", main_count.get())}</label>
                         <hstack gap=8.0>
@@ -37,7 +37,7 @@ mod app {
                     </vstack>
                 }),
                 // Window 2 — independent inspector
-                window().title("Inspector").size(280.0, 160.0).child(view! {
+                window().title("Inspector").size((280.0, 160.0)).child(view! {
                     <vstack padding=12.0 gap=8.0>
                         <label>{move || format!("Inspector: {}", inspector_count.get())}</label>
                         <button on:click=move |_| inspector_count.set(100)>"Reset to 100"</button>

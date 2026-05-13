@@ -30,6 +30,7 @@ pub mod app;
 pub mod debug_overlay;
 pub mod event;
 pub mod layout;
+pub mod menu;
 pub mod node;
 pub mod renderer;
 pub mod spawner;

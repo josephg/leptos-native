@@ -623,21 +623,10 @@ impl Element {
                 s.flex_shrink = 0.0;
                 (v, s)
             }
-            "stack_view" => {
-                // Stage-4 choice: don't use NSStackView's own
-                // constraint-based layout — Taffy is the single source
-                // of truth. A flipped NSView with a column default does
-                // the same job and stays consistent.
-                let v: Retained<NSView> = unsafe {
-                    Retained::cast_unchecked(FlippedView::new(mtm))
-                };
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Column;
-                (v, s)
-            }
             "stack" => {
                 // Canonical linear-layout primitive — flexbox with no
-                // axis preset (the builder layer chooses Row/Column).
+                // axis preset (the builder layer chooses Row/Column
+                // via the vstack()/hstack() entry points).
                 let v: Retained<NSView> = unsafe {
                     Retained::cast_unchecked(FlippedView::new(mtm))
                 };
@@ -655,7 +644,7 @@ impl Element {
                 s.display = crate::layout::Display::Grid;
                 (v, s)
             }
-            // "view" or anything unknown → generic flipped container
+            // Anything unknown → generic flipped container.
             _ => {
                 let v: Retained<NSView> = unsafe {
                     Retained::cast_unchecked(FlippedView::new(mtm))
@@ -1630,6 +1619,30 @@ impl Element {
             s.setMinValue(min);
             s.setMaxValue(max);
             s.setIncrement(increment);
+        }
+    }
+
+    /// Set a `<stepper>`'s min. No-op on non-stepper views.
+    pub fn set_stepper_min(&self, v: f64) {
+        use objc2_app_kit::NSStepper;
+        if let Some(s) = downcast::<NSStepper>(self.ns_view()) {
+            s.setMinValue(v);
+        }
+    }
+
+    /// Set a `<stepper>`'s max. No-op on non-stepper views.
+    pub fn set_stepper_max(&self, v: f64) {
+        use objc2_app_kit::NSStepper;
+        if let Some(s) = downcast::<NSStepper>(self.ns_view()) {
+            s.setMaxValue(v);
+        }
+    }
+
+    /// Set a `<stepper>`'s increment. No-op on non-stepper views.
+    pub fn set_stepper_increment(&self, v: f64) {
+        use objc2_app_kit::NSStepper;
+        if let Some(s) = downcast::<NSStepper>(self.ns_view()) {
+            s.setIncrement(v);
         }
     }
 

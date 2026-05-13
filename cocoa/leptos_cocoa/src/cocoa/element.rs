@@ -8,17 +8,16 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use renderer::attrs::{
-    LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
+    DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
+    WithUniversal,
 };
 use renderer::view::{Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
     layout::{
-        set_align_content, set_align_items, set_background_color,
-        set_border_color, set_border_width, set_clip, set_column_gap,
-        set_corner_radius, set_flex_direction, set_flex_wrap, set_gap,
-        set_grid_auto_columns, set_grid_auto_flow, set_grid_auto_rows,
-        set_grid_template_columns, set_grid_template_rows,
+        set_align_content, set_align_items, set_column_gap, set_flex_direction,
+        set_flex_wrap, set_gap, set_grid_auto_columns, set_grid_auto_flow,
+        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
         set_justify_content, set_justify_items, set_row_gap, AlignContent,
         AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
@@ -65,10 +64,55 @@ pub trait WithText: Sized {
     }
 }
 
+/// Cocoa's decoration-attr struct alias — `DecorationAttrs<Color>`.
+pub type CocoaDecoration = DecorationAttrs<Color>;
+
+/// Port-local `WithDecoration` shadow. Same shape as the generic
+/// `renderer::attrs::WithDecoration<C>`, but pins `C = Color` and
+/// uses the port-local [`IntoMaybeReactive`] so chainable setters
+/// accept either bare `Color` or `Fn() -> Color` closures.
+pub trait WithDecoration: Sized {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration;
+
+    /// Layer-backed background fill.
+    fn background_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
+        self.decoration_mut().background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Round the corners. Pair with [`Self::clip`]`(true)` to also
+    /// clip children to the rounded shape.
+    fn corner_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
+        self.decoration_mut().corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Border width in points. `0.0` disables. Pair with
+    /// [`Self::border_color`] for non-default (opaque black) borders.
+    fn border_width<V: IntoMaybeReactive<f32>>(mut self, w: V) -> Self {
+        self.decoration_mut().border_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Border color. Only visible when `border_width > 0`.
+    fn border_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
+        self.decoration_mut().border_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// CSS `overflow: hidden`. Children that extend past this
+    /// element's bounds are clipped at draw time. Layout still
+    /// positions them at their natural sizes.
+    fn clip<V: IntoMaybeReactive<bool>>(mut self, c: V) -> Self {
+        self.decoration_mut().clip = Some(c.into_maybe_reactive());
+        self
+    }
+}
+
 // `apply_universal` and `apply_layout` live in `renderer`. The
 // `UniversalElement` / `LayoutElement` impls for `CocoaElement` live
 // in `cocoa_dom` (orphan rule).
-use renderer::apply_universal;
+use renderer::{apply_decoration, apply_universal};
 
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
@@ -195,14 +239,9 @@ pub struct Stack<Children> {
     align_content:    Option<MaybeReactive<AlignContent>>,
     justify_items:    Option<MaybeReactive<JustifyItems>>,
     wrap:             Option<MaybeReactive<FlexWrap>>,
-    background_color: Option<MaybeReactive<Color>>,
-    corner_radius:    Option<MaybeReactive<f32>>,
-    border_width:     Option<MaybeReactive<f32>>,
-    border_color:     Option<MaybeReactive<Color>>,
-    clip:             Option<MaybeReactive<bool>>,
-    hidden:           Option<MaybeReactive<bool>>,
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
+    decoration:       CocoaDecoration,
     children:         Children,
 }
 
@@ -215,14 +254,9 @@ fn empty_stack() -> Stack<()> {
         align_content: None,
         justify_items: None,
         wrap: None,
-        background_color: None,
-        corner_radius: None,
-        border_width: None,
-        border_color: None,
-        clip: None,
-        hidden: None,
         layout: LayoutAttrs::default(),
         universal: UniversalAttrs::default(),
+        decoration: CocoaDecoration::default(),
         children: (),
     }
 }
@@ -247,18 +281,6 @@ pub fn hstack() -> Stack<()> {
         direction: Some(MaybeReactive::Static(FlexDirection::Row)),
         ..empty_stack()
     }
-}
-
-/// Legacy alias of `vstack()` — kept for source-compatibility.
-pub fn stack_view() -> Stack<()> {
-    vstack()
-}
-
-/// Generic flexbox container — direction defaults to Column. Same
-/// as `stack()`; kept under the `<view>` tag name for parity with
-/// the iOS / GTK ports' element vocabularies.
-pub fn view() -> Stack<()> {
-    empty_stack()
 }
 
 impl<Ch> Stack<Ch> {
@@ -325,75 +347,12 @@ impl<Ch> Stack<Ch> {
         self
     }
 
-    // `shrink` / `basis` / `size` removed from Stack's inherent
-    // surface — they live on the shared `WithLayout` trait now,
-    // available on every builder (Button, Label, ...) with
-    // identical semantics. Call `.flex_shrink(...)`,
-    // `.flex_basis(...)`, `.size(n)` from the trait instead.
-
-    /// Solid background fill via CALayer. Switches the stack's
-    /// underlying NSView to layer-backed.
-    pub fn background_color<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<Color>,
-    {
-        self.background_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// Round the corners of the stack's background fill. CALayer's
-    /// `backgroundColor` honors `cornerRadius` directly, so the
-    /// rounded look needs nothing else. **Children are NOT clipped
-    /// to the rounded shape** — for that, pair with `clip=true`.
-    pub fn corner_radius<V>(mut self, r: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.corner_radius = Some(r.into_maybe_reactive());
-        self
-    }
-
-    /// Border width in points. Pair with [`border_color`] (defaults
-    /// to opaque black).
-    pub fn border_width<V>(mut self, w: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.border_width = Some(w.into_maybe_reactive());
-        self
-    }
-
-    /// Border color. Has no effect unless [`border_width`] is > 0.
-    pub fn border_color<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<Color>,
-    {
-        self.border_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// Equivalent of CSS `overflow: hidden`. Children that extend
-    /// past this stack's bounds are clipped at draw time. Layout
-    /// still positions them at their full computed sizes.
-    pub fn clip<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<bool>,
-    {
-        self.clip = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// Hide / show the stack via NSView's `isHidden`. A hidden view
-    /// is removed from layout *only at draw time* — Taffy still
-    /// reserves space for it. Pair with `width=0` (or rebuild the
-    /// view via `<Switch>`) to actually remove the slot.
-    pub fn hidden<V>(mut self, h: V) -> Self
-    where
-        V: IntoMaybeReactive<bool>,
-    {
-        self.hidden = Some(h.into_maybe_reactive());
-        self
-    }
+    // `shrink` / `basis` / `size` / `hidden` removed from Stack's
+    // inherent surface — they live on the shared `WithLayout` trait
+    // now, available on every builder with identical semantics.
+    // Similarly `background_color` / `corner_radius` /
+    // `border_width` / `border_color` / `clip` live on the shared
+    // `WithDecoration` trait.
 
     pub fn child<NewCh>(self, child: NewCh) -> Stack<(Ch, NewCh)> {
         Stack {
@@ -404,14 +363,9 @@ impl<Ch> Stack<Ch> {
             align_content: self.align_content,
             justify_items: self.justify_items,
             wrap: self.wrap,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            clip: self.clip,
-            hidden: self.hidden,
             layout: self.layout,
             universal: self.universal,
+            decoration: self.decoration,
             children: (self.children, child),
         }
     }
@@ -423,6 +377,10 @@ impl<Ch> WithLayout for Stack<Ch> {
 
 impl<Ch> WithUniversal for Stack<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl<Ch> WithDecoration for Stack<Ch> {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
 impl<Ch> Render<Dom> for Stack<Ch>
@@ -447,29 +405,11 @@ where
         wire_attr!(effects, el, self.wrap,            set_flex_wrap);
         wire_attr!(effects, el, self.align_content,   set_align_content);
         wire_attr!(effects, el, self.justify_items,   set_justify_items);
-        // flex_shrink / flex_basis are now applied via apply_layout
-        // (they're LayoutAttrs fields). Stack used to apply them
-        // itself; the unified path saves a separate helper.
-        wire_attr!(effects, el, self.background_color, set_background_color);
-        wire_attr!(effects, el, self.corner_radius,    set_corner_radius);
-        // Border width / color update independently — CALayer
-        // holds them as separate properties, so we don't need to
-        // re-apply the pair when either changes.
-        wire_attr!(effects, el, self.border_width, set_border_width);
-        wire_attr!(effects, el, self.border_color, set_border_color);
-        wire_attr!(effects, el, self.clip, set_clip);
-        // `hidden` goes through the element's BoolAttr surface
-        // rather than a Node-level setter, so it uses the longer
-        // form. Kept structurally consistent with the `enabled`
-        // pattern in other builders.
-        if let Some(h) = self.hidden {
-            let el_for = el.clone();
-            if let Some(eff) = install(h, move |v| {
-                el_for.set_bool_attribute(BoolAttr::Hidden, v);
-            }) {
-                effects.push(eff);
-            }
-        }
+        // flex_shrink / flex_basis are applied via apply_layout
+        // (they're LayoutAttrs fields). Decoration attrs go through
+        // apply_decoration. `hidden` goes through apply_layout (it
+        // toggles Taffy display + NSView isHidden in one place).
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
 
@@ -515,10 +455,9 @@ pub struct Grid<Children> {
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align_content:   Option<MaybeReactive<AlignContent>>,
 
-    background_color: Option<MaybeReactive<Color>>,
-    clip:             Option<MaybeReactive<bool>>,
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
+    decoration:       CocoaDecoration,
     children:         Children,
 }
 
@@ -539,10 +478,9 @@ pub fn grid() -> Grid<()> {
         align_items: None,
         justify_content: None,
         align_content: None,
-        background_color: None,
-        clip: None,
         layout: LayoutAttrs::default(),
         universal: UniversalAttrs::default(),
+        decoration: CocoaDecoration::default(),
         children: (),
     }
 }
@@ -551,6 +489,10 @@ impl<Ch> Grid<Ch> {
     /// `grid-template-columns` — explicit track list. Takes anything
     /// that converts into `Vec<GridTemplateComponent>` (e.g.
     /// `[fr(1.0), fr(2.0), auto()]`).
+    ///
+    /// Static-only for now: making the track list reactive would
+    /// require an `IntoMaybeReactive<Vec<GridTemplateComponent>>`
+    /// impl, and animating tracks is a v2 feature.
     pub fn columns(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
         self.columns = Some(t.into());
         self
@@ -609,7 +551,9 @@ impl<Ch> Grid<Ch> {
         self
     }
 
-    pub fn align_items<V: IntoMaybeReactive<AlignItems>>(mut self, v: V) -> Self {
+    /// Cross-axis alignment of grid items within their cell.
+    /// Same name as on `Stack` for consistency.
+    pub fn align<V: IntoMaybeReactive<AlignItems>>(mut self, v: V) -> Self {
         self.align_items = Some(v.into_maybe_reactive());
         self
     }
@@ -630,24 +574,9 @@ impl<Ch> Grid<Ch> {
         self
     }
 
-    /// Layer-backed background fill.
-    pub fn background_color<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<Color>,
-    {
-        self.background_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// CSS `overflow: hidden` — children outside the grid's frame are
-    /// clipped at draw time.
-    pub fn clip<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<bool>,
-    {
-        self.clip = Some(c.into_maybe_reactive());
-        self
-    }
+    // `background_color` / `corner_radius` / `border_width` /
+    // `border_color` / `clip` are on the shared `WithDecoration`
+    // trait. `hidden` is on `WithLayout`.
 
     pub fn child<NewCh>(self, child: NewCh) -> Grid<(Ch, NewCh)> {
         Grid {
@@ -663,10 +592,9 @@ impl<Ch> Grid<Ch> {
             align_items: self.align_items,
             justify_content: self.justify_content,
             align_content: self.align_content,
-            background_color: self.background_color,
-            clip: self.clip,
             layout: self.layout,
             universal: self.universal,
+            decoration: self.decoration,
             children: (self.children, child),
         }
     }
@@ -678,6 +606,10 @@ impl<Ch> WithLayout for Grid<Ch> {
 
 impl<Ch> WithUniversal for Grid<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl<Ch> WithDecoration for Grid<Ch> {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
 impl<Ch> Render<Dom> for Grid<Ch>
@@ -768,21 +700,7 @@ where
             }
         }
 
-        if let Some(v) = self.background_color {
-            let e = el.clone();
-            if let Some(eff) =
-                install(v, move |c| set_background_color(e.as_node(), c))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(v) = self.clip {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |c| set_clip(e.as_node(), c)) {
-                effects.push(eff);
-            }
-        }
-
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
 
@@ -815,17 +733,16 @@ pub struct Button {
     // text_color; that would need attributedTitle). Stored in the
     // shared `text` struct with `text_color: None`.
     text: CocoaText,
+    // Background fill / corner_radius / border_* / clip live in the
+    // shared `decoration` struct. Setting `background_color` or
+    // `corner_radius` here implies bordered=false (the bezel would
+    // fight the custom paint) — done in `Render::build` below.
+    decoration: CocoaDecoration,
     // Button-specific.
     bordered: Option<MaybeReactive<bool>>,
     key_equivalent: Option<MaybeReactive<String>>,
-    // Custom-paint extras — implemented via attributedTitle (for
-    // text color) and layer-backed CALayer (for background,
-    // corner_radius, and border). Setting any of these auto-flips
-    // `bordered` off so the bezel doesn't fight the custom look.
-    background_color: Option<MaybeReactive<Color>>,
-    corner_radius:    Option<MaybeReactive<f32>>,
-    border_width:     Option<MaybeReactive<f32>>,
-    border_color:     Option<MaybeReactive<Color>>,
+    // Title-tint + bold are NSButton-specific (contentTintColor +
+    // boldSystemFontOfSize), not part of the generic decoration set.
     text_color:       Option<MaybeReactive<Color>>,
     bold:             Option<MaybeReactive<bool>>,
 }
@@ -840,12 +757,9 @@ pub fn button() -> Button {
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
         text: CocoaText::default(),
+        decoration: CocoaDecoration::default(),
         bordered: None,
         key_equivalent: None,
-        background_color: None,
-        corner_radius: None,
-        border_width: None,
-        border_color: None,
         text_color: None,
         bold: None,
     }
@@ -932,46 +846,11 @@ impl Button {
         self
     }
 
-    /// Custom background fill, via the underlying NSButton's
-    /// CALayer. Setting this implies `bordered=false` (unless the
-    /// caller also passes one) so the system bezel doesn't fight
-    /// the custom paint.
-    pub fn background_color<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<Color>,
-    {
-        self.background_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// Rounded corners — the CALayer's `cornerRadius`. Pairs well
-    /// with `background_color` and `bordered=false`.
-    pub fn corner_radius<V>(mut self, r: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.corner_radius = Some(r.into_maybe_reactive());
-        self
-    }
-
-    /// CALayer border width. `0.0` disables. Pair with
-    /// [`Self::border_color`] for non-default (black) borders.
-    pub fn border_width<V>(mut self, w: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.border_width = Some(w.into_maybe_reactive());
-        self
-    }
-
-    /// CALayer border color. Only visible when `border_width > 0`.
-    pub fn border_color<V>(mut self, c: V) -> Self
-    where
-        V: IntoMaybeReactive<Color>,
-    {
-        self.border_color = Some(c.into_maybe_reactive());
-        self
-    }
+    // `background_color` / `corner_radius` / `border_width` /
+    // `border_color` / `clip` live on the shared `WithDecoration`
+    // trait. Setting `background_color` or `corner_radius` here
+    // implies `bordered=false` (handled in `Render::build`) so the
+    // system bezel doesn't fight the custom paint.
 
     /// Custom title color. Applied via `NSButton.contentTintColor`
     /// (macOS 10.14+); no attributedTitle round-trip, so it
@@ -1042,6 +921,9 @@ impl WithUniversal for Button {
 impl WithText for Button {
     fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
 }
+impl WithDecoration for Button {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 
 // AddAnyAttr — the typed-attribute pipeline. Each call extends
 // `attrs` from `At` to `<At as NextAttribute>::Output<NewAttr>`.
@@ -1086,7 +968,9 @@ where
             {
                 effects.push(eff);
             }
-        } else if self.background_color.is_some() || self.corner_radius.is_some() {
+        } else if self.decoration.background_color.is_some()
+            || self.decoration.corner_radius.is_some()
+        {
             // Caller is doing custom paint — turn off the bezel so the
             // CALayer fill isn't fighting it.
             //
@@ -1107,10 +991,6 @@ where
                 effects.push(eff);
             }
         }
-        wire_attr!(effects, el, self.background_color, set_background_color);
-        wire_attr!(effects, el, self.corner_radius,    set_corner_radius);
-        wire_attr!(effects, el, self.border_width,     set_border_width);
-        wire_attr!(effects, el, self.border_color,     set_border_color);
         if let Some(c) = self.text_color {
             let e = el.clone();
             if let Some(eff) = install(c, move |v| e.set_button_title_color(v)) {
@@ -1123,6 +1003,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
         effects.extend(apply_layout(&el, self.layout));
@@ -1165,6 +1046,7 @@ pub struct Checkbox {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     text: CocoaText,
 }
 
@@ -1178,6 +1060,7 @@ pub fn checkbox() -> Checkbox {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         text: CocoaText::default(),
     }
 }
@@ -1255,6 +1138,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 impl WithLayout for Checkbox {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for Checkbox {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for Checkbox {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -1303,6 +1190,7 @@ where
             h.apply_to(&el);
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
         effects.extend(apply_layout(&el, self.layout));
@@ -1331,8 +1219,8 @@ where
 
 pub struct Slider {
     value: MaybeReactive<f64>,
-    min_value: f64,
-    max_value: f64,
+    min_value: MaybeReactive<f64>,
+    max_value: MaybeReactive<f64>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
@@ -1340,6 +1228,7 @@ pub struct Slider {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     vertical: Option<MaybeReactive<bool>>,
     num_tick_marks: Option<MaybeReactive<usize>>,
     snaps_to_ticks: Option<MaybeReactive<bool>>,
@@ -1348,13 +1237,14 @@ pub struct Slider {
 pub fn slider() -> Slider {
     Slider {
         value: MaybeReactive::Static(0.0),
-        min_value: 0.0,
-        max_value: 1.0,
+        min_value: MaybeReactive::Static(0.0),
+        max_value: MaybeReactive::Static(1.0),
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         vertical: None,
         num_tick_marks: None,
         snaps_to_ticks: None,
@@ -1372,13 +1262,19 @@ impl Slider {
         self
     }
 
-    pub fn min_value(mut self, v: f64) -> Self {
-        self.min_value = v;
+    pub fn min_value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.min_value = v.into_maybe_reactive();
         self
     }
 
-    pub fn max_value(mut self, v: f64) -> Self {
-        self.max_value = v;
+    pub fn max_value<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.max_value = v.into_maybe_reactive();
         self
     }
 
@@ -1430,6 +1326,10 @@ impl Slider {
 impl WithLayout for Slider {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for Slider {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for Slider {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -1473,8 +1373,18 @@ where
         let mut effects = Vec::new();
 
         // min/max set FIRST so initial setDoubleValue clamps correctly.
-        el.set_slider_min(self.min_value);
-        el.set_slider_max(self.max_value);
+        let el_for_min = el.clone();
+        if let Some(eff) =
+            install(self.min_value, move |v| el_for_min.set_slider_min(v))
+        {
+            effects.push(eff);
+        }
+        let el_for_max = el.clone();
+        if let Some(eff) =
+            install(self.max_value, move |v| el_for_max.set_slider_max(v))
+        {
+            effects.push(eff);
+        }
 
         // One-way `.value(...)`.
         let el_for_value = el.clone();
@@ -1527,6 +1437,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -1549,7 +1460,7 @@ where
 }
 
 // ---------------------------------------------------------------------
-// pop_up_button() — NSPopUpButton with items + bind:selection
+// pop_up_button() — NSPopUpButton with items + bind:value (usize index)
 // ---------------------------------------------------------------------
 
 pub struct PopUpButton {
@@ -1562,6 +1473,7 @@ pub struct PopUpButton {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     pulls_down: Option<MaybeReactive<bool>>,
 }
 
@@ -1576,6 +1488,7 @@ pub fn pop_up_button() -> PopUpButton {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         pulls_down: None,
     }
 }
@@ -1648,6 +1561,10 @@ impl PopUpButton {
 impl WithLayout for PopUpButton {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for PopUpButton {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for PopUpButton {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -1704,7 +1621,7 @@ where
             }
         }
 
-        // bind:selection=signal — wires both directions.
+        // bind:value=signal — wires both directions.
         if let Some(bound) = self.pending_bind_selection {
             let eff = crate::cocoa::bind::install_popup_selection_bind(
                 &el, bound,
@@ -1716,6 +1633,7 @@ where
             h.apply_to(&el);
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -1754,22 +1672,11 @@ pub struct Label {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     text: CocoaText,
     selectable: Option<MaybeReactive<bool>>,
     bold: Option<MaybeReactive<bool>>,
     line_break: Option<MaybeReactive<cocoa_dom::LineBreak>>,
-}
-
-impl Label {
-    /// Internal: stash a `bind:value=...` (read-direction only) for
-    /// installation in `Render::build`. Used by the `BindAttribute`
-    /// impl in `crate::cocoa::bind`. Equivalent to `.text(closure)`.
-    pub(crate) fn set_pending_bind_text(
-        &mut self,
-        getter: Box<dyn Fn() -> String + Send + 'static>,
-    ) {
-        self.value = MaybeReactive::Reactive(Box::new(move || getter()));
-    }
 }
 
 pub fn label() -> Label {
@@ -1780,6 +1687,7 @@ pub fn label() -> Label {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         text: CocoaText::default(),
         selectable: None,
         bold: None,
@@ -1845,6 +1753,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 
 impl WithLayout for Label {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl WithDecoration for Label {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 impl WithUniversal for Label {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
@@ -1952,6 +1864,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
         // Apply bold AFTER apply_text so font_size is set first; bold
@@ -1990,7 +1903,7 @@ where
 
 pub struct TextField {
     value: MaybeReactive<String>,
-    placeholder: Option<String>,
+    placeholder: Option<MaybeReactive<String>>,
     enabled: Option<MaybeReactive<bool>>,
     /// If `true`, build an NSSecureTextField instead of NSTextField.
     /// Used by the `secure_text_field()` constructor; same builder
@@ -2005,6 +1918,7 @@ pub struct TextField {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     text: CocoaText,
     bordered: Option<MaybeReactive<bool>>,
     bezeled: Option<MaybeReactive<bool>>,
@@ -2022,6 +1936,7 @@ pub fn text_field() -> TextField {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         text: CocoaText::default(),
         bordered: None,
         bezeled: None,
@@ -2043,6 +1958,7 @@ pub fn secure_text_field() -> TextField {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         text: CocoaText::default(),
         bordered: None,
         bezeled: None,
@@ -2058,10 +1974,10 @@ impl TextField {
         self
     }
 
-    /// Static placeholder text shown when the field is empty. (No
-    /// reactive variant yet — login forms etc. just use literals.)
-    pub fn placeholder(mut self, s: impl Into<String>) -> Self {
-        self.placeholder = Some(s.into());
+    /// Placeholder text shown when the field is empty. Reactive —
+    /// accepts a `&str`, `String`, or `Fn() -> String` closure.
+    pub fn placeholder<V: IntoMaybeReactive<String>>(mut self, s: V) -> Self {
+        self.placeholder = Some(s.into_maybe_reactive());
         self
     }
 
@@ -2149,6 +2065,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::KeyUpEvent>
 impl WithLayout for TextField {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for TextField {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for TextField {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -2188,7 +2108,12 @@ where
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
-            el.set_string_attribute(StringAttr::Placeholder, &p);
+            let el_for = el.clone();
+            if let Some(eff) = install(p, move |s| {
+                el_for.set_string_attribute(StringAttr::Placeholder, &s);
+            }) {
+                effects.push(eff);
+            }
         }
 
         if let Some(enabled) = self.enabled {
@@ -2240,6 +2165,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
         effects.extend(apply_layout(&el, self.layout));
@@ -2275,6 +2201,7 @@ pub struct DatePicker {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     style: Option<MaybeReactive<cocoa_dom::DatePickerStyle>>,
     min_date: Option<MaybeReactive<cocoa_dom::Date>>,
     max_date: Option<MaybeReactive<cocoa_dom::Date>>,
@@ -2290,6 +2217,7 @@ pub fn date_picker() -> DatePicker {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         style: None,
         min_date: None,
         max_date: None,
@@ -2357,6 +2285,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 
 impl WithLayout for DatePicker {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl WithDecoration for DatePicker {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 impl WithUniversal for DatePicker {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
@@ -2459,6 +2391,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -2486,9 +2419,9 @@ where
 
 pub struct Stepper {
     value: MaybeReactive<f64>,
-    min_value: f64,
-    max_value: f64,
-    increment: f64,
+    min_value: MaybeReactive<f64>,
+    max_value: MaybeReactive<f64>,
+    increment: MaybeReactive<f64>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
@@ -2496,14 +2429,15 @@ pub struct Stepper {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
 }
 
 pub fn stepper() -> Stepper {
     Stepper {
         value: MaybeReactive::Static(0.0),
-        min_value: 0.0,
-        max_value: 100.0,
-        increment: 1.0,
+        min_value: MaybeReactive::Static(0.0),
+        max_value: MaybeReactive::Static(100.0),
+        increment: MaybeReactive::Static(1.0),
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
@@ -2511,6 +2445,7 @@ pub fn stepper() -> Stepper {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
     }
 }
 
@@ -2523,18 +2458,18 @@ impl Stepper {
         self
     }
 
-    pub fn min_value(mut self, v: f64) -> Self {
-        self.min_value = v;
+    pub fn min_value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.min_value = v.into_maybe_reactive();
         self
     }
 
-    pub fn max_value(mut self, v: f64) -> Self {
-        self.max_value = v;
+    pub fn max_value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.max_value = v.into_maybe_reactive();
         self
     }
 
-    pub fn increment(mut self, v: f64) -> Self {
-        self.increment = v;
+    pub fn increment<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.increment = v.into_maybe_reactive();
         self
     }
 
@@ -2588,6 +2523,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 impl WithLayout for Stepper {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for Stepper {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for Stepper {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -2602,13 +2541,28 @@ where
         let el = CocoaElement::create("stepper");
         let mut effects = Vec::new();
 
-        // Configure bounds + increment first so the initial
-        // setDoubleValue clamps correctly.
-        el.configure_stepper(
-            self.min_value,
-            self.max_value,
-            self.increment,
-        );
+        // Bounds + increment first so the initial setDoubleValue
+        // clamps correctly. Each is independently reactive — when
+        // min_value changes, `configure_stepper` is re-applied to
+        // the live NSStepper.
+        let el_for_min = el.clone();
+        if let Some(eff) =
+            install(self.min_value, move |v| el_for_min.set_stepper_min(v))
+        {
+            effects.push(eff);
+        }
+        let el_for_max = el.clone();
+        if let Some(eff) =
+            install(self.max_value, move |v| el_for_max.set_stepper_max(v))
+        {
+            effects.push(eff);
+        }
+        let el_for_inc = el.clone();
+        if let Some(eff) = install(self.increment, move |v| {
+            el_for_inc.set_stepper_increment(v)
+        }) {
+            effects.push(eff);
+        }
 
         let el_for_val = el.clone();
         if let Some(eff) = install(self.value, move |v| {
@@ -2641,6 +2595,7 @@ where
             }
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -2671,24 +2626,26 @@ where
 
 pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
-    max_value: f64,
-    indeterminate: bool,
+    max_value: MaybeReactive<f64>,
+    indeterminate: MaybeReactive<bool>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     displayed_when_stopped: Option<MaybeReactive<bool>>,
 }
 
 pub fn progress_indicator() -> ProgressIndicator {
     ProgressIndicator {
         value: MaybeReactive::Static(0.0),
-        max_value: 1.0,
-        indeterminate: false,
+        max_value: MaybeReactive::Static(1.0),
+        indeterminate: MaybeReactive::Static(false),
         node_ref: None,
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         displayed_when_stopped: None,
     }
 }
@@ -2702,15 +2659,15 @@ impl ProgressIndicator {
         self
     }
 
-    pub fn max_value(mut self, v: f64) -> Self {
-        self.max_value = v;
+    pub fn max_value<V: IntoMaybeReactive<f64>>(mut self, v: V) -> Self {
+        self.max_value = v.into_maybe_reactive();
         self
     }
 
     /// `true` switches to spinner mode and starts the animation;
     /// `false` is a determinate progress bar.
-    pub fn indeterminate(mut self, b: bool) -> Self {
-        self.indeterminate = b;
+    pub fn indeterminate<V: IntoMaybeReactive<bool>>(mut self, b: V) -> Self {
+        self.indeterminate = b.into_maybe_reactive();
         self
     }
 
@@ -2733,6 +2690,10 @@ impl ProgressIndicator {
 
 impl WithLayout for ProgressIndicator {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl WithDecoration for ProgressIndicator {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 impl WithUniversal for ProgressIndicator {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
@@ -2764,7 +2725,12 @@ where
         // Order matters: max before value so the value clamps
         // correctly; indeterminate after both because indeterminate
         // mode ignores value (and starts the animation).
-        el.set_progress_max(self.max_value);
+        let el_for_max = el.clone();
+        if let Some(eff) = install(self.max_value, move |v| {
+            el_for_max.set_progress_max(v);
+        }) {
+            effects.push(eff);
+        }
 
         let el_for_val = el.clone();
         if let Some(eff) = install(self.value, move |v| {
@@ -2773,7 +2739,12 @@ where
             effects.push(eff);
         }
 
-        el.set_progress_indeterminate(self.indeterminate);
+        let el_for_ind = el.clone();
+        if let Some(eff) = install(self.indeterminate, move |b| {
+            el_for_ind.set_progress_indeterminate(b);
+        }) {
+            effects.push(eff);
+        }
 
         if let Some(d) = self.displayed_when_stopped {
             let el_for = el.clone();
@@ -2783,6 +2754,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -2818,6 +2790,7 @@ pub struct ColorWell {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
 }
 
 pub fn color_well() -> ColorWell {
@@ -2830,6 +2803,7 @@ pub fn color_well() -> ColorWell {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
     }
 }
 
@@ -2898,6 +2872,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 impl WithLayout for ColorWell {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for ColorWell {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for ColorWell {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -2946,6 +2924,7 @@ where
             }
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -2968,7 +2947,7 @@ where
 }
 
 // ---------------------------------------------------------------------
-// segmented_control() — NSSegmentedControl with items + bind:selection
+// segmented_control() — NSSegmentedControl with items + bind:value (usize index)
 // ---------------------------------------------------------------------
 
 pub struct SegmentedControl {
@@ -2981,6 +2960,7 @@ pub struct SegmentedControl {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     segment_style: Option<MaybeReactive<cocoa_dom::SegmentStyle>>,
 }
 
@@ -2995,6 +2975,7 @@ pub fn segmented_control() -> SegmentedControl {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         segment_style: None,
     }
 }
@@ -3069,6 +3050,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 impl WithLayout for SegmentedControl {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for SegmentedControl {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for SegmentedControl {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -3142,6 +3127,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -3179,6 +3165,7 @@ pub struct ScrollView<Children> {
     children: Children,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     autohides_scrollers: Option<MaybeReactive<bool>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
@@ -3189,6 +3176,7 @@ pub fn scroll_view() -> ScrollView<()> {
         children: (),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         autohides_scrollers: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
@@ -3233,6 +3221,7 @@ impl<Ch> ScrollView<Ch> {
             children: (self.children, child),
             universal: self.universal,
             layout: self.layout,
+            decoration: self.decoration,
             autohides_scrollers: self.autohides_scrollers,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
@@ -3242,6 +3231,10 @@ impl<Ch> ScrollView<Ch> {
 
 impl<Ch> WithLayout for ScrollView<Ch> {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl<Ch> WithDecoration for ScrollView<Ch> {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 impl<Ch> WithUniversal for ScrollView<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
@@ -3281,6 +3274,7 @@ where
                 effects.push(eff);
             }
         }
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -3311,6 +3305,7 @@ pub struct ImageView {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
 }
 
 pub fn image_view() -> ImageView {
@@ -3320,6 +3315,7 @@ pub fn image_view() -> ImageView {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
     }
 }
 
@@ -3357,6 +3353,10 @@ impl ImageView {
 impl WithLayout for ImageView {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for ImageView {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for ImageView {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -3378,6 +3378,7 @@ where
             effects.push(eff);
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_layout(&el, self.layout));
 
@@ -3416,6 +3417,7 @@ pub struct TextView {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+    decoration: CocoaDecoration,
     text: CocoaText,
 }
 
@@ -3428,6 +3430,7 @@ pub fn text_view() -> TextView {
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
+        decoration: CocoaDecoration::default(),
         text: CocoaText::default(),
     }
 }
@@ -3479,6 +3482,10 @@ impl TextView {
 impl WithLayout for TextView {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
+
+impl WithDecoration for TextView {
+    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
+}
 impl WithUniversal for TextView {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
@@ -3528,6 +3535,7 @@ where
             effects.push(eff);
         }
 
+        effects.extend(apply_decoration(&el, self.decoration));
         effects.extend(apply_universal(&el, self.universal));
         effects.extend(apply_text(&el, self.text));
         effects.extend(apply_layout(&el, self.layout));

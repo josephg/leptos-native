@@ -32,14 +32,14 @@ mod app {
                         </vstack>
                     }
                 }>
-                    // Use <view> (a generic container, accepts arbitrary
+                    // Use <stack> (a generic container, accepts arbitrary
                     // Render children) rather than <label> here, because
                     // <label> has a custom child setter that requires
                     // String. Result<T, E>: Render is the mechanism that
                     // lets ErrorBoundary catch the parse error.
-                    <view>
+                    <stack>
                         {move || value().map(|n| format!("You entered: {n}"))}
-                    </view>
+                    </stack>
                 </ErrorBoundary>
             </vstack>
         }
