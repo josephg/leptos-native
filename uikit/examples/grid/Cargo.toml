@@ -1,0 +1,8 @@
+[package]
+name = "grid_ios"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }

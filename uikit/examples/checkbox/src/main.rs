@@ -22,7 +22,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=12.0>
-                <label font_size=22.0>{"Newsletter signup"}</label>
+                <label font_size=22.0>"Newsletter signup"</label>
 
                 <text_field
                     bind:value=email
@@ -44,7 +44,7 @@ mod app {
                 )}</label>
 
                 <hstack gap=12.0>
-                    <label flex_grow=1.0>{"Subscribe to weekly updates"}</label>
+                    <label flex_grow=1.0>"Subscribe to weekly updates"</label>
                     <switch bind:checked=subscribe />
                 </hstack>
 

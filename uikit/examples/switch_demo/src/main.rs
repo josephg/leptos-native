@@ -14,7 +14,7 @@ mod app {
         view! {
             <vstack padding=20.0 gap=16.0>
                 <hstack gap=12.0>
-                    <label flex_grow=1.0>{"Notifications"}</label>
+                    <label flex_grow=1.0>"Notifications"</label>
                     <switch bind:checked=on />
                 </hstack>
                 <label>{move || {
@@ -25,7 +25,7 @@ mod app {
                     }
                 }}</label>
 
-                <label>{"Volume"}</label>
+                <label>"Volume"</label>
                 <slider bind:value=volume min_value=0.0 max_value=1.0 />
                 <label>{move || format!("{:.0}%", volume.get() * 100.0)}</label>
 

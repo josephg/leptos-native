@@ -23,7 +23,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=8.0>
-                <label>{"Count A (fixed 1000 ms)"}</label>
+                <label>"Count A (fixed 1000 ms)"</label>
                 <label>{move || count_a.get().to_string()}</label>
 
                 <label>{move || format!(

@@ -36,6 +36,28 @@ pub mod renderer;
 /// tuples, primitives, strings, iterators, either, fragments, keyed lists).
 pub mod view;
 
+/// Renderer-agnostic Taffy-backed layout engine — `LayoutTree<B>`
+/// generic over a [`LayoutBackend`](layout::LayoutBackend), the per-port
+/// `Style` re-exports, the grid track-sizing helpers, etc. Lives here
+/// (not its own crate) so [`setters`]'s `IntoMaybeReactive` impls for
+/// taffy types satisfy the orphan rule.
+pub mod layout;
+
+/// Generic, port-agnostic style mutators (`set_padding`,
+/// `set_grid_template_columns`, …) and the trait-driven
+/// `apply_layout` / `apply_universal` install loops. Each port impls
+/// [`setters::LayoutNodeOps`] / [`setters::LayoutElement`] /
+/// [`setters::UniversalElement`] for its node / element types and
+/// reuses the generic functions.
+pub mod setters;
+
+// Mirror the old `native_layout` crate root: re-export every layout
+// + setters item at the renderer root so consumer paths
+// (`use renderer::{Style, set_padding, LayoutNodeOps}`) match the
+// shape the per-port code already uses.
+pub use layout::*;
+pub use setters::*;
+
 pub use either_of as either;
 
 /// View implementations for the `reactive_graph` crate (closures as reactive

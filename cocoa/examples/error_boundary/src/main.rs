@@ -14,14 +14,14 @@ mod app {
 
         view! {
             <vstack padding=20.0 gap=12.0>
-                <label>{"Type an integer (or something that's not an integer)"}</label>
+                <label>"Type an integer (or something that's not an integer)"</label>
                 <text_field bind:value=text />
 
                 <ErrorBoundary fallback=|errors| {
                     let errors = errors.clone();
                     view! {
                         <vstack gap=4.0>
-                            <label>{"Not an integer! Errors:"}</label>
+                            <label>"Not an integer! Errors:"</label>
                             <label>{move || {
                                 errors.read()
                                     .iter()

@@ -4,12 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this fork is
 
-This fork extends Leptos with **three native UI ports** in progress:
+This fork is a **native-only** rework of Leptos with three UI ports:
 
 - **macOS / AppKit (Cocoa)** — the original, most mature port.
-- **Linux / GTK4** — mirrors the Cocoa port's structure with
-  GTK-specific simplifications (no Taffy bridge, signal-based events
-  instead of target/action).
+- **Linux / GTK4** — mirrors the Cocoa port's structure one-for-one.
 - **iOS / UIKit** — mirrors the Cocoa port closely (same Taffy
   bridge, same target/action handler-store pattern). Differs in
   window/scene model (no user-facing windows; one fullscreen scene),
@@ -17,11 +15,15 @@ This fork extends Leptos with **three native UI ports** in progress:
   `UIKeyboardLayoutGuide`, and per-control name/feature deltas
   (e.g. `<switch>` instead of `<checkbox>`, no PopUpButton).
 
-The web Leptos framework lives intact on the same branch (web
-examples still build via wasm targets, SSR works against axum/actix).
-The native UI path is **opt-in via the `native-ui` Cargo feature**;
-once enabled, `target_os` picks the backend automatically (macOS →
-Cocoa, Linux → GTK, iOS → UIKit).
+**Web / SSR is no longer in this fork.** The upstream
+`leptos_router`, `leptos_meta`, and `integrations/*` crates were
+removed; `tachys` was unbundled into a renderer-agnostic core
+(`common/renderer`) plus per-port shims (`cocoa/leptos_cocoa`,
+`gtk/leptos_gtk`, `uikit/leptos_uikit`). There is no `native-ui`
+feature flag or `cfg(leptos_native)` toggle — every binary picks a
+port crate directly via its `Cargo.toml`. Build commands operate on
+the host OS's port (cocoa on macOS, gtk on Linux); iOS examples are
+out-of-workspace and built with `--target aarch64-apple-ios-sim`.
 
 Read these before diving in:
 - `implementation_log.md` — chronological design-decision journal for
@@ -33,14 +35,13 @@ Read these before diving in:
   Read all three when touching iOS code; they're shorter than the
   macOS log because the port is younger.
 - `README_gtk.md` / `README_macos.md` / `README_ios.md` — user-facing
-  overviews per port: status, prerequisites, examples, the `native-ui`
-  feature flag.
-- `tests.md` — comprehensive test plan for the macOS port
-  (XCUIAutomation harness deferred). GTK and iOS have no test plans
-  yet.
-- `ARCHITECTURE.md` — upstream Leptos architecture (web-focused, but
-  explains the reactive system and renderer layering all ports
-  reuse).
+  overviews per port: status, prerequisites, examples.
+- `tests_macos.md` / `tests_gtk.md` / `tests_ios.md` — per-port test
+  plans (XCUIAutomation harness for cocoa still deferred; the iOS
+  plan is the shortest).
+- `ARCHITECTURE.md` — upstream Leptos architecture notes
+  (web-focused, but explains the reactive system and the
+  Render/Mountable layering all ports still reuse).
 
 ### System documentation
 
@@ -68,54 +69,88 @@ Key pages to know:
   default contexts
 - `struct.MainLoop.html` — run-loop lifecycle during `app.run()`
 
+## Workspace layout
+
+```
+common/                          # renderer-agnostic shared crates
+  leptos/                        # IntoView, mount machinery, error boundary, ...
+  leptos_macro/                  # view!{} + #[component] proc macros
+  renderer/                      # Render / Mountable / AddAnyAttr core
+                                 #   + shared LayoutAttrs / UniversalAttrs / TextAttrs
+                                 #   + Taffy LayoutTree<B> + setters/apply_layout
+                                 #     (the layout module formerly lived in
+                                 #     a separate `native_layout` crate;
+                                 #     folded in so IntoMaybeReactive impls
+                                 #     for taffy types satisfy the orphan rule)
+  reactive_graph/                # signals, effects, owners
+  reactive_stores/ + macro/
+
+cocoa/                           # macOS / AppKit port
+  dom/                           # NSView/NSButton/... façade ("cocoa_dom" crate)
+  leptos_cocoa/                  # element builders + macro facades + mount
+    src/cocoa/element.rs         #   — Button, Label, Stack, Grid, ...
+    src/element_macos.rs         #   — `tachys::html::element` macro facade
+    src/event_macos.rs           #   — `tachys::html::event` macro facade
+    src/lib.rs                   #   — `pub mod tachys` re-export shim
+  examples/<name>/               # workspace-member binaries
+
+gtk/                             # Linux / GTK4 port — same shape as cocoa/
+  dom/                           # gtk::Box/Button/... façade ("gtk_dom" crate)
+  leptos_gtk/
+  examples/<name>/
+
+uikit/                           # iOS / UIKit port — same shape as cocoa/
+  dom/                           # UIView/UIButton/... façade ("ios_dom" crate)
+  leptos_uikit/
+  examples/<name>/               # NOT workspace members — iOS sim only
+
+apple_shared/                    # bits shared between cocoa & uikit
+```
+
+Each example pulls in **exactly one** of `leptos_cocoa` /
+`leptos_gtk` / `leptos_uikit` under the alias `leptos = { package =
+"leptos_<port>" }`, so example code uses `leptos::prelude::*` and
+the macro paths resolve to that port's `tachys` shim. There is no
+shared `leptos` crate that switches backends via feature flag.
+
 ## Build & run
 
-Neither native port has a test runner yet; the iteration loop is
-"build an example and click around."
+Each port iterates via "build an example and click around." Unit
+tests exist per port (`<port>/dom/tests/*.rs`); see `tests_<port>.md`.
 
 ### macOS / Cocoa
 
 ```sh
-# Build & run a specific example (current state; more under examples/*_macos):
-cargo run --manifest-path examples_cocoa/counter/Cargo.toml
-cargo run --manifest-path examples_cocoa/counters/Cargo.toml
-cargo run --manifest-path examples_cocoa/greeter/Cargo.toml
-cargo run --manifest-path examples_cocoa/checkbox/Cargo.toml
+cargo run -p counter_cocoa
+cargo run -p counters_cocoa
+cargo run -p greeter_cocoa
+cargo run -p grid_cocoa
+# ...etc. See cocoa/examples/.
 
-# Just typecheck a crate (the workspace is huge — scope to what changed):
-cargo build --manifest-path cocoa_dom/Cargo.toml
-cargo build --manifest-path tachys/Cargo.toml
+# Just typecheck the lowest layer:
+cargo check -p cocoa_dom
+cargo check -p leptos_cocoa
 ```
 
 ### Linux / GTK
 
-System prereqs: `libgtk-4-dev` + `pkg-config` (Debian/Ubuntu;
-analogues elsewhere). See `README_gtk.md` for distro-specific
-commands.
+System prereqs: `libgtk-4-dev` + `pkg-config` (Debian/Ubuntu) or
+`brew install gtk4` (macOS, for cross-checking). See `README_gtk.md`
+for distro-specific commands.
 
 ```sh
-# Low-level examples that don't go through the tachys builder layer
-# yet (Stages 0-1 only ship these):
-cargo run -p gtk_dom --example hello_window
-cargo run -p gtk_dom --example counter
+cargo run -p counter_gtk
+cargo run -p grid_gtk
+# ...etc. See gtk/examples/.
 
-# Build & run examples using view!{} + #[component]:
-cargo run --manifest-path examples/counter_gtk/Cargo.toml
-cargo run --manifest-path examples/greeter_gtk/Cargo.toml
-cargo run --manifest-path examples/checkbox_gtk/Cargo.toml
-cargo run --manifest-path examples/login_form_gtk/Cargo.toml
-cargo run --manifest-path examples/settings_gtk/Cargo.toml
-cargo run --manifest-path examples/counters_gtk/Cargo.toml
-
-# Typecheck the GTK façade:
-cargo build -p gtk_dom
-
-# Typecheck tachys against the native path (Linux → GTK, macOS → Cocoa):
-cargo check -p tachys --features native-ui
-
-# Typecheck the full leptos stack against the native path:
-cargo check -p leptos --features native-ui
+cargo check -p gtk_dom
+cargo check -p leptos_gtk --features gtk
 ```
+
+GTK examples are workspace members (so `cargo build --workspace`
+discovers them) but excluded from `default-members` because their
+`Cargo.toml` activates the `leptos_gtk/gtk` feature and therefore
+links against gtk4 at build time.
 
 ### iOS / UIKit
 
@@ -129,9 +164,7 @@ then `xcrun simctl install`s + launches. No Xcode project required.
 # `xcrun simctl launch --console`; you have to Cmd-Q the simulator
 # app or kill the process to get your terminal back.
 cd uikit/examples/counter && ./run_ios.sh
-cd uikit/examples/greeter && ./run_ios.sh
-cd uikit/examples/switch_demo && ./run_ios.sh
-cd uikit/examples/controls && ./run_ios.sh
+cd uikit/examples/grid && ./run_ios.sh
 
 # Non-interactive (USE THIS FROM AGENTS / CI / ANY AUTOMATED FLOW):
 # `-t SECONDS` auto-terminates the app after the given timeout.
@@ -159,176 +192,196 @@ aarch64-apple-ios-sim` on Apple Silicon, also `x86_64-apple-ios` on
 Intel, and `aarch64-apple-ios` for real devices). The example scripts
 auto-create / boot a simulator if none is running.
 
-The `native-ui` Cargo feature is what tells tachys/leptos to use the
-native renderer. Without it (the default), all crates compile against
-the web/SSR path even on macOS/Linux/iOS.
-
-### Workspace / web/SSR
-
-The non-native Leptos crates (`leptos`, `tachys`, `reactive_graph`,
-`leptos_router`, `leptos_meta`, integrations) all build clean against
-the default features:
+### Workspace-wide checks
 
 ```sh
-cargo build --workspace --exclude cocoa_dom
+cargo build --workspace            # host-OS port + its examples + shared crates
+cargo check -p common/renderer     # shared core only
 ```
 
-`cocoa_dom` is excluded because its source is `#![cfg(target_os =
-"macos")]` (compiles to empty on Linux, but sometimes pkg-config etc.
-churns on it). On macOS the equivalent excludes `gtk_dom`.
-
-When you change `tachys` or `leptos` for either native port, make
-sure both the **default workspace build** (web/SSR mode) and the
-**`--features native-ui` build** still compile. Touching shared code
-without checking both is the usual way to break the other backend.
+Touching shared code in `common/` (especially `renderer`, which now
+houses both the view-tree core and the Taffy layout engine) can
+break a port the host OS can't compile (e.g. editing on macOS but
+breaking GTK). Cross-checking is hard from one
+machine; read carefully and trust CI / the other dev.
 
 ## Architecture of the macOS port
 
-Three layers, lowest first:
+Three layers, lowest first.
 
-### `cocoa_dom/` — DOM-shaped façade over AppKit
+### `cocoa/dom/` — DOM-shaped façade over AppKit (crate `cocoa_dom`)
 
-The lowest layer. Provides `Node`, `Element`, `Text`, `Placeholder` types that loosely mirror their `web_sys` equivalents in shape but are backed by `NSView` (and subclasses like `NSButton`, `NSTextField`). Also owns:
+The lowest layer. Provides `Node`, `Element`, `Text`, `Placeholder`
+types that loosely mirror their `web_sys` equivalents in shape but
+are backed by `NSView` (and subclasses like `NSButton`,
+`NSTextField`). Owns:
 
-- **Layout** (`layout.rs`): each window has its own `TaffyTree` (`LayoutTree { tree, root: Option<NodeId> }`). Every `Node` carries a `LayoutHandle { tree, node_id }`. Layout recompute is **manual** — AppKit doesn't auto-reflow, so `set_attribute` / `set_text` / `attach_child` / etc. each call `schedule_relayout`, which dedupes via thread-local `PENDING` and dispatches one `compute_layout` pass per main-loop tick. **Always `tree.mark_dirty(node_id)` when content changes** (otherwise Taffy's measure cache is stale).
-- **Events** (`event.rs`): NSButton uses `ActionTarget` (target/action). NSTextField uses a single `TextFieldDelegate` that fans out to `Vec<Box<dyn FnMut(String)>>` for both `controlTextDidChange:` (input) and `controlTextDidEndEditing:` (change). Each per-view delegate retain is stashed in a thread-local store (entries currently leak; see `tests.md` / log).
-- **Spawner** (`spawner.rs`): `any_spawner::CustomExecutor` backed by `DispatchQueue::main()`. Pin soundness: don't add an outer `Pin` — the inner `Pin<Box<dyn Future>>` already has a stable address.
-- **Window** (`window.rs`): `open_window` returns an `OpenedWindow` with the NSWindow, content_root `Element` (a `FlippedView` for top-left coords), the new `TreeRef`, and the resize delegate.
-- **App** (`app.rs`): `init_app(mtm)` builds NSApp + menu bar + AppDelegate (returns true from `applicationShouldTerminateAfterLastWindowClosed:`).
+- **Layout** (`src/layout.rs`): the storage tree itself lives in
+  `common/renderer` (`LayoutTree<CocoaBackend>`); this file
+  plugs cocoa-specific types into it via `CocoaBackend`
+  (`measure_leaf` reads `intrinsicContentSize`, `first_baseline`
+  reads `firstBaselineOffsetFromTop`, plus a scroll-view second-pass
+  hook). Each window has its own tree; every `Node` carries a
+  `LayoutHandle { tree, node_id }`. Layout recompute is **manual** —
+  AppKit doesn't auto-reflow, so `set_attribute` / `set_text` /
+  `attach_child` / etc. each call `schedule_relayout`, which dedupes
+  via thread-local `PENDING` and dispatches one `compute_layout`
+  pass per main-loop tick. **Always `tree.mark_dirty(node_id)`
+  when content changes** (otherwise Taffy's measure cache is stale).
+- **Events** (`src/event.rs`): NSButton uses `ActionTarget`
+  (target/action). NSTextField uses a single `TextFieldDelegate`
+  that fans out to `Vec<Box<dyn FnMut(String)>>` for both
+  `controlTextDidChange:` (input) and `controlTextDidEndEditing:`
+  (change). Each per-view delegate retain is stashed in a
+  thread-local store (entries currently leak; see `tests_macos.md`).
+- **Spawner** (`src/spawner.rs`): `any_spawner::CustomExecutor`
+  backed by `DispatchQueue::main()`. Pin soundness: don't add an
+  outer `Pin` — the inner `Pin<Box<dyn Future>>` already has a
+  stable address.
+- **Window** (`src/window.rs`): `open_window` returns an
+  `OpenedWindow` with the NSWindow, content_root `Element` (a
+  `FlippedView` for top-left coords), the new `TreeRef`, and the
+  resize delegate.
+- **App** (`src/app.rs`): `init_app(mtm)` builds NSApp + menu bar +
+  AppDelegate (returns true from
+  `applicationShouldTerminateAfterLastWindowClosed:`).
 
-Everything in this crate panics off the main thread; `SendWrapper` enforces it at runtime.
+Everything in this crate panics off the main thread; `SendWrapper`
+enforces it at runtime.
 
-### `tachys/src/cocoa/` — bridges cocoa_dom to tachys' `Render`/`Mountable` traits
+### `cocoa/leptos_cocoa/src/cocoa/` — bridges `cocoa_dom` to `renderer`'s `Render`/`Mountable` traits
 
-- `element.rs`: `Button`, `Checkbox`, `Label`, `TextField`, `View<Ch>` builder structs with `.title()` / `.value()` / `.child()` / `.on(event, handler)` / `.bind(key, signal)` methods, plus `Render::build` impls. **Children are deliberately NOT mounted at build time** — mounting is deferred until `ElementState::mount` runs. This is the cascade pattern that lets tree-aware `insert_node` register each child in the right Taffy tree as it goes.
-- `attr.rs`: `MaybeReactive<T>` (Static or Reactive closure) + `IntoMaybeReactive<T>` + `install` helper that wraps a closure in a `RenderEffect`.
-- `bind.rs`: `IntoSignal<T>` trait + per-control `BindAttribute` impls. `bind:value` on text_field and `bind:checked` on checkbox both wire **two directions** — outgoing via the AppKit observer, incoming via a `RenderEffect`.
-- AddAnyAttr machinery for spread attrs (`<MyComponent on:click=…>`): the `impl_add_any_attr_for_leaf!` macro at the bottom of `element.rs` emits typed-attribute pipeline impls per leaf builder; container builders (Stack, Block, ScrollView) get explicit panic-on-spread impls. There is no `RenderHtml` trait — `IntoView<R>` requires only `Render<R> + AddAnyAttr<R> + Send`. (GTK still ships a `render_html_stub.rs` for parity; will be retired with the rest of the GTK stage 5 work.)
+- `element.rs`: `Button`, `Checkbox`, `Label`, `TextField`,
+  `Stack<Ch>` (used by `vstack` / `hstack` / `view`), `Grid<Ch>`,
+  etc. builder structs with `.title()` / `.value()` / `.child()` /
+  `.on(event, handler)` / `.bind(key, signal)` methods, plus
+  `Render::build` impls. **Children are deliberately NOT mounted at
+  build time** — mounting is deferred until `ElementState::mount`
+  runs. This is the cascade pattern that lets tree-aware
+  `insert_node` register each child in the right Taffy tree as it
+  goes.
+- `attr.rs`: port-local `MaybeReactive<T>` (Static or Reactive
+  closure) + `IntoMaybeReactive<T>` + `install` helper that wraps a
+  closure in a `RenderEffect`. (Distinct from
+  `renderer::attrs::MaybeReactive` in `common/renderer/`, which the
+  shared `WithLayout` / `WithUniversal` traits use.)
+- `bind.rs`: `IntoSignal<T>` trait + per-control `BindAttribute`
+  impls. `bind:value` on text_field and `bind:checked` on checkbox
+  both wire **two directions** — outgoing via the AppKit observer,
+  incoming via a `RenderEffect`.
+- AddAnyAttr machinery for spread attrs (`<MyComponent
+  on:click=…>`): the `impl_add_any_attr_for_leaf!` macro at the
+  bottom of `element.rs` emits typed-attribute pipeline impls per
+  leaf builder; container builders (`Stack`, `Grid`, `Block`,
+  `ScrollView`) get explicit panic-on-spread impls. There is no
+  `RenderHtml` trait — `IntoView<R>` requires only `Render<R> +
+  AddAnyAttr<R> + Send`.
 
-### `tachys/src/html/{element,event}_macos.rs` + `tachys/src/svg_macos.rs` — macro facades
+### `cocoa/leptos_cocoa/src/{element,event,svg}_macos.rs` — macro facades
 
-The `view!{}` macro emits paths like `tachys::html::element::button()`, `tachys::html::event::on(event::click, handler)`, etc. These facade modules re-export the cocoa builders at the paths the macro expects. **Don't change the macro** — just expand the facades when adding new tags or events.
+The `view!{}` macro emits paths like
+`::leptos::tachys::html::element::button()`,
+`::leptos::tachys::html::event::on(event::click, handler)`, etc.
+`leptos_cocoa` has a `pub mod tachys { ... }` in `lib.rs` that
+re-exposes those paths, backed by the cocoa builders. **Don't
+change the macro** — just expand the facades when adding new tags
+or events.
 
-The `view` element is a real SVG tag, so the macro routes `<view>` through `tachys::svg::view`; `tachys/src/svg_macos.rs` aliases it back to the cocoa container.
+All tag names — including SVG-namespaced ones like `<view>` and
+`<switch>` — route through `tachys::html::element::*` on native.
+The web Leptos macro routed those through `tachys::svg::*` and
+emitted `.attr(name, value)` for every attribute; we stripped that
+path because no native builder has an `.attr()` shim. See the
+"SVG removal" entry in `implementation_log.md` for the rationale.
 
-### `leptos/src/mount_macos.rs` — entry points
+### `cocoa/leptos_cocoa/src/mount.rs` — entry points
 
-`run(closure)` and `mount_to_window(title, size, closure)`. Currently leaks the `Owner` (no real `UnmountHandle` story for window close).
+`run(closure)` and `mount_to_window(title, size, closure)`.
+Currently leaks the `Owner` (no real `UnmountHandle` story for
+window close).
 
 ## Architecture of the Linux/GTK port
 
-Mirrors the macOS layering one-for-one in shape; the main difference
-is that **GTK does its own layout**, so the entire Taffy bridge from
-the macOS port disappears here. Three layers, lowest first:
+Mirrors the macOS layering one-for-one. **GTK uses Taffy too**, via
+the shared `common/renderer` storage tree; the Stage-1 plan to
+let GTK self-lay-out was reversed because the SwiftUI-flavoured
+mental model (`vstack`/`hstack`/`flex_grow`/percent widths) doesn't
+map cleanly onto GTK's measure/allocate negotiation. GTK widgets
+get a per-container `TaffyLayout` manager that delegates back to
+Taffy; the widget class (usually `gtk::Box`) is layout-agnostic at
+that point.
 
-### `gtk_dom/` — DOM-shaped façade over GTK4
+### `gtk/dom/` — DOM-shaped façade over GTK4 (crate `gtk_dom`)
 
-Provides `Node`, `Element`, `Text`, `Placeholder` types that loosely
-mirror their `web_sys` equivalents in shape but are backed by
-`gtk::Widget` (and subclasses like `gtk::Button`, `gtk::Entry`,
-`gtk::Box`). Modules:
+Same shape as `cocoa/dom/`. Modules:
 
-- **Node + Element** (`node.rs`): `Element::create(tag)` maps tag
-  names to GTK widget classes (see `README_gtk.md` for the table).
-  `set_attribute` / `set_bool_attribute` route to the appropriate
-  widget setter (`set_label`, `set_text`, `set_sensitive`,
-  inverted `set_visible`, `set_active`). `insert_node` /
-  `remove_child` / `clear_children` handle `gtk::Box` and
-  `gtk::Window`/`gtk::ApplicationWindow` parents (other container
-  classes are silently dropped — extend as needed).
-- **No layout module.** `gtk::Box` with orientation/spacing/margin
-  setters does the work the macOS port does in Taffy. Containers
-  with `<vstack>` / `<hstack>` / `<view>` map directly to
-  `gtk::Box::new(orientation, spacing)`.
-- **Events** (currently inline on `Element`; `event.rs` extraction
-  is Stage 3 work): `on_click` calls `gtk::Button::connect_clicked`.
-  Closures are owned by the signal connection itself (which is owned
-  by the widget), so there is **no thread-local handler store** like
-  cocoa_dom's `keep_target_alive` — the closure drops with the
-  widget.
-- **Spawner** (`spawner.rs`): `any_spawner::CustomExecutor` over
-  `glib::MainContext::default().spawn_local`. Both `spawn` and
-  `spawn_local` route through `spawn_local`; glib drives polling on
-  the main loop GTK is already draining.
-- **Window** (`window.rs`): `open_window(app, title, size)` returns
-  an `OpenedWindow` with the `GtkApplicationWindow` and a
-  `content_root: Element` (a vertical `gtk::Box` set as the window's
-  child).
-- **App** (`app.rs`): `init_app(application_id)` builds a
-  `gtk::Application` and registers the spawner. Application IDs are
-  configurable per-call (no global default).
+- `node.rs` — `Element::create(tag)` maps tag names to GTK widget
+  classes (`<button>` → `gtk::Button`, `<vstack>`/`<hstack>` /
+  `<view>` / `<grid>` → `gtk::Box`, etc.).
+- `layout.rs` — same `LayoutBackend` plug-in pattern as cocoa.
+  Plus `taffy_layout.rs` which exposes Taffy as a custom
+  `gtk::LayoutManager`, installed per container at mount time.
+- `event.rs` — `on_click` calls `gtk::Button::connect_clicked`;
+  closures are owned by the signal connection (held by the widget),
+  so no thread-local handler store like cocoa's `keep_target_alive`
+  is needed.
+- `spawner.rs` — `any_spawner::CustomExecutor` over
+  `glib::MainContext::default().spawn_local`.
+- `window.rs` — `open_window(app, title, size)`.
+- `app.rs` — `init_app(application_id)` builds a
+  `gtk::Application` and registers the spawner.
 
-`gtk::Widget` is `!Send`; `SendWrapper` wraps each `Node` so the type
-is nominally `Send + 'static` for tachys's generic plumbing, with a
-runtime panic if accessed off-main.
+`gtk::Widget` is `!Send`; `SendWrapper` wraps each `Node` so the
+type is nominally `Send + 'static` for the renderer's generic
+plumbing, with a runtime panic if accessed off-main.
 
-### `tachys/src/renderer/gtk.rs` — bridges `gtk_dom` to tachys' `Render`/`Mountable` traits
+### `gtk/leptos_gtk/src/gtk/` — element builders
 
-Same shape as `tachys/src/renderer/cocoa.rs`. The `Dom` unit struct
-delegates the imperative API to `gtk_dom::Renderer`, plus
-`Mountable` and `CastFrom` impls for orphan-rule reasons.
+Same shape as `cocoa/leptos_cocoa/src/cocoa/element.rs`. The set of
+builders (`button`, `checkbox`, `label`, `pop_up_button`,
+`secure_text_field`, `slider`, `stack`, `stack_view`, `text_field`,
+`vstack`, `hstack`, `grid`, `view`) is a subset of cocoa's — GTK
+deltas (no NSDatePicker, no NSColorWell, no NSSegmentedControl) are
+just absent.
 
-`mount_before` is a one-liner — `widget.parent()` → wrap as a
-synthetic `Element` → `mount` — versus cocoa's elaborate
-`synthesise_parent_element` + `LayoutHandle` propagation. No Taffy
-tree to register against.
+### `gtk/leptos_gtk/src/{element,event,svg}_gtk.rs` — macro facades
 
-### `tachys/src/gtk/` — element builders *(Stage 5, not yet built)*
+Same role as `element_macos.rs` etc. on cocoa.
 
-When this lands, it will mirror `tachys/src/cocoa/` with `Button`,
-`Checkbox`, `Label`, `TextField`, `Slider`, `PopUpButton`,
-`View<Ch>` builder structs. For now the GTK side has no high-level
-`Render` builders; users build view trees against `gtk_dom`
-directly.
+### `gtk/leptos_gtk/src/mount.rs` — entry points
 
-### `tachys/src/html/element_gtk.rs` + `event_gtk.rs` *(Stage 5, not yet built)*
-
-Macro facades — same role as `element_macos.rs` / `event_macos.rs`.
-Until these exist, the `view!{}` macro doesn't resolve on Linux
-native.
-
-### `leptos/src/mount_gtk.rs` *(Stage 5, not yet built)*
-
-Will provide `run(closure)` and `mount_to_window(app_id, title,
-size, closure)`. Until then, callers handle the `init_app` +
-`connect_activate` boilerplate themselves (see
-`gtk_dom/examples/counter.rs`).
+`run(closure)` and `mount_to_window(app_id, title, size, closure)`.
 
 ## Architecture of the iOS port
 
-Mirrors the macOS layering one-for-one in shape. The Taffy bridge
-is identical (UIView's intrinsic-size measurement closure + per-window
-TaffyTree), and the target/action handler-store pattern from
-cocoa_dom carries over directly (UIControl is structurally NSControl).
-The big shape changes are at the window/scene boundary: there's no
-NSWindow / NSApplicationDelegate run-loop you can drive yourself —
-UIApplicationMain owns the loop — and there's no menu bar.
+Mirrors the macOS layering one-for-one. The Taffy bridge is
+identical (UIView's intrinsic-size measurement closure +
+per-scene `LayoutTree<IosBackend>`), and the target/action
+handler-store pattern from cocoa carries over directly (UIControl
+is structurally NSControl). The big shape changes are at the
+window/scene boundary: there's no NSWindow / NSApplicationDelegate
+run-loop you can drive yourself — UIApplicationMain owns the loop
+— and there's no menu bar.
 
-### `ios_dom/` — DOM-shaped façade over UIKit
+### `uikit/dom/` — DOM-shaped façade over UIKit (crate `ios_dom`)
 
-The lowest layer. `Node`, `Element`, `Text`, `Placeholder` types
-loosely mirror their `web_sys` equivalents but are backed by `UIView`
-(and subclasses like `UIButton`, `UITextField`, `UISwitch`,
-`UIScrollView`).
-
-- **Layout** (`layout.rs`): each scene has its own `TaffyTree`. Same
-  manual-relayout pattern as cocoa — `set_attribute` / `set_text` /
-  `attach_child` etc. all call `schedule_relayout` which dedupes via
-  thread-local `PENDING` and dispatches one `compute_layout` per
-  main-loop tick. Always `tree.mark_dirty(node_id)` when content
-  changes.
-- **Events** (`event.rs`): `ActionTarget` ObjC class wraps a Rust
-  closure; `on_control_action` chooses the right `UIControlEvents`
-  mask based on the concrete control (TouchUpInside for UIButton,
-  ValueChanged for UISwitch/UISlider/UISegmentedControl/UIDatePicker/
-  UIStepper, EditingChanged for UITextField input, etc.). Handler
-  retains live in a thread-local `HANDLER_STORE` keyed by view
-  pointer (entries currently leak; same as cocoa). UITextView uses a
-  `UITextViewDelegate` because UITextView isn't a UIControl.
-- **Spawner** (`spawner.rs`): `any_spawner::CustomExecutor` over
-  `dispatch2::DispatchQueue::main()`. Identical to cocoa.
-- **App + RootViewController** (`app.rs`): `AppDelegate` creates the
-  UIWindow on `application:didFinishLaunchingWithOptions:`,
+- **Layout** (`src/layout.rs`): same `LayoutBackend` plug-in pattern,
+  same manual-relayout discipline as cocoa. Always
+  `tree.mark_dirty(node_id)` when content changes.
+- **Events** (`src/event.rs`): `ActionTarget` ObjC class wraps a
+  Rust closure; `on_control_action` chooses the right
+  `UIControlEvents` mask based on the concrete control
+  (TouchUpInside for UIButton, ValueChanged for UISwitch/UISlider/
+  UISegmentedControl/UIDatePicker/UIStepper, EditingChanged for
+  UITextField input, etc.). Handler retains live in a thread-local
+  `HANDLER_STORE` keyed by view pointer (entries currently leak;
+  same as cocoa). UITextView uses a `UITextViewDelegate` because
+  UITextView isn't a UIControl.
+- **Spawner** (`src/spawner.rs`): `any_spawner::CustomExecutor`
+  over `dispatch2::DispatchQueue::main()`. Identical to cocoa.
+- **App + RootViewController** (`src/app.rs`): `AppDelegate`
+  creates the UIWindow on
+  `application:didFinishLaunchingWithOptions:`,
   `RootViewController` overrides `viewDidLayoutSubviews` to re-run
   Taffy on every bounds change *and* push `view.safeAreaInsets` +
   `view.keyboardLayoutGuide().layoutFrame()` derived bottom-inset
@@ -341,12 +394,12 @@ loosely mirror their `web_sys` equivalents but are backed by `UIView`
   string. The mangled name is what objc2's `define_class!` actually
   registers.
 
-### `tachys/src/ios/` — bridges ios_dom to tachys' `Render`/`Mountable` traits
+### `uikit/leptos_uikit/src/ios/` — bridges `ios_dom` to renderer's `Render`/`Mountable` traits
 
-Same shape as `tachys/src/cocoa/`. `element.rs` defines the builders;
-`bind.rs` defines `IntoSignal` / `BindAttribute<Key, Sig>` impls
-(with cocoa-port-style `BoundValue`/`BoundFloat`/`BoundChecked`/
-`BoundDate`/`BoundIndex` payloads). The same
+Same shape as `cocoa/leptos_cocoa/src/cocoa/`. `element.rs` defines
+the builders; `bind.rs` defines `IntoSignal` / `BindAttribute<Key,
+Sig>` impls (with cocoa-port-style `BoundValue`/`BoundFloat`/
+`BoundChecked`/`BoundDate`/`BoundIndex` payloads). The same
 `apply_universal` / `apply_text_attrs` helpers and
 `impl_universal_attrs!` / `impl_text_attrs!` /
 `impl_typed_attrs_for!` macros that DRY out cocoa's element.rs are
@@ -356,7 +409,7 @@ Builders implemented: `Button`, `Label`, `TextField` /
 `SecureTextField`, `Switch`, `Slider`, `Stepper`, `SegmentedControl`,
 `DatePicker`, `ProgressIndicator` (UIProgressView under the hood,
 named for cocoa parity), `ImageView`, `ScrollView`, `TextView`,
-`View` / `vstack` / `hstack`. `bind:value`, `bind:checked`,
+`View` / `vstack` / `hstack`, `Grid`. `bind:value`, `bind:checked`,
 `bind:selection` all wired.
 
 Not implemented (no native UIKit equivalent):
@@ -365,15 +418,15 @@ Not implemented (no native UIKit equivalent):
 - **ColorWell** — UIColorPickerViewController is a modal sheet, not
   inline.
 
-### `tachys/src/html/element_ios.rs` + `event_ios.rs` + `tachys/src/svg_ios.rs`
+### `uikit/leptos_uikit/src/{element,event}_ios.rs` — macro facades
 
-Macro facades. `<switch>` is in the leptos-macro SVG list, so the
-macro emits `tachys::svg::switch()` — `svg_ios.rs` defines that as
-a raw-identifier `r#switch` function delegating to
-`tachys::ios::element::switch_()`. (Same pattern the web port uses
-for `r#use`.)
+Same role as the cocoa equivalents. `<switch>` is a Rust keyword
+collision (and an SVG element name in the web spec), so the macro
+emits a raw identifier — `element_ios.rs` defines `r#switch` as a
+function delegating to `tachys::ios::element::switch_()`, since the
+builder itself can't take the bare name either.
 
-### `leptos/src/mount_ios.rs` — entry point
+### `uikit/leptos_uikit/src/mount.rs` — entry point
 
 Single entry point: `run(closure)`. Stores the user closure in a
 thread-local, calls `UIApplicationMain` (which never returns).
@@ -385,73 +438,155 @@ There's no `mount_to_window` builder. iPhone apps run as a single
 fullscreen scene; iPad multi-window is scene-based, not
 window-builder-based.
 
+## Shared layout & attribute plumbing (`common/`)
+
+- **`common/renderer`** — `LayoutTree<B>` is a generic Taffy
+  storage tree owning per-node style/cache/layout/parent/children/
+  view/meta. Each port implements `LayoutBackend` to supply its
+  platform view type plus three operations (measure a leaf, query
+  baseline, apply a frame). Layout *driving* (when to call
+  `compute_layout`, how to dispatch to the main thread) is left to
+  each port. Re-exports Taffy's `Display`, `FlexDirection`,
+  `AlignItems`, `GridAutoFlow`, etc., plus the track-sizing helpers
+  (`fr`, `length`, `auto`, `min_content`, `max_content`, `minmax`,
+  `fit_content`, `repeat`). Grid types are pre-monomorphized:
+  `pub type GridTemplateComponent = taffy::GridTemplateComponent<String>`.
+
+- **`common/renderer/src/attrs.rs`** — `LayoutAttrs` (`padding`,
+  `margin`, `width`/`height`/`min_*`/`max_*`, `flex_grow`,
+  `align_self`, `grid_column_start`/`end`, `grid_row_start`/`end`),
+  `UniversalAttrs` (`alpha`, `tool_tip`), `TextAttrs<C, A>` (text
+  color, alignment, font size). The corresponding traits
+  (`WithLayout`, `WithUniversal`, `WithText<C, A>`) provide the
+  chainable setters. Each builder embeds the struct as a field and
+  implements the trait by handing back `&mut self.foo`; the
+  default methods provide `.padding(...)` / `.flex_grow(...)` /
+  `.grid_column((1, -1))` / etc. consistently across every builder.
+
+- **`common/renderer`** — core `Render` / `Mountable` /
+  `AddAnyAttr` / `ApplyAttr` traits, plus the `view::*` helpers
+  (the renderer's "view core" — fragment, iterators, conditional,
+  etc.). All web-only machinery (`Attribute`, `RenderHtml`,
+  `to_html`, hydration) is gone.
+
 ## Conventions and gotchas
 
 ### Failure-mode hierarchy
 
-When a feature is unimplemented, partially supported, or genuinely broken,
-prefer failure modes in this order:
+When a feature is unimplemented, partially supported, or genuinely
+broken, prefer failure modes in this order:
 
-1. **Compile error** — make the construct ill-typed, so the broken code
-   doesn't build.
+1. **Compile error** — make the construct ill-typed, so the broken
+   code doesn't build.
 2. **Runtime panic** — fail loudly at the earliest possible moment
-   (typically at view-build / mount time, before the run loop starts).
-   Include a clear message with the *kind* of view that hit the
-   limitation, why it doesn't work, and a workaround.
+   (typically at view-build / mount time, before the run loop
+   starts). Include a clear message with the *kind* of view that
+   hit the limitation, why it doesn't work, and a workaround.
 3. **Warning** — `#[deprecated]`, `eprintln!`, log, or similar; only
    when 1 and 2 are impractical.
-4. **Silent no-op** — only as an absolute last resort, and only when the
-   silence itself is the contract (e.g. event delegate receives a
-   notification it doesn't care about).
+4. **Silent no-op** — only as an absolute last resort, and only
+   when the silence itself is the contract (e.g. event delegate
+   receives a notification it doesn't care about).
 
 The temptation to "make it compile by stubbing" is the bug-hiding
-pattern this hierarchy exists to prevent. A silently-dropped `on:click`
-handler is a UI bug that surfaces as "the button does nothing" hours
-later in the user's session — a far worse failure mode than an
-immediate panic at the call site.
+pattern this hierarchy exists to prevent. A silently-dropped
+`on:click` handler is a UI bug that surfaces as "the button does
+nothing" hours later in the user's session — a far worse failure
+mode than an immediate panic at the call site.
 
-Concrete example: when `AddAnyAttr<R>` was added (Phase 9), the trait
-required impls on every type that implements `IntoView<R>`, including
-branching wrappers (`Option<T>`, `Either`, `Vec<T>`, reactive closures,
-ErrorBoundary, etc.). It was tempting to make those impls return `self`
-unchanged. We instead made them `panic!()` with diagnostic messages
-naming the offending type (`Option<T>`, `Vec<T>` etc.) and pointing at
-the workaround. See `common/renderer/src/view/add_any_attr.rs`.
+Concrete example: when `AddAnyAttr<R>` was added (Phase 9), the
+trait required impls on every type that implements `IntoView<R>`,
+including branching wrappers (`Option<T>`, `Either`, `Vec<T>`,
+reactive closures, ErrorBoundary, etc.). It was tempting to make
+those impls return `self` unchanged. We instead made them
+`panic!()` with diagnostic messages naming the offending type
+(`Option<T>`, `Vec<T>` etc.) and pointing at the workaround. See
+`common/renderer/src/view/add_any_attr.rs`.
 
-### Shared (both ports)
+### Shared (all ports)
 
-- **Tag names are snake_case** by deliberate choice, even when they correspond to PascalCase widget types (so the macro's auto-routing works). Live with the convention clash.
-- **`set_attribute` diffs against current widget state** before mutating, on both backends. This protects against `bind:` cycles (an `Effect`-driven write firing the widget's change signal that re-fires the effect) and against focus-ring flashes. Keep it.
-- **HTML compatibility is a non-goal.** UIs are built specifically as native apps. We are free to invent tags (`<vstack>`, `<hstack>`, `<checkbox>`) without worrying about HTML semantics.
-- **The `native-ui` Cargo feature** is what flips the `cfg(leptos_native)` flag in source. *Don't* add ad-hoc `cfg(feature = "...")` blocks for the cocoa or gtk paths — use `cfg(leptos_native)` for the web/native split, and `cfg(target_os = "macos")` / `cfg(target_os = "linux")` to disambiguate within native code. Code that depends on the optional `cocoa_dom` / `gtk_dom` deps must be gated on `cfg(all(target_os = "X", leptos_native))`, otherwise it'll try to compile when the feature is off and the dep isn't pulled in.
-- **Web-only crates** (`leptos_router`, `leptos_meta`, `integrations/*`) gate their lib.rs on `cfg(not(leptos_native))` so they compile to empty rlibs when `native-ui` is enabled. Defensive — a native binary normally shouldn't depend on them.
+- **Tag names are snake_case** by deliberate choice, even when they
+  correspond to PascalCase widget types (so the macro's
+  auto-routing works). Live with the convention clash.
+- **`set_attribute` diffs against current widget state** before
+  mutating, on every backend. This protects against `bind:` cycles
+  (an `Effect`-driven write firing the widget's change signal that
+  re-fires the effect) and against focus-ring flashes. Keep it.
+- **HTML compatibility is a non-goal.** UIs are built specifically
+  as native apps. We are free to invent tags (`<vstack>`,
+  `<hstack>`, `<checkbox>`, `<grid>`) without worrying about HTML
+  semantics.
+- **Reactive attrs go through `MaybeReactive<T>` + `install(...)`.**
+  `MaybeReactive` (and `install`, the driver that wraps a setter in
+  a `RenderEffect`) are defined in `renderer::attrs` and re-exported
+  per port. Each port additionally defines its own `IntoMaybeReactive`
+  trait (port-local) so it can supply impls for platform value types
+  (`Color`, `NSTextAlignment`, etc.) without orphan-rule violations.
+  Builder methods explicitly bound on whichever trait holds the impl
+  they need.
+- **Generic `apply_layout` / `apply_universal`** live in
+  `renderer::setters`, driven by the `LayoutElement` /
+  `UniversalElement` traits. Each port impls those for its element
+  type in the dom crate and gets the install-loop for every shared
+  attr (padding, margin, sizing, flex_grow, align_self, grid
+  placement, alpha, tooltip) for free. New layout attrs land in one
+  place — the shared `LayoutAttrs` struct + the relevant `set_*` in
+  `renderer::setters`.
 
 ### macOS / Cocoa specifics
 
-- **`<text_field>` forces width=0 in its measure callback** so the parent decides the width. Otherwise the field grows with each keystroke (its intrinsic width tracks content). Don't "fix" this without understanding the resize cascade.
-- **`Placeholder` defaults to `position: Absolute`** so it doesn't take a flex slot — `Render for ()` builds a Placeholder, and many tachys constructs leave them lying around.
-- **NSButton needs `buttonWithTitle:target:action:`**, not `initWithFrame:` — the latter gives a default bezel with bad intrinsic sizing (titles get clipped: "Reset" → "Rese").
-- **Layout recompute is manual**: AppKit doesn't auto-reflow, so `set_attribute` / `set_text` / `attach_child` / etc. each call `schedule_relayout`, which dedupes via thread-local `PENDING` and dispatches one `compute_layout` pass per main-loop tick. **Always `tree.mark_dirty(node_id)` when content changes** (otherwise Taffy's measure cache is stale).
-- **Two click handlers on one NSControl panic at build time.** NSControl has a single target/action slot. We deliberately don't fan out (Vec-of-closures + a wrapper class would add allocations for the 99% case where there's one handler). Instead `on_control_action` checks the control's existing target and panics on a duplicate install. This catches `<button on:click=A {..on(click, B)}/>`, `<MyComponent on:click=outer>` where the inner component already has its own on:click, and `bind:checked + on:click` combinations. Workaround: combine into one closure, or have your component accept a `Callback<()>` prop and call it inside its own click handler.
-- **`<scroll_view>` needs a bounded parent.** Wrap your top-level vstack in `flex_grow=1.0` (or give it a fixed height) — otherwise the outer container sizes to content and the scroll view never gets a viewport to clip against, so scroll bars never appear. The scroll view's children take their natural sizes via a separate Taffy pass; see `cocoa_dom::layout::relayout_scroll_views`.
-- **Use `<view>{closure_returning_Result}</view>`, not `<label>`.** `Label::child` only accepts `IntoMaybeReactive<String>` (a leaf). To render a `Result<T, E>` (which `Render` impls handle by throwing into the nearest `<ErrorBoundary>`), use `<view>` whose `.child<NewCh: Render>` accepts arbitrary children.
+- **`<text_field>` forces width=0 in its measure callback** so the
+  parent decides the width. Otherwise the field grows with each
+  keystroke (its intrinsic width tracks content). Don't "fix" this
+  without understanding the resize cascade.
+- **`Placeholder` defaults to `position: Absolute`** so it doesn't
+  take a flex slot — `Render for ()` builds a Placeholder, and many
+  renderer constructs leave them lying around.
+- **NSButton needs `buttonWithTitle:target:action:`**, not
+  `initWithFrame:` — the latter gives a default bezel with bad
+  intrinsic sizing (titles get clipped: "Reset" → "Rese").
+- **Layout recompute is manual**: AppKit doesn't auto-reflow, so
+  `set_attribute` / `set_text` / `attach_child` / etc. each call
+  `schedule_relayout`, which dedupes via thread-local `PENDING` and
+  dispatches one `compute_layout` pass per main-loop tick.
+  **Always `tree.mark_dirty(node_id)` when content changes**
+  (otherwise Taffy's measure cache is stale).
+- **Two click handlers on one NSControl panic at build time.**
+  NSControl has a single target/action slot. We deliberately don't
+  fan out (Vec-of-closures + a wrapper class would add allocations
+  for the 99% case where there's one handler). Instead
+  `on_control_action` checks the control's existing target and
+  panics on a duplicate install. This catches `<button on:click=A
+  {..on(click, B)}/>`, `<MyComponent on:click=outer>` where the
+  inner component already has its own on:click, and `bind:checked +
+  on:click` combinations. Workaround: combine into one closure, or
+  have your component accept a `Callback<()>` prop and call it
+  inside its own click handler.
+- **`<scroll_view>` needs a bounded parent.** Wrap your top-level
+  vstack in `flex_grow=1.0` (or give it a fixed height) —
+  otherwise the outer container sizes to content and the scroll
+  view never gets a viewport to clip against, so scroll bars never
+  appear. The scroll view's children take their natural sizes via
+  a separate Taffy pass; see `cocoa_dom::layout::relayout_scroll_views`.
+- **Use `<view>{closure_returning_Result}</view>`, not `<label>`.**
+  `Label::child` only accepts `IntoMaybeReactive<String>` (a leaf).
+  To render a `Result<T, E>` (which `Render` impls handle by
+  throwing into the nearest `<ErrorBoundary>`), use `<view>` whose
+  `.child<NewCh: Render>` accepts arbitrary children.
 
 ### Linux / GTK specifics
 
-- **No Taffy.** GTK's natural layout (`gtk::Box` with orientation +
-  spacing + margin + `set_hexpand`/`set_vexpand`) covers the
-  SwiftUI-flavoured surface area. Don't add a layout module unless
-  GTK's natives prove insufficient for some specific case (none yet).
-- **`<view>` defaults to vertical orientation** (vs cocoa's Row).
-  `gtk::Box` requires an orientation at construction; vertical
-  matches the more common stack expectation.
+- **GTK uses Taffy via `common/renderer`** — the layout-driver
+  shape is the same as cocoa/iOS, just plugged into GTK's
+  `gtk::LayoutManager` protocol via `gtk_dom::taffy_layout`. Don't
+  try to fall back to `gtk::Box`'s native orientation/spacing for
+  new constructs; route through Taffy like everything else.
+- **`<view>` defaults to vertical orientation** (vs cocoa's
+  no-direction-preset). Existing convention from before the Taffy
+  bridge landed; kept for parity with example code.
 - **`Placeholder` is a hidden `gtk::Box`** — `set_visible(false)`
   removes it from layout entirely on GTK. No `position: Absolute`
   trick needed.
-- **`flex_grow` is binary on GTK.** `gtk::Widget::set_hexpand`
-  /`set_vexpand` are bools, not weighted floats. Builder API still
-  takes `f32` for cocoa parity; the truthiness of the value is what
-  carries through.
 - **Signal handlers stack**: each `connect_clicked` (and the future
   text/slider/dropdown helpers) appends a new handler. cocoa
   target/action overwrites; GTK doesn't. Nothing in the rest of the
@@ -463,22 +598,58 @@ the workaround. See `common/renderer/src/view/add_any_attr.rs`.
 
 ## When you change something
 
-When a change touches both ports, list both sets of paths so reviewers can scan it. When it touches only one, name the port explicitly.
+When a change touches multiple ports, list each port's paths so
+reviewers can scan it. When it touches only one, name the port
+explicitly.
 
 - **If you add a new control:**
-  - macOS: builder in `tachys/src/cocoa/element.rs` + tag handling in `cocoa_dom/src/node.rs::Element::create_with` + facade re-export in `tachys/src/html/element_macos.rs` + `cocoa_stub_view_impls!` for the new builder.
-  - GTK: builder in `tachys/src/gtk/element.rs` *(Stage 5, not yet built)* + tag handling in `gtk_dom/src/node.rs::Element::create` + facade re-export in `tachys/src/html/element_gtk.rs` *(Stage 5)* + `gtk_stub_view_impls!` *(Stage 5)*.
+  - cocoa: builder in `cocoa/leptos_cocoa/src/cocoa/element.rs` +
+    tag handling in `cocoa/dom/src/node.rs::Element::create_with` +
+    facade re-export in `cocoa/leptos_cocoa/src/element_macos.rs` +
+    `impl_add_any_attr_for_leaf!` line for the new builder.
+  - gtk: builder in `gtk/leptos_gtk/src/gtk/element.rs` + tag
+    handling in `gtk/dom/src/node.rs::Element::create` + facade
+    re-export in `gtk/leptos_gtk/src/element_gtk.rs` +
+    `impl_add_any_attr_for_leaf!` (or container panic-on-spread).
+  - ios: builder in `uikit/leptos_uikit/src/ios/element.rs` + tag
+    handling in `uikit/dom/src/node.rs::Element::create_with` +
+    facade re-export in `uikit/leptos_uikit/src/element_ios.rs` +
+    `impl_add_any_attr_for_leaf!`.
 - **If you add a new event:**
-  - macOS: `EventDescriptor` impl + `PendingHandler` variant in `tachys/src/html/event_macos.rs` + install hook in `cocoa_dom/src/event.rs` + passthrough method on `cocoa_dom::Element`.
-  - GTK: `EventDescriptor` impl + `PendingHandler` variant in `tachys/src/html/event_gtk.rs` *(Stage 5)* + install helper in `gtk_dom/src/event.rs` *(Stage 3 will create this)* + passthrough method on `gtk_dom::Element`.
+  - cocoa: `EventDescriptor` impl + `PendingHandler` variant in
+    `cocoa/leptos_cocoa/src/event_macos.rs` + install hook in
+    `cocoa/dom/src/event.rs` + passthrough method on `Element`.
+  - gtk: same in `gtk/leptos_gtk/src/event_gtk.rs` +
+    `gtk/dom/src/event.rs`.
+  - ios: same in `uikit/leptos_uikit/src/event_ios.rs` +
+    `uikit/dom/src/event.rs`.
+- **If you add a new layout attribute that's port-agnostic:**
+  add the field on `LayoutAttrs` (or `UniversalAttrs`) in
+  `common/renderer/src/attrs.rs`, add the chainable setter on the
+  matching trait, then add the per-port `set_*` helper in each
+  port's `dom/src/layout.rs` and install it in each port's
+  `apply_layout` in the corresponding `element.rs`. The shared
+  trait approach saves N per-builder edits.
 - **If you change layout behavior:**
-  - macOS: re-test resize on at least `counter (examples_cocoa/counter)` (static) and `counters_macos` (dynamic add/remove). Layout regressions are the most common breakage.
-  - GTK: re-test the affected examples; GTK self-lays-out so layout regressions are rarer, but resize behavior of `gtk::Box` with mixed `hexpand` children is worth eyeballing.
-- **If you touch shared `tachys` / `leptos` code:**
-  - Verify default workspace build still passes: `cargo build --workspace --exclude cocoa_dom` (or exclude `gtk_dom` on macOS).
-  - Verify the native path on the host OS still passes: `cargo check -p tachys --features native-ui`.
-  - Ideally also verify the native path on the *other* OS. Cross-checking is hard from one machine; failing that, read carefully and trust CI.
+  - cocoa: re-test resize on at least `counter_cocoa` (static) and
+    `counters_cocoa` (dynamic add/remove). Layout regressions are
+    the most common breakage.
+  - gtk: re-test the affected examples. GTK now uses Taffy too, so
+    the failure modes match cocoa's.
+  - ios: launch the iOS sim example with `run_ios.sh -t 3` and
+    eyeball the layout.
+- **If you touch shared code in `common/`:**
+  - Verify the host-OS port build still passes: `cargo build
+    --workspace`.
+  - Verify the *other* native port via `cargo check` —
+    `cargo check -p leptos_uikit --target aarch64-apple-ios-sim`
+    on macOS hosts, `cargo check -p leptos_cocoa` on linux hosts
+    (with the macOS SDK available — usually not, so trust CI).
 - **Always log non-obvious decisions** in the right journal:
   - macOS-only decisions → `implementation_log.md`
   - GTK-only decisions → `gtk_implementation_log.md`
-  - Cross-cutting decisions → log in *both* journals (or pick one and link from the other). The logs are how future-you (and other instances) understand why something is the way it is.
+  - iOS-only decisions → `implementation_ios.md`
+  - Cross-cutting decisions → log in `implementation_log.md` and
+    cross-link from the GTK / iOS logs. The logs are how future-you
+    (and other instances) understand why something is the way it
+    is.

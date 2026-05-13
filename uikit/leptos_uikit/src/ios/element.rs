@@ -8,7 +8,7 @@
 //! them. Direct port of the cocoa pattern in
 //! [`crate::cocoa::element`] — same shape, UIKit-flavoured.
 
-use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
+use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::{
     event_ios::{EventDescriptor, PendingHandler, SupportsEvent},
     Dom,
@@ -19,10 +19,13 @@ use renderer::attrs::{
 use renderer::view::{Mountable, Render};
 use ios_dom::{
     layout::{
-        align_self_to_taffy, dim_to_dimension, schedule_relayout,
-        set_align_self, set_aspect_ratio, set_flex_direction, set_flex_grow,
-        set_gap, set_inset, set_margin, set_padding, update_style,
-        FlexDirection, Position,
+        set_align_content, set_align_items, set_aspect_ratio, set_column_gap,
+        set_flex_direction, set_gap, set_grid_auto_columns, set_grid_auto_flow,
+        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
+        set_inset, set_justify_content, set_justify_items, set_row_gap,
+        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+        GridTemplateComponent, JustifyContent, JustifyItems, Position,
+        TrackSizingFunction,
     },
     BoolAttr, Element as IosElement, StringAttr,
 };
@@ -65,24 +68,10 @@ pub trait WithText: Sized {
     }
 }
 
-/// Apply [`UniversalAttrs`] (alpha) to the live UIView. iOS doesn't
-/// have tooltips (a macOS hover affordance) so `tool_tip` is a
-/// silent no-op here.
-fn apply_universal(
-    el: &IosElement,
-    attrs: UniversalAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(a) = attrs.alpha {
-        let el_for = el.clone();
-        if let Some(eff) = install(a, move |v| el_for.set_alpha(v)) {
-            out.push(eff);
-        }
-    }
-    // tool_tip: iOS has no hover tooltip concept; silently drop.
-    let _ = attrs.tool_tip;
-    out
-}
+// `apply_universal` lives in `renderer::apply_universal`. The
+// `UniversalElement` impl for `IosElement` uses the trait's default
+// no-op for `set_tool_tip` (UIView has no hover-tooltip concept).
+use ios_dom::layout::apply_universal;
 
 /// Apply [`IosText`] (text_color, alignment, font_size) to the live
 /// UIView.
@@ -111,112 +100,9 @@ fn apply_text(el: &IosElement, attrs: IosText) -> Vec<RenderEffect<()>> {
     out
 }
 
-/// Apply [`LayoutAttrs`] (padding, margin, sizing, flex_grow,
-/// align_self) to the underlying Taffy node. Same shape as
-/// `apply_universal` / `apply_text`: returns the `RenderEffect`s for
-/// the caller to stash in the element's State.
-fn apply_layout(
-    el: &IosElement,
-    attrs: LayoutAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(v) = attrs.padding {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |p| {
-            set_padding(e.as_node(), p);
-            schedule_relayout(e.as_node());
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.margin {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |m| {
-            set_margin(e.as_node(), m);
-            schedule_relayout(e.as_node());
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.flex_grow {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |g| {
-            set_flex_grow(e.as_node(), g);
-            schedule_relayout(e.as_node());
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.align_self {
-        let e = el.clone();
-        if let Some(eff) =
-            install(v, move |a| set_align_self(e.as_node(), align_self_to_taffy(a)))
-        {
-            out.push(eff);
-        }
-    }
-    out
-}
+// `apply_layout` lives in `renderer::apply_layout`; the
+// `LayoutElement` impl for `IosElement` is in `ios_dom::layout`.
+use ios_dom::layout::apply_layout;
 
 /// Apply chrome attributes — background color, corner radius,
 /// border width + color. All four sit on the underlying UIView
@@ -306,6 +192,8 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
 pub struct View<Children> {
     flex_direction: Option<FlexDirection>,
     gap: Option<f32>,
+    align_content: Option<MaybeReactive<AlignContent>>,
+    justify_items: Option<MaybeReactive<JustifyItems>>,
     aspect_ratio: Option<f32>,
     position_absolute: bool,
     /// Insets used when `position_absolute`. `None` = `auto`.
@@ -328,6 +216,8 @@ pub fn view() -> View<()> {
     View {
         flex_direction: None,
         gap: None,
+        align_content: None,
+        justify_items: None,
         aspect_ratio: None,
         position_absolute: false,
         inset_top: None,
@@ -353,6 +243,25 @@ impl<Ch> View<Ch> {
     }
     pub fn gap(mut self, g: f32) -> Self {
         self.gap = Some(g);
+        self
+    }
+    /// Cross-axis content distribution when wrap is enabled — same
+    /// as CSS `align-content`. Only meaningful with wrapped flex lines.
+    pub fn align_content<V: IntoMaybeReactive<AlignContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.align_content = Some(v.into_maybe_reactive());
+        self
+    }
+    /// Default cross-axis alignment for items within their flex line
+    /// — same as CSS `justify-items`. Override per child with
+    /// `align_self`.
+    pub fn justify_items<V: IntoMaybeReactive<JustifyItems>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_items = Some(v.into_maybe_reactive());
         self
     }
     /// Aspect ratio (width / height). `1.0` makes the view square,
@@ -423,6 +332,8 @@ impl<Ch> View<Ch> {
         View {
             flex_direction: self.flex_direction,
             gap: self.gap,
+            align_content: self.align_content,
+            justify_items: self.justify_items,
             aspect_ratio: self.aspect_ratio,
             position_absolute: self.position_absolute,
             inset_top: self.inset_top,
@@ -476,6 +387,22 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
         if let Some(g) = self.gap {
             set_gap(el.as_node(), g);
         }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
         if let Some(r) = self.aspect_ratio {
             set_aspect_ratio(el.as_node(), r);
         }
@@ -519,6 +446,311 @@ pub fn vstack() -> View<()> {
 }
 pub fn hstack() -> View<()> {
     view().flex_direction(FlexDirection::Row)
+}
+
+// ---------------------------------------------------------------------
+// grid() — Taffy CSS-Grid container (2-D layout)
+// ---------------------------------------------------------------------
+
+/// CSS-Grid container. Mirrors the cocoa `Grid` shape; differs only
+/// in the UIView-specific chrome attrs (`corner_radius`, `border_*`).
+/// The underlying Taffy node uses `Display::Grid`.
+pub struct Grid<Children> {
+    columns:         Option<Vec<GridTemplateComponent>>,
+    rows:            Option<Vec<GridTemplateComponent>>,
+    auto_columns:    Option<Vec<TrackSizingFunction>>,
+    auto_rows:       Option<Vec<TrackSizingFunction>>,
+    auto_flow:       Option<MaybeReactive<GridAutoFlow>>,
+    column_gap:      Option<MaybeReactive<f32>>,
+    row_gap:         Option<MaybeReactive<f32>>,
+    gap:             Option<MaybeReactive<f32>>,
+    justify_items:   Option<MaybeReactive<JustifyItems>>,
+    align_items:     Option<MaybeReactive<AlignItems>>,
+    justify_content: Option<MaybeReactive<JustifyContent>>,
+    align_content:   Option<MaybeReactive<AlignContent>>,
+
+    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    corner_radius:    Option<MaybeReactive<f64>>,
+    border_width:     Option<MaybeReactive<f64>>,
+    border_color:     Option<MaybeReactive<ios_dom::Color>>,
+    layout:           LayoutAttrs,
+    universal:        UniversalAttrs,
+    handlers:         Vec<PendingHandler>,
+    pending_spreads:  Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    children:         Children,
+}
+
+pub fn grid() -> Grid<()> {
+    Grid {
+        columns: None,
+        rows: None,
+        auto_columns: None,
+        auto_rows: None,
+        auto_flow: None,
+        column_gap: None,
+        row_gap: None,
+        gap: None,
+        justify_items: None,
+        align_items: None,
+        justify_content: None,
+        align_content: None,
+        background_color: None,
+        corner_radius: None,
+        border_width: None,
+        border_color: None,
+        layout: LayoutAttrs::default(),
+        universal: UniversalAttrs::default(),
+        handlers: Vec::new(),
+        pending_spreads: Vec::new(),
+        children: (),
+    }
+}
+
+impl<Ch> Grid<Ch> {
+    pub fn columns(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.columns = Some(t.into());
+        self
+    }
+    pub fn rows(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.rows = Some(t.into());
+        self
+    }
+    pub fn auto_columns(
+        mut self,
+        t: impl Into<Vec<TrackSizingFunction>>,
+    ) -> Self {
+        self.auto_columns = Some(t.into());
+        self
+    }
+    pub fn auto_rows(mut self, t: impl Into<Vec<TrackSizingFunction>>) -> Self {
+        self.auto_rows = Some(t.into());
+        self
+    }
+    pub fn auto_flow<V: IntoMaybeReactive<GridAutoFlow>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.auto_flow = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn column_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.column_gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn row_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.row_gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn justify_items<V: IntoMaybeReactive<JustifyItems>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_items = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn align_items<V: IntoMaybeReactive<AlignItems>>(mut self, v: V) -> Self {
+        self.align_items = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn justify_content<V: IntoMaybeReactive<JustifyContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_content = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn align_content<V: IntoMaybeReactive<AlignContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.align_content = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn background_color<V: IntoMaybeReactive<ios_dom::Color>>(
+        mut self,
+        c: V,
+    ) -> Self {
+        self.background_color = Some(c.into_maybe_reactive());
+        self
+    }
+    pub fn corner_radius<V: IntoMaybeReactive<f64>>(mut self, r: V) -> Self {
+        self.corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+    pub fn border_width<V: IntoMaybeReactive<f64>>(mut self, w: V) -> Self {
+        self.border_width = Some(w.into_maybe_reactive());
+        self
+    }
+    pub fn border_color<V: IntoMaybeReactive<ios_dom::Color>>(
+        mut self,
+        c: V,
+    ) -> Self {
+        self.border_color = Some(c.into_maybe_reactive());
+        self
+    }
+    pub fn child<NewCh>(self, child: NewCh) -> Grid<(Ch, NewCh)> {
+        Grid {
+            columns: self.columns,
+            rows: self.rows,
+            auto_columns: self.auto_columns,
+            auto_rows: self.auto_rows,
+            auto_flow: self.auto_flow,
+            column_gap: self.column_gap,
+            row_gap: self.row_gap,
+            gap: self.gap,
+            justify_items: self.justify_items,
+            align_items: self.align_items,
+            justify_content: self.justify_content,
+            align_content: self.align_content,
+            background_color: self.background_color,
+            corner_radius: self.corner_radius,
+            border_width: self.border_width,
+            border_color: self.border_color,
+            layout: self.layout,
+            universal: self.universal,
+            handlers: self.handlers,
+            pending_spreads: self.pending_spreads,
+            children: (self.children, child),
+        }
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl<Ch> WithLayout for Grid<Ch> {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl<Ch> WithUniversal for Grid<Ch> {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
+
+impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
+    type State = ElementState<(), Ch::State>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("grid");
+        let mut effects = Vec::new();
+
+        if let Some(c) = self.columns {
+            set_grid_template_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.rows {
+            set_grid_template_rows(el.as_node(), r);
+        }
+        if let Some(c) = self.auto_columns {
+            set_grid_auto_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.auto_rows {
+            set_grid_auto_rows(el.as_node(), r);
+        }
+        if let Some(v) = self.auto_flow {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+            {
+                effects.push(eff);
+            }
+        }
+        // Shorthand gap first; per-axis overrides win.
+        if let Some(v) = self.gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.column_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.row_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_items(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_content(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+
+        effects.extend(apply_chrome(
+            &el,
+            self.background_color,
+            self.corner_radius,
+            self.border_width,
+            self.border_color,
+        ));
+        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_universal(&el, self.universal));
+        let child_state = self.children.build();
+        for handler in self.handlers {
+            handler.apply_to(&el);
+        }
+        for f in self.pending_spreads { f(&el); }
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: std::marker::PhantomData,
+            children: child_state,
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
+    fn add_any_attr<__A>(mut self, attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        self.pending_spreads.push(Box::new(move |el: &IosElement| {
+            attr.apply_to(el);
+        }));
+        self
+    }
 }
 
 // ---------------------------------------------------------------------

@@ -29,7 +29,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=8.0>
-                <label>{"Sign in"}</label>
+                <label>"Sign in"</label>
 
                 <text_field
                     bind:value=username
@@ -40,7 +40,7 @@ mod app {
                     placeholder="Password (8+ chars)" />
 
                 <checkbox bind:checked=remember>
-                    {"Remember me on this device"}
+                    "Remember me on this device"
                 </checkbox>
 
                 <button

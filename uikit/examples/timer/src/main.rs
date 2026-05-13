@@ -22,7 +22,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=8.0>
-                <label font_size=20.0>{"Count A (fixed 1000 ms)"}</label>
+                <label font_size=20.0>"Count A (fixed 1000 ms)"</label>
                 <label font_size=32.0>{move || count_a.get().to_string()}</label>
 
                 <label font_size=20.0>{move || format!(
@@ -38,7 +38,7 @@ mod app {
                 // awkward on iOS where dismissing the keyboard isn't
                 // discoverable; the stepper is instant.
                 <hstack gap=12.0>
-                    <label flex_grow=1.0>{"Interval (ms)"}</label>
+                    <label flex_grow=1.0>"Interval (ms)"</label>
                     <stepper
                         bind:value=(
                             move || interval.get() as f64,

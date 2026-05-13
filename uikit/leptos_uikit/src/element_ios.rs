@@ -6,14 +6,18 @@
 #![allow(missing_docs)]
 
 pub use crate::ios::element::{
-    button, date_picker, hstack, image_view, label, progress_indicator,
+    button, date_picker, grid, hstack, image_view, label, progress_indicator,
     scroll_view, secure_text_field, segmented_control, slider, stepper,
-    switch_, text_field, text_view, vstack,
+    text_field, text_view, view, vstack,
 };
 
 // `<div>` aliases the generic UIView container.
 pub use crate::ios::element::view as div;
 
-// Note: `<view>` itself is special-cased in the macro as an SVG
-// element, routed through `tachys::svg::view`. The iOS facade for
-// `tachys::svg` re-routes to our UIView builder.
+/// `<switch>` element — `switch` is a Rust keyword, so the macro
+/// emits a raw identifier (`tachys::html::element::r#switch()`).
+/// Delegates to the `switch_()` builder, which can't use the bare
+/// name for the same reason.
+pub fn r#switch() -> crate::ios::element::Switch {
+    crate::ios::element::switch_()
+}

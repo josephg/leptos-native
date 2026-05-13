@@ -6,7 +6,7 @@
 //! signal-driven values), recursively builds children, and mounts
 //! them.
 
-use super::attr::{install, Dim, IntoMaybeReactive, MaybeReactive};
+use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use renderer::attrs::{
     LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
@@ -14,11 +14,13 @@ use renderer::view::{Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
     layout::{
-        align_self_to_taffy, dim_to_dimension, schedule_relayout, set_align_items,
-        set_align_self, set_background_color, set_clip, set_flex_basis,
-        set_flex_direction, set_flex_grow, set_flex_shrink, set_flex_wrap,
-        set_gap, set_justify_content, set_margin, set_padding, update_style,
-        AlignItems, FlexDirection, FlexWrap, JustifyContent,
+        set_align_content, set_align_items, set_background_color, set_clip,
+        set_column_gap, set_flex_basis, set_flex_direction, set_flex_shrink,
+        set_flex_wrap, set_gap, set_grid_auto_columns, set_grid_auto_flow,
+        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
+        set_justify_content, set_justify_items, set_row_gap, AlignContent,
+        AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
+        GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
     },
     BoolAttr, Color, Element as CocoaElement, StringAttr,
 };
@@ -61,26 +63,10 @@ pub trait WithText: Sized {
     }
 }
 
-/// Apply [`UniversalAttrs`] (alpha, tool_tip) to the live NSView.
-fn apply_universal(
-    el: &CocoaElement,
-    attrs: UniversalAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(a) = attrs.alpha {
-        let el_for = el.clone();
-        if let Some(eff) = install(a, move |v| el_for.set_alpha(v)) {
-            out.push(eff);
-        }
-    }
-    if let Some(t) = attrs.tool_tip {
-        let el_for = el.clone();
-        if let Some(eff) = install(t, move |s| el_for.set_tool_tip(&s)) {
-            out.push(eff);
-        }
-    }
-    out
-}
+// `apply_universal` and `apply_layout` live in `renderer`. The
+// `UniversalElement` / `LayoutElement` impls for `CocoaElement` live
+// in `cocoa_dom` (orphan rule).
+use renderer::apply_universal;
 
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
@@ -110,103 +96,7 @@ fn apply_text(el: &CocoaElement, attrs: CocoaText) -> Vec<RenderEffect<()>> {
     out
 }
 
-/// Apply [`LayoutAttrs`] (padding, margin, sizing, flex_grow,
-/// align_self) to the underlying Taffy node. Same shape as
-/// `apply_universal` / `apply_text`: returns the `RenderEffect`s for
-/// the caller to stash in the element's State.
-fn apply_layout(
-    el: &CocoaElement,
-    attrs: LayoutAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(v) = attrs.padding {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.margin {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |m| set_margin(e.as_node(), m)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.flex_grow {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.align_self {
-        let e = el.clone();
-        if let Some(eff) =
-            install(v, move |a| set_align_self(e.as_node(), align_self_to_taffy(a)))
-        {
-            out.push(eff);
-        }
-    }
-    out
-}
+use renderer::apply_layout;
 
 // ---------------------------------------------------------------------
 // Generic State machinery
@@ -308,6 +198,8 @@ pub struct Stack<Children> {
     gap:              Option<MaybeReactive<f32>>,
     justify_content:  Option<MaybeReactive<JustifyContent>>,
     align:            Option<MaybeReactive<AlignItems>>,
+    align_content:    Option<MaybeReactive<AlignContent>>,
+    justify_items:    Option<MaybeReactive<JustifyItems>>,
     wrap:             Option<MaybeReactive<FlexWrap>>,
     shrink:           Option<MaybeReactive<f32>>,
     basis:            Option<MaybeReactive<f32>>,
@@ -324,6 +216,8 @@ fn empty_stack() -> Stack<()> {
         gap: None,
         justify_content: None,
         align: None,
+        align_content: None,
+        justify_items: None,
         wrap: None,
         shrink: None,
         basis: None,
@@ -362,9 +256,9 @@ pub fn stack_view() -> Stack<()> {
     vstack()
 }
 
-/// Legacy alias of `stack()` (default Column). Preserved because the
-/// leptos `view!{}` macro emits `<view>` through its SVG-tag path
-/// (`tachys::svg::view`).
+/// Generic flexbox container — direction defaults to Column. Same
+/// as `stack()`; kept under the `<view>` tag name for parity with
+/// the iOS / GTK ports' element vocabularies.
 pub fn view() -> Stack<()> {
     empty_stack()
 }
@@ -407,6 +301,29 @@ impl<Ch> Stack<Ch> {
         V: IntoMaybeReactive<FlexWrap>,
     {
         self.wrap = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Cross-axis content distribution when the children's total cross
+    /// extent is less than the container's — same as CSS `align-content`.
+    /// Only meaningful when `wrap` is enabled and lines exist on the
+    /// cross axis.
+    pub fn align_content<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<AlignContent>,
+    {
+        self.align_content = Some(a.into_maybe_reactive());
+        self
+    }
+
+    /// Default cross-axis alignment for items within their flex line
+    /// — same as CSS `justify-items`. Overridable per-child via
+    /// `align_self`.
+    pub fn justify_items<V>(mut self, j: V) -> Self
+    where
+        V: IntoMaybeReactive<JustifyItems>,
+    {
+        self.justify_items = Some(j.into_maybe_reactive());
         self
     }
 
@@ -453,6 +370,8 @@ impl<Ch> Stack<Ch> {
             gap: self.gap,
             justify_content: self.justify_content,
             align: self.align,
+            align_content: self.align_content,
+            justify_items: self.justify_items,
             wrap: self.wrap,
             shrink: self.shrink,
             basis: self.basis,
@@ -525,6 +444,22 @@ where
                 effects.push(eff);
             }
         }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
         if let Some(v) = self.background_color {
             let e = el.clone();
@@ -562,13 +497,29 @@ where
 }
 
 // ---------------------------------------------------------------------
-// block() — Taffy block_layout container (vertical document flow)
+// grid() — Taffy CSS-Grid container (2-D layout)
 // ---------------------------------------------------------------------
 
-#[cfg(feature = "block_layout")]
-pub struct Block<Children> {
-    shrink:           Option<MaybeReactive<f32>>,
-    basis:            Option<MaybeReactive<f32>>,
+/// CSS-Grid container. Mirrors the `Stack` builder shape, but the
+/// underlying Taffy node uses `Display::Grid`. Template-track lists,
+/// implicit-track sizing, auto-flow, axis-specific gaps, and item-
+/// alignment are configurable; per-cell placement is set via
+/// `grid_column*` / `grid_row*` methods on the child elements (see
+/// `WithLayout` in `renderer::attrs`).
+pub struct Grid<Children> {
+    columns:         Option<Vec<GridTemplateComponent>>,
+    rows:            Option<Vec<GridTemplateComponent>>,
+    auto_columns:    Option<Vec<TrackSizingFunction>>,
+    auto_rows:       Option<Vec<TrackSizingFunction>>,
+    auto_flow:       Option<MaybeReactive<GridAutoFlow>>,
+    column_gap:      Option<MaybeReactive<f32>>,
+    row_gap:         Option<MaybeReactive<f32>>,
+    gap:             Option<MaybeReactive<f32>>,
+    justify_items:   Option<MaybeReactive<JustifyItems>>,
+    align_items:     Option<MaybeReactive<AlignItems>>,
+    justify_content: Option<MaybeReactive<JustifyContent>>,
+    align_content:   Option<MaybeReactive<AlignContent>>,
+
     background_color: Option<MaybeReactive<Color>>,
     clip:             Option<MaybeReactive<bool>>,
     layout:           LayoutAttrs,
@@ -576,11 +527,23 @@ pub struct Block<Children> {
     children:         Children,
 }
 
-#[cfg(feature = "block_layout")]
-pub fn block() -> Block<()> {
-    Block {
-        shrink: None,
-        basis: None,
+/// Empty CSS-Grid container. Configure tracks via `.columns(...)` /
+/// `.rows(...)`; place children via `.grid_column(...)` /
+/// `.grid_row(...)` on each child.
+pub fn grid() -> Grid<()> {
+    Grid {
+        columns: None,
+        rows: None,
+        auto_columns: None,
+        auto_rows: None,
+        auto_flow: None,
+        column_gap: None,
+        row_gap: None,
+        gap: None,
+        justify_items: None,
+        align_items: None,
+        justify_content: None,
+        align_content: None,
         background_color: None,
         clip: None,
         layout: LayoutAttrs::default(),
@@ -589,22 +552,90 @@ pub fn block() -> Block<()> {
     }
 }
 
-#[cfg(feature = "block_layout")]
-impl<Ch> Block<Ch> {
-    pub fn shrink<V>(mut self, s: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.shrink = Some(s.into_maybe_reactive());
+impl<Ch> Grid<Ch> {
+    /// `grid-template-columns` — explicit track list. Takes anything
+    /// that converts into `Vec<GridTemplateComponent>` (e.g.
+    /// `[fr(1.0), fr(2.0), auto()]`).
+    pub fn columns(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.columns = Some(t.into());
         self
     }
-    pub fn basis<V>(mut self, b: V) -> Self
-    where
-        V: IntoMaybeReactive<f32>,
-    {
-        self.basis = Some(b.into_maybe_reactive());
+
+    /// `grid-template-rows`.
+    pub fn rows(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.rows = Some(t.into());
         self
     }
+
+    /// `grid-auto-columns` — sizing for implicit columns (used when
+    /// children overflow the explicit `columns` list).
+    pub fn auto_columns(
+        mut self,
+        t: impl Into<Vec<TrackSizingFunction>>,
+    ) -> Self {
+        self.auto_columns = Some(t.into());
+        self
+    }
+
+    /// `grid-auto-rows`.
+    pub fn auto_rows(mut self, t: impl Into<Vec<TrackSizingFunction>>) -> Self {
+        self.auto_rows = Some(t.into());
+        self
+    }
+
+    /// `grid-auto-flow` — Row / Column / RowDense / ColumnDense.
+    pub fn auto_flow<V: IntoMaybeReactive<GridAutoFlow>>(mut self, v: V) -> Self {
+        self.auto_flow = Some(v.into_maybe_reactive());
+        self
+    }
+
+    /// CSS `gap` shorthand — sets both `column_gap` and `row_gap` to
+    /// the same value. Per-axis overrides win if also set.
+    pub fn gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.gap = Some(g.into_maybe_reactive());
+        self
+    }
+
+    pub fn column_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.column_gap = Some(g.into_maybe_reactive());
+        self
+    }
+
+    pub fn row_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.row_gap = Some(g.into_maybe_reactive());
+        self
+    }
+
+    pub fn justify_items<V: IntoMaybeReactive<JustifyItems>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_items = Some(v.into_maybe_reactive());
+        self
+    }
+
+    pub fn align_items<V: IntoMaybeReactive<AlignItems>>(mut self, v: V) -> Self {
+        self.align_items = Some(v.into_maybe_reactive());
+        self
+    }
+
+    pub fn justify_content<V: IntoMaybeReactive<JustifyContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_content = Some(v.into_maybe_reactive());
+        self
+    }
+
+    pub fn align_content<V: IntoMaybeReactive<AlignContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.align_content = Some(v.into_maybe_reactive());
+        self
+    }
+
+    /// Layer-backed background fill.
     pub fn background_color<V>(mut self, c: V) -> Self
     where
         V: IntoMaybeReactive<Color>,
@@ -612,7 +643,9 @@ impl<Ch> Block<Ch> {
         self.background_color = Some(c.into_maybe_reactive());
         self
     }
-    /// CSS `overflow: hidden` equivalent — see [`Stack::clip`].
+
+    /// CSS `overflow: hidden` — children outside the grid's frame are
+    /// clipped at draw time.
     pub fn clip<V>(mut self, c: V) -> Self
     where
         V: IntoMaybeReactive<bool>,
@@ -621,10 +654,20 @@ impl<Ch> Block<Ch> {
         self
     }
 
-    pub fn child<NewCh>(self, child: NewCh) -> Block<(Ch, NewCh)> {
-        Block {
-            shrink: self.shrink,
-            basis: self.basis,
+    pub fn child<NewCh>(self, child: NewCh) -> Grid<(Ch, NewCh)> {
+        Grid {
+            columns: self.columns,
+            rows: self.rows,
+            auto_columns: self.auto_columns,
+            auto_rows: self.auto_rows,
+            auto_flow: self.auto_flow,
+            column_gap: self.column_gap,
+            row_gap: self.row_gap,
+            gap: self.gap,
+            justify_items: self.justify_items,
+            align_items: self.align_items,
+            justify_content: self.justify_content,
+            align_content: self.align_content,
             background_color: self.background_color,
             clip: self.clip,
             layout: self.layout,
@@ -634,28 +677,102 @@ impl<Ch> Block<Ch> {
     }
 }
 
-#[cfg(feature = "block_layout")]
-impl<Ch> WithLayout for Block<Ch> {
+impl<Ch> WithLayout for Grid<Ch> {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
 }
 
-#[cfg(feature = "block_layout")]
-impl<Ch> WithUniversal for Block<Ch> {
+impl<Ch> WithUniversal for Grid<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-#[cfg(feature = "block_layout")]
-impl<Ch> Render<Dom> for Block<Ch>
+impl<Ch> Render<Dom> for Grid<Ch>
 where
     Ch: Render<Dom>,
 {
     type State = ElementState<(), Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = CocoaElement::create("block");
+        let el = CocoaElement::create("grid");
         let mut effects = Vec::new();
 
-        effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
+        // Static template-track lists go straight onto the node (no
+        // reactive wrapper — animating the track shape is a v2 thing).
+        if let Some(c) = self.columns {
+            set_grid_template_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.rows {
+            set_grid_template_rows(el.as_node(), r);
+        }
+        if let Some(c) = self.auto_columns {
+            set_grid_auto_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.auto_rows {
+            set_grid_auto_rows(el.as_node(), r);
+        }
+
+        if let Some(v) = self.auto_flow {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+            {
+                effects.push(eff);
+            }
+        }
+
+        // Apply shorthand `gap` first so per-axis overrides win.
+        if let Some(v) = self.gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.column_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.row_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_items(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_content(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+
         if let Some(v) = self.background_color {
             let e = el.clone();
             if let Some(eff) =
@@ -670,10 +787,12 @@ where
                 effects.push(eff);
             }
         }
+
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
 
         let child_state = self.children.build();
+
         ElementState {
             el,
             _effects: effects,
@@ -3334,15 +3453,14 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
     }
 }
 
-#[cfg(feature = "block_layout")]
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Block<Children> {
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
         panic!(
-            "AddAnyAttr<Dom>::add_any_attr on Block. Same limitation              as Stack — see Stack's panic message."
+            "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
         )
     }
 }

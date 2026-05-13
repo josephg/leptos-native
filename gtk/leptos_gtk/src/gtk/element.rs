@@ -10,138 +10,26 @@ use super::node_ref::NodeRef;
 use crate::Dom;
 use gtk_dom::{
     layout::{
-        align_self_to_taffy, dim_to_dimension, schedule_relayout,
-        set_align_items, set_align_self, set_flex_basis, set_flex_direction,
-        set_flex_grow, set_flex_shrink, set_flex_wrap, set_gap,
-        set_justify_content, set_margin, set_padding, update_style,
-        AlignItems, FlexDirection, FlexWrap, JustifyContent,
+        set_align_content, set_align_items, set_column_gap, set_flex_basis,
+        set_flex_direction, set_flex_shrink, set_flex_wrap, set_gap,
+        set_grid_auto_columns, set_grid_auto_flow, set_grid_auto_rows,
+        set_grid_template_columns, set_grid_template_rows, set_justify_content,
+        set_justify_items, set_row_gap, AlignContent, AlignItems, FlexDirection,
+        FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
+        JustifyItems, TrackSizingFunction,
     },
     BoolAttr, Element as GtkElement, StringAttr,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
-    Dim, LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
+    LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
 use renderer::view::{Mountable, Render};
 
-/// Apply [`UniversalAttrs`] (alpha, tool_tip) to the live GTK widget.
-fn apply_universal(
-    el: &GtkElement,
-    attrs: UniversalAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(a) = attrs.alpha {
-        let el_for = el.clone();
-        if let Some(eff) = install(a, move |v| el_for.set_alpha(v)) {
-            out.push(eff);
-        }
-    }
-    if let Some(t) = attrs.tool_tip {
-        let el_for = el.clone();
-        if let Some(eff) = install(t, move |s| el_for.set_tool_tip(&s)) {
-            out.push(eff);
-        }
-    }
-    out
-}
-
-/// Apply [`LayoutAttrs`] (padding, margin, sizing, flex_grow,
-/// align_self) to the underlying Taffy node. Same shape as the cocoa
-/// port: returns the `RenderEffect`s for the caller to stash in the
-/// element's State.
-fn apply_layout(
-    el: &GtkElement,
-    attrs: LayoutAttrs,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(v) = attrs.padding {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |p| set_padding(e.as_node(), p)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.margin {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |m| set_margin(e.as_node(), m)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.min_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.min_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_width {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.width = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.max_height {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |d: Dim| {
-            let n = e.as_node();
-            update_style(n, |s| s.max_size.height = dim_to_dimension(d));
-            schedule_relayout(n);
-        }) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.flex_grow {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |g| set_flex_grow(e.as_node(), g)) {
-            out.push(eff);
-        }
-    }
-    if let Some(v) = attrs.align_self {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |a| {
-            set_align_self(e.as_node(), align_self_to_taffy(a))
-        }) {
-            out.push(eff);
-        }
-    }
-    out
-}
+// `apply_layout` / `apply_universal` live in `renderer`. The
+// `LayoutElement` / `UniversalElement` impls for `GtkElement` are in
+// `gtk_dom::layout` (orphan rule).
+use gtk_dom::layout::{apply_layout, apply_universal};
 
 // ---------------------------------------------------------------------
 // Generic State machinery
@@ -235,6 +123,8 @@ pub struct Stack<Children> {
     gap: Option<MaybeReactive<f32>>,
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align: Option<MaybeReactive<AlignItems>>,
+    align_content: Option<MaybeReactive<AlignContent>>,
+    justify_items: Option<MaybeReactive<JustifyItems>>,
     wrap: Option<MaybeReactive<FlexWrap>>,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
@@ -249,6 +139,8 @@ fn empty_stack() -> Stack<()> {
         gap: None,
         justify_content: None,
         align: None,
+        align_content: None,
+        justify_items: None,
         wrap: None,
         shrink: None,
         basis: None,
@@ -325,6 +217,22 @@ impl<Ch> Stack<Ch> {
         self
     }
 
+    pub fn align_content<V>(mut self, a: V) -> Self
+    where
+        V: IntoMaybeReactive<AlignContent>,
+    {
+        self.align_content = Some(a.into_maybe_reactive());
+        self
+    }
+
+    pub fn justify_items<V>(mut self, j: V) -> Self
+    where
+        V: IntoMaybeReactive<JustifyItems>,
+    {
+        self.justify_items = Some(j.into_maybe_reactive());
+        self
+    }
+
     pub fn shrink<V>(mut self, s: V) -> Self
     where
         V: IntoMaybeReactive<f32>,
@@ -347,6 +255,8 @@ impl<Ch> Stack<Ch> {
             gap: self.gap,
             justify_content: self.justify_content,
             align: self.align,
+            align_content: self.align_content,
+            justify_items: self.justify_items,
             wrap: self.wrap,
             shrink: self.shrink,
             basis: self.basis,
@@ -416,6 +326,22 @@ where
                 effects.push(eff);
             }
         }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
         effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
@@ -423,6 +349,241 @@ where
         // Build children but DON'T mount them yet — same cascade
         // pattern as the cocoa port. Mounting is deferred until
         // ElementState::mount runs (when self.el has joined a tree).
+        let child_state = self.children.build();
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: std::marker::PhantomData,
+            children: child_state,
+        }
+    }
+
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
+// grid() — Taffy CSS-Grid container (2-D layout)
+// ---------------------------------------------------------------------
+
+/// CSS-Grid container. Mirrors the cocoa `Grid` shape exactly. The
+/// underlying GTK widget is still a `gtk::Box` — Taffy assigns final
+/// frames to each child, so the widget class doesn't matter.
+pub struct Grid<Children> {
+    columns:         Option<Vec<GridTemplateComponent>>,
+    rows:            Option<Vec<GridTemplateComponent>>,
+    auto_columns:    Option<Vec<TrackSizingFunction>>,
+    auto_rows:       Option<Vec<TrackSizingFunction>>,
+    auto_flow:       Option<MaybeReactive<GridAutoFlow>>,
+    column_gap:      Option<MaybeReactive<f32>>,
+    row_gap:         Option<MaybeReactive<f32>>,
+    gap:             Option<MaybeReactive<f32>>,
+    justify_items:   Option<MaybeReactive<JustifyItems>>,
+    align_items:     Option<MaybeReactive<AlignItems>>,
+    justify_content: Option<MaybeReactive<JustifyContent>>,
+    align_content:   Option<MaybeReactive<AlignContent>>,
+    layout:          LayoutAttrs,
+    universal:       UniversalAttrs,
+    children:        Children,
+}
+
+pub fn grid() -> Grid<()> {
+    Grid {
+        columns: None,
+        rows: None,
+        auto_columns: None,
+        auto_rows: None,
+        auto_flow: None,
+        column_gap: None,
+        row_gap: None,
+        gap: None,
+        justify_items: None,
+        align_items: None,
+        justify_content: None,
+        align_content: None,
+        layout: LayoutAttrs::default(),
+        universal: UniversalAttrs::default(),
+        children: (),
+    }
+}
+
+impl<Ch> Grid<Ch> {
+    pub fn columns(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.columns = Some(t.into());
+        self
+    }
+    pub fn rows(mut self, t: impl Into<Vec<GridTemplateComponent>>) -> Self {
+        self.rows = Some(t.into());
+        self
+    }
+    pub fn auto_columns(
+        mut self,
+        t: impl Into<Vec<TrackSizingFunction>>,
+    ) -> Self {
+        self.auto_columns = Some(t.into());
+        self
+    }
+    pub fn auto_rows(mut self, t: impl Into<Vec<TrackSizingFunction>>) -> Self {
+        self.auto_rows = Some(t.into());
+        self
+    }
+    pub fn auto_flow<V: IntoMaybeReactive<GridAutoFlow>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.auto_flow = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn column_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.column_gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn row_gap<V: IntoMaybeReactive<f32>>(mut self, g: V) -> Self {
+        self.row_gap = Some(g.into_maybe_reactive());
+        self
+    }
+    pub fn justify_items<V: IntoMaybeReactive<JustifyItems>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_items = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn align_items<V: IntoMaybeReactive<AlignItems>>(mut self, v: V) -> Self {
+        self.align_items = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn justify_content<V: IntoMaybeReactive<JustifyContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.justify_content = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn align_content<V: IntoMaybeReactive<AlignContent>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.align_content = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn child<NewCh>(self, child: NewCh) -> Grid<(Ch, NewCh)> {
+        Grid {
+            columns: self.columns,
+            rows: self.rows,
+            auto_columns: self.auto_columns,
+            auto_rows: self.auto_rows,
+            auto_flow: self.auto_flow,
+            column_gap: self.column_gap,
+            row_gap: self.row_gap,
+            gap: self.gap,
+            justify_items: self.justify_items,
+            align_items: self.align_items,
+            justify_content: self.justify_content,
+            align_content: self.align_content,
+            layout: self.layout,
+            universal: self.universal,
+            children: (self.children, child),
+        }
+    }
+}
+
+impl<Ch> WithLayout for Grid<Ch> {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+
+impl<Ch> WithUniversal for Grid<Ch> {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl<Ch> Render<Dom> for Grid<Ch>
+where
+    Ch: Render<Dom>,
+{
+    type State = ElementState<(), Ch::State>;
+
+    fn build(self) -> Self::State {
+        let el = GtkElement::create("grid");
+        let mut effects = Vec::new();
+
+        if let Some(c) = self.columns {
+            set_grid_template_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.rows {
+            set_grid_template_rows(el.as_node(), r);
+        }
+        if let Some(c) = self.auto_columns {
+            set_grid_auto_columns(el.as_node(), c);
+        }
+        if let Some(r) = self.auto_rows {
+            set_grid_auto_rows(el.as_node(), r);
+        }
+        if let Some(v) = self.auto_flow {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.column_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.row_gap {
+            let e = el.clone();
+            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_items(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_items {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_items(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.justify_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |j| set_justify_content(e.as_node(), j))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(v) = self.align_content {
+            let e = el.clone();
+            if let Some(eff) =
+                install(v, move |a| set_align_content(e.as_node(), a))
+            {
+                effects.push(eff);
+            }
+        }
+        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_universal(&el, self.universal));
+
         let child_state = self.children.build();
 
         ElementState {
@@ -1357,6 +1518,20 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
              stack_view). Containers have no signal target — click \
              and other events have no install path. Attach to a \
              child button/label/text_field instead."
+        )
+    }
+}
+
+impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
+    #[track_caller]
+    fn add_any_attr<__A>(self, _attr: __A) -> Self
+    where
+        __A: renderer::view::ApplyAttr<crate::Dom>,
+    {
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no \
+             signal target — click and other events have no install \
+             path. Attach to a child button/label/text_field instead."
         )
     }
 }

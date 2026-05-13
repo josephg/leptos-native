@@ -643,15 +643,16 @@ impl Element {
                 };
                 (v, Style::default())
             }
-            #[cfg(feature = "block_layout")]
-            "block" => {
-                // Block-layout container — children stack vertically and
-                // fill container width by default.
+            "grid" => {
+                // 2-D grid container backed by Taffy's grid algorithm.
+                // Template tracks / gap / placement attrs are applied
+                // by the higher-level builder; this just establishes
+                // the container.
                 let v: Retained<NSView> = unsafe {
                     Retained::cast_unchecked(FlippedView::new(mtm))
                 };
                 let mut s = Style::default();
-                s.display = crate::layout::Display::Block;
+                s.display = crate::layout::Display::Grid;
                 (v, s)
             }
             // "view" or anything unknown → generic flipped container

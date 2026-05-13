@@ -43,7 +43,7 @@ fn App() -> impl IntoView {
 
     view! {
         <vstack padding=16.0 gap=8.0>
-            <label>{"Cat fact of the moment:"}</label>
+            <label>"Cat fact of the moment:"</label>
             <label>{move || {
                 fact.get().map_or_else(
                     || "Loading…".to_string(),

@@ -22,7 +22,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=12.0>
-                <label>{"Newsletter signup"}</label>
+                <label>"Newsletter signup"</label>
 
                 <text_field
                     bind:value=email
@@ -40,7 +40,7 @@ mod app {
                 )}</label>
 
                 <checkbox bind:checked=subscribe>
-                    {"Subscribe to weekly updates"}
+                    "Subscribe to weekly updates"
                 </checkbox>
 
                 <label>{move || {

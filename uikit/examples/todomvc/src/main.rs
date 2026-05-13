@@ -111,7 +111,7 @@ mod app {
 
         view! {
             <vstack padding=20.0 gap=12.0>
-                <label font_size=28.0>{"todos"}</label>
+                <label font_size=28.0>"todos"</label>
 
                 <hstack gap=8.0>
                     <text_field

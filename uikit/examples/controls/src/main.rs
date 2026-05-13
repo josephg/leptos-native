@@ -65,30 +65,30 @@ mod app {
                         border_width=1.5
                         border_color=Color::SYSTEM_BLUE>
                         <label text_color=Color::SYSTEM_BACKGROUND>
-                            {"Sync pellet"}
+                            "Sync pellet"
                         </label>
                         <label
                             font_size=12.0
                             text_color=Color::SYSTEM_BACKGROUND>
-                            {"12 unsynced photos · tap to sync"}
+                            "12 unsynced photos · tap to sync"
                         </label>
                     </vstack>
 
                     // text fields
-                    <label>{"Name"}</label>
+                    <label>"Name"</label>
                     <text_field bind:value=name placeholder="Enter your name" />
                     <label>{move || format!("Hello, {}!", {
                         let n = name.get();
                         if n.is_empty() { "stranger".to_string() } else { n }
                     })}</label>
 
-                    <label>{"Password"}</label>
+                    <label>"Password"</label>
                     <secure_text_field bind:value=password placeholder="••••••" />
                     <label>{move || format!("Password length: {}", password.get().len())}</label>
 
                     // switch
                     <hstack gap=12.0>
-                        <label flex_grow=1.0>{"Notifications"}</label>
+                        <label flex_grow=1.0>"Notifications"</label>
                         <switch bind:checked=notifications />
                     </hstack>
 
@@ -104,7 +104,7 @@ mod app {
                     </hstack>
 
                     // segmented control
-                    <label>{"Pick a style"}</label>
+                    <label>"Pick a style"</label>
                     <segmented_control
                         items=vec!["Cozy", "Standard", "Spacious"]
                         bind:selection=style_idx
@@ -116,7 +116,7 @@ mod app {
                     })}</label>
 
                     // multi-line text view
-                    <label>{"Notes"}</label>
+                    <label>"Notes"</label>
                     <text_view bind:value=notes />
                     <label>{move || format!("{} chars", notes.get().len())}</label>
 

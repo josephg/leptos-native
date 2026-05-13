@@ -1,6 +1,6 @@
 //! GTK-side layout adapter.
 //!
-//! Tree storage and Taffy integration live in [`native_layout`];
+//! Tree storage and Taffy integration live in [`renderer`];
 //! this file plugs GTK-specific types into it via [`GtkBackend`].
 //! The shape mirrors `cocoa_dom::layout`: per-element wrappers
 //! ([`register_in_tree`], [`attach_child`], the `set_*` setters)
@@ -17,12 +17,13 @@
 use crate::node::Node;
 use gtk4::prelude::*;
 
-pub use native_layout::{
-    AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
-    JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
-    Position, Rect, Size, Style,
+pub use renderer::{
+    AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
+    FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
+    JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
+    Position, Rect, Size, Style, TrackSizingFunction,
 };
-use native_layout::LayoutBackend;
+use renderer::LayoutBackend;
 
 // ---------------------------------------------------------------------
 // GTK backend
@@ -61,11 +62,11 @@ impl LayoutBackend for GtkBackend {
 }
 
 // Aliases so call sites don't have to spell `GtkBackend` everywhere.
-pub type LayoutTree = native_layout::LayoutTree<GtkBackend>;
-pub type TreeRef = native_layout::TreeRef<GtkBackend>;
-pub type LayoutHandle = native_layout::LayoutHandle<GtkBackend>;
-pub type NodeLayout = native_layout::NodeLayout<GtkBackend>;
-pub type NodeContext = native_layout::NodeContext<GtkBackend>;
+pub type LayoutTree = renderer::LayoutTree<GtkBackend>;
+pub type TreeRef = renderer::TreeRef<GtkBackend>;
+pub type LayoutHandle = renderer::LayoutHandle<GtkBackend>;
+pub type NodeLayout = renderer::NodeLayout<GtkBackend>;
+pub type NodeContext = renderer::NodeContext<GtkBackend>;
 
 pub fn new_tree() -> TreeRef {
     LayoutTree::new()
@@ -198,135 +199,46 @@ pub fn schedule_relayout(node: &Node) {
 }
 
 // ---------------------------------------------------------------------
-// Convenience setters
+// Generic style setters — lifted to `renderer::setters`. See the
+// cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-pub fn set_width(node: &Node, width_px: f32) {
-    update_style(node, |s| s.size.width = Dimension::length(width_px));
-    schedule_relayout(node);
-}
-
-pub fn set_height(node: &Node, height_px: f32) {
-    update_style(node, |s| s.size.height = Dimension::length(height_px));
-    schedule_relayout(node);
-}
-
-pub fn set_min_width(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_max_width(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_min_height(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_max_height(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
-    update_style(node, |s| s.flex_direction = dir);
-    schedule_relayout(node);
-}
-
-pub fn set_padding(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.padding = Rect {
-            left: LengthPercentage::length(all_px),
-            right: LengthPercentage::length(all_px),
-            top: LengthPercentage::length(all_px),
-            bottom: LengthPercentage::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_gap(node: &Node, gap_px: f32) {
-    update_style(node, |s| {
-        s.gap = Size {
-            width: LengthPercentage::length(gap_px),
-            height: LengthPercentage::length(gap_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_justify_content(node: &Node, jc: JustifyContent) {
-    update_style(node, |s| s.justify_content = Some(jc));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_grow(node: &Node, grow: f32) {
-    update_style(node, |s| s.flex_grow = grow);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_shrink(node: &Node, shrink: f32) {
-    update_style(node, |s| s.flex_shrink = shrink);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_basis(node: &Node, basis_px: f32) {
-    update_style(node, |s| s.flex_basis = Dimension::length(basis_px));
-    schedule_relayout(node);
-}
-
-pub fn set_align_items(node: &Node, ai: AlignItems) {
-    update_style(node, |s| s.align_items = Some(ai));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
-    update_style(node, |s| s.flex_wrap = fw);
-    schedule_relayout(node);
-}
-
-pub fn set_margin(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.margin = Rect {
-            left: LengthPercentageAuto::length(all_px),
-            right: LengthPercentageAuto::length(all_px),
-            top: LengthPercentageAuto::length(all_px),
-            bottom: LengthPercentageAuto::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
-    update_style(node, |s| s.align_self = ai);
-    schedule_relayout(node);
-}
-
-pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
-    use renderer::attrs::Dim;
-    match d {
-        Dim::Px(v) => Dimension::length(v),
-        Dim::Pct(v) => Dimension::percent(v),
-        Dim::Auto => Dimension::auto(),
+impl renderer::LayoutNodeOps for Node {
+    fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
+        update_style(self, f);
+    }
+    fn schedule_relayout(&self) {
+        schedule_relayout(self);
     }
 }
 
-pub fn align_self_to_taffy(
-    a: renderer::attrs::AlignSelf,
-) -> Option<AlignItems> {
-    use renderer::attrs::AlignSelf;
-    match a {
-        AlignSelf::Auto => None,
-        AlignSelf::Start => Some(AlignItems::FlexStart),
-        AlignSelf::End => Some(AlignItems::FlexEnd),
-        AlignSelf::Center => Some(AlignItems::Center),
-        AlignSelf::Stretch => Some(AlignItems::Stretch),
-        AlignSelf::Baseline => Some(AlignItems::Baseline),
+impl renderer::LayoutElement for crate::node::Element {
+    type Node = Node;
+    fn as_node(&self) -> &Self::Node {
+        crate::node::Element::as_node(self)
     }
 }
+impl renderer::UniversalElement for crate::node::Element {
+    fn set_alpha(&self, alpha: f64) {
+        crate::node::Element::set_alpha(self, alpha)
+    }
+    fn set_tool_tip(&self, tip: &str) {
+        crate::node::Element::set_tool_tip(self, tip)
+    }
+}
+
+pub use renderer::{
+    align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
+    grid_line_to_placement, set_align_content, set_align_items, set_align_self,
+    set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,
+    set_flex_shrink, set_flex_wrap, set_gap, set_grid_auto_columns,
+    set_grid_auto_flow, set_grid_auto_rows, set_grid_column_end,
+    set_grid_column_start, set_grid_row_end, set_grid_row_start,
+    set_grid_template_columns, set_grid_template_rows, set_height,
+    set_justify_content, set_justify_items, set_margin, set_max_height,
+    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
+    set_width,
+};
 
 // ---------------------------------------------------------------------
 // compute_layout (test helper)

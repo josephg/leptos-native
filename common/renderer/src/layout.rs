@@ -43,21 +43,45 @@ use std::{
 };
 
 pub use taffy::{
-    AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
-    JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
-    Point, Position, Rect, Size, Style,
-};
-#[cfg(feature = "block_layout")]
-pub use taffy::Display;
-use taffy::{
-    compute_cached_layout, compute_flexbox_layout, compute_hidden_layout,
-    compute_leaf_layout, compute_root_layout, round_layout, Cache, CacheTree,
-    Display as TaffyDisplay, LayoutFlexboxContainer, LayoutInput, LayoutOutput,
-    LayoutPartialTree, RoundTree, TraversePartialTree, TraverseTree,
+    AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
+    FlexWrap, GridAutoFlow, JustifyContent, JustifyItems, Layout,
+    LengthPercentage, LengthPercentageAuto, MaxTrackSizingFunction,
+    MinTrackSizingFunction, NodeId, Point, Position, Rect, Size, Style,
+    TrackSizingFunction,
 };
 
-#[cfg(feature = "block_layout")]
-use taffy::{compute_block_layout, LayoutBlockContainer};
+/// Pre-monomorphized aliases for the grid types that carry a
+/// `CheapCloneStr` generic. Taffy defaults this to `String` in std
+/// builds, but the default parameter on `GridTemplateComponent` was
+/// dropped in 0.10, so callers have to spell it. These aliases keep
+/// downstream code free of the generic noise — match Taffy's
+/// `Style<String>` default.
+pub type GridTemplateComponent = taffy::GridTemplateComponent<String>;
+pub type GridTemplateRepetition = taffy::GridTemplateRepetition<String>;
+pub type GridPlacement = taffy::GridPlacement<String>;
+/// Convenience re-exports of Taffy's grid track-sizing constructors —
+/// `fr(2.0)`, `length(120.0)`, `percent(0.5)`, `auto()`, `min_content()`,
+/// `max_content()`, `minmax(min, max)`, `fit_content(...)`, `repeat(n, …)`,
+/// `flex(n)`. Caller code can build a `Vec<GridTemplateComponent>`
+/// without an explicit `taffy::` import.
+///
+/// Note: Taffy also has `line(i16)` / `span(u16)` for building
+/// `GridPlacement` values directly, but the high-level builder API
+/// uses [`renderer::attrs::GridLine`] for per-item placement and
+/// re-exports its own `span` from there — so we deliberately don't
+/// re-export Taffy's here, to keep prelude imports unambiguous.
+pub use taffy::style_helpers::{
+    auto, fit_content, flex, fr, length, max_content, min_content, minmax,
+    percent, repeat,
+};
+use taffy::{
+    compute_cached_layout, compute_flexbox_layout, compute_grid_layout,
+    compute_hidden_layout, compute_leaf_layout, compute_root_layout, round_layout,
+    Cache, CacheTree, Display as TaffyDisplay, LayoutFlexboxContainer,
+    LayoutGridContainer, LayoutInput, LayoutOutput, LayoutPartialTree, RoundTree,
+    TraversePartialTree, TraverseTree,
+};
+
 
 // ---------------------------------------------------------------------
 // Backend trait
@@ -615,11 +639,8 @@ impl<B: LayoutBackend> LayoutPartialTree for LayoutState<B> {
 
             match (display, has_children) {
                 (TaffyDisplay::None, _) => compute_hidden_layout(this, id),
-                #[cfg(feature = "block_layout")]
-                (TaffyDisplay::Block, true) => {
-                    compute_block_layout(this, id, inputs, None)
-                }
                 (TaffyDisplay::Flex, true) => compute_flexbox_layout(this, id, inputs),
+                (TaffyDisplay::Grid, true) => compute_grid_layout(this, id, inputs),
                 (_, false) => {
                     // Leaf: ask `compute_leaf_layout` to do the size
                     // accounting (clamping, min/max, content-box
@@ -667,22 +688,21 @@ impl<B: LayoutBackend> LayoutFlexboxContainer for LayoutState<B> {
     }
 }
 
-#[cfg(feature = "block_layout")]
-impl<B: LayoutBackend> LayoutBlockContainer for LayoutState<B> {
-    type BlockContainerStyle<'a>
+impl<B: LayoutBackend> LayoutGridContainer for LayoutState<B> {
+    type GridContainerStyle<'a>
         = &'a Style
     where
         Self: 'a;
-    type BlockItemStyle<'a>
+    type GridItemStyle<'a>
         = &'a Style
     where
         Self: 'a;
 
-    fn get_block_container_style(&self, id: NodeId) -> Self::BlockContainerStyle<'_> {
+    fn get_grid_container_style(&self, id: NodeId) -> Self::GridContainerStyle<'_> {
         &self.nodes[key(id)].style
     }
 
-    fn get_block_child_style(&self, id: NodeId) -> Self::BlockItemStyle<'_> {
+    fn get_grid_child_style(&self, id: NodeId) -> Self::GridItemStyle<'_> {
         &self.nodes[key(id)].style
     }
 }

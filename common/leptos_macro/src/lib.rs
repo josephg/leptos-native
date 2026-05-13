@@ -331,7 +331,6 @@ fn view_macro_impl(tokens: TokenStream, template: bool) -> TokenStream {
         &mut nodes,
         global_class.as_ref(),
         normalized_call_site(proc_macro::Span::call_site()),
-        template,
     );
 
     // The allow lint needs to be put here instead of at the expansion of

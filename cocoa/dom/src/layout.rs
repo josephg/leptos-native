@@ -1,7 +1,7 @@
 //! Cocoa-side layout adapter.
 //!
 //! The actual tree storage and Taffy integration live in
-//! [`native_layout`]; this file plugs cocoa-specific types into it
+//! [`renderer`]; this file plugs cocoa-specific types into it
 //! via [`CocoaBackend`]. The wrappers below — `register_in_tree`,
 //! `attach_child`, `compute_layout`, the `set_*` setters — read the
 //! per-element [`NodeLayout`] slot off a [`Node`] and dispatch into
@@ -25,14 +25,13 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-pub use native_layout::{
-    AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId, Position,
-    Size, Style,
+pub use renderer::{
+    AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
+    FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
+    JustifyItems, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size,
+    Style, TrackSizingFunction,
 };
-#[cfg(feature = "block_layout")]
-pub use native_layout::Display;
-use native_layout::{Layout, LayoutBackend};
+use renderer::{Layout, LayoutBackend};
 
 // ---------------------------------------------------------------------
 // Cocoa backend
@@ -68,11 +67,11 @@ impl LayoutBackend for CocoaBackend {
 }
 
 // Aliases so call sites don't have to spell `CocoaBackend` everywhere.
-pub type LayoutTree = native_layout::LayoutTree<CocoaBackend>;
-pub type TreeRef = native_layout::TreeRef<CocoaBackend>;
-pub type LayoutHandle = native_layout::LayoutHandle<CocoaBackend>;
-pub type NodeLayout = native_layout::NodeLayout<CocoaBackend>;
-pub type NodeContext = native_layout::NodeContext<CocoaBackend>;
+pub type LayoutTree = renderer::LayoutTree<CocoaBackend>;
+pub type TreeRef = renderer::TreeRef<CocoaBackend>;
+pub type LayoutHandle = renderer::LayoutHandle<CocoaBackend>;
+pub type NodeLayout = renderer::NodeLayout<CocoaBackend>;
+pub type NodeContext = renderer::NodeContext<CocoaBackend>;
 
 pub fn new_tree() -> TreeRef {
     LayoutTree::new()
@@ -285,7 +284,7 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
     // view's own final layout to the first-pass viewport size.
     relayout_scroll_views(&handle.tree, handle.node_id);
 
-    apply_layout(&handle.tree, handle.node_id);
+    apply_frames(&handle.tree, handle.node_id);
 
     // Cocoa-specific: bound each `<scroll_view>` documentView to its
     // children's content extent so NSScrollView shows scroll bars
@@ -386,7 +385,7 @@ fn fixup_scroll_view_documents(tree: &TreeRef, root: NodeId) {
 
 /// Walk the subtree rooted at `id`, calling `setFrame:` on each
 /// node's NSView with its Taffy-computed layout.
-fn apply_layout(tree: &TreeRef, id: NodeId) {
+fn apply_frames(tree: &TreeRef, id: NodeId) {
     tree.walk_subtree(id, &mut |_id, layout, view| {
         set_frame_from_layout(&view, &layout);
     });
@@ -495,7 +494,7 @@ pub fn first_baseline_offset(view: &NSView) -> Option<f64> {
 }
 
 fn set_frame_from_layout(view: &NSView, layout: &Layout) {
-    use native_layout::Point;
+    use renderer::Point;
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
     if layout_debug_enabled() {
@@ -511,95 +510,56 @@ fn set_frame_from_layout(view: &NSView, layout: &Layout) {
 }
 
 // ---------------------------------------------------------------------
-// Convenience setters
+// Generic style setters — lifted to `renderer::setters` and
+// generic over `LayoutNodeOps`. The trait impl below wires this
+// port's `Node` into that machinery; the `pub use` re-exports keep
+// the short paths (`cocoa_dom::layout::set_padding`, etc.) stable.
 // ---------------------------------------------------------------------
 
-pub fn set_width(node: &Node, width_px: f32) {
-    update_style(node, |s| s.size.width = Dimension::length(width_px));
-    schedule_relayout(node);
+impl renderer::LayoutNodeOps for Node {
+    fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
+        update_style(self, f);
+    }
+    fn schedule_relayout(&self) {
+        schedule_relayout(self);
+    }
 }
 
-pub fn set_height(node: &Node, height_px: f32) {
-    update_style(node, |s| s.size.height = Dimension::length(height_px));
-    schedule_relayout(node);
+// `LayoutElement` / `UniversalElement` impls let
+// `renderer::apply_layout` and `apply_universal` install
+// reactive setters against a `cocoa_dom::Element` generically.
+impl renderer::LayoutElement for crate::node::Element {
+    type Node = Node;
+    fn as_node(&self) -> &Self::Node {
+        crate::node::Element::as_node(self)
+    }
+}
+impl renderer::UniversalElement for crate::node::Element {
+    fn set_alpha(&self, alpha: f64) {
+        crate::node::Element::set_alpha(self, alpha)
+    }
+    fn set_tool_tip(&self, tip: &str) {
+        crate::node::Element::set_tool_tip(self, tip)
+    }
 }
 
-pub fn set_min_width(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
+pub use renderer::{
+    align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
+    grid_line_to_placement, set_align_content, set_align_items, set_align_self,
+    set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,
+    set_flex_shrink, set_flex_wrap, set_gap, set_grid_auto_columns,
+    set_grid_auto_flow, set_grid_auto_rows, set_grid_column_end,
+    set_grid_column_start, set_grid_row_end, set_grid_row_start,
+    set_grid_template_columns, set_grid_template_rows, set_height,
+    set_justify_content, set_justify_items, set_margin, set_max_height,
+    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
+    set_width,
+};
 
-pub fn set_max_width(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_min_height(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_max_height(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
-    update_style(node, |s| s.flex_direction = dir);
-    schedule_relayout(node);
-}
-
-pub fn set_padding(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.padding = native_layout::Rect {
-            left: LengthPercentage::length(all_px),
-            right: LengthPercentage::length(all_px),
-            top: LengthPercentage::length(all_px),
-            bottom: LengthPercentage::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_gap(node: &Node, gap_px: f32) {
-    update_style(node, |s| {
-        s.gap = Size {
-            width: LengthPercentage::length(gap_px),
-            height: LengthPercentage::length(gap_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_justify_content(node: &Node, jc: JustifyContent) {
-    update_style(node, |s| s.justify_content = Some(jc));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_grow(node: &Node, grow: f32) {
-    update_style(node, |s| s.flex_grow = grow);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_shrink(node: &Node, shrink: f32) {
-    update_style(node, |s| s.flex_shrink = shrink);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_basis(node: &Node, basis_px: f32) {
-    update_style(node, |s| s.flex_basis = Dimension::length(basis_px));
-    schedule_relayout(node);
-}
-
-pub fn set_align_items(node: &Node, ai: AlignItems) {
-    update_style(node, |s| s.align_items = Some(ai));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
-    update_style(node, |s| s.flex_wrap = fw);
-    schedule_relayout(node);
-}
+// ---------------------------------------------------------------------
+// Cocoa-only setters (layer-backed chrome — no analogue in
+// renderer-agnostic land).
+// ---------------------------------------------------------------------
 
 pub fn set_background_color(node: &Node, color: crate::Color) {
     let view = node.ns_view();
@@ -615,45 +575,5 @@ pub fn set_clip(node: &Node, clip: bool) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         layer.setMasksToBounds(clip);
-    }
-}
-
-pub fn set_margin(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.margin = native_layout::Rect {
-            left: LengthPercentageAuto::length(all_px),
-            right: LengthPercentageAuto::length(all_px),
-            top: LengthPercentageAuto::length(all_px),
-            bottom: LengthPercentageAuto::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
-    update_style(node, |s| s.align_self = ai);
-    schedule_relayout(node);
-}
-
-pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
-    use renderer::attrs::Dim;
-    match d {
-        Dim::Px(v) => Dimension::length(v),
-        Dim::Pct(v) => Dimension::percent(v),
-        Dim::Auto => Dimension::auto(),
-    }
-}
-
-pub fn align_self_to_taffy(
-    a: renderer::attrs::AlignSelf,
-) -> Option<AlignItems> {
-    use renderer::attrs::AlignSelf;
-    match a {
-        AlignSelf::Auto => None,
-        AlignSelf::Start => Some(AlignItems::FlexStart),
-        AlignSelf::End => Some(AlignItems::FlexEnd),
-        AlignSelf::Center => Some(AlignItems::Center),
-        AlignSelf::Stretch => Some(AlignItems::Stretch),
-        AlignSelf::Baseline => Some(AlignItems::Baseline),
     }
 }

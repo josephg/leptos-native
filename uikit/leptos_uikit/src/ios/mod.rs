@@ -18,11 +18,14 @@ pub mod node_ref;
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal, Selection};
 pub use element::{
-    button, date_picker, hstack, image_view, label, progress_indicator,
+    button, date_picker, grid, hstack, image_view, label, progress_indicator,
     scroll_view, secure_text_field, segmented_control, slider, stepper,
     switch_, text_field, text_view, view, vstack, IosText, WithText,
 };
 pub use node_ref::NodeRef;
 
 // Convenient passthrough of the most common style enums.
-pub use ios_dom::layout::{FlexDirection, JustifyContent};
+pub use ios_dom::layout::{
+    AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+    GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
+};

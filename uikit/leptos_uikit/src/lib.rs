@@ -17,7 +17,6 @@ pub mod ios;
 pub mod keys;
 pub mod mount;
 pub mod renderer_ios;
-pub mod svg_ios;
 
 /// Aliased path for `leptos::mount_ios::run` so existing iOS example
 /// code (`leptos::mount_ios::run(...)`) keeps compiling under the
@@ -69,12 +68,6 @@ pub mod tachys {
             pub use crate::directive::*;
         }
     }
-
-    pub mod svg {
-        pub use crate::svg_ios::*;
-    }
-
-    pub mod mathml {}
 }
 
 /// UIKit-specialized [`IntoView`](leptos::IntoView). Pins R to [`Dom`]
@@ -82,27 +75,14 @@ pub mod tachys {
 pub trait IntoView: leptos::IntoView<Dom> {}
 impl<T: leptos::IntoView<Dom>> IntoView for T {}
 
-/// Identity trait the leptos_macro emits as
-/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
-/// around attribute values. No-op identity on native.
-pub trait IntoAttributeValue {
-    type Output;
-    fn into_attribute_value(self) -> Self::Output;
-}
-
-impl<T> IntoAttributeValue for T {
-    type Output = T;
-    fn into_attribute_value(self) -> Self {
-        self
-    }
-}
-
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our UIKit-specialized
     // overrides below shadow it (specifically `IntoView`).
+    // (`IntoAttributeValue` lives in `common/leptos` and comes in via
+    // `core::prelude::*`.)
     pub use crate::core::prelude::*;
 
-    pub use crate::{IntoAttributeValue, IntoView};
+    pub use crate::IntoView;
 
     pub use crate::mount::run;
 
@@ -110,12 +90,22 @@ pub mod prelude {
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
         element::{
-            button, hstack, label, scroll_view, secure_text_field,
+            button, grid, hstack, label, scroll_view, secure_text_field,
             slider, switch_, text_field, vstack, WithText,
         },
         node_ref::NodeRef,
-        FlexDirection, JustifyContent,
+        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+        GridTemplateComponent, JustifyContent, JustifyItems,
+        TrackSizingFunction,
     };
+
+    // Grid track-sizing helpers — re-exported from Taffy via
+    // renderer so example code can write `[fr(1.0), auto()]`.
+    pub use renderer::{
+        auto, fit_content, fr, length, max_content, min_content, minmax,
+        percent, repeat,
+    };
+    pub use renderer::attrs::{auto_line, span, GridLine};
 
     // Renderer-common attribute-accessor traits that builders impl.
     // Importing the traits brings the chainable setters

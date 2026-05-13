@@ -317,6 +317,15 @@ impl Element {
                 let w = container_widget();
                 (w, Style::default())
             }
+            "grid" => {
+                // 2-D grid container backed by Taffy's grid algorithm.
+                // Underlying widget is still a `gtk::Box` — GTK doesn't
+                // care; Taffy assigns final frames to each child.
+                let w = container_widget();
+                let mut s = Style::default();
+                s.display = crate::layout::Display::Grid;
+                (w, s)
+            }
             // `view` or anything unknown → generic container.
             _ => {
                 let w = container_widget();

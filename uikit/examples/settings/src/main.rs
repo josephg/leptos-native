@@ -14,11 +14,11 @@ mod app {
 
         view! {
             <vstack padding=20.0 gap=16.0>
-                <label font_size=24.0>{"Settings"}</label>
+                <label font_size=24.0>"Settings"</label>
 
                 // --- Volume slider ---
                 <vstack gap=6.0>
-                    <label>{"Volume"}</label>
+                    <label>"Volume"</label>
                     <slider
                         bind:value=volume
                         min_value=0.0
@@ -35,13 +35,13 @@ mod app {
 
                 // --- Mute toggle ---
                 <hstack gap=12.0>
-                    <label flex_grow=1.0>{"Mute audio"}</label>
+                    <label flex_grow=1.0>"Mute audio"</label>
                     <switch bind:checked=mute />
                 </hstack>
 
                 // --- Theme picker ---
                 <vstack gap=6.0>
-                    <label>{"Theme"}</label>
+                    <label>"Theme"</label>
                     <segmented_control
                         items=vec!["System", "Light", "Dark"]
                         bind:selection=theme />

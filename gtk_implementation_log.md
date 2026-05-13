@@ -4,6 +4,28 @@ A running record of design decisions made during the Linux/GTK port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
+---
+
+## 2026-05-12 — `<grid>` container (Taffy CSS-Grid)
+
+Cross-cutting addition. Full design notes in
+`implementation_log.md` — the GTK port took the same shape as
+cocoa/iOS because all three ports share `common/native_layout`'s
+Taffy storage tree.
+
+GTK-specific bits worth flagging:
+
+- The underlying widget for `<grid>` is still a `gtk::Box`
+  (`container_widget()` in `gtk/dom/src/node.rs`). Taffy assigns
+  final frames to each child via the existing `TaffyLayout`
+  manager — the GTK widget class is layout-agnostic at that point.
+
+- GTK's `Label` builder doesn't have a `font_size` setter (cocoa
+  / iOS do). The GTK grid example accordingly drops `font_size=`
+  attrs that the cocoa / iOS versions carry.
+
+---
+
 For the macOS sibling port (which this one mirrors), see
 [`implementation_log.md`](./implementation_log.md). The macOS log is
 more detailed because the macOS port hit thornier integration issues

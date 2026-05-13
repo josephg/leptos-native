@@ -29,7 +29,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=12.0>
-                <label font_size=24.0>{"Sign in"}</label>
+                <label font_size=24.0>"Sign in"</label>
 
                 <text_field
                     bind:value=username
@@ -41,7 +41,7 @@ mod app {
 
                 // UISwitch has no title — pair with a label.
                 <hstack gap=12.0>
-                    <label flex_grow=1.0>{"Remember me on this device"}</label>
+                    <label flex_grow=1.0>"Remember me on this device"</label>
                     <switch bind:checked=remember />
                 </hstack>
 

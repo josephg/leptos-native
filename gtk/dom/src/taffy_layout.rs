@@ -172,7 +172,7 @@ fn allocate_children(tree: &TreeRef, parent_id: NodeId, parent_widget: &gtk4::Wi
     // calling `widget.allocate(...)` below (which can reenter our
     // tree code).
     let child_ids = tree.children(parent_id).to_vec();
-    let plan: Vec<(gtk4::Widget, native_layout::Layout)> = child_ids
+    let plan: Vec<(gtk4::Widget, renderer::Layout)> = child_ids
         .into_iter()
         .filter_map(|cid| {
             let layout = tree.layout(cid)?;

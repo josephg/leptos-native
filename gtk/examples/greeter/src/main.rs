@@ -11,7 +11,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=8.0>
-                <label>{"Your name:"}</label>
+                <label>"Your name:"</label>
                 <text_field bind:value=name />
                 <label>{move || {
                     let n = name.get();

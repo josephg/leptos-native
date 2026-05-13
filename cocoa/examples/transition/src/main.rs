@@ -69,17 +69,17 @@ fn App() -> impl IntoView {
 
     view! {
         <vstack padding=20.0 gap=12.0>
-            <label>{"How many cat facts?"}</label>
+            <label>"How many cat facts?"</label>
             <text_field bind:value=count_text />
 
             <Transition fallback=|| view! {
-                <label>{"Loading…"}</label>
+                <label>"Loading…"</label>
             }>
                 <ErrorBoundary fallback=|errors| {
                     let errors = errors.clone();
                     view! {
                         <vstack gap=4.0>
-                            <label>{"Error:"}</label>
+                            <label>"Error:"</label>
                             <label>{move || {
                                 errors.read()
                                     .iter()

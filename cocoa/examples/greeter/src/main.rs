@@ -10,13 +10,9 @@ mod app {
     pub fn Greeter() -> impl IntoView {
         let name = RwSignal::new(String::new());
 
-        // Note: wrap purely-static text content in `{}` — without it the
-        // view! macro classifies the subtree as "inert" and emits an
-        // `InertElement::new("<html>...</html>")` that we don't handle on
-        // macOS.
         view! {
             <vstack padding=16.0 gap=8.0>
-                <label>{"Your name:"}</label>
+                <label>"Your name:"</label>
                 <text_field bind:value=name />
                 <label>{move || {
                     let n = name.get();

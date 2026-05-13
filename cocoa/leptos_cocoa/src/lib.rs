@@ -17,7 +17,6 @@ pub mod event_macos;
 pub mod keys;
 pub mod mount;
 pub mod renderer_cocoa;
-pub mod svg_macos;
 
 pub use renderer_cocoa::Dom;
 
@@ -55,13 +54,19 @@ pub use leptos::callback;
 
 /// View-tree machinery + element builders + events under the path
 /// shape the `view!{}` macro emits (`::leptos::tachys::html::element::*`,
-/// `::leptos::tachys::view::*`, `::leptos::tachys::svg::*`).
+/// `::leptos::tachys::view::*`).
+///
+/// The web Leptos macro additionally routed tags whose names are real
+/// SVG elements (`<view>`, `<switch>`, ...) through `tachys::svg::*`
+/// and emitted `.attr(name, value)` for every attribute. On native
+/// there's no SVG renderer and no untyped `.attr()` slot, so this
+/// fork's macro routes every tag through `tachys::html::element::*`.
 pub mod tachys {
     pub use ::renderer::view;
 
     /// Re-export of the cocoa builders/window/etc., for the
     /// `::leptos::tachys::cocoa::*` paths some examples reference
-    /// directly (e.g. block_layout uses `tachys::cocoa::FlexDirection`).
+    /// directly.
     pub mod cocoa {
         pub use crate::cocoa::*;
     }
@@ -81,15 +86,6 @@ pub mod tachys {
             pub use crate::directive::*;
         }
     }
-
-    pub mod svg {
-        pub use crate::svg_macos::*;
-    }
-
-    /// Marker-equivalent for tachys' nightly Static optimization. The
-    /// stable macro path doesn't emit this; defined as an empty module
-    /// so any stray reference path-resolves.
-    pub mod mathml {}
 }
 
 /// Cocoa-specialized [`IntoView`](leptos::IntoView). Pinning R to
@@ -99,31 +95,16 @@ pub mod tachys {
 pub trait IntoView: leptos::IntoView<Dom> {}
 impl<T: leptos::IntoView<Dom>> IntoView for T {}
 
-/// Identity trait the leptos_macro view!{} expansion emits as
-/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
-/// around attribute values. Upstream this normalised values into a
-/// SSR-friendly `AttributeValue` shape; on native the value is
-/// already the right type so the trait is a no-op identity.
-pub trait IntoAttributeValue {
-    type Output;
-    fn into_attribute_value(self) -> Self::Output;
-}
-
-impl<T> IntoAttributeValue for T {
-    type Output = T;
-    fn into_attribute_value(self) -> Self {
-        self
-    }
-}
-
 /// User prelude — the items end-user examples bring into scope.
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our cocoa-specialized
     // overrides below shadow it (specifically `IntoView`).
+    // (`IntoAttributeValue` lives in `common/leptos` and is brought in
+    // via `core::prelude::*`.)
     pub use crate::core::prelude::*;
 
     // Cocoa-specialized IntoView (pinned to Dom; no R param).
-    pub use crate::{IntoAttributeValue, IntoView};
+    pub use crate::IntoView;
 
     // Mounting
     pub use crate::mount::{mount_to_window, run};
@@ -135,7 +116,7 @@ pub mod prelude {
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
         element::{
-            button, hstack, label, stack_view, text_field, view, vstack,
+            button, grid, hstack, label, stack_view, text_field, view, vstack,
             // Shadow the renderer-common `WithText` (re-exported via
             // `crate::core::prelude::*` above) with the port-local
             // one. The renderer trait is generic over `<C, A>` and
@@ -148,8 +129,24 @@ pub mod prelude {
             WithText,
         },
         node_ref::NodeRef,
-        AlignItems, FlexDirection, JustifyContent,
+        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+        GridTemplateComponent, JustifyContent, JustifyItems,
+        TrackSizingFunction,
     };
+
+    // Grid track-sizing helpers — re-exported from Taffy via
+    // `renderer` so example code can write `[fr(1.0), auto()]`
+    // without importing taffy. `span(n)` doubles as a placement
+    // helper for child elements (`.grid_column_end(span(2))`).
+    pub use renderer::{
+        auto, fit_content, fr, length, max_content, min_content, minmax, percent,
+        repeat,
+    };
+
+    // Grid placement attrs (added to every element via `WithLayout`).
+    // Re-exported so user code can pass `GridLine::Auto` explicitly,
+    // or use `span(n)` / integer literals via `Into<GridLine>`.
+    pub use renderer::attrs::{auto_line, GridLine};
 
     // cocoa_dom helpers commonly used by examples (timers, persistent
     // storage, native colour types, key events).

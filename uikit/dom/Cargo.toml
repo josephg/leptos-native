@@ -24,13 +24,17 @@ name = "layout"
 path = "tests/layout.rs"
 harness = false
 
+[[test]]
+name = "grid_layout"
+path = "tests/grid_layout.rs"
+harness = false
+
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 dispatch2 = "0.3"
 any_spawner = { workspace = true }
 futures = { workspace = true, default-features = true }
 taffy = { workspace = true }
-native_layout = { workspace = true }
 objc2-foundation = { version = "0.3", features = [
     "NSGeometry",
     "NSString",

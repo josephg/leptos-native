@@ -109,6 +109,21 @@
 
 extern crate self as leptos;
 
+/// Identity trait the `leptos_macro` view!{} expansion emits as
+/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
+/// around attribute values. Upstream this normalised values into a
+/// SSR-friendly `AttributeValue` shape; on native the value is
+/// already the right type so the trait is a no-op identity.
+pub trait IntoAttributeValue {
+    type Output;
+    fn into_attribute_value(self) -> Self::Output;
+}
+
+impl<T> IntoAttributeValue for T {
+    type Output = T;
+    fn into_attribute_value(self) -> Self { self }
+}
+
 /// Re-exports the core types of the library.
 pub mod prelude {
     pub use reactive_graph::prelude::*;
@@ -116,7 +131,7 @@ pub mod prelude {
 
     pub use crate::{
         children::*, component::*, control_flow::*, error::*, into_view::*,
-        text_prop::*,
+        text_prop::*, IntoAttributeValue,
     };
 
     pub use leptos_macro::*;

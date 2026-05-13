@@ -21,7 +21,7 @@ use rstml::node::{
 };
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
 };
 use syn::{
     punctuated::Pair::{End, Punctuated},
@@ -30,22 +30,11 @@ use syn::{
     ExprArray, ExprLit, ExprPath, ExprRange, Lit, LitStr, RangeLimits, Stmt,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TagType {
-    Unknown,
-    Html,
-    Svg,
-    Math,
-}
-
 pub fn render_view(
     nodes: &mut [Node],
     global_class: Option<&TokenTree>,
     view_marker: Option<String>,
-    disable_inert_html: bool,
 ) -> Option<TokenStream> {
-    let disable_inert_html = disable_inert_html || global_class.is_some();
-
     let (base, should_add_view) = match nodes.len() {
         0 => {
             let span = Span::call_site();
@@ -59,12 +48,10 @@ pub fn render_view(
         1 => (
             node_to_tokens(
                 &mut nodes[0],
-                TagType::Unknown,
                 None,
                 global_class,
                 view_marker.as_deref(),
                 true,
-                disable_inert_html,
             ),
             // only add View wrapper and view marker to a regular HTML
             // element or component, not to a <{..} /> attribute list
@@ -76,11 +63,9 @@ pub fn render_view(
         _ => (
             fragment_to_tokens(
                 nodes,
-                TagType::Unknown,
                 None,
                 global_class,
                 view_marker.as_deref(),
-                disable_inert_html,
             ),
             true,
         ),
@@ -105,434 +90,19 @@ pub fn render_view(
     })
 }
 
-fn is_inert_element(orig_node: &Node<impl CustomNode>) -> bool {
-    // do not use this if the top-level node is not an Element,
-    // or if it's an element with no children and no attrs
-    match orig_node {
-        Node::Element(el) => {
-            if el.attributes().is_empty() && el.children.is_empty() {
-                return false;
-            }
-
-            // also doesn't work if the top-level element is a MathML element
-            let el_name = el.name().to_string();
-            if is_math_ml_element(&el_name) {
-                return false;
-            }
-        }
-        _ => return false,
-    }
-
-    // otherwise, walk over all the nodes to make sure everything is inert
-    let mut nodes = VecDeque::from([orig_node]);
-
-    while let Some(current_element) = nodes.pop_front() {
-        match current_element {
-            Node::Text(_) | Node::RawText(_) => {}
-            Node::Element(node) => {
-                if is_component_node(node) {
-                    return false;
-                }
-                if is_spread_marker(node) {
-                    return false;
-                }
-
-                match node.name() {
-                    NodeName::Block(_) => return false,
-                    _ => {
-                        // check all attributes
-                        for attr in node.attributes() {
-                            match attr {
-                                NodeAttribute::Block(_) => return false,
-                                NodeAttribute::Attribute(attr) => {
-                                    let static_key =
-                                        !matches!(attr.key, NodeName::Block(_));
-
-                                    let static_value = match attr
-                                        .possible_value
-                                        .to_value()
-                                    {
-                                        None => true,
-                                        Some(value) => {
-                                            matches!(&value.value, KVAttributeValue::Expr(expr) if {
-                                                if let Expr::Lit(lit) = expr {
-                                                    let key = attr.key.to_string();
-                                                    if key.starts_with("style:") || key.starts_with("prop:") || key.starts_with("on:") || key.starts_with("use:") || key.starts_with("bind") {
-                                                        false
-                                                    } else {
-                                                        matches!(&lit.lit, Lit::Str(_))
-                                                    }
-                                                } else {
-                                                    false
-                                                }
-                                            })
-                                        }
-                                    };
-
-                                    if !static_key || !static_value {
-                                        return false;
-                                    }
-                                }
-                            }
-                        }
-
-                        // check all children
-                        nodes.extend(&node.children);
-                    }
-                }
-            }
-            _ => return false,
-        }
-    }
-
-    true
-}
-
-enum Item<'a, T> {
-    Node(&'a Node<T>, bool),
-    ClosingTag(String),
-}
-
-enum InertElementBuilder<'a> {
-    GlobalClass {
-        global_class: &'a TokenTree,
-        strs: Vec<GlobalClassItem<'a>>,
-        buffer: String,
-    },
-    NoGlobalClass {
-        buffer: String,
-    },
-}
-
-impl ToTokens for InertElementBuilder<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            InertElementBuilder::GlobalClass { strs, .. } => {
-                tokens.extend(quote! {
-                    [#(#strs),*].join("")
-                });
-            }
-            InertElementBuilder::NoGlobalClass { buffer } => {
-                tokens.extend(quote! {
-                    #buffer
-                })
-            }
-        }
-    }
-}
-
-enum GlobalClassItem<'a> {
-    Global(&'a TokenTree),
-    String(String),
-}
-
-impl ToTokens for GlobalClassItem<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let addl_tokens = match self {
-            GlobalClassItem::Global(v) => v.to_token_stream(),
-            GlobalClassItem::String(v) => v.to_token_stream(),
-        };
-        tokens.extend(addl_tokens);
-    }
-}
-
-impl<'a> InertElementBuilder<'a> {
-    fn new(global_class: Option<&'a TokenTree>) -> Self {
-        match global_class {
-            None => Self::NoGlobalClass {
-                buffer: String::new(),
-            },
-            Some(global_class) => Self::GlobalClass {
-                global_class,
-                strs: Vec::new(),
-                buffer: String::new(),
-            },
-        }
-    }
-
-    fn push(&mut self, c: char) {
-        match self {
-            InertElementBuilder::GlobalClass { buffer, .. } => buffer.push(c),
-            InertElementBuilder::NoGlobalClass { buffer } => buffer.push(c),
-        }
-    }
-
-    fn push_str(&mut self, s: &str) {
-        match self {
-            InertElementBuilder::GlobalClass { buffer, .. } => {
-                buffer.push_str(s)
-            }
-            InertElementBuilder::NoGlobalClass { buffer } => buffer.push_str(s),
-        }
-    }
-
-    fn push_class(&mut self, class: &str) {
-        match self {
-            InertElementBuilder::GlobalClass {
-                global_class,
-                strs,
-                buffer,
-            } => {
-                buffer.push_str(" class=\"");
-                strs.push(GlobalClassItem::String(std::mem::take(buffer)));
-                strs.push(GlobalClassItem::Global(global_class));
-                buffer.push(' ');
-                buffer.push_str(class);
-                buffer.push('"');
-            }
-            InertElementBuilder::NoGlobalClass { buffer } => {
-                buffer.push_str(" class=\"");
-                buffer.push_str(class);
-                buffer.push('"');
-            }
-        }
-    }
-
-    fn finish(&mut self) {
-        match self {
-            InertElementBuilder::GlobalClass { strs, buffer, .. } => {
-                strs.push(GlobalClassItem::String(std::mem::take(buffer)));
-            }
-            InertElementBuilder::NoGlobalClass { .. } => {}
-        }
-    }
-}
-
-fn inert_element_to_tokens(
-    node: &Node<impl CustomNode>,
-    escape_text: bool,
-    global_class: Option<&TokenTree>,
-) -> TokenStream {
-    let mut html = InertElementBuilder::new(global_class);
-    let mut nodes = VecDeque::from([Item::Node(node, escape_text)]);
-
-    while let Some(current) = nodes.pop_front() {
-        match current {
-            Item::ClosingTag(tag) => {
-                // closing tag
-                html.push_str("</");
-                html.push_str(&tag);
-                html.push('>');
-            }
-            Item::Node(current, escape) => {
-                match current {
-                    Node::RawText(raw) => {
-                        let text = raw.to_string_best();
-                        let text = if escape {
-                            html_escape::encode_text(&text)
-                        } else {
-                            text.into()
-                        };
-                        html.push_str(&text);
-                    }
-                    Node::Text(text) => {
-                        let text = text.value_string();
-                        let text = if escape {
-                            html_escape::encode_text(&text)
-                        } else {
-                            text.into()
-                        };
-                        html.push_str(&text);
-                    }
-                    Node::Element(node) => {
-                        let self_closing = is_self_closing(node);
-                        let el_name = node.name().to_string();
-                        let escape = el_name != "script"
-                            && el_name != "style"
-                            && el_name != "textarea";
-
-                        // opening tag
-                        html.push('<');
-                        html.push_str(&el_name);
-
-                        for attr in node.attributes() {
-                            if let NodeAttribute::Attribute(attr) = attr {
-                                let attr_name = attr.key.to_string();
-                                // trim r# from raw identifiers like r#as
-                                let attr_name =
-                                    attr_name.trim_start_matches("r#");
-                                if attr_name != "class" {
-                                    html.push(' ');
-                                    html.push_str(attr_name);
-                                }
-
-                                if let Some(value) =
-                                    attr.possible_value.to_value()
-                                {
-                                    if let KVAttributeValue::Expr(Expr::Lit(
-                                        lit,
-                                    )) = &value.value
-                                    {
-                                        if let Lit::Str(txt) = &lit.lit {
-                                            let value = txt.value();
-                                            let value = html_escape::encode_double_quoted_attribute(&value);
-                                            if attr_name == "class" {
-                                                html.push_class(&value);
-                                            } else {
-                                                html.push_str("=\"");
-                                                html.push_str(&value);
-                                                html.push('"');
-                                            }
-                                        }
-                                    }
-                                };
-                            }
-                        }
-
-                        html.push('>');
-
-                        // render all children
-                        if !self_closing {
-                            nodes.push_front(Item::ClosingTag(el_name));
-                            let children = node.children.iter().rev();
-                            for child in children {
-                                nodes.push_front(Item::Node(child, escape));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    html.finish();
-
-    quote! {
-        ::leptos::tachys::html::InertElement::new(#html)
-    }
-}
-
-/// # Note
-/// Should not be used on top level `<svg>` elements.
-/// Use [`inert_element_to_tokens`] instead.
-fn inert_svg_element_to_tokens(
-    node: &Node<impl CustomNode>,
-    escape_text: bool,
-    global_class: Option<&TokenTree>,
-) -> TokenStream {
-    let mut html = InertElementBuilder::new(global_class);
-    let mut nodes = VecDeque::from([Item::Node(node, escape_text)]);
-
-    while let Some(current) = nodes.pop_front() {
-        match current {
-            Item::ClosingTag(tag) => {
-                // closing tag
-                html.push_str("</");
-                html.push_str(&tag);
-                html.push('>');
-            }
-            Item::Node(current, escape) => {
-                match current {
-                    Node::RawText(raw) => {
-                        let text = raw.to_string_best();
-                        let text = if escape {
-                            html_escape::encode_text(&text)
-                        } else {
-                            text.into()
-                        };
-                        html.push_str(&text);
-                    }
-                    Node::Text(text) => {
-                        let text = text.value_string();
-                        let text = if escape {
-                            html_escape::encode_text(&text)
-                        } else {
-                            text.into()
-                        };
-                        html.push_str(&text);
-                    }
-                    Node::Element(node) => {
-                        let self_closing = is_self_closing(node);
-                        let el_name = node.name().to_string();
-                        // strip trailing underscores, for identifiers such as SVG use_
-                        let el_name = el_name
-                            .strip_suffix('_')
-                            .map(str::to_string)
-                            .unwrap_or(el_name);
-
-                        let escape = el_name != "script"
-                            && el_name != "style"
-                            && el_name != "textarea";
-
-                        // opening tag
-                        html.push('<');
-                        html.push_str(&el_name);
-
-                        for attr in node.attributes() {
-                            if let NodeAttribute::Attribute(attr) = attr {
-                                let attr_name = attr.key.to_string();
-                                // trim r# from raw identifiers like r#as
-                                let attr_name =
-                                    attr_name.trim_start_matches("r#");
-                                if attr_name != "class" {
-                                    html.push(' ');
-                                    html.push_str(attr_name);
-                                }
-
-                                if let Some(value) =
-                                    attr.possible_value.to_value()
-                                {
-                                    if let KVAttributeValue::Expr(Expr::Lit(
-                                        lit,
-                                    )) = &value.value
-                                    {
-                                        if let Lit::Str(txt) = &lit.lit {
-                                            let value = txt.value();
-                                            let value = html_escape::encode_double_quoted_attribute(&value);
-                                            if attr_name == "class" {
-                                                html.push_class(&value);
-                                            } else {
-                                                html.push_str("=\"");
-                                                html.push_str(&value);
-                                                html.push('"');
-                                            }
-                                        }
-                                    }
-                                };
-                            }
-                        }
-
-                        html.push('>');
-
-                        // render all children
-                        if !self_closing {
-                            nodes.push_front(Item::ClosingTag(el_name));
-                            let children = node.children.iter().rev();
-                            for child in children {
-                                nodes.push_front(Item::Node(child, escape));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    html.finish();
-
-    quote! {
-        ::leptos::tachys::svg::InertElement::new(#html)
-    }
-}
 
 fn element_children_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
-    parent_type: TagType,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
-    disable_inert_html: bool,
 ) -> Option<TokenStream> {
     let children = children_to_tokens(
         nodes,
-        parent_type,
         parent_slots,
         global_class,
         view_marker,
         false,
-        disable_inert_html,
     );
     if children.is_empty() {
         None
@@ -578,20 +148,16 @@ fn element_children_to_tokens(
 
 fn fragment_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
-    parent_type: TagType,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
-    disable_inert_html: bool,
 ) -> Option<TokenStream> {
     let children = children_to_tokens(
         nodes,
-        parent_type,
         parent_slots,
         global_class,
         view_marker,
         true,
-        disable_inert_html,
     );
     if children.is_empty() {
         None
@@ -625,22 +191,18 @@ fn fragment_to_tokens(
 
 fn children_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
-    parent_type: TagType,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
     top_level: bool,
-    disable_inert_html: bool,
 ) -> Vec<TokenStream> {
     if nodes.len() == 1 {
         match node_to_tokens(
             &mut nodes[0],
-            parent_type,
             parent_slots,
             global_class,
             view_marker,
             top_level,
-            disable_inert_html,
         ) {
             Some(tokens) => vec![tokens],
             None => vec![],
@@ -652,12 +214,10 @@ fn children_to_tokens(
             .filter_map(|node| {
                 node_to_tokens(
                     node,
-                    TagType::Unknown,
                     Some(&mut slots),
                     global_class,
                     view_marker,
                     top_level,
-                    disable_inert_html,
                 )
             })
             .collect();
@@ -675,15 +235,11 @@ fn children_to_tokens(
 
 fn node_to_tokens(
     node: &mut Node<impl CustomNode>,
-    parent_type: TagType,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
-    top_level: bool,
-    disable_inert_html: bool,
+    _top_level: bool,
 ) -> Option<TokenStream> {
-    let is_inert = !disable_inert_html && is_inert_element(node);
-
     match node {
         Node::Comment(_) => None,
         Node::Doctype(node) => {
@@ -692,11 +248,9 @@ fn node_to_tokens(
         }
         Node::Fragment(fragment) => fragment_to_tokens(
             &mut fragment.children,
-            parent_type,
             parent_slots,
             global_class,
             view_marker,
-            disable_inert_html,
         ),
         Node::Block(block) => {
             // Native: emit the bare block. Upstream wrapped this in
@@ -716,34 +270,12 @@ fn node_to_tokens(
             let text = syn::LitStr::new(&text, raw.span());
             Some(text_to_tokens(&text))
         }
-        Node::Element(el_node) => {
-            if !top_level && is_inert {
-                let el_name = el_node.name().to_string();
-                let escape = el_name != "script"
-                    && el_name != "style"
-                    && el_name != "textarea";
-
-                let el_name = el_node.name().to_string();
-                if is_svg_element(&el_name) && el_name != "svg" {
-                    Some(inert_svg_element_to_tokens(
-                        node,
-                        escape,
-                        global_class,
-                    ))
-                } else {
-                    Some(inert_element_to_tokens(node, escape, global_class))
-                }
-            } else {
-                element_to_tokens(
-                    el_node,
-                    parent_type,
-                    parent_slots,
-                    global_class,
-                    view_marker,
-                    disable_inert_html,
-                )
-            }
-        }
+        Node::Element(el_node) => element_to_tokens(
+            el_node,
+            parent_slots,
+            global_class,
+            view_marker,
+        ),
         Node::Custom(node) => Some(node.to_token_stream()),
     }
 }
@@ -763,11 +295,9 @@ fn text_to_tokens(text: &LitStr) -> TokenStream {
 
 pub(crate) fn element_to_tokens(
     node: &mut NodeElement<impl CustomNode>,
-    mut parent_type: TagType,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
-    disable_inert_html: bool,
 ) -> Option<TokenStream> {
     // attribute sorting:
     //
@@ -873,11 +403,10 @@ pub(crate) fn element_to_tokens(
                 &slot,
                 parent_slots,
                 global_class,
-                disable_inert_html,
             );
             None
         } else {
-            Some(component_to_tokens(node, global_class, disable_inert_html))
+            Some(component_to_tokens(node, global_class))
         }
     } else if is_spread_marker(node) {
         let mut attributes = Vec::new();
@@ -928,58 +457,37 @@ pub(crate) fn element_to_tokens(
     } else {
         let tag = name.to_string();
         let is_custom = is_custom_element(&tag);
+        // Native-only: every tag routes through `tachys::html::element::*`.
+        // Upstream Leptos special-cased SVG and MathML element names
+        // to route through `tachys::svg::*` / `tachys::mathml::*` and
+        // to emit `.attr(name, value)` for every attribute. On native
+        // there are no SVG or MathML renderers and no untyped `.attr()`
+        // shim, so we drop the special-case routing entirely and use
+        // raw identifiers for the two tags whose names collide with
+        // Rust keywords (`use`, `switch`).
         let name = if is_custom {
             let name = node.name().to_string();
-            // link custom ident to name span for IDE docs
             let custom = Ident::new("custom", name.span());
             quote_spanned! { node.name().span() => ::leptos::tachys::html::element::#custom(#name) }
-        } else if is_svg_element(&tag) {
-            parent_type = TagType::Svg;
-            let name = if tag == "use" || tag == "use_" {
-                Ident::new_raw("use", name.span()).to_token_stream()
-            } else {
-                name.to_token_stream()
-            };
-            quote_spanned! { node.name().span() => ::leptos::tachys::svg::#name() }
-        } else if is_math_ml_element(&tag) {
-            parent_type = TagType::Math;
-            quote_spanned! { node.name().span() => ::leptos::tachys::mathml::#name() }
-        } else if is_ambiguous_element(&tag) {
-            match parent_type {
-                TagType::Unknown => {
-                    // We decided this warning was too aggressive, but I'll leave it here in case we want it later
-                    /* proc_macro_error2::emit_warning!(name.span(), "The view macro is assuming this is an HTML element, \
-                    but it is ambiguous; if it is an SVG or MathML element, prefix with svg:: or math::"); */
-                    quote_spanned! { node.name().span() =>
-                        ::leptos::tachys::html::element::#name()
-                    }
-                }
-                TagType::Html => {
-                    quote_spanned! { node.name().span() => ::leptos::tachys::html::element::#name() }
-                }
-                TagType::Svg => {
-                    quote_spanned! { node.name().span() => ::leptos::tachys::svg::#name() }
-                }
-                TagType::Math => {
-                    quote_spanned! { node.name().span() => ::leptos::tachys::math::#name() }
-                }
-            }
         } else {
-            parent_type = TagType::Html;
-            quote_spanned! { name.span() => ::leptos::tachys::html::element::#name() }
+            let ident = match tag.as_str() {
+                "use" | "use_" => Ident::new_raw("use", name.span()).to_token_stream(),
+                "switch" => Ident::new_raw("switch", name.span()).to_token_stream(),
+                _ => name.to_token_stream(),
+            };
+            quote_spanned! { node.name().span() => ::leptos::tachys::html::element::#ident() }
         };
 
         let attributes = node.attributes();
         let attributes = if attributes.len() == 1 {
             Some(attribute_to_tokens(
-                parent_type,
                 &attributes[0],
                 global_class,
                 is_custom,
             ))
         } else {
             let nodes = attributes.iter().map(|node| {
-                attribute_to_tokens(parent_type, node, global_class, is_custom)
+                attribute_to_tokens(node, global_class, is_custom)
             });
             Some(quote! {
                 #(#nodes)*
@@ -994,11 +502,9 @@ pub(crate) fn element_to_tokens(
         let children = if !self_closing {
             element_children_to_tokens(
                 &mut node.children,
-                parent_type,
                 parent_slots,
                 global_class,
                 view_marker,
-                disable_inert_html,
             )
         } else {
             if !node.children.is_empty() {
@@ -1063,7 +569,6 @@ fn as_spread_attr(node: &NodeBlock) -> Option<Option<&Expr>> {
 }
 
 fn attribute_to_tokens(
-    tag_type: TagType,
     node: &NodeAttribute,
     global_class: Option<&TokenTree>,
     is_custom: bool,
@@ -1129,14 +634,11 @@ fn attribute_to_tokens(
                 };
                 prop_to_tokens(node, prop.into_token_stream(), name)
             }
-            // circumstances in which we just do unchecked attributes
+            // Unchecked attributes go through `.attr(name, value)`:
             // 1) custom elements, which can have any attributes
-            // 2) custom attributes and data attributes (so, anything with - in it)
+            // 2) custom + data attributes (anything hyphenated, except `aria-*`)
             else if is_custom ||
                 (name.contains('-') && !name.starts_with("aria-"))
-                // TODO check: do we actually provide SVG attributes?
-                // we don't provide statically-checked methods for SVG attributes
-                || (tag_type == TagType::Svg && name != "inner_html")
             {
                 let value = attribute_value(node, true);
                 quote! {
@@ -1493,120 +995,6 @@ fn is_self_closing(node: &NodeElement<impl CustomNode>) -> bool {
     ]
     .binary_search(&node.name().to_string().as_str())
     .is_ok()
-}
-
-fn is_svg_element(tag: &str) -> bool {
-    // Keep list alphabetized for binary search
-    [
-        "animate",
-        "animateMotion",
-        "animateTransform",
-        "circle",
-        "clipPath",
-        "defs",
-        "desc",
-        "discard",
-        "ellipse",
-        "feBlend",
-        "feColorMatrix",
-        "feComponentTransfer",
-        "feComposite",
-        "feConvolveMatrix",
-        "feDiffuseLighting",
-        "feDisplacementMap",
-        "feDistantLight",
-        "feDropShadow",
-        "feFlood",
-        "feFuncA",
-        "feFuncB",
-        "feFuncG",
-        "feFuncR",
-        "feGaussianBlur",
-        "feImage",
-        "feMerge",
-        "feMergeNode",
-        "feMorphology",
-        "feOffset",
-        "fePointLight",
-        "feSpecularLighting",
-        "feSpotLight",
-        "feTile",
-        "feTurbulence",
-        "filter",
-        "foreignObject",
-        "g",
-        "hatch",
-        "hatchpath",
-        "image",
-        "line",
-        "linearGradient",
-        "marker",
-        "mask",
-        "metadata",
-        "mpath",
-        "path",
-        "pattern",
-        "polygon",
-        "polyline",
-        "radialGradient",
-        "rect",
-        "set",
-        "stop",
-        "svg",
-        "switch",
-        "symbol",
-        "text",
-        "textPath",
-        "tspan",
-        "use",
-        "use_",
-        "view",
-    ]
-    .binary_search(&tag)
-    .is_ok()
-}
-
-fn is_math_ml_element(tag: &str) -> bool {
-    // Keep list alphabetized for binary search
-    [
-        "annotation",
-        "maction",
-        "math",
-        "menclose",
-        "merror",
-        "mfenced",
-        "mfrac",
-        "mi",
-        "mmultiscripts",
-        "mn",
-        "mo",
-        "mover",
-        "mpadded",
-        "mphantom",
-        "mprescripts",
-        "mroot",
-        "mrow",
-        "ms",
-        "mspace",
-        "msqrt",
-        "mstyle",
-        "msub",
-        "msubsup",
-        "msup",
-        "mtable",
-        "mtd",
-        "mtext",
-        "mtr",
-        "munder",
-        "munderover",
-        "semantics",
-    ]
-    .binary_search(&tag)
-    .is_ok()
-}
-
-fn is_ambiguous_element(tag: &str) -> bool {
-    tag == "a" || tag == "script" || tag == "title"
 }
 
 fn parse_event(event_name: &str) -> (String, EventNameOptions) {

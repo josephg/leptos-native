@@ -129,7 +129,7 @@ fn baseline_in_use(tree: &TreeRef, node_id: NodeId) -> bool {
         Some(s) => s,
         None => return false,
     };
-    if style.align_self == Some(native_layout::AlignItems::Baseline) {
+    if style.align_self == Some(renderer::AlignItems::Baseline) {
         return true;
     }
     let Some(parent_id) = tree.parent(node_id) else { return false };
@@ -137,7 +137,7 @@ fn baseline_in_use(tree: &TreeRef, node_id: NodeId) -> bool {
         Some(s) => s,
         None => return false,
     };
-    parent_style.align_items == Some(native_layout::AlignItems::Baseline)
+    parent_style.align_items == Some(renderer::AlignItems::Baseline)
 }
 
 fn walk(
@@ -179,7 +179,7 @@ fn walk(
             // natural size.
             if baseline_in_use(tree, node_id) {
                 if let Some(bo) =
-                    <crate::layout::GtkBackend as native_layout::LayoutBackend>::first_baseline(&view)
+                    <crate::layout::GtkBackend as renderer::LayoutBackend>::first_baseline(&view)
                 {
                     if bo > 0.0 && bo < rect.height() {
                         let y = rect.y() + bo;

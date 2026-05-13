@@ -2,7 +2,7 @@ use super::{
     component_builder::maybe_optimised_component_children,
     convert_to_snake_case, full_path_from_tag_name,
 };
-use crate::view::{fragment_to_tokens, utils::filter_prefixed_attrs, TagType};
+use crate::view::{fragment_to_tokens, utils::filter_prefixed_attrs};
 use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
 use rstml::node::{CustomNode, KeyedAttribute, NodeAttribute, NodeElement};
@@ -14,7 +14,6 @@ pub(crate) fn slot_to_tokens(
     slot: &KeyedAttribute,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
     global_class: Option<&TokenTree>,
-    disable_inert_html: bool,
 ) {
     let name = slot.key.to_string();
     let name = name.trim();
@@ -111,11 +110,9 @@ pub(crate) fn slot_to_tokens(
     } else {
         let children = fragment_to_tokens(
             &mut node.children,
-            TagType::Unknown,
             Some(&mut slots),
             global_class,
             None,
-            disable_inert_html,
         );
 
         // TODO view markers for hot-reloading

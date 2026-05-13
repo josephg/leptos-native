@@ -5,6 +5,96 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-12 — `<grid>` container (Taffy CSS-Grid)
+
+(Cross-cutting — same entry in `gtk_implementation_log.md`.)
+
+Added `<grid>` as a shared 2-D layout primitive alongside
+`<vstack>` / `<hstack>`. Backed by Taffy's grid algorithm, which
+`common/native_layout` now drives via a new `LayoutGridContainer`
+impl and a `Display::Grid` dispatch arm in `compute_child_layout`.
+The `taffy/grid` Cargo feature is enabled unconditionally in the
+workspace `Cargo.toml` — Grid is first-class, not an optional
+algorithm like `block_layout`.
+
+Builder lives per-port (`cocoa/leptos_cocoa/src/cocoa/element.rs`,
+`uikit/leptos_uikit/src/ios/element.rs`,
+`gtk/leptos_gtk/src/gtk/element.rs`), mirroring the existing `Stack`
+shape. Per-cell placement (`grid_column` / `grid_row` /
+`grid_column_at` / `grid_row_at` / `grid_column_span` /
+`grid_row_span`) is on the shared `WithLayout` trait in
+`common/renderer/src/attrs.rs`, so every element — button, label,
+nested container — can place itself in a grid parent without
+per-builder duplication.
+
+Non-obvious decisions:
+
+- **`grid_column` / `grid_row` take a single `(start, end)` tuple,
+  not two args.** The `view!{}` macro emits one method call per
+  attribute (`grid_row=(1, 2)` → `.grid_row((1, 2))`), so a
+  two-arg signature would fail to type-check from macro use. The
+  `GridRange` newtype with a blanket `From<(S, E)>` impl preserves
+  ergonomics — integer literals, `GridLine`, and `span(n)` all
+  flow through `Into`.
+
+- **`renderer::attrs::span` wins over `taffy::style_helpers::span`.**
+  Re-exporting both would collide at call sites. We re-export
+  Taffy's track-sizing helpers (`fr`, `length`, `auto`,
+  `min_content`, `max_content`, `minmax`, `fit_content`, `repeat`)
+  but explicitly *not* `line` / `span`, because the per-item
+  placement API uses our own `GridLine` enum (which carries
+  `Auto` / `Line(i16)` / `Span(u16)` directly and converts to
+  `GridPlacement` inside each port's `layout.rs`).
+
+- **`GridTemplateComponent` is pre-monomorphized to `String`.**
+  Taffy 0.10's `GridTemplateComponent<S: CheapCloneStr>` dropped
+  its default-param. The default builds use `String`, so
+  `native_layout` re-exports `pub type GridTemplateComponent =
+  taffy::GridTemplateComponent<String>` to spare callers the
+  generic noise. Same for `GridPlacement` / `GridTemplateRepetition`.
+
+- **The `<grid>` tag routes through the macro's HTML path, not SVG.**
+  Unlike `<view>` (which the leptos macro routes via
+  `tachys::svg::view` because it's an SVG tag in the web spec),
+  `<grid>` isn't an SVG element — so the macro emits
+  `tachys::html::element::grid()` directly, hitting the typed
+  method-call dispatch rather than the SVG-attr-fallback path that
+  emits `.attr(name, value)`. The grid example can therefore use
+  `<grid columns=...>` directly with typed methods; cells should
+  use `<vstack>` / `<hstack>` (also HTML path) rather than
+  `<view>` (SVG path) to avoid the `.attr()` fallback that the
+  container builders don't implement.
+
+- **`InertElement` was removed from the view macro** during this
+  change. The optimization detected fully-static subtrees and
+  emitted `tachys::html::InertElement::new("<html string>")` — a
+  web-only optimization with no analogue on native ports (the
+  string-template path doesn't exist in our renderer). Initially
+  the grid example sidestepped it by wrapping every static label
+  in `{"..."}` blocks. With the macro path now deleted entirely
+  (see `common/leptos_macro/src/view/mod.rs`, where
+  `is_inert_element` / `InertElementBuilder` /
+  `inert_element_to_tokens` are gone), all the `disable_inert_html`
+  parameter threading went with it, and the examples use plain
+  `"..."` text again.
+
+Paths touched:
+- `Cargo.toml` (taffy `grid` feature)
+- `common/native_layout/src/lib.rs` (`LayoutGridContainer` impl,
+  `compute_grid_layout` dispatch arm, helper re-exports)
+- `common/renderer/src/attrs.rs` (`GridLine`, `GridRange`,
+  `WithLayout` placement methods)
+- `cocoa/dom/src/layout.rs` + `cocoa/dom/src/node.rs`
+  ("grid" tag → `Display::Grid`, grid setters)
+- `cocoa/leptos_cocoa/src/cocoa/element.rs`,
+  `cocoa/leptos_cocoa/src/cocoa/mod.rs`,
+  `cocoa/leptos_cocoa/src/element_macos.rs`,
+  `cocoa/leptos_cocoa/src/lib.rs`
+- `cocoa/examples/grid/`
+- iOS + GTK mirror the same set under `uikit/...` and `gtk/...`.
+
+---
+
 ## 2026-05-06 — Layout primitives: `<stack>` and `<block>`
 
 Replaced the generic `<view>` flex container with two explicit

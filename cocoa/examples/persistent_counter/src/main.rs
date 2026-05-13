@@ -38,7 +38,7 @@ mod app {
 
         view! {
             <vstack padding=16.0 gap=12.0>
-                <label>{"This counter persists across app launches."}</label>
+                <label>"This counter persists across app launches."</label>
                 <label>{move || format!("Count: {}", count.get())}</label>
                 <hstack gap=8.0>
                     <button on:click=move |_| count.update(|n| *n -= 1)>"-1"</button>

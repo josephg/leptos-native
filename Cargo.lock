@@ -111,14 +111,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "block_layout_cocoa"
-version = "0.1.0"
-dependencies = [
- "cocoa_dom",
- "leptos_cocoa",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -191,7 +183,6 @@ dependencies = [
  "block2",
  "dispatch2",
  "futures",
- "native_layout",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -748,6 +739,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
 
 [[package]]
+name = "grid_cocoa"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
+name = "grid_gtk"
+version = "0.1.0"
+dependencies = [
+ "leptos_gtk",
+]
+
+[[package]]
+name = "grid_ios"
+version = "0.1.0"
+dependencies = [
+ "leptos_uikit",
+]
+
+[[package]]
 name = "gsk4"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -838,7 +850,6 @@ dependencies = [
  "gio",
  "glib 0.21.5",
  "gtk4",
- "native_layout",
  "reactive_graph",
  "renderer",
  "send_wrapper",
@@ -918,7 +929,6 @@ dependencies = [
  "any_spawner",
  "dispatch2",
  "futures",
- "native_layout",
  "objc2",
  "objc2-foundation",
  "objc2-quartz-core",
@@ -1171,14 +1181,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "native_layout"
-version = "0.1.0"
-dependencies = [
- "slotmap",
- "taffy",
 ]
 
 [[package]]
@@ -1705,6 +1707,8 @@ dependencies = [
  "rustc-hash",
  "rustc_version",
  "send_wrapper",
+ "slotmap",
+ "taffy",
  "throw_error",
 ]
 

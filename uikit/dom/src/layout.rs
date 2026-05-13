@@ -1,6 +1,6 @@
 //! iOS-side layout adapter.
 //!
-//! Tree storage and Taffy integration live in [`native_layout`];
+//! Tree storage and Taffy integration live in [`renderer`];
 //! this file plugs UIKit-specific types into it via [`IosBackend`].
 //! Mirrors `cocoa_dom::layout` one-for-one — the layout problem is
 //! the same: lay out flexbox over views whose intrinsic content size
@@ -18,12 +18,13 @@ use objc2_ui_kit::{UIControl, UIScrollView, UITextField, UIView};
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-pub use native_layout::{
-    AlignItems, AvailableSpace, Dimension, FlexDirection, FlexWrap,
-    JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
-    Position, Rect, Size, Style,
+pub use renderer::{
+    AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
+    FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
+    JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
+    Position, Rect, Size, Style, TrackSizingFunction,
 };
-use native_layout::LayoutBackend;
+use renderer::LayoutBackend;
 
 // ---------------------------------------------------------------------
 // iOS backend
@@ -59,11 +60,11 @@ impl LayoutBackend for IosBackend {
 }
 
 // Aliases so call sites don't have to spell `IosBackend` everywhere.
-pub type LayoutTree = native_layout::LayoutTree<IosBackend>;
-pub type TreeRef = native_layout::TreeRef<IosBackend>;
-pub type LayoutHandle = native_layout::LayoutHandle<IosBackend>;
-pub type NodeLayout = native_layout::NodeLayout<IosBackend>;
-pub type NodeContext = native_layout::NodeContext<IosBackend>;
+pub type LayoutTree = renderer::LayoutTree<IosBackend>;
+pub type TreeRef = renderer::TreeRef<IosBackend>;
+pub type LayoutHandle = renderer::LayoutHandle<IosBackend>;
+pub type NodeLayout = renderer::NodeLayout<IosBackend>;
+pub type NodeContext = renderer::NodeContext<IosBackend>;
 
 pub fn new_tree() -> TreeRef {
     LayoutTree::new()
@@ -265,7 +266,7 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
     // documentView).
     relayout_scroll_views(&handle.tree, handle.node_id);
 
-    apply_layout(&handle.tree, handle.node_id);
+    apply_frames(&handle.tree, handle.node_id);
     fixup_scroll_view_contents(&handle.tree, handle.node_id);
 }
 
@@ -314,7 +315,7 @@ fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
     }
 }
 
-fn apply_layout(tree: &TreeRef, id: NodeId) {
+fn apply_frames(tree: &TreeRef, id: NodeId) {
     tree.walk_subtree(id, &mut |_id, layout, view| {
         set_frame_from_layout(&view, &layout);
     });
@@ -472,7 +473,7 @@ pub fn first_baseline_offset(view: &UIView) -> Option<f64> {
 }
 
 fn set_frame_from_layout(view: &UIView, layout: &Layout) {
-    use native_layout::Point;
+    use renderer::Point;
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
     if layout_debug_enabled() {
@@ -488,112 +489,51 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 }
 
 // ---------------------------------------------------------------------
-// Convenience setters
+// Generic style setters — lifted to `renderer::setters`. See the
+// cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-pub fn set_width(node: &Node, width_px: f32) {
-    update_style(node, |s| s.size.width = Dimension::length(width_px));
-    schedule_relayout(node);
+impl renderer::LayoutNodeOps for Node {
+    fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
+        update_style(self, f);
+    }
+    fn schedule_relayout(&self) {
+        schedule_relayout(self);
+    }
 }
 
-pub fn set_height(node: &Node, height_px: f32) {
-    update_style(node, |s| s.size.height = Dimension::length(height_px));
-    schedule_relayout(node);
+// iOS Element impls — `set_tool_tip` uses the default no-op
+// (UIView has no hover tooltips).
+impl renderer::LayoutElement for crate::node::Element {
+    type Node = Node;
+    fn as_node(&self) -> &Self::Node {
+        crate::node::Element::as_node(self)
+    }
+}
+impl renderer::UniversalElement for crate::node::Element {
+    fn set_alpha(&self, alpha: f64) {
+        crate::node::Element::set_alpha(self, alpha)
+    }
 }
 
-pub fn set_min_width(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
+pub use renderer::{
+    align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
+    grid_line_to_placement, set_align_content, set_align_items, set_align_self,
+    set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,
+    set_flex_shrink, set_flex_wrap, set_gap, set_grid_auto_columns,
+    set_grid_auto_flow, set_grid_auto_rows, set_grid_column_end,
+    set_grid_column_start, set_grid_row_end, set_grid_row_start,
+    set_grid_template_columns, set_grid_template_rows, set_height,
+    set_justify_content, set_justify_items, set_margin, set_max_height,
+    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
+    set_width,
+};
 
-pub fn set_max_width(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.width = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_min_height(node: &Node, px: f32) {
-    update_style(node, |s| s.min_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_max_height(node: &Node, px: f32) {
-    update_style(node, |s| s.max_size.height = Dimension::length(px));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_direction(node: &Node, dir: FlexDirection) {
-    update_style(node, |s| s.flex_direction = dir);
-    schedule_relayout(node);
-}
-
-pub fn set_padding(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.padding = Rect {
-            left: LengthPercentage::length(all_px),
-            right: LengthPercentage::length(all_px),
-            top: LengthPercentage::length(all_px),
-            bottom: LengthPercentage::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_gap(node: &Node, gap_px: f32) {
-    update_style(node, |s| {
-        s.gap = Size {
-            width: LengthPercentage::length(gap_px),
-            height: LengthPercentage::length(gap_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_justify_content(node: &Node, jc: JustifyContent) {
-    update_style(node, |s| s.justify_content = Some(jc));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_grow(node: &Node, grow: f32) {
-    update_style(node, |s| s.flex_grow = grow);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_shrink(node: &Node, shrink: f32) {
-    update_style(node, |s| s.flex_shrink = shrink);
-    schedule_relayout(node);
-}
-
-pub fn set_flex_basis(node: &Node, basis_px: f32) {
-    update_style(node, |s| s.flex_basis = Dimension::length(basis_px));
-    schedule_relayout(node);
-}
-
-pub fn set_align_items(node: &Node, ai: AlignItems) {
-    update_style(node, |s| s.align_items = Some(ai));
-    schedule_relayout(node);
-}
-
-pub fn set_flex_wrap(node: &Node, fw: FlexWrap) {
-    update_style(node, |s| s.flex_wrap = fw);
-    schedule_relayout(node);
-}
-
-pub fn set_margin(node: &Node, all_px: f32) {
-    update_style(node, |s| {
-        s.margin = Rect {
-            left: LengthPercentageAuto::length(all_px),
-            right: LengthPercentageAuto::length(all_px),
-            top: LengthPercentageAuto::length(all_px),
-            bottom: LengthPercentageAuto::length(all_px),
-        };
-    });
-    schedule_relayout(node);
-}
-
-pub fn set_align_self(node: &Node, ai: Option<AlignItems>) {
-    update_style(node, |s| s.align_self = ai);
-    schedule_relayout(node);
-}
+// ---------------------------------------------------------------------
+// iOS-only setters — Taffy fields the cocoa port doesn't currently
+// expose (aspect_ratio, position, inset), used by the UIView builders
+// for square photo cells and overlay badges.
+// ---------------------------------------------------------------------
 
 /// Force a node's `aspect_ratio` (width / height). Useful for
 /// square photo cells (`aspect_ratio = 1.0`).
@@ -634,27 +574,4 @@ pub fn set_inset(
         };
     });
     schedule_relayout(node);
-}
-
-pub fn dim_to_dimension(d: renderer::attrs::Dim) -> Dimension {
-    use renderer::attrs::Dim;
-    match d {
-        Dim::Px(v) => Dimension::length(v),
-        Dim::Pct(v) => Dimension::percent(v),
-        Dim::Auto => Dimension::auto(),
-    }
-}
-
-pub fn align_self_to_taffy(
-    a: renderer::attrs::AlignSelf,
-) -> Option<AlignItems> {
-    use renderer::attrs::AlignSelf;
-    match a {
-        AlignSelf::Auto => None,
-        AlignSelf::Start => Some(AlignItems::FlexStart),
-        AlignSelf::End => Some(AlignItems::FlexEnd),
-        AlignSelf::Center => Some(AlignItems::Center),
-        AlignSelf::Stretch => Some(AlignItems::Stretch),
-        AlignSelf::Baseline => Some(AlignItems::Baseline),
-    }
 }

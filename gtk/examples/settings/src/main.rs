@@ -16,7 +16,7 @@ mod app {
             <vstack padding=16.0 gap=12.0>
                 // --- Volume slider ---
                 <vstack gap=4.0>
-                    <label>{"Volume"}</label>
+                    <label>"Volume"</label>
                     <slider
                         bind:value=volume
                         min_value=0.0
@@ -32,11 +32,11 @@ mod app {
                 </vstack>
 
                 // --- Mute toggle ---
-                <checkbox bind:checked=mute>{"Mute audio"}</checkbox>
+                <checkbox bind:checked=mute>"Mute audio"</checkbox>
 
                 // --- Theme picker ---
                 <hstack gap=8.0>
-                    <label>{"Theme:"}</label>
+                    <label>"Theme:"</label>
                     <pop_up_button
                         items=vec!["System", "Light", "Dark"]
                         bind:selection=theme />

@@ -425,6 +425,19 @@ impl Element {
                 s.flex_direction = FlexDirection::Row;
                 (v, s)
             }
+            "grid" => {
+                // 2-D grid container backed by Taffy's grid algorithm.
+                // Template tracks / gap / placement attrs are applied
+                // by the higher-level builder; this just establishes
+                // the container's `display: grid`.
+                let v: Retained<UIView> = UIView::initWithFrame(
+                    UIView::alloc(mtm),
+                    frame,
+                );
+                let mut s = Style::default();
+                s.display = crate::layout::Display::Grid;
+                (v, s)
+            }
             // Unknown tags → generic UIView container.
             _ => {
                 let v: Retained<UIView> = UIView::initWithFrame(

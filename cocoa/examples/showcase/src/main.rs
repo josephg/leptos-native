@@ -55,7 +55,7 @@ mod app {
         view! {
             <scroll_view flex_grow=1.0>
                 <vstack padding=20.0 gap=20.0>
-                    <label>{"Leptos macOS — control showcase"}</label>
+                    <label>"Leptos macOS — control showcase"</label>
 
                     <Section title="Buttons">
                         <hstack gap=8.0>
@@ -76,7 +76,7 @@ mod app {
                     </Section>
 
                     <Section title="Checkbox — bind:checked">
-                        <checkbox bind:checked=agreed>{"I agree to the terms"}</checkbox>
+                        <checkbox bind:checked=agreed>"I agree to the terms"</checkbox>
                         <label>{move || if agreed.get() { "✓ agreed".to_string() } else { "not agreed".to_string() }}</label>
                     </Section>
 

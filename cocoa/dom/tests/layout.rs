@@ -230,28 +230,6 @@ fn align_items_center_centres_cross_axis() {
     frame_eq(child.ns_view(), 150.0, 0.0, 100.0, 30.0);
 }
 
-#[cfg(feature = "block_layout")]
-fn block_children_stack_vertically_full_width() {
-    let _mtm = common::test_mtm();
-    let root = Element::create("block");
-    let _tree = fresh_tree(&root);
-
-    let a = Element::create("view");
-    let b = Element::create("view");
-    let c = Element::create("view");
-    for el in [&a, &b, &c] {
-        layout::set_height(el.as_node(), 40.0);
-        root.insert_node(el.as_node(), None);
-    }
-
-    layout::compute_layout(root.as_node(), NSSize::new(500.0, 200.0));
-
-    // Block flow: stacked top-to-bottom, full width.
-    frame_eq(a.ns_view(), 0.0, 0.0, 500.0, 40.0);
-    frame_eq(b.ns_view(), 0.0, 40.0, 500.0, 40.0);
-    frame_eq(c.ns_view(), 0.0, 80.0, 500.0, 40.0);
-}
-
 fn flex_grow_unequal_distributes_proportionally() {
     let _mtm = common::test_mtm();
     let root = Element::create("view");
@@ -520,11 +498,6 @@ fn main() {
         ),
         ("justify_content_space_between", justify_content_space_between),
         ("align_items_center_centres_cross_axis", align_items_center_centres_cross_axis),
-        #[cfg(feature = "block_layout")]
-        (
-            "block_children_stack_vertically_full_width",
-            block_children_stack_vertically_full_width,
-        ),
         (
             "nested_containers_inner_fits_within_outer",
             nested_containers_inner_fits_within_outer,

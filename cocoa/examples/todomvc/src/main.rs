@@ -125,7 +125,7 @@ fn TodoMVC() -> impl IntoView {
 
     view! {
         <vstack padding=20.0 gap=12.0>
-            <label>{"todos"}</label>
+            <label>"todos"</label>
             <text_field
                 node_ref=new_todo_ref
                 placeholder="What needs to be done?"

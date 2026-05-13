@@ -419,8 +419,6 @@ fn kind_is_always_element() {
         "progress_indicator",
         "stack_view",
         "stack",
-        #[cfg(feature = "block_layout")]
-        "block",
         "totally_unknown_xyz",
     ] {
         let el = Element::create(tag);

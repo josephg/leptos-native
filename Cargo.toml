@@ -6,7 +6,6 @@ members = [
   "common/reactive_stores",
   "common/reactive_stores_macro",
   "common/renderer",
-  "common/native_layout",
   "common/leptos_macro",
   "common/leptos",
   "apple_shared",
@@ -20,7 +19,6 @@ members = [
   "uikit/dom",
 
   # cocoa examples
-  "cocoa/examples/block_layout",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
   "cocoa/examples/counter",
@@ -29,6 +27,7 @@ members = [
   "cocoa/examples/directives",
   "cocoa/examples/error_boundary",
   "cocoa/examples/greeter",
+  "cocoa/examples/grid",
   "cocoa/examples/login_form",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",
@@ -51,6 +50,7 @@ members = [
   "gtk/examples/counter",
   "gtk/examples/counters",
   "gtk/examples/greeter",
+  "gtk/examples/grid",
   "gtk/examples/login_form",
   "gtk/examples/settings",
 ]
@@ -61,7 +61,6 @@ default-members = [
   "common/reactive_stores",
   "common/reactive_stores_macro",
   "common/renderer",
-  "common/native_layout",
   "common/leptos_macro",
   "common/leptos",
   "apple_shared",
@@ -70,7 +69,6 @@ default-members = [
   "gtk/dom",
   "gtk/leptos_gtk",
 
-  "cocoa/examples/block_layout",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
   "cocoa/examples/counter",
@@ -79,6 +77,7 @@ default-members = [
   "cocoa/examples/directives",
   "cocoa/examples/error_boundary",
   "cocoa/examples/greeter",
+  "cocoa/examples/grid",
   "cocoa/examples/login_form",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",
@@ -132,7 +131,6 @@ rust-version = "1.88"
 [workspace.dependencies]
 # --- workspace member crates (path-pinned) ---
 renderer = { path = "./common/renderer", version = "0.1.0" }
-native_layout = { path = "./common/native_layout", version = "0.1.0" }
 reactive_graph = { path = "./common/reactive_graph", version = "0.2.14" }
 reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
 reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
@@ -166,7 +164,7 @@ guardian = { default-features = false, version = "1.3" }
 rustc-hash = { default-features = false, version = "2.1" }
 tracing = { default-features = false, version = "0.1" }
 slotmap = { default-features = false, version = "1.1" }
-taffy = { default-features = false, version = "0.10", features = ["std", "flexbox", "taffy_tree"] }
+taffy = { default-features = false, version = "0.10", features = ["std", "flexbox", "grid", "taffy_tree"] }
 futures = { default-features = false, version = "0.3" }
 pin-project-lite = { default-features = false, version = "0.2" }
 send_wrapper = { default-features = false, version = "0.6" }

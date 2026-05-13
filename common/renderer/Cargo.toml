@@ -19,6 +19,12 @@ send_wrapper = { workspace = true, default-features = true }
 indexmap = { workspace = true, default-features = true }
 rustc-hash = { workspace = true, default-features = true }
 reactive_graph = { workspace = true, optional = true }
+# Layout module: Taffy-backed storage tree + style setters.
+# Folded in (instead of being a separate `native_layout` crate)
+# so the `IntoMaybeReactive` trait and the taffy types it impls
+# for live in the same crate (orphan rule).
+taffy = { workspace = true }
+slotmap = { workspace = true, default-features = true }
 
 [features]
 default = ["reactive_graph"]

@@ -16,11 +16,14 @@ pub mod window;
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
-    button, checkbox, hstack, label, pop_up_button, secure_text_field,
+    button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
     slider, stack, stack_view, text_field, view, vstack,
 };
 pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums.
-pub use gtk_dom::layout::{AlignItems, FlexDirection, JustifyContent};
+pub use gtk_dom::layout::{
+    AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+    GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
+};

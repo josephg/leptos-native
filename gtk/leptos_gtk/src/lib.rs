@@ -17,7 +17,6 @@ pub mod gtk;
 pub mod keys;
 pub mod mount;
 pub mod renderer_gtk;
-pub mod svg_gtk;
 
 pub use renderer_gtk::Dom;
 
@@ -53,7 +52,13 @@ pub use leptos::callback;
 
 /// View-tree machinery + element builders + events under the path
 /// shape the `view!{}` macro emits (`::leptos::tachys::html::element::*`,
-/// `::leptos::tachys::view::*`, `::leptos::tachys::svg::*`).
+/// `::leptos::tachys::view::*`).
+///
+/// The web Leptos macro additionally routed SVG-tag-named elements
+/// through `tachys::svg::*` and emitted `.attr(name, value)` for
+/// every attribute. On native there's no SVG renderer and no
+/// untyped `.attr()` slot, so this fork's macro routes every tag
+/// through `tachys::html::element::*`.
 pub mod tachys {
     pub use ::renderer::view;
 
@@ -79,13 +84,6 @@ pub mod tachys {
             pub use crate::directive::*;
         }
     }
-
-    pub mod svg {
-        pub use crate::svg_gtk::*;
-    }
-
-    /// Marker-equivalent for tachys' nightly Static optimization.
-    pub mod mathml {}
 }
 
 /// GTK-specialized [`IntoView`](leptos::IntoView). Pinning R to
@@ -94,30 +92,15 @@ pub mod tachys {
 pub trait IntoView: leptos::IntoView<Dom> {}
 impl<T: leptos::IntoView<Dom>> IntoView for T {}
 
-/// Identity trait the leptos_macro view!{} expansion emits as
-/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
-/// around attribute values. Upstream this normalised values into a
-/// SSR-friendly `AttributeValue` shape; on native the value is
-/// already the right type so the trait is a no-op identity.
-pub trait IntoAttributeValue {
-    type Output;
-    fn into_attribute_value(self) -> Self::Output;
-}
-
-impl<T> IntoAttributeValue for T {
-    type Output = T;
-    fn into_attribute_value(self) -> Self {
-        self
-    }
-}
-
 /// User prelude — items end-user examples bring into scope.
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our gtk-specialized
     // overrides below shadow it (specifically `IntoView`).
+    // (`IntoAttributeValue` lives in `common/leptos` and comes in via
+    // `core::prelude::*`.)
     pub use crate::core::prelude::*;
 
-    pub use crate::{IntoAttributeValue, IntoView};
+    pub use crate::IntoView;
 
     // Mounting
     pub use crate::mount::{mount_to_window, run};
@@ -129,13 +112,21 @@ pub mod prelude {
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
         element::{
-            button, checkbox, hstack, label, pop_up_button,
+            button, checkbox, grid, hstack, label, pop_up_button,
             secure_text_field, slider, stack_view, text_field, view,
             vstack,
         },
         node_ref::NodeRef,
-        AlignItems, FlexDirection, JustifyContent,
+        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+        GridTemplateComponent, JustifyContent, JustifyItems,
+        TrackSizingFunction,
     };
+
+    pub use renderer::{
+        auto, fit_content, fr, length, max_content, min_content, minmax,
+        percent, repeat,
+    };
+    pub use renderer::attrs::{auto_line, span, GridLine};
 
     pub use crate::Dom;
 }

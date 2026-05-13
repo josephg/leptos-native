@@ -21,11 +21,14 @@ pub mod window;
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
-    button, hstack, label, stack_view, text_field, view, vstack,
+    button, grid, hstack, label, stack_view, text_field, view, vstack,
 };
 pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums so users
 // don't have to import them from `cocoa_dom::layout` separately.
-pub use cocoa_dom::layout::{AlignItems, FlexDirection, JustifyContent};
+pub use cocoa_dom::layout::{
+    AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+    GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
+};

@@ -74,9 +74,8 @@ impl Default for TextProp {
     }
 }
 
-// No `IntoAttributeValue` impl: the trait lives in the platform
-// `leptos_<X>` element/attr modules, not in the renderer-agnostic
-// `common/renderer` crate.
+// `IntoAttributeValue` (defined in this crate's `lib.rs`) has a
+// blanket identity impl, so `TextProp` gets one for free.
 
 #[allow(unused)]
 macro_rules! textprop_reactive {
