@@ -29,6 +29,11 @@ name = "grid_layout"
 path = "tests/grid_layout.rs"
 harness = false
 
+[[test]]
+name = "apply_attrs"
+path = "tests/apply_attrs.rs"
+harness = false
+
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"
 dispatch2 = "0.3"

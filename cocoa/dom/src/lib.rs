@@ -36,6 +36,7 @@ pub mod interval;
 pub mod key_event;
 pub mod layout;
 pub mod node;
+pub mod objc_enums;
 pub mod renderer;
 pub mod spawner;
 pub mod storage;
@@ -43,6 +44,7 @@ pub mod window;
 
 pub use color::Color;
 pub use date::Date;
+pub use objc_enums::{DatePickerStyle, SegmentStyle, TextAlignment};
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
@@ -55,8 +57,8 @@ pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElem
 
 // Re-export the most common objc2 / objc2_app_kit types so
 // downstream crates don't have to take a direct objc2 dependency
-// just to interact with our Cocoa façade.
+// just to interact with our Cocoa façade. Visual-style enums live
+// in `objc_enums` as newtype wrappers — see `TextAlignment`,
+// `SegmentStyle`, `DatePickerStyle` above.
 pub use objc2::{rc::Retained, MainThreadMarker};
-pub use objc2_app_kit::{
-    NSDatePickerStyle, NSSegmentStyle, NSTextAlignment, NSView,
-};
+pub use objc2_app_kit::NSView;

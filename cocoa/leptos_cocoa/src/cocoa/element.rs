@@ -28,7 +28,7 @@ use reactive_graph::effect::RenderEffect;
 
 /// Cocoa's text-attr struct alias — `TextAttrs` with cocoa's `Color`
 /// and `NSTextAlignment`.
-pub type CocoaText = TextAttrs<Color, cocoa_dom::NSTextAlignment>;
+pub type CocoaText = TextAttrs<Color, cocoa_dom::TextAlignment>;
 
 /// Port-local accessor trait for [`CocoaText`]. Mirrors the shape of
 /// renderer-common's `WithLayout` / `WithUniversal`: each builder
@@ -49,7 +49,7 @@ pub trait WithText: Sized {
         self
     }
     /// Text alignment within the control's frame.
-    fn alignment<V: IntoMaybeReactive<cocoa_dom::NSTextAlignment>>(
+    fn alignment<V: IntoMaybeReactive<cocoa_dom::TextAlignment>>(
         mut self,
         a: V,
     ) -> Self {
@@ -2113,7 +2113,7 @@ pub struct DatePicker {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
-    style: Option<MaybeReactive<cocoa_dom::NSDatePickerStyle>>,
+    style: Option<MaybeReactive<cocoa_dom::DatePickerStyle>>,
     min_date: Option<MaybeReactive<cocoa_dom::Date>>,
     max_date: Option<MaybeReactive<cocoa_dom::Date>>,
 }
@@ -2205,7 +2205,7 @@ impl DatePicker {
     /// `TextualAndStepper` (default), or `ClockAndCalendar`.
     pub fn style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::NSDatePickerStyle>,
+        V: IntoMaybeReactive<cocoa_dom::DatePickerStyle>,
     {
         self.style = Some(s.into_maybe_reactive());
         self
@@ -2819,7 +2819,7 @@ pub struct SegmentedControl {
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
-    segment_style: Option<MaybeReactive<cocoa_dom::NSSegmentStyle>>,
+    segment_style: Option<MaybeReactive<cocoa_dom::SegmentStyle>>,
 }
 
 pub fn segmented_control() -> SegmentedControl {
@@ -2914,10 +2914,10 @@ impl WithUniversal for SegmentedControl {
 impl SegmentedControl {
     /// Visual style: `Rounded`, `RoundRect`, `Capsule`,
     /// `SmallSquare`, `Separated`, etc. See
-    /// `cocoa_dom::NSSegmentStyle`.
+    /// `cocoa_dom::SegmentStyle`.
     pub fn segment_style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::NSSegmentStyle>,
+        V: IntoMaybeReactive<cocoa_dom::SegmentStyle>,
     {
         self.segment_style = Some(s.into_maybe_reactive());
         self

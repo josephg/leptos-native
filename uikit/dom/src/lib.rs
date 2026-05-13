@@ -35,12 +35,14 @@ pub mod interval;
 pub mod key_event;
 pub mod layout;
 pub mod node;
+pub mod objc_enums;
 pub mod renderer;
 pub mod spawner;
 pub mod storage;
 
 pub use color::{Color, SystemColor};
 pub use date::Date;
+pub use objc_enums::{DatePickerStyle, TextAlignment};
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
@@ -53,8 +55,8 @@ pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElem
 
 // Re-export the most common objc2 / objc2_ui_kit types so
 // downstream crates don't have to take a direct objc2 dependency
-// just to interact with our UIKit façade.
+// just to interact with our UIKit façade. Visual-style enums live
+// in `objc_enums` as newtype wrappers — see `TextAlignment`,
+// `DatePickerStyle` above.
 pub use objc2::{rc::Retained, MainThreadMarker};
-pub use objc2_ui_kit::{
-    NSTextAlignment, UIDatePickerStyle, UIView,
-};
+pub use objc2_ui_kit::UIView;

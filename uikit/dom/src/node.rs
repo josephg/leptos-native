@@ -912,23 +912,20 @@ impl Element {
         }
     }
 
-    /// Set text alignment. NSTextAlignment is shared via Foundation.
-    pub fn set_text_alignment(
-        &self,
-        alignment: objc2_ui_kit::NSTextAlignment,
-    ) {
+    /// Set text alignment.
+    pub fn set_text_alignment(&self, alignment: crate::TextAlignment) {
         let view = self.ui_view();
 
         if let Some(field) = downcast::<UITextField>(view) {
-            field.setTextAlignment(alignment);
+            field.setTextAlignment(alignment.0);
             return;
         }
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
-            label.setTextAlignment(alignment);
+            label.setTextAlignment(alignment.0);
             return;
         }
         if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
-            tv.setTextAlignment(alignment);
+            tv.setTextAlignment(alignment.0);
         }
     }
 
@@ -998,14 +995,11 @@ impl Element {
     }
 
     /// UIDatePicker visual style.
-    pub fn set_date_picker_style(
-        &self,
-        style: objc2_ui_kit::UIDatePickerStyle,
-    ) {
+    pub fn set_date_picker_style(&self, style: crate::DatePickerStyle) {
         if let Some(dp) =
             downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
         {
-            dp.setPreferredDatePickerStyle(style);
+            dp.setPreferredDatePickerStyle(style.0);
         }
     }
 

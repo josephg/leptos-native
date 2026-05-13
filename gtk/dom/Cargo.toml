@@ -79,6 +79,11 @@ path = "tests/grid_layout.rs"
 harness = false
 
 [[test]]
+name = "apply_attrs"
+path = "tests/apply_attrs.rs"
+harness = false
+
+[[test]]
 name = "layout_dirtying"
 path = "tests/layout_dirtying.rs"
 harness = false

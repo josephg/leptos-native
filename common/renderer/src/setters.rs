@@ -32,25 +32,6 @@ use crate::attrs::{
     install, AlignSelf, Dim, GridLine, LayoutAttrs, RenderEffect,
     UniversalAttrs,
 };
-use crate::impl_into_maybe_reactive;
-
-// ---------------------------------------------------------------------
-// `IntoMaybeReactive` impls for the taffy value types we re-export.
-//
-// These live here (rather than in the per-port `attr.rs` files) now
-// that the trait and the taffy types share a crate — the orphan rule
-// previously forced each port to define its own `IntoMaybeReactive`
-// trait shadow + impls, even though every port wrote the same code.
-//
-// Taffy aliases several types together (`JustifyItems = AlignItems`,
-// `JustifySelf = AlignItems`, `JustifyContent = AlignContent`), so
-// only the canonical underlying types need an impl. Builders that
-// take any of the aliases pick up the impl through the alias.
-// ---------------------------------------------------------------------
-
-impl_into_maybe_reactive!(
-    FlexDirection, FlexWrap, AlignItems, AlignContent, GridAutoFlow,
-);
 
 // ---------------------------------------------------------------------
 // Port-specific glue trait

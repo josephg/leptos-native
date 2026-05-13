@@ -33,7 +33,7 @@ use reactive_graph::effect::RenderEffect;
 
 /// iOS's text-attr struct alias — `TextAttrs` with iOS's `Color`
 /// and `NSTextAlignment`.
-pub type IosText = TextAttrs<ios_dom::Color, ios_dom::NSTextAlignment>;
+pub type IosText = TextAttrs<ios_dom::Color, ios_dom::TextAlignment>;
 
 /// Port-local accessor trait for [`IosText`]. Mirrors the shape of
 /// renderer-common's `WithLayout` / `WithUniversal`: each builder
@@ -54,7 +54,7 @@ pub trait WithText: Sized {
         self
     }
     /// Text alignment within the control's frame.
-    fn alignment<V: IntoMaybeReactive<ios_dom::NSTextAlignment>>(
+    fn alignment<V: IntoMaybeReactive<ios_dom::TextAlignment>>(
         mut self,
         a: V,
     ) -> Self {
@@ -1863,7 +1863,7 @@ pub struct DatePicker {
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
-    style: Option<MaybeReactive<ios_dom::UIDatePickerStyle>>,
+    style: Option<MaybeReactive<ios_dom::DatePickerStyle>>,
     min_date: Option<MaybeReactive<ios_dom::Date>>,
     max_date: Option<MaybeReactive<ios_dom::Date>>,
 }
@@ -1904,10 +1904,10 @@ impl DatePicker {
         self.pending_bind = Some(bound);
     }
     /// Visual style: `Wheels`, `Compact` (default), `Inline`,
-    /// `Automatic`. See `ios_dom::UIDatePickerStyle`.
+    /// `Automatic`. See `ios_dom::DatePickerStyle`.
     pub fn style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<ios_dom::UIDatePickerStyle>,
+        V: IntoMaybeReactive<ios_dom::DatePickerStyle>,
     {
         self.style = Some(s.into_maybe_reactive());
         self

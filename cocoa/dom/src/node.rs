@@ -1165,14 +1165,11 @@ impl Element {
     }
 
     /// Set text alignment on a text-bearing view. No-op on others.
-    pub fn set_text_alignment(
-        &self,
-        alignment: objc2_app_kit::NSTextAlignment,
-    ) {
+    pub fn set_text_alignment(&self, alignment: crate::TextAlignment) {
         let view = self.ns_view();
 
         if let Some(field) = downcast::<NSTextField>(view) {
-            field.setAlignment(alignment);
+            field.setAlignment(alignment.0);
             return;
         }
         if let Some(scroll) =
@@ -1183,7 +1180,7 @@ impl Element {
                 if let Some(tv) =
                     any.downcast_ref::<objc2_app_kit::NSTextView>()
                 {
-                    tv.setAlignment(alignment);
+                    tv.setAlignment(alignment.0);
                 }
             }
         }
@@ -1310,31 +1307,23 @@ impl Element {
         }
     }
 
-    /// Set an NSSegmentedControl's visual style. See
-    /// `NSSegmentStyle` for the options
-    /// (Rounded, RoundRect, Capsule, etc.). No-op on
+    /// Set an NSSegmentedControl's visual style. No-op on
     /// non-segmented.
-    pub fn set_segment_style(
-        &self,
-        style: objc2_app_kit::NSSegmentStyle,
-    ) {
+    pub fn set_segment_style(&self, style: crate::SegmentStyle) {
         use objc2_app_kit::NSSegmentedControl;
         if let Some(sc) =
             downcast::<NSSegmentedControl>(self.ns_view())
         {
-            sc.setSegmentStyle(style);
+            sc.setSegmentStyle(style.0);
         }
     }
 
     /// Set NSDatePicker's visual style (textual / textual+stepper /
     /// clock-and-calendar). No-op on non-date-pickers.
-    pub fn set_date_picker_style(
-        &self,
-        style: objc2_app_kit::NSDatePickerStyle,
-    ) {
+    pub fn set_date_picker_style(&self, style: crate::DatePickerStyle) {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = downcast::<NSDatePicker>(self.ns_view()) {
-            dp.setDatePickerStyle(style);
+            dp.setDatePickerStyle(style.0);
         }
     }
 
