@@ -212,6 +212,12 @@ fn hidden_collapses_layout_slot() {
     });
 }
 
+// Removed: `toolbar_keeps_explicit_height` tested the old hstack-
+// shaped `toolbar()` builder. The current `<toolbar>` is backed
+// by NSToolbar and lives outside the layout tree — it doesn't
+// have a Taffy height to check. See
+// `cocoa/leptos_cocoa/tests/toolbar.rs` for the NSToolbar tests.
+
 fn main() {
     common::run_tests(&[
         (

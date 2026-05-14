@@ -353,11 +353,17 @@ pub fn open_split_window(
     specs: Vec<PaneSpec>,
     mtm: MainThreadMarker,
 ) -> OpenedSplitWindow {
+    // Matches `open_window` exactly. Earlier this also set
+    // `FullSizeContentView`, which extends the contentView behind
+    // the title bar — useful for windows with a real `NSToolbar`
+    // integrated into the title bar, but we don't install one. With
+    // `FullSizeContentView` and no toolbar, the first ~28pt of the
+    // pane content gets hidden under the title bar; pages's toolbar
+    // appeared to "render half-clipped at the top" because of it.
     let style = NSWindowStyleMask::Titled
         | NSWindowStyleMask::Closable
         | NSWindowStyleMask::Resizable
-        | NSWindowStyleMask::Miniaturizable
-        | NSWindowStyleMask::FullSizeContentView;
+        | NSWindowStyleMask::Miniaturizable;
     let content_rect = NSRect::new(
         NSPoint::new(200.0, 200.0),
         NSSize::new(size.0, size.1),

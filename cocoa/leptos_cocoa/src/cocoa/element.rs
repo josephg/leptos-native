@@ -745,6 +745,7 @@ pub struct Button {
     // boldSystemFontOfSize), not part of the generic decoration set.
     text_color:       Option<MaybeReactive<Color>>,
     bold:             Option<MaybeReactive<bool>>,
+    sf_symbol:        Option<MaybeReactive<String>>,
 }
 
 pub fn button() -> Button {
@@ -762,6 +763,7 @@ pub fn button() -> Button {
         key_equivalent: None,
         text_color: None,
         bold: None,
+        sf_symbol: None,
     }
 }
 
@@ -870,6 +872,21 @@ impl Button {
         V: IntoMaybeReactive<bool>,
     {
         self.bold = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Render an SF Symbol as the button's icon (`NSButton.image`),
+    /// positioned `ImageAbove` the title (toolbar-style) when a
+    /// title is set, `ImageOnly` otherwise. Reactive — pass a
+    /// closure to swap symbols on signal change.
+    ///
+    /// macOS 11+ required. Empty name clears the image. Use the
+    /// `text_color=` setter to tint template symbols.
+    pub fn sf_symbol<V>(mut self, name: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.sf_symbol = Some(name.into_maybe_reactive());
         self
     }
 
@@ -1000,6 +1017,17 @@ where
         if let Some(b) = self.bold {
             let e = el.clone();
             if let Some(eff) = install(b, move |v| e.set_bold(v)) {
+                effects.push(eff);
+            }
+        }
+        // SF symbol AFTER title is wired, so `set_button_sf_symbol`
+        // can read `button.title().length()` to pick the right
+        // `imagePosition`.
+        if let Some(sym) = self.sf_symbol {
+            let e = el.clone();
+            if let Some(eff) =
+                install(sym, move |s| e.set_button_sf_symbol(&s))
+            {
                 effects.push(eff);
             }
         }
@@ -3300,7 +3328,9 @@ where
 // ---------------------------------------------------------------------
 
 pub struct ImageView {
-    source: MaybeReactive<String>,
+    source: Option<MaybeReactive<String>>,
+    sf_symbol: Option<MaybeReactive<String>>,
+    tint: Option<MaybeReactive<Color>>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
     universal: UniversalAttrs,
@@ -3310,7 +3340,9 @@ pub struct ImageView {
 
 pub fn image_view() -> ImageView {
     ImageView {
-        source: MaybeReactive::Static(String::new()),
+        source: None,
+        sf_symbol: None,
+        tint: None,
         node_ref: None,
         directives: Vec::new(),
         universal: UniversalAttrs::default(),
@@ -3325,11 +3357,41 @@ impl ImageView {
     /// (e.g. via reqwest) and write to a temp file, then pass the
     /// path. NSImage's `initWithContentsOfFile:` handles PNG, JPEG,
     /// PDF, TIFF, etc.
+    ///
+    /// Mutually exclusive with [`Self::sf_symbol`]; if both are set
+    /// `sf_symbol` wins (applied last).
     pub fn source<V>(mut self, v: V) -> Self
     where
         V: IntoMaybeReactive<String>,
     {
-        self.source = v.into_maybe_reactive();
+        self.source = Some(v.into_maybe_reactive());
+        self
+    }
+
+    /// Render an SF Symbol by name (e.g. `"plus.circle"`, `"trash"`,
+    /// `"square.and.arrow.up"`). Reactive — pass a closure to swap
+    /// symbols on signal change. Empty name or an unknown symbol
+    /// clears the image.
+    ///
+    /// Requires macOS 11+. SF Symbols are template images — set
+    /// [`Self::tint`] to colour them; the default is the system
+    /// accent / label colour.
+    pub fn sf_symbol<V>(mut self, name: V) -> Self
+    where
+        V: IntoMaybeReactive<String>,
+    {
+        self.sf_symbol = Some(name.into_maybe_reactive());
+        self
+    }
+
+    /// Tint colour applied via `NSImageView.contentTintColor`.
+    /// Reactive. Most useful with [`Self::sf_symbol`] — regular
+    /// RGBA images aren't recoloured.
+    pub fn tint<V>(mut self, c: V) -> Self
+    where
+        V: IntoMaybeReactive<Color>,
+    {
+        self.tint = Some(c.into_maybe_reactive());
         self
     }
 
@@ -3371,11 +3433,31 @@ where
         let el = CocoaElement::create("image_view");
         let mut effects = Vec::new();
 
-        let el_for_src = el.clone();
-        if let Some(eff) = install(self.source, move |s| {
-            el_for_src.set_image_view_path(&s);
-        }) {
-            effects.push(eff);
+        // `source` first so `sf_symbol` can replace it last-write-wins
+        // if both were set on the same builder.
+        if let Some(src) = self.source {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(src, move |s| el_for.set_image_view_path(&s))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(sym) = self.sf_symbol {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(sym, move |s| el_for.set_image_view_sf_symbol(&s))
+            {
+                effects.push(eff);
+            }
+        }
+        if let Some(tint) = self.tint {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(tint, move |c| el_for.set_image_view_tint(c))
+            {
+                effects.push(eff);
+            }
         }
 
         effects.extend(apply_decoration(&el, self.decoration));

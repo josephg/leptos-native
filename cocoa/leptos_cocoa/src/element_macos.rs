@@ -18,6 +18,13 @@ pub use crate::cocoa::element::{
     segmented_control, slider, stack, stepper, text_field, text_view, vstack,
 };
 
+// Native NSToolbar-backed `<toolbar>` + items. Lives in its own
+// module since NSToolbar is not a view — attaches to the
+// containing NSWindow at mount time.
+pub use crate::cocoa::toolbar::{
+    toolbar, toolbar_flexible_space, toolbar_item, toolbar_space,
+};
+
 // Split-view: `<split_view>` + `<split_pane>` — native
 // `NSSplitViewController` panes, each with their own Taffy tree.
 // Must be used with `mount_to_split_window` (not `mount_to_window`).

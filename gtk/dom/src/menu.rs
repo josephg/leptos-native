@@ -160,11 +160,20 @@ impl Menu {
 /// Leaf menu command. Carries its `gio::MenuItem`, a private
 /// `gio::SimpleAction` (so the closure can fire), and the action
 /// name (for accel binding + reactive title rebuilds).
+///
+/// Cloneable — clones share the underlying `gio::MenuItem` /
+/// `gio::SimpleAction` (refcounted) and the `Rc<Cell<bool>>`
+/// single-handler guard, so the `set_action`-twice panic catches
+/// double-installs through any clone.
 #[derive(Clone)]
 pub struct MenuItem {
-    item:        gio::MenuItem,
-    action:      gio::SimpleAction,
-    action_name: String,
+    item:           gio::MenuItem,
+    action:         gio::SimpleAction,
+    action_name:    String,
+    /// Single-handler guard — flipped to `true` on first
+    /// `set_action` call; subsequent calls panic to match the
+    /// cocoa rule. Shared across clones via `Rc`.
+    action_wired:   std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 /// Process-wide counter for action-name generation. Names look like
@@ -187,7 +196,12 @@ pub fn menu_item() -> MenuItem {
     let item = gio::MenuItem::new(Some(""), None);
     item.set_detailed_action(&format!("app.{}", action_name));
 
-    MenuItem { item, action, action_name }
+    MenuItem {
+        item,
+        action,
+        action_name,
+        action_wired: std::rc::Rc::new(std::cell::Cell::new(false)),
+    }
 }
 
 impl MenuItem {
@@ -255,11 +269,23 @@ impl MenuItem {
 
     /// Wire a Rust closure as the item's activation handler.
     /// Single-handler contract: a second call panics rather than
-    /// fanning out (matches the cocoa rule).
+    /// fanning out (matches the cocoa rule). The check is via the
+    /// shared `action_wired` flag, so calling `set_action` through
+    /// a clone of the same item also panics.
     pub fn set_action<F>(&self, app: &gtk4::Application, cb: F)
     where
         F: FnMut() + 'static,
     {
+        if self.action_wired.get() {
+            panic!(
+                "set_action called twice on the same MenuItem (action \
+                 \"{}\"). gio::SimpleAction::connect_activate would stack \
+                 the handlers — combine into one closure instead.",
+                self.action_name,
+            );
+        }
+        self.action_wired.set(true);
+
         let cb = std::cell::RefCell::new(cb);
         self.action.connect_activate(move |_, _| {
             if let Ok(mut cb) = cb.try_borrow_mut() {
@@ -271,9 +297,10 @@ impl MenuItem {
                 );
             }
         });
-        // Register the action on the application. Re-registration
-        // (idempotent on the SimpleAction object identity since
-        // gtk::Application::add_action replaces by name) is fine.
+        // Register the action on the application. add_action with the
+        // same name replaces; we shouldn't hit that case because of
+        // the action_wired guard, but the underlying behavior is
+        // defined.
         app.add_action(&self.action);
     }
 }

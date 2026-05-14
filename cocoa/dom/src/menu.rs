@@ -13,7 +13,8 @@
 //! `MainThreadMarker` is passed in to construction functions).
 
 use crate::event::{
-    action_fired_sel, drop_handlers_for, keep_target_alive, ActionTarget,
+    action_fired_sel, drop_action_target_for_key, keep_target_alive_for_key,
+    ActionTarget,
 };
 use objc2::{rc::Retained, runtime::NSObject, MainThreadMarker};
 use objc2_app_kit::{
@@ -115,11 +116,14 @@ impl Menu {
         &self.ns_menu
     }
 
-    /// Update the menu's displayed title. Wrapper items appended
-    /// via [`MenuBar::append_menu`] / [`Menu::append_submenu`]
-    /// reflect the change automatically — AppKit reads the
-    /// submenu's title for the wrapper-item label when nothing
-    /// overrides it.
+    /// Update the menu's title. This is the title AppKit shows
+    /// when the menu is reached via the keyboard API; for menu-bar
+    /// / parent-menu display the *wrapper* `NSMenuItem`'s title
+    /// (returned by [`MenuBar::append_menu`] / [`Menu::append_submenu`])
+    /// is what gets read — AppKit copies the submenu's title to the
+    /// wrapper at attach time, but does **not** keep them in sync
+    /// after that. Callers that want a dynamic label must update
+    /// both.
     pub fn set_title(&self, t: &str) {
         self.ns_menu.setTitle(&NSString::from_str(t));
     }
@@ -257,31 +261,30 @@ impl MenuItem {
             self.ns_item.setTarget(Some(target_obj));
             self.ns_item.setAction(Some(action_fired_sel()));
         }
-        // Re-use the NSView-keyed handler store. The store treats
-        // its key as an opaque `usize`, and the only requirement is
-        // that whatever value we hash matches what we pass to
-        // `drop_handlers` later. NSMenuItem isn't an NSView, but
-        // pointer equality is enough — see [`drop_handlers`] for
-        // the cleanup story.
-        let view_proxy: &objc2_app_kit::NSView = unsafe {
-            // SAFETY: ActionTarget's owning view-pointer is just a
-            // key — never dereferenced. We cast the NSMenuItem ptr
-            // to NSView solely for the HashMap lookup. The cast is
-            // OK because `keep_target_alive` only reads the ptr's
-            // numeric value via `view_key`.
-            &*((&*self.ns_item as *const NSMenuItem) as *const objc2_app_kit::NSView)
-        };
-        keep_target_alive(view_proxy, target);
+        // Share the HANDLER_STORE keyspace with NSControl-backed
+        // handlers, keyed on the NSMenuItem's pointer-as-usize.
+        // The store is purely a retain-keeper; the key never gets
+        // dereferenced, so it doesn't matter that NSMenuItem isn't
+        // an NSView. (Earlier we fabricated a `&NSView` from the
+        // NSMenuItem pointer — that was UB.)
+        keep_target_alive_for_key(self.handler_key(), target);
     }
 
     /// Drop any retained action handler attached to this item.
-    /// Mirrors [`crate::event::drop_handlers_for`] for the
-    /// NSMenuItem case (item pointer used as the registry key).
+    /// Mirrors [`crate::event::drop_handlers_for`] but only touches
+    /// the action-target store — NSMenuItems don't participate in
+    /// `TEXT_FIELD_STORE` / `TEXT_VIEW_STORE`.
     pub fn drop_handlers(&self) {
-        let view_proxy: &objc2_app_kit::NSView = unsafe {
-            &*((&*self.ns_item as *const NSMenuItem) as *const objc2_app_kit::NSView)
-        };
-        drop_handlers_for(view_proxy);
+        drop_action_target_for_key(self.handler_key());
+    }
+
+    /// Pointer-as-`usize` key used for the HANDLER_STORE entry.
+    /// Pulled into a single method so both `set_action` and
+    /// `drop_handlers` see the same value, and no other call site
+    /// can pick a different key.
+    fn handler_key(&self) -> usize {
+        let ptr: *const NSMenuItem = &*self.ns_item;
+        ptr as usize
     }
 }
 

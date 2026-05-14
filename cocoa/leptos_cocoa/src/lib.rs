@@ -156,6 +156,15 @@ pub mod prelude {
     };
     pub use renderer::menu::Modifiers;
 
+    // Toolbar builders. `<toolbar>` is a child of `<window>` that
+    // attaches an `NSToolbar` to the containing NSWindow at mount
+    // time. `<toolbar_item>` is a leaf with attributes (label,
+    // sf_symbol, on:action, ...).
+    pub use crate::cocoa::toolbar::{
+        toolbar, toolbar_flexible_space, toolbar_item, toolbar_space,
+        Toolbar, ToolbarFlexibleSpace, ToolbarItem, ToolbarSpace,
+    };
+
     // Cocoa-flavoured element builders, exposed as bare functions
     // (`button()`, `vstack()`, etc.) so user code that writes them
     // directly (instead of via the `view!{}` macro) just works.

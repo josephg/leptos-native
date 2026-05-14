@@ -42,6 +42,7 @@ pub mod renderer;
 pub mod spawner;
 pub mod split_window;
 pub mod storage;
+pub mod toolbar;
 pub mod window;
 
 pub use color::Color;

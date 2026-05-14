@@ -236,17 +236,18 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
 /// `NSMenuItem` whose `submenu:` is the underlying menu. Build via
 /// [`menu`].
 pub struct Menu<Children> {
-    pub(crate) title:    MaybeReactive<String>,
+    /// `None` until [`Menu::title`] is called. Missing-title at
+    /// build time is a panic, matching the plan's
+    /// "fail-loud" rule for a `<menu>` with no label (which would
+    /// render as a blank menu-bar item).
+    pub(crate) title:    Option<MaybeReactive<String>>,
     pub(crate) children: Children,
 }
 
-/// Start configuring a submenu. The title is required to be set
-/// before this enters the menu tree — see [`Menu::title`].
+/// Start configuring a submenu. Title is required — set via
+/// [`Menu::title`] before mounting.
 pub fn menu() -> Menu<()> {
-    Menu {
-        title:    MaybeReactive::Static(String::new()),
-        children: (),
-    }
+    Menu { title: None, children: () }
 }
 
 impl<C> Menu<C> {
@@ -254,7 +255,7 @@ impl<C> Menu<C> {
     where
         V: IntoMaybeReactive<String>,
     {
-        self.title = t.into_maybe_reactive();
+        self.title = Some(t.into_maybe_reactive());
         self
     }
 
@@ -298,13 +299,21 @@ where
             MenuParent::Menu(m) => m.append_submenu(&dom_menu_handle, mtm),
         };
 
+        let title = self.title.expect(
+            "<menu> requires a title — call `.title(\"…\")` (or set \
+             `title=\"…\"` in the macro). A blank submenu renders as \
+             an unreachable menu-bar item.",
+        );
+
         // Reactive title: update both the menu (used when the menu
         // is reached via the keyboard / NSMenu API) and the
-        // wrapper item (used for the menu-bar / parent-menu label).
+        // wrapper item (used for the menu-bar / parent-menu label —
+        // AppKit copies the submenu's title to the wrapper at
+        // attach time but doesn't keep them in sync afterward).
         let mut effects = Vec::new();
         let menu_for = dom_menu_handle.clone();
         let wrapper_for = wrapper_item.clone();
-        if let Some(eff) = install(self.title, move |t| {
+        if let Some(eff) = install(title, move |t| {
             menu_for.set_title(&t);
             wrapper_for.setTitle(&NSString::from_str(&t));
         }) {
@@ -333,25 +342,30 @@ where
 /// Leaf menu command. Title, enabled, checked, shortcut, and a
 /// single `on:action` handler. Build via [`menu_item`].
 pub struct MenuItem {
-    pub(crate) title:    MaybeReactive<String>,
+    /// `None` until `.title(...)` is called — missing-title items
+    /// panic at build time (a blank-strip render is rarely the
+    /// intent).
+    pub(crate) title:    Option<MaybeReactive<String>>,
     pub(crate) enabled:  Option<MaybeReactive<bool>>,
     pub(crate) checked:  Option<MaybeReactive<bool>>,
     pub(crate) shortcut_key:       Option<String>,
     pub(crate) shortcut_modifiers: Option<Modifiers>,
-    pub(crate) handlers: Vec<PendingHandler>,
+    /// Single `on:action` slot. `None` is valid (informational
+    /// item). Second `.on(event::action, …)` call panics — see the
+    /// `on()` method.
+    pub(crate) on_action: Option<Box<dyn FnMut() + Send + 'static>>,
 }
 
-/// Start configuring a leaf menu item. Title defaults to empty;
-/// callers should always set it (an empty menu item renders as a
-/// blank, unfocusable strip — rarely the intent).
+/// Start configuring a leaf menu item. Title is required — set via
+/// `.title(...)` before mounting.
 pub fn menu_item() -> MenuItem {
     MenuItem {
-        title:    MaybeReactive::Static(String::new()),
+        title:    None,
         enabled:  None,
         checked:  None,
         shortcut_key:       None,
         shortcut_modifiers: None,
-        handlers: Vec::new(),
+        on_action: None,
     }
 }
 
@@ -360,7 +374,7 @@ impl MenuItem {
     where
         V: IntoMaybeReactive<String>,
     {
-        self.title = t.into_maybe_reactive();
+        self.title = Some(t.into_maybe_reactive());
         self
     }
 
@@ -402,14 +416,34 @@ impl MenuItem {
 
     /// Inline `on:event=handler` from the macro. Only `on:action`
     /// makes sense on a menu item; the [`SupportsEvent`] bound
-    /// rejects others at compile time.
+    /// rejects others at compile time. A second `.on(event::action,
+    /// _)` panics — single-handler contract mirrors NSControl's
+    /// target/action slot.
+    #[track_caller]
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
         Self: SupportsEvent<E>,
         E: EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
-        self.handlers.push(E::into_pending(handler));
+        // Lower the typed handler through PendingHandler so we
+        // share the `E::into_pending` plumbing with normal events.
+        // Only `Action` reaches here per the SupportsEvent bound.
+        match E::into_pending(handler) {
+            PendingHandler::Action(cb) => {
+                if self.on_action.is_some() {
+                    panic!(
+                        "<menu_item> already has an on:action handler. \
+                         NSMenuItem has a single target/action slot; \
+                         combine your handlers into one closure."
+                    );
+                }
+                self.on_action = Some(cb);
+            }
+            _ => unreachable!(
+                "SupportsEvent guard should restrict E to ActionEvent"
+            ),
+        }
         self
     }
 }
@@ -440,12 +474,17 @@ impl MenuMountable for MenuItem {
         parent: &MenuParent,
         mtm: MainThreadMarker,
     ) -> Self::State {
+        let title = self.title.expect(
+            "<menu_item> requires a title — call `.title(\"…\")` (or set \
+             `title=\"…\"` in the macro).",
+        );
+
         let item = dom_menu::menu_item(mtm);
         let mut effects = Vec::new();
 
         // Title.
         let it = item.clone();
-        if let Some(eff) = install(self.title, move |t| it.set_title(&t)) {
+        if let Some(eff) = install(title, move |t| it.set_title(&t)) {
             effects.push(eff);
         }
         // Enabled.
@@ -468,22 +507,10 @@ impl MenuMountable for MenuItem {
             item.set_shortcut(&key, mods);
         }
 
-        // Action handler — single one, since NSMenuItem has a
-        // single target/action slot. Iterating handlers (rather
-        // than expecting exactly one) future-proofs us for
-        // alternate event descriptors that might land here.
-        for h in self.handlers {
-            match h {
-                PendingHandler::Action(mut cb) => {
-                    item.set_action(move || cb(), mtm);
-                }
-                _ => panic!(
-                    "<menu_item> only supports on:action handlers. \
-                     Got a non-Action PendingHandler — likely because \
-                     SupportsEvent guarded inline `.on()` was bypassed \
-                     via the spread path."
-                ),
-            }
+        // Action handler — single one, enforced by the builder
+        // (`MenuItem::on` panics on second install).
+        if let Some(mut cb) = self.on_action {
+            item.set_action(move || cb(), mtm);
         }
 
         // Attach. <menu_item> directly under <menu_bar> is invalid

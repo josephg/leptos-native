@@ -18,6 +18,7 @@ pub mod element;
 pub mod menu;
 pub mod node_ref;
 pub mod split;
+pub mod toolbar;
 pub mod window;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};

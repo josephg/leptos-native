@@ -194,15 +194,14 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
 // ---------------------------------------------------------------------
 
 pub struct Menu<Children> {
-    pub(crate) title:    MaybeReactive<String>,
+    /// `None` until [`Menu::title`] is called. Missing title at
+    /// build time is a panic — matches the cocoa fail-loud rule.
+    pub(crate) title:    Option<MaybeReactive<String>>,
     pub(crate) children: Children,
 }
 
 pub fn menu() -> Menu<()> {
-    Menu {
-        title:    MaybeReactive::Static(String::new()),
-        children: (),
-    }
+    Menu { title: None, children: () }
 }
 
 impl<C> Menu<C> {
@@ -210,7 +209,7 @@ impl<C> Menu<C> {
     where
         V: IntoMaybeReactive<String>,
     {
-        self.title = t.into_maybe_reactive();
+        self.title = Some(t.into_maybe_reactive());
         self
     }
 
@@ -236,13 +235,19 @@ where
     type State = MenuState<C::State>;
 
     fn build_into_menu(self, parent: &MenuParent) -> Self::State {
+        let title = self.title.expect(
+            "<menu> requires a title — call `.title(\"…\")` (or set \
+             `title=\"…\"` in the macro).",
+        );
+
         let sub = dom_menu::menu();
         let app = parent.app().clone();
 
-        // Append immediately with a placeholder title; the reactive
-        // setter then drives both initial value and subsequent
-        // updates (re-inserting the wrapper item at the same
-        // index).
+        // Append immediately with a placeholder title; `install`
+        // runs the closure synchronously for the initial value, so
+        // the empty wrapper exists only for the duration of one
+        // synchronous call before being replaced with the real
+        // title.
         let idx = match parent {
             MenuParent::Bar(bar) => bar.append_submenu("", &sub),
             MenuParent::Menu { menu, .. } => menu.append_submenu("", &sub),
@@ -257,9 +262,7 @@ where
         let mut effects = Vec::new();
         let sub_for = sub.clone();
         let parent_handle = parent_replace_handle(parent);
-        let app_for = app.clone();
-        let _ = app_for; // suppress unused if no reactive title is set
-        if let Some(eff) = install(self.title, move |t| {
+        if let Some(eff) = install(title, move |t| {
             let i = idx_cell.get();
             parent_handle.replace_submenu(i, &t, &sub_for);
         }) {
@@ -308,22 +311,26 @@ fn parent_replace_handle(parent: &MenuParent) -> ParentReplaceHandle {
 // ---------------------------------------------------------------------
 
 pub struct MenuItem {
-    pub(crate) title:    MaybeReactive<String>,
+    /// `None` until `.title(...)` is called — missing-title items
+    /// panic at build time.
+    pub(crate) title:    Option<MaybeReactive<String>>,
     pub(crate) enabled:  Option<MaybeReactive<bool>>,
     pub(crate) checked:  Option<MaybeReactive<bool>>,
     pub(crate) shortcut_key:       Option<String>,
     pub(crate) shortcut_modifiers: Option<Modifiers>,
-    pub(crate) handlers: Vec<PendingHandler>,
+    /// Single `on:action` slot. `None` is valid (informational
+    /// item). Second `.on(event::action, …)` call panics.
+    pub(crate) on_action: Option<Box<dyn FnMut() + Send + 'static>>,
 }
 
 pub fn menu_item() -> MenuItem {
     MenuItem {
-        title:    MaybeReactive::Static(String::new()),
+        title:    None,
         enabled:  None,
         checked:  None,
         shortcut_key:       None,
         shortcut_modifiers: None,
-        handlers: Vec::new(),
+        on_action: None,
     }
 }
 
@@ -332,7 +339,7 @@ impl MenuItem {
     where
         V: IntoMaybeReactive<String>,
     {
-        self.title = t.into_maybe_reactive();
+        self.title = Some(t.into_maybe_reactive());
         self
     }
 
@@ -362,13 +369,31 @@ impl MenuItem {
         self
     }
 
+    /// Inline `on:event=handler` from the macro. Only `on:action`
+    /// makes sense on a menu item (compile-time gated via
+    /// [`SupportsEvent`]). A second call panics.
+    #[track_caller]
     pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
     where
         Self: SupportsEvent<E>,
         E: EventDescriptor,
         F: FnMut(E::EventType) + Send + 'static,
     {
-        self.handlers.push(E::into_pending(handler));
+        match E::into_pending(handler) {
+            PendingHandler::Action(cb) => {
+                if self.on_action.is_some() {
+                    panic!(
+                        "<menu_item> already has an on:action handler. \
+                         gio::SimpleAction has a single activate slot; \
+                         combine your handlers into one closure."
+                    );
+                }
+                self.on_action = Some(cb);
+            }
+            _ => unreachable!(
+                "SupportsEvent guard should restrict E to ActionEvent"
+            ),
+        }
         self
     }
 }
@@ -385,21 +410,19 @@ impl MenuMountable for MenuItem {
     type State = MenuItemState;
 
     fn build_into_menu(self, parent: &MenuParent) -> Self::State {
+        let title = self.title.expect(
+            "<menu_item> requires a title — call `.title(\"…\")` (or set \
+             `title=\"…\"` in the macro).",
+        );
+
         let item = dom_menu::menu_item();
         let app = parent.app().clone();
         let mut effects = Vec::new();
 
         // Wire action *before* attaching so the gio::Action exists
         // on the application by the time the menu is rendered.
-        for h in self.handlers {
-            match h {
-                PendingHandler::Action(mut cb) => {
-                    item.set_action(&app, move || cb());
-                }
-                _ => panic!(
-                    "<menu_item> only supports on:action handlers."
-                ),
-            }
+        if let Some(mut cb) = self.on_action {
+            item.set_action(&app, move || cb());
         }
 
         // Append to parent. <menu_item> directly under <menu_bar>
@@ -421,7 +444,7 @@ impl MenuMountable for MenuItem {
         let parent_for: dom_menu::Menu = (*parent_menu).clone();
         let item_for = item.clone();
         let idx_cell = Rc::new(Cell::new(idx));
-        if let Some(eff) = install(self.title, move |t| {
+        if let Some(eff) = install(title, move |t| {
             item_for.set_label(&t);
             parent_for.replace_item(idx_cell.get(), &item_for);
         }) {

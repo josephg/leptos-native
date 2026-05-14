@@ -382,6 +382,10 @@ fn split_pane_list_empty_yields_zero_panes_through_build() {
 // main
 // ---------------------------------------------------------------------
 
+// Removed: `pages_main_pane_toolbar_keeps_height` tested the old
+// hstack-shaped `toolbar()` builder. The current `<toolbar>` is
+// backed by NSToolbar and lives outside the layout tree.
+
 fn main() {
     common::run_tests(&[
         ("open_split_window_with_two_panes_yields_two_panes",

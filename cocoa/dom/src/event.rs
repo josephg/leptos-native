@@ -103,7 +103,17 @@ fn view_key(view: &NSView) -> usize {
 /// Retain `target` for the lifetime of `view`. Stage-3 implementation
 /// just stashes it in a thread-local map; entries leak on view drop.
 pub fn keep_target_alive(view: &NSView, target: Retained<ActionTarget>) {
-    let key = view_key(view);
+    keep_target_alive_for_key(view_key(view), target);
+}
+
+/// Pointer-key variant — used by code that owns a different ObjC
+/// kind (e.g. `NSMenuItem`) and wants to share the NSControl handler
+/// store. The key is whatever the caller's matching `drop_handlers`
+/// passes; pointer-as-`usize` is fine. Note that the menu and view
+/// keyspaces share a HashMap, so collisions are technically possible
+/// but vanishingly unlikely — ObjC objects are aligned and live in
+/// distinct zones.
+pub fn keep_target_alive_for_key(key: usize, target: Retained<ActionTarget>) {
     HANDLER_STORE.with_borrow_mut(|store| {
         store.entry(key).or_default().push(target);
     });
@@ -115,6 +125,30 @@ pub fn keep_target_alive(view: &NSView, target: Retained<ActionTarget>) {
 /// window's content tree).
 pub fn drop_handlers_for(view: &NSView) {
     let key = view_key(view);
+    drop_handlers_for_view_key(key);
+}
+
+/// Drop only the HANDLER_STORE entry for `key` (no TEXT_FIELD_STORE
+/// / TEXT_VIEW_STORE touch). Used by non-NSView consumers like
+/// `cocoa_dom::menu::MenuItem` where the key is an NSMenuItem
+/// pointer that has no overlap with text-field-only storage.
+pub fn drop_action_target_for_key(key: usize) {
+    HANDLER_STORE.with_borrow_mut(|store| {
+        store.remove(&key);
+    });
+}
+
+/// Test-only: count the retained `ActionTarget`s currently held
+/// for `key` in the shared `HANDLER_STORE`. Returns 0 when the
+/// entry has been removed (e.g. after a `drop_action_target_for_key`).
+#[doc(hidden)]
+pub fn handler_count_for_test_key(key: usize) -> usize {
+    HANDLER_STORE.with_borrow(|store| {
+        store.get(&key).map(|v| v.len()).unwrap_or(0)
+    })
+}
+
+fn drop_handlers_for_view_key(key: usize) {
     HANDLER_STORE.with_borrow_mut(|store| {
         store.remove(&key);
     });

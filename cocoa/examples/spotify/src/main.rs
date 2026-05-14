@@ -103,8 +103,10 @@ mod app {
         }
     }
 
-    /// Filled circular icon button — used for the green play button
-    /// and the various circular toolbar buttons in the top bar.
+    /// Filled circular text-glyph button — used for the green play
+    /// button and the avatar bubble. `glyph` is rendered as the
+    /// NSButton title (any Unicode character or short text). For
+    /// SF Symbol icons use [`circle_icon_button`].
     fn circle_button(
         size: f32,
         bg: Color,
@@ -127,6 +129,29 @@ mod app {
             >
                 {glyph}
             </button>
+        }
+    }
+
+    /// Filled circular SF-Symbol button. The SF Symbol renders as
+    /// the NSButton's image slot (centred when the title is empty).
+    fn circle_icon_button(
+        size: f32,
+        bg: Color,
+        sf_symbol: &'static str,
+        on_click: impl FnMut() + Send + 'static,
+    ) -> impl IntoView {
+        let mut on_click = on_click;
+        view! {
+            <button
+                width=size
+                height=size
+                corner_radius=size / 2.0
+                background_color=bg
+                bordered=false
+                on:click=move |_| on_click()
+                sf_symbol=sf_symbol
+                text_color=TXT_PRIMARY
+            />
         }
     }
 
@@ -191,6 +216,10 @@ mod app {
     #[component]
     fn TopBar() -> impl IntoView {
         let page = use_context::<RwSignal<Page>>().expect("page ctx");
+        // Custom in-content bar (not a native NSToolbar — it embeds
+        // a `<text_field>` for search, which the leaf-attribute
+        // `<toolbar_item>` doesn't support in v1). Plain hstack
+        // with toolbar-ish styling.
         view! {
             <hstack
                 height=64.0
@@ -201,9 +230,10 @@ mod app {
             >
                 // Nav: back/forward + home
                 <hstack gap=8.0 align=AlignItems::Center>
-                    {circle_button(32.0, BG_CHIP, "‹", 18.0,
+                    {circle_icon_button(32.0, BG_CHIP, "chevron.left",
                         move || page.set(Page::Home))}
-                    {circle_button(32.0, BG_CHIP, "›", 18.0, move || {})}
+                    {circle_icon_button(32.0, BG_CHIP, "chevron.right",
+                        move || {})}
                 </hstack>
 
                 // Center: home pill + search field
@@ -213,7 +243,7 @@ mod app {
                     justify_content=JustifyContent::Center
                     align=AlignItems::Center
                 >
-                    {circle_button(40.0, BG_CHIP, "⌂", 18.0,
+                    {circle_icon_button(40.0, BG_CHIP, "house.fill",
                         move || page.set(Page::Home))}
                     <hstack
                         width=Dim::px(440.0)
@@ -224,11 +254,13 @@ mod app {
                         gap=6.0
                         align=AlignItems::Center
                     >
-                        <label
-                            text_color=TXT_SECONDARY
-                            font_size=14.0
-                            padding=8.0
-                        >"\u{1F50D}"</label>
+                        <image_view
+                            sf_symbol="magnifyingglass"
+                            tint=TXT_SECONDARY
+                            width=16.0
+                            height=16.0
+                            margin=Edges::ZERO.left(8.0)
+                        />
                         <text_field
                             placeholder="What do you want to play?"
                             flex_grow=1.0
@@ -236,11 +268,13 @@ mod app {
                             font_size=14.0
                             bordered=false
                         />
-                        <label
-                            text_color=TXT_SECONDARY
-                            font_size=14.0
-                            padding=8.0
-                        >"\u{1F4FB}"</label>
+                        <image_view
+                            sf_symbol="dot.radiowaves.left.and.right"
+                            tint=TXT_SECONDARY
+                            width=16.0
+                            height=16.0
+                            margin=Edges::ZERO.right(8.0)
+                        />
                     </hstack>
                 </hstack>
 
@@ -249,7 +283,7 @@ mod app {
                     <label text_color=TXT_SECONDARY font_size=14.0>
                         "Explore Premium"
                     </label>
-                    {circle_button(32.0, BG_CHIP, "\u{1F514}", 14.0, move || {})}
+                    {circle_icon_button(32.0, BG_CHIP, "bell", move || {})}
                     {circle_button(32.0, AVATAR_ORANGE, "S", 14.0, move || {})}
                 </hstack>
             </hstack>
@@ -969,6 +1003,9 @@ mod app {
         let progress = RwSignal::new(0.61_f64);
         let volume = RwSignal::new(0.7_f64);
 
+        // Custom status bar at the bottom of the window. NSToolbar
+        // doesn't natively support embedded sliders / multi-section
+        // content like this; plain hstack with toolbar-ish styling.
         view! {
             <hstack
                 height=80.0
@@ -992,9 +1029,13 @@ mod app {
                             "Nina Simone"
                         </label>
                     </vstack>
-                    <label text_color=ACCENT_GREEN font_size=18.0 padding=8.0>
-                        "\u{2713}"
-                    </label>
+                    <image_view
+                        sf_symbol="checkmark.circle.fill"
+                        tint=ACCENT_GREEN
+                        width=18.0
+                        height=18.0
+                        margin=8.0
+                    />
                 </hstack>
 
                 // Center: playback controls + progress
@@ -1007,8 +1048,8 @@ mod app {
                         gap=20.0
                         align=AlignItems::Center
                     >
-                        <label text_color=TXT_SECONDARY font_size=14.0>"\u{1F500}"</label>
-                        <label text_color=TXT_SECONDARY font_size=14.0>"\u{23EE}"</label>
+                        <image_view sf_symbol="shuffle" tint=TXT_SECONDARY width=16.0 height=16.0 />
+                        <image_view sf_symbol="backward.end.fill" tint=TXT_SECONDARY width=16.0 height=16.0 />
                         <button
                             width=36.0
                             height=36.0
@@ -1016,11 +1057,10 @@ mod app {
                             bordered=false
                             background_color=Color::WHITE
                             text_color=Color::BLACK
-                            font_size=14.0
-                            bold=true
-                        >"\u{25B6}"</button>
-                        <label text_color=TXT_SECONDARY font_size=14.0>"\u{23ED}"</label>
-                        <label text_color=TXT_SECONDARY font_size=14.0>"\u{1F501}"</label>
+                            sf_symbol="play.fill"
+                        />
+                        <image_view sf_symbol="forward.end.fill" tint=TXT_SECONDARY width=16.0 height=16.0 />
+                        <image_view sf_symbol="repeat" tint=TXT_SECONDARY width=16.0 height=16.0 />
                     </hstack>
                     <hstack
                         gap=8.0
@@ -1054,15 +1094,15 @@ mod app {
                     justify_content=JustifyContent::FlexEnd
                     align=AlignItems::Center
                 >
-                    <label text_color=TXT_SECONDARY font_size=14.0>"\u{1F3A4}"</label>
-                    <label text_color=TXT_SECONDARY font_size=14.0>"\u{1F50A}"</label>
+                    <image_view sf_symbol="mic.fill" tint=TXT_SECONDARY width=16.0 height=16.0 />
+                    <image_view sf_symbol="speaker.wave.2.fill" tint=TXT_SECONDARY width=16.0 height=16.0 />
                     <slider
                         bind:value=volume
                         min_value=0.0
                         max_value=1.0
                         width=Dim::px(100.0)
                     />
-                    <label text_color=TXT_SECONDARY font_size=14.0>"\u{2922}"</label>
+                    <image_view sf_symbol="arrow.up.left.and.arrow.down.right" tint=TXT_SECONDARY width=16.0 height=16.0 />
                 </hstack>
             </hstack>
         }

@@ -75,3 +75,8 @@ harness = false
 name = "split_view"
 path = "tests/split_view.rs"
 harness = false
+
+[[test]]
+name = "toolbar"
+path = "tests/toolbar.rs"
+harness = false

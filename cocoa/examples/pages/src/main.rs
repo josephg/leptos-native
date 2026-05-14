@@ -16,6 +16,7 @@ mod app {
     // ---- palette ----------------------------------------------------
 
     // Toolbar / sidebar are dark; canvas is white.
+    #[allow(dead_code)] // background was used by the old hstack-based toolbar; NSToolbar paints its own.
     const TOOLBAR_BG:   Color = Color { r: 0.165, g: 0.165, b: 0.165, a: 1.0 };
     const SIDEBAR_BG:   Color = Color { r: 0.176, g: 0.176, b: 0.176, a: 1.0 };
     const CANVAS_BG:    Color = Color::WHITE;
@@ -54,56 +55,10 @@ mod app {
 
     // ---- helpers ----------------------------------------------------
 
-    /// Square clickable icon-button used across the toolbar — small
-    /// icon glyph above a tiny label. The label and glyph share
-    /// styling so this captures the visual repetition once.
-    fn tool_button(
-        glyph: &'static str,
-        label: &'static str,
-        on_click: impl FnMut() + Send + 'static,
-    ) -> impl IntoView {
-        let mut cb = on_click;
-        view! {
-            <button
-                bordered=false
-                background_color=Color::rgba(1.0, 1.0, 1.0, 0.0)
-                padding=Edges::axis(8.0, 4.0)
-                on:click=move |_| cb()
-                text_color=TXT_PRIMARY
-                font_size=11.0
-            >
-                {format!("{}\n{}", glyph, label)}
-            </button>
-        }
-    }
-
-    /// A "pill" toggle for the toolbar's Format/Document segmented
-    /// pair — active gets an orange icon tint.
-    fn inspector_pill(
-        glyph: &'static str,
-        label: &'static str,
-        active: impl Fn() -> bool + Send + Sync + 'static + Copy,
-        on_click: impl FnMut() + Send + 'static,
-    ) -> impl IntoView {
-        let mut cb = on_click;
-        view! {
-            <button
-                bordered=false
-                corner_radius=4.0
-                padding=Edges::axis(10.0, 4.0)
-                background_color=move || if active() {
-                    Color::rgba(1.0, 1.0, 1.0, 0.12)
-                } else {
-                    Color::rgba(1.0, 1.0, 1.0, 0.0)
-                }
-                text_color=move || if active() { ACCENT_ORANGE } else { TXT_PRIMARY }
-                font_size=11.0
-                on:click=move |_| cb()
-            >
-                {format!("{}\n{}", glyph, label)}
-            </button>
-        }
-    }
+    // Toolbar items are now native `<toolbar_item>` leaves backed by
+    // NSToolbarItem; the previous `tool_button` and `inspector_pill`
+    // helpers (which built NSButton-with-icon-and-caption manually)
+    // are no longer needed.
 
     /// 3-segment selector — the row of pills at the top of each
     /// inspector pane (Document/Section/Bookmarks, Style/Layout/More).
@@ -309,66 +264,47 @@ mod app {
     #[component]
     fn Toolbar() -> impl IntoView {
         let inspector = use_context::<RwSignal<Inspector>>().expect("inspector");
+        // Native NSToolbar via `<toolbar>` + `<toolbar_item>`s.
+        // Each item needs a unique identifier; NSToolbar uses these
+        // to address items (and, in future, to persist user
+        // customisations). `<toolbar_flexible_space />` separates
+        // the left/insert/right groups; AppKit handles the
+        // standard inter-item spacing automatically — no manual
+        // dividers needed.
         view! {
-            <hstack
-                height=64.0
-                background_color=TOOLBAR_BG
-                padding=Edges::axis(12.0, 6.0)
-                gap=6.0
-                align=AlignItems::Center
-            >
-                // Left group
-                <hstack gap=2.0 align=AlignItems::Center>
-                    {tool_button("◫", "View", || {})}
-                    {tool_button("125%", "Zoom", || {})}
-                    {tool_button("⊕", "Add Page", || {})}
-                </hstack>
-                <Divider />
-                // Insert section
-                <hstack gap=2.0 align=AlignItems::Center>
-                    {tool_button("⌶", "Insert", || {})}
-                    {tool_button("⊞", "Table", || {})}
-                    {tool_button("▦", "Graph", || {})}
-                    {tool_button("T", "Text", || {})}
-                    {tool_button("◆", "Shape", || {})}
-                    {tool_button("◳", "Media", || {})}
-                    {tool_button("💬", "Comment", || {})}
-                </hstack>
-                <vstack flex_grow=1.0 />
-                // Right group
-                {tool_button("↑", "Share", || {})}
-                <Divider />
-                // Clicking the active pill collapses the sidebar
-                // (NSSplitViewController animates it). Clicking
-                // either pill switches modes and ensures the
-                // sidebar is open.
-                <hstack gap=2.0 align=AlignItems::Center>
-                    {inspector_pill("✎", "Format",
-                        move || inspector.get() == Inspector::Format,
-                        move || inspector.update(|i| *i = match *i {
-                            Inspector::Format => Inspector::Hidden,
-                            _ => Inspector::Format,
-                        }))}
-                    {inspector_pill("☰", "Document",
-                        move || inspector.get() == Inspector::Document,
-                        move || inspector.update(|i| *i = match *i {
-                            Inspector::Document => Inspector::Hidden,
-                            _ => Inspector::Document,
-                        }))}
-                </hstack>
-            </hstack>
-        }
-    }
-
-    #[component]
-    fn Divider() -> impl IntoView {
-        view! {
-            <vstack
-                width=1.0
-                height=32.0
-                background_color=HAIRLINE
-                margin=Edges::axis(6.0, 0.0)
-            />
+            <toolbar identifier="leptos_cocoa.pages.toolbar">
+                <toolbar_item identifier="view"     label="View"     sf_symbol="sidebar.left" />
+                <toolbar_item identifier="zoom"     label="Zoom"     sf_symbol="plus.magnifyingglass" />
+                <toolbar_item identifier="add_page" label="Add Page" sf_symbol="doc.badge.plus" />
+                <toolbar_flexible_space />
+                <toolbar_item identifier="insert"   label="Insert"   sf_symbol="plus.square.on.square" />
+                <toolbar_item identifier="table"    label="Table"    sf_symbol="tablecells" />
+                <toolbar_item identifier="graph"    label="Graph"    sf_symbol="chart.bar" />
+                <toolbar_item identifier="text"     label="Text"     sf_symbol="textformat" />
+                <toolbar_item identifier="shape"    label="Shape"    sf_symbol="square.on.circle" />
+                <toolbar_item identifier="media"    label="Media"    sf_symbol="photo" />
+                <toolbar_item identifier="comment"  label="Comment"  sf_symbol="bubble.left" />
+                <toolbar_flexible_space />
+                <toolbar_item identifier="share"    label="Share"    sf_symbol="square.and.arrow.up" />
+                <toolbar_item
+                    identifier="format"
+                    label="Format"
+                    sf_symbol="paintbrush"
+                    on:action=move |_| inspector.update(|i| *i = match *i {
+                        Inspector::Format => Inspector::Hidden,
+                        _ => Inspector::Format,
+                    })
+                />
+                <toolbar_item
+                    identifier="document"
+                    label="Document"
+                    sf_symbol="doc.text"
+                    on:action=move |_| inspector.update(|i| *i = match *i {
+                        Inspector::Document => Inspector::Hidden,
+                        _ => Inspector::Document,
+                    })
+                />
+            </toolbar>
         }
     }
 

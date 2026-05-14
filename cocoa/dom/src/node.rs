@@ -1338,6 +1338,39 @@ impl Element {
         button.setContentTintColor(Some(&ns_color));
     }
 
+    /// Render an SF Symbol as the button's image. Empty name clears
+    /// the image. macOS 11+; older systems render nothing for this
+    /// slot.
+    ///
+    /// Image position is chosen by whether a title is set:
+    ///   * no title  → `ImageOnly` (icon-only button)
+    ///   * has title → `ImageLeading` (icon to the left of the title)
+    ///
+    /// Both render reliably with the default `Push` bezel. The
+    /// classic "icon above caption" toolbar layout doesn't have a
+    /// dependable NSButton bezel — use the native `<toolbar>` +
+    /// `<toolbar_item>` elements (built on `NSToolbar`) instead.
+    pub fn set_button_sf_symbol(&self, name: &str) {
+        use objc2_app_kit::NSCellImagePosition;
+        let Some(button) = downcast::<NSButton>(self.ns_view()) else {
+            return;
+        };
+        if name.is_empty() {
+            button.setImage(None);
+            button.setImagePosition(NSCellImagePosition::NoImage);
+            return;
+        }
+        let image = sf_symbol_image(name);
+        let has_title = button.title().length() > 0;
+        button.setImage(image.as_deref());
+        button.setImagePosition(if has_title {
+            NSCellImagePosition::ImageLeading
+        } else {
+            NSCellImagePosition::ImageOnly
+        });
+        crate::layout::schedule_relayout(&self.node);
+    }
+
     /// Toggle whether an NSTextField draws a border / bezel.
     /// `bordered=false` matches a label-style appearance even on
     /// editable fields. No-op on non-NSTextField.
@@ -1787,6 +1820,40 @@ impl Element {
         crate::layout::schedule_relayout(&self.node);
     }
 
+    /// Set an `<image_view>` to render an SF Symbol by name (e.g.
+    /// `"plus.circle"`, `"trash"`, `"square.and.arrow.up"`). Empty
+    /// name or an unknown symbol clears the image.
+    ///
+    /// Requires macOS 11+ (SF Symbols ship with the system from Big
+    /// Sur on); on older systems the AppKit call returns nil and the
+    /// view stays blank.
+    ///
+    /// SF Symbols are *template* images — they pick up their tint
+    /// from `NSImageView.contentTintColor` (or the enclosing
+    /// `contentTintColor` if used in a button). Use `text_color=`
+    /// on the image view to drive the tint reactively.
+    pub fn set_image_view_sf_symbol(&self, name: &str) {
+        use objc2_app_kit::NSImageView;
+        let Some(iv) = downcast::<NSImageView>(self.ns_view()) else {
+            return;
+        };
+        let image = sf_symbol_image(name);
+        iv.setImage(image.as_deref());
+        crate::layout::schedule_relayout(&self.node);
+    }
+
+    /// Set an image view's tint color. Applied via
+    /// `NSImageView.contentTintColor`, which most heavily affects
+    /// template images (SF Symbols). Regular RGBA images render
+    /// unchanged.
+    pub fn set_image_view_tint(&self, color: crate::Color) {
+        use objc2_app_kit::NSImageView;
+        let Some(iv) = downcast::<NSImageView>(self.ns_view()) else {
+            return;
+        };
+        iv.setContentTintColor(Some(&color.to_nscolor()));
+    }
+
     /// Wire a change observer on the NSTextView inside a
     /// `<text_view>`. Fires on every keystroke. No-op if this
     /// element isn't a text_view.
@@ -2073,6 +2140,40 @@ where
 {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<T>()
+}
+
+/// Load an SF Symbol by name and apply a default point-size /
+/// weight configuration. Required because SF Symbols ship without a
+/// configuration — the raw `NSImage` has zero intrinsic size,
+/// which breaks `NSImageView` measurement and `NSButton`/
+/// `NSToolbarItem` image rendering.
+///
+/// Returns `None` if the symbol name isn't recognised (the lookup
+/// returns nil on macOS 10.x or for unknown symbol names).
+pub(crate) fn sf_symbol_image(
+    name: &str,
+) -> Option<objc2::rc::Retained<objc2_app_kit::NSImage>> {
+    use objc2_app_kit::{
+        NSFontWeightRegular, NSImage, NSImageSymbolConfiguration,
+    };
+    if name.is_empty() {
+        return None;
+    }
+    let name_ns = NSString::from_str(name);
+    let raw = NSImage::imageWithSystemSymbolName_accessibilityDescription(
+        &name_ns, None,
+    )?;
+    // 16pt regular — the standard NSToolbarItem icon size, and a
+    // reasonable default for buttons and image views. Callers
+    // wanting a different size can post-configure with their own
+    // `imageWithSymbolConfiguration:` call.
+    let cfg = unsafe {
+        NSImageSymbolConfiguration::configurationWithPointSize_weight(
+            16.0,
+            NSFontWeightRegular,
+        )
+    };
+    raw.imageWithSymbolConfiguration(&cfg).or(Some(raw))
 }
 
 /// Insert `child` immediately before `marker` in `parent`'s subview
