@@ -1,66 +1,57 @@
 # TODO
 
-- Testing
-  - Reactivity fuzz tests
-  - Complex app layout examples
-    - Apple Pages
-    - iOS settings app
-    - Spotify
-    - Discord
-    - ???
-- Features
-  - Grid layout
-  - Global overrides for default font and stuff?
-  - Spacer component ("view"?)
-  - All the Cocoa properties
-  - Error boundary?
-  - Tokio / etc runtime integration + examples
-  - Menu / MenuItem
-  - Mac: Sane way to bundle a binary into an .app
-  - Mac: App icon?
-  - Mac: DocumentView
-  - iOS: UINavigationController / stack
-  - Linux: App icon?
-- Big features
-  - Android support?
-  - Windows support?
-- Dev tooling
-  - Chrome introspection protocol
-  - Hot module reloading
-- Deployment
-  - Clean up git / github
-  - Website
-  - Rename -> Pachys
-  - Attribute level documentation
-  - Layout documentation
-  - 
-  
+Top-level cross-port wishlist. Per-port lists live in
+[`TODO_ios.md`](./TODO_ios.md), [`tests_macos.md`](./tests_macos.md),
+[`tests_gtk.md`](./tests_gtk.md). Detailed API cleanups are in
+[`API_REVIEW.md`](./API_REVIEW.md).
 
+## Examples
 
+- Reactivity fuzz tests
+- Complex app layout examples
+  - Apple Pages (cocoa/examples/pages — shipped)
+  - Spotify (cocoa/examples/spotify — shipped)
+  - iOS settings app
+  - Discord-shaped chat UI
+  - HackerNews reader
 
-## Old stuff
+## Features
 
-- core examples
-    - [ ] slots 
-    - [ ] hackernews
-    - [ ] counter\_isomorphic
-    - [ ] todo\_app\_sqlite
-- reactivity 
-    - Signal wrappers
-    - SignalDispose implementations on all Copy types
-    - untracked access warnings
-- ErrorBoundary
-    - [ ] Separate component?
-- Suspense/Transition components?
-- callbacks
-    - unsync StoredValue
-- \_meta package (and use in hackernews)
-- integrations
-- update tests
-- hackernews example
-  - TODOs
-  - Suspense/Transition/Await components
-  - nicer routing components
-  - async routing (waiting for data to load before navigation)
-  - `<A>` component
-  - figure out rebuilding issues: list (needs new signal IDs) vs. regular rebuild
+- Global overrides for default font and styles
+- All the Cocoa properties (text shadow, transform, paragraph style, …)
+- Tokio / etc runtime integration + worked examples
+- macOS: sane way to bundle a binary into an `.app` (something
+  like `cargo bundle`, but tuned for this fork)
+- macOS: app icon support
+- macOS: NSDocument-style `DocumentView` (NSView subclass with
+  print / save panels wired)
+- iOS: `UINavigationController` / nav stack (tracked in
+  [`TODO_ios.md`](./TODO_ios.md))
+- Linux: app icon support
+- ImageView/Button: collapse `sf_symbol=` / `source=` setters onto
+  the unified `icon=Icon::…` enum the toolbar and menu items
+  already use
+
+## Big features
+
+- Animation primitive — see the discussion in `API_REVIEW.md`
+  (deferred to P3 there)
+- Native `<table>` / `<list>` (NSTableView / UICollectionView)
+- Drag and drop, clipboard, accessibility, printing
+- Android support
+- Windows support
+
+## Dev tooling
+
+- Hot module reloading
+- Chrome / DevTools introspection protocol
+- Layout debug overlay across all ports (cocoa has it behind the
+  `debug-overlay` feature; port to gtk / uikit)
+
+## Deployment / pre-1.0
+
+- Clean up git / GitHub
+- Website
+- Rename → `pachys`
+- Attribute-level rustdoc pass on every builder
+- Layout-engine documentation (Taffy + how the ports plug in)

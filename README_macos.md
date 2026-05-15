@@ -33,8 +33,10 @@ fn main() {
 }
 ```
 
-The web Leptos crates still build and work as before — the macOS path
-is gated by `cfg(target_os = "macos")` and swaps the renderer.
+This is a **native-only fork** of Leptos. The web / SSR crates
+have been removed; the same `view!{}` macro and reactive
+primitives drive AppKit directly. See [`CLAUDE.md`](./CLAUDE.md)
+for the full picture.
 
 ## Prerequisites
 
@@ -52,56 +54,65 @@ project required. The macOS examples build via plain `cargo run`.
 ## Crate layout
 
 ```
-cocoa_dom/    — DOM-shaped façade over AppKit (NSView, NSButton,
-                NSTextField, …). Owns the Taffy layout integration,
-                NSWindow / NSApplication setup, target/action wiring,
-                main-thread spawner.
-tachys/src/cocoa/   — Bridges cocoa_dom to tachys' Render/Mountable
-                     traits. Where you'll find the element builders
-                     (button(), label(), slider(), …) and the bind:
-                     plumbing.
-leptos/src/mount_macos.rs — `mount_to_window` / `run` entry points.
-examples_cocoa/<name>/  — Each example is its own Cargo crate (not a
-                          workspace member, so each has its own
-                          target/ dir).
-xcuitests/    — Swift package: end-to-end UI tests that drive built
-                .app bundles via the Accessibility framework.
-implementation_log.md — Design-decision journal, newest first.
-                        Read this before changing the layout cascade,
-                        eventing, or window lifecycle.
-tests.md      — Comprehensive test plan; tracked items have ■, open
-                items have □.
-CLAUDE.md     — Onboarding doc for AI assistants.
+cocoa/dom/                       — DOM-shaped façade over AppKit
+                                   (NSView, NSButton, NSTextField,
+                                   …). Owns the Taffy layout
+                                   integration, NSWindow /
+                                   NSApplication setup,
+                                   target/action wiring, main-thread
+                                   spawner.
+cocoa/leptos_cocoa/src/cocoa/    — Bridges cocoa_dom to renderer's
+                                   Render/Mountable traits. Where
+                                   you'll find the element builders
+                                   (button(), label(), slider(), …)
+                                   and the bind: plumbing.
+cocoa/leptos_cocoa/src/mount.rs  — `mount_to_window` / `run` /
+                                   `mount_to_split_window` entry
+                                   points.
+cocoa/examples/<name>/           — Workspace members; each example
+                                   is a small `cargo run`-able crate.
+implementation_log.md            — Design-decision journal, newest
+                                   first. Read this before changing
+                                   the layout cascade, eventing, or
+                                   window lifecycle.
+tests_macos.md                   — Comprehensive test plan; tracked
+                                   items have ■, open items have □.
+CLAUDE.md                        — Onboarding doc for AI assistants
+                                   (and humans).
 ```
 
 ## Running the examples
 
-The included examples in `examples_cocoa/`:
+The cocoa examples live under `cocoa/examples/` — each is a
+workspace member, so plain `cargo run -p <name>` works from
+the repo root. A sample:
 
 | Example              | Demonstrates                                      |
 |----------------------|---------------------------------------------------|
-| `counter`      | view! macro + #[component] + reactive label       |
-| `counters`     | `<For>` dynamic children, per-row signals         |
-| `greeter`      | `bind:value` two-way bind on a text field         |
-| `checkbox`     | `bind:checked` + `on:input` + `on:change` coexist |
-| `settings`     | slider, popup, mute-gates-slider reactive enable  |
-| `login_form`   | secure_text_field, button.enabled=Memo, submit    |
-
-To run any of them:
+| `counter_cocoa`      | `view!` macro + `#[component]` + reactive label   |
+| `counters_cocoa`     | `<For>` dynamic children, per-row signals         |
+| `greeter_cocoa`      | `bind:value` two-way bind on a text field         |
+| `checkbox_cocoa`     | `bind:checked` + `on:input` + `on:change` coexist |
+| `settings_cocoa`     | slider, popup, mute-gates-slider reactive enable  |
+| `login_form_cocoa`   | secure_text_field, button.enabled=Memo, submit    |
+| `menu_demo_cocoa`    | `<menu_bar>` / `<menu>` / `<menu_item>` + shortcuts |
+| `toolbar_demo_cocoa` | `<toolbar>` + every toolbar-item variant          |
+| `spotify_cocoa`      | Full Spotify-style desktop UI stress test          |
+| `pages_cocoa`        | Apple-Pages-style toolbar + split-view inspector   |
 
 ```sh
-cargo run --manifest-path examples_cocoa/login_form/Cargo.toml
+cargo run -p login_form_cocoa
+cargo run -p toolbar_demo_cocoa
+# …etc.
 ```
-
-(Or `cd` into the example dir and `cargo run`.)
 
 The window appears, you interact with it, and the app exits when you
 close the window.
 
 ## Writing your own app
 
-Add a new crate under `examples_cocoa/` (or anywhere else) with a
-Cargo.toml like:
+Add a new crate (under `cocoa/examples/` for the workspace, or
+anywhere else) with a Cargo.toml like:
 
 ```toml
 [package]
@@ -109,13 +120,12 @@ name = "my_app"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "my_app"
-path = "src/main.rs"
-
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 ```
+
+There is no `native-ui` feature flag — each example picks its
+port by aliasing `leptos = { package = "leptos_<port>" }`.
 
 Then in `src/main.rs`:
 
@@ -135,7 +145,7 @@ fn main() {
 ```
 
 Multi-window apps use `run` directly (see
-`leptos/src/mount_macos.rs`):
+`cocoa/leptos_cocoa/src/mount.rs`):
 
 ```rust
 fn main() {
@@ -178,80 +188,27 @@ the `SupportsEvent<E>` trait — `<button on:input=…>` won't compile.
 
 ## Running the tests
 
-There are two tiers, run independently.
-
-### 1. cocoa_dom unit tests (~103 tests)
-
-These run `cargo test` in the cocoa_dom crate. Tests build NSView trees,
-exercise attribute setters, run Taffy `compute_layout`, fire NSControl
-actions via the ObjC runtime, and assert against the resulting
-state — all without opening a window.
-
 ```sh
-cargo test --manifest-path cocoa_dom/Cargo.toml
+# Dom-layer unit tests — build NSView trees, exercise attribute
+# setters, run Taffy `compute_layout`, fire NSControl actions
+# via the ObjC runtime, assert against the resulting state. All
+# without opening a window.
+cargo test -p cocoa_dom
+
+# High-level leptos_cocoa integration tests — exercise the
+# builder / Mountable / event plumbing against real AppKit.
+cargo test -p leptos_cocoa
 ```
 
-These tests use a **custom main-thread harness** (see
-`cocoa_dom/tests/common/mod.rs`) — AppKit APIs require the main
-thread, but Cargo's default test harness spawns a worker per test.
-Each test binary uses `harness = false` and runs the test bodies on
-the binary's actual main thread.
+Both use a **custom main-thread harness** (`tests/common/mod.rs`)
+— AppKit APIs require the main thread, but Cargo's default test
+harness spawns a worker per test. Each test binary uses
+`harness = false` and runs the test bodies on the binary's actual
+main thread.
 
-To run a single test binary:
-
-```sh
-cargo test --manifest-path cocoa_dom/Cargo.toml --test layout
-cargo test --manifest-path cocoa_dom/Cargo.toml --test attributes
-# Available: element_creation, attributes, events, text_and_placeholder,
-# tree_mutation, layout, app_menu, builders.
-```
-
-### 2. End-to-end UI tests (24 tests)
-
-These live in `xcuitests/`, a Swift Package. They build a target
-example as a `.app` bundle, launch it via `NSWorkspace`, and drive
-its UI through the Accessibility framework (`AXUIElement`) — clicking
-real buttons, typing real keystrokes via `CGEvent`, and asserting
-against the live AX tree.
-
-The test runner is `xctest`, which needs **Accessibility permission**
-the first time you run it. The first run will print a remediation
-message; follow these steps once:
-
-1. Run `./xcuitests/run_tests.sh` once. It'll fail with a clear
-   "permission not granted" error.
-2. Open System Settings → Privacy & Security → Accessibility.
-3. Click `+`, press ⌘⇧G, paste:
-   ```
-   /Applications/Xcode.app/Contents/Developer/usr/bin/xctest
-   ```
-4. Click Open → Add. Toggle the new entry on.
-
-(Granting to your terminal/IDE doesn't cascade to xctest — it has its
-own signed identity.)
-
-After granting:
-
-```sh
-./xcuitests/run_tests.sh
-```
-
-This builds all three example apps as `.app` bundles, sets the
-`LEPTOS_MAC_<NAME>_PATH` env vars, and runs `swift test`.
-
-To run only one suite:
-
-```sh
-./xcuitests/run_tests.sh --filter LoginFormUITests.LoginFormUITests
-./xcuitests/run_tests.sh --filter SettingsUITests.SettingsUITests
-./xcuitests/run_tests.sh --filter CountersUITests.CountersUITests
-```
-
-To list available tests:
-
-```sh
-cd xcuitests && swift test list
-```
+End-to-end UI tests (XCUITest harness driving real `.app`
+bundles via the Accessibility framework) are tracked but **not
+yet implemented**. See `tests_macos.md` for the planned shape.
 
 **Don't run these in a session you're using interactively** — they
 synthesise real keyboard input via `CGEvent`, which gets sent to
@@ -267,26 +224,18 @@ else.
   entries at the top.
 - **[CLAUDE.md](CLAUDE.md)** — architecture overview written for AI
   agents but useful for human onboarding too. Covers the three-layer
-  structure (cocoa_dom / tachys::cocoa / *_macos facades) and the
-  conventions / gotchas.
-- **[tests.md](tests.md)** — comprehensive test checklist. ■ items
-  have coverage; □ items don't.
-- **[xcuitests/Sources/AppDriver/](xcuitests/Sources/AppDriver)** —
-  the Swift helpers wrapping `AXUIElement`. The starting point for
-  writing new UI tests against new examples.
+  structure (`cocoa/dom` / `cocoa/leptos_cocoa/src/cocoa` / element-macro
+  facades) and the conventions / gotchas.
+- **[tests_macos.md](tests_macos.md)** — comprehensive test
+  checklist. ■ items have coverage; □ items don't.
 
 ## Known limitations
 
-- **Single platform**: macOS only. iOS / iPadOS would be a separate
-  port (UIKit, not AppKit).
-- **No SSR / hydration**: native apps don't have a server side. The
-  hydration stubs exist purely so `IntoView`'s trait bounds compile.
 - **`mount_to_window` leaks the Owner**: the reactive root is
   intentionally leaked for the app's lifetime. When the run loop
   exits, the OS reclaims everything anyway. Per-window cleanup
   (`windowWillClose:` → `Mountable::unmount`) does fire correctly for
   multi-window apps.
-- **No XCUIAutomation literal**: the `.xcuitests/` tier uses
-  `AXUIElement` directly rather than `XCUIApplication`, because Swift
-  Package Manager doesn't support UI testing bundles. Same end-to-end
-  fidelity, no Xcode project required.
+- **XCUIAutomation harness is deferred**: an end-to-end test tier
+  driving built `.app` bundles via the Accessibility framework is
+  planned but not yet implemented. See `tests_macos.md`.

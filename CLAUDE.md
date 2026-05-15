@@ -30,18 +30,19 @@ Read these before diving in:
   the **macOS** port (newest at top). Critical context for anything
   related to layout, eventing, multi-window, or the macro plumbing.
 - `gtk_implementation_log.md` — same shape, for the **Linux/GTK** port.
-- `implementation_ios.md` + `audit_ios.md` + `TODO_ios.md` — iOS port
-  design log, running audit, and priority-ordered outstanding work.
-  Read all three when touching iOS code; they're shorter than the
-  macOS log because the port is younger.
+- `implementation_ios.md` + `TODO_ios.md` — iOS port design log
+  and priority-ordered outstanding work. The TODO_ios doc
+  consolidates what used to live across separate audit / tasks /
+  photosite-gaps files. Shorter than the macOS log because the
+  port is younger.
 - `README_gtk.md` / `README_macos.md` / `README_ios.md` — user-facing
   overviews per port: status, prerequisites, examples.
 - `tests_macos.md` / `tests_gtk.md` / `tests_ios.md` — per-port test
   plans (XCUIAutomation harness for cocoa still deferred; the iOS
   plan is the shortest).
-- `ARCHITECTURE.md` — upstream Leptos architecture notes
-  (web-focused, but explains the reactive system and the
-  Render/Mountable layering all ports still reuse).
+- `API_REVIEW.md` — critique + prioritised cleanup recommendations
+  for the public API. Lives between the implementation logs (history)
+  and the per-port TODOs (forward work).
 
 ### System documentation
 

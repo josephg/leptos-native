@@ -1,15 +1,18 @@
 # iOS port — outstanding work
 
+Single canonical tracker for everything iOS-port that's still
+open. Consolidates what used to live across `audit_ios.md`,
+`tasks_ios.md`, and `photosite_gaps.md` — those have been folded
+in and deleted.
+
 Priority-ordered. Top of each section is the next concrete unit of
 work; lower items are more speculative or larger in scope.
 
 References:
-- [`audit_ios.md`](./audit_ios.md) — original audit + status table
 - [`implementation_ios.md`](./implementation_ios.md) — design log
-- [`tasks_ios.md`](./tasks_ios.md) — original stage-by-stage plan
-- [`tachys/src/cocoa/element.rs`](./tachys/src/cocoa/element.rs) — the
+- [`cocoa/leptos_cocoa/src/cocoa/element.rs`](./cocoa/leptos_cocoa/src/cocoa/element.rs) — the
   reference port; iOS builders mirror its shape
-- [`tachys/src/cocoa/bind.rs`](./tachys/src/cocoa/bind.rs) — bind impls
+- [`cocoa/leptos_cocoa/src/cocoa/bind.rs`](./cocoa/leptos_cocoa/src/cocoa/bind.rs) — bind impls
   reference
 
 ---
@@ -213,6 +216,68 @@ above the keyboard.
   where they can be isolated from UIKit.
 
 ---
+
+### Photo-app mockup gaps (folded from `photosite_gaps.md`)
+
+Surfaced by an audit of the PhotoSite reference mockup
+(`~/src/photos/PhotoSite/mobile-screens.jsx`) against the iOS
+port. Eight screens × multiple chrome layers. Tier 1 = blocker,
+Tier 2 = workable but ugly, Tier 3 = polish.
+
+**Tier 1 — show-stoppers**
+- [ ] `<navigation>` / `<navigation_view>` (`UINavigationController`)
+  + programmatic push/pop. Tracked above under "Navigation & lists."
+- [ ] `<tab_view>` (`UITabBarController`). Tracked above.
+- [ ] **Photo grid**: needs 3-column lazy grid. `<For>` over a
+  `<vstack>` works for small lists; for hundreds of photos
+  `UICollectionView` is the right backing. Tracked above under
+  `<list>` / `<table>`.
+- [ ] **Image loading from data / URL**: `<image_view source=&[u8]>` /
+  `<image_view url="…">`. Today only filesystem paths via
+  `source="/abs/path"`. Need an async-fetch helper.
+- [x] **Background colour, border, corner radius on any view** ✅
+  (closed; `WithDecoration` shipped).
+- [ ] **Multi-line / attributed labels**: `<label multiline=true>`
+  with optional `text_attributes=[(range, attr)…]` for mixed
+  weights, colours, link underlines.
+- [ ] **Z-stacking / overlay**: a `<z_stack>` (or
+  `<view position=Absolute top=… right=…>`) for the "tiny
+  pending-delete pip in the top-right of the trash icon"
+  pattern. Taffy's `position: absolute` is half-wired today
+  (works via `<view>` direct config, no high-level shorthand).
+
+**Tier 2 — workable but ugly**
+- [ ] **Modal / sheet presentation**: `<sheet open=signal>`
+  wrapping `UIViewController.present:animated:`. Apple's
+  bottom-sheet detents on iOS 15+.
+- [ ] **Search field**: `<search_field>` wrapping
+  `UISearchTextField`. Today there's `<text_field>` only.
+- [ ] **Alerts & action sheets**: `UIAlertController` builder
+  (`<alert>`, `<action_sheet>`).
+- [ ] **Long-press / pan / swipe gestures**: tracked above under
+  "Gestures" P5.
+- [ ] **Pinch-to-zoom + swipe-paged photo viewer**: composed of
+  `UIScrollView.minimumZoomScale` + `UIPageViewController`.
+- [ ] **Swipe-to-delete row actions** on lists. Needs
+  `UICollectionView` first.
+- [ ] **SF Symbol parity**: cocoa now has the unified
+  [`Icon`](cocoa/dom/src/icon.rs) enum (`Icon::sf_symbol` /
+  `Icon::image`). UIKit supports SF Symbols natively
+  (`UIImage.systemImageNamed:`). Port the `Icon` enum to
+  `ios_dom` and wire `icon=` setters on the iOS builders that
+  have an image slot (`<image_view>`, `<button>`).
+
+**Tier 3 — polish**
+- [ ] `UIVisualEffectView` blur backgrounds (the "liquid glass"
+  iOS 26 look).
+- [ ] Shadows (`CALayer.shadowOpacity` / `shadowRadius` /
+  `shadowOffset`). Taffy doesn't track shadow geometry; wire
+  through `WithDecoration` as a separate field.
+- [ ] CoreAnimation hookup for value-interpolated reactive
+  transitions. Same blocker as cocoa — see the
+  `Animation primitive` section in `API_REVIEW.md`.
+- [ ] Haptic feedback (`UIImpactFeedbackGenerator`).
+- [ ] Toast / snackbar primitive.
 
 ## P6 — Smaller polish & known issues
 

@@ -27,12 +27,14 @@ fn Counter(initial: i32) -> impl IntoView {
 }
 
 fn main() {
-    leptos::mount_ios::run(|| view! { <Counter initial=0 /> });
+    leptos::run(|| view! { <Counter initial=0 /> });
 }
 ```
 
-The web Leptos crates still build and work as before — the iOS path
-is gated by `cfg(target_os = "ios")` and swaps the renderer.
+This is a **native-only fork** of Leptos. The web / SSR crates
+have been removed; the same `view!{}` macro and reactive
+primitives drive UIKit directly. See [`CLAUDE.md`](./CLAUDE.md)
+for the full picture.
 
 ## Prerequisites
 
@@ -56,26 +58,38 @@ The simulator launch scripts build with `cargo`, hand-roll a
 ## Crate layout
 
 ```
-ios_dom/      — DOM-shaped façade over UIKit (UIView, UIButton,
-                UITextField, UISwitch, …). Owns the Taffy layout
-                integration, UIWindow / UIApplication setup, target/
-                action wiring, main-thread spawner, keyboard-avoidance
-                via UIKeyboardLayoutGuide.
-tachys/src/ios/   — Bridges ios_dom to tachys' Render/Mountable
-                    traits. Element builders (button(), text_field(),
-                    switch_(), slider(), …) and the bind: plumbing.
-leptos/src/mount_ios.rs — `run` entry point.
-examples_ios/<name>/    — Each example is its own Cargo crate with
-                          a `run_ios.sh` script that builds, bundles,
-                          installs, and launches in the simulator.
-implementation_ios.md   — Design-decision journal, newest first.
-audit_ios.md            — Original audit + ongoing status.
-TODO_ios.md             — Priority-ordered outstanding work.
+uikit/dom/                         — DOM-shaped façade over UIKit
+                                     (UIView, UIButton, UITextField,
+                                     UISwitch, …). Owns the Taffy
+                                     layout integration, UIWindow /
+                                     UIApplication setup, target/
+                                     action wiring, main-thread
+                                     spawner, keyboard avoidance via
+                                     UIKeyboardLayoutGuide.
+uikit/leptos_uikit/src/ios/        — Bridges uikit/dom to renderer's
+                                     Render/Mountable traits.
+                                     Element builders (button(),
+                                     text_field(), switch_(),
+                                     slider(), …) and the bind:
+                                     plumbing.
+uikit/leptos_uikit/src/mount.rs    — `run` entry point.
+uikit/examples/<name>/             — Each example is its own Cargo
+                                     crate (out-of-workspace; iOS
+                                     targets only) with a
+                                     `run_ios.sh` script that
+                                     builds, bundles, installs, and
+                                     launches in the simulator.
+implementation_ios.md              — Design-decision journal,
+                                     newest first.
+TODO_ios.md                        — Priority-ordered outstanding
+                                     work (folded in from the older
+                                     audit / tasks / photosite-gaps
+                                     docs).
 ```
 
 ## Running the examples
 
-The included examples in `examples_ios/`:
+The included examples live under `uikit/examples/`:
 
 | Example       | Demonstrates                                                  |
 |---------------|---------------------------------------------------------------|
@@ -93,7 +107,7 @@ The included examples in `examples_ios/`:
 To run one:
 
 ```sh
-cd examples_ios/counter
+cd uikit/examples/counter
 ./run_ios.sh
 ```
 
@@ -110,7 +124,7 @@ it up.
 
 ## Writing your own app
 
-Add a new crate under `examples_ios/` (or anywhere else) with a
+Add a new crate under `uikit/examples/` (or anywhere else) with a
 Cargo.toml like:
 
 ```toml
@@ -124,7 +138,7 @@ name = "my_app"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { path = "../../leptos", features = ["native-ui"] }
+leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }
 
 [profile.dev]
 panic = "abort"   # iOS doesn't support unwinding out of objc frames
@@ -141,11 +155,11 @@ fn App() -> impl IntoView {
 }
 
 fn main() {
-    leptos::mount_ios::run(|| view! { <App /> });
+    leptos::run(|| view! { <App /> });
 }
 ```
 
-Copy `examples_ios/counter/run_ios.sh` and replace the bundle-name /
+Copy `uikit/examples/counter/run_ios.sh` and replace the bundle-name /
 bundle-id references. Build and launch with `./run_ios.sh`.
 
 Unlike the macOS port, iOS has only one entry point — `run`. There's
@@ -242,12 +256,12 @@ See [TODO_ios.md](TODO_ios.md) for the full list.
 
 - **[implementation_ios.md](implementation_ios.md)** — design-decision
   journal. Newest entries at the top.
-- **[audit_ios.md](audit_ios.md)** — running audit / status doc.
-- **[TODO_ios.md](TODO_ios.md)** — priority-ordered outstanding work.
+- **[TODO_ios.md](TODO_ios.md)** — priority-ordered outstanding work
+  (folds in the older audit / tasks / photosite-gaps docs).
 - **[CLAUDE.md](CLAUDE.md)** — architecture overview written for AI
   agents but useful for human onboarding too. Covers the three-layer
-  structure (`ios_dom` / `tachys::ios` / `*_ios` facades) and the
-  conventions / gotchas.
+  structure (`uikit/dom` / `uikit/leptos_uikit/src/ios` /
+  element-macro facades) and the conventions / gotchas.
 - **[implementation_log.md](implementation_log.md)** — the macOS
   port's design journal. Many concepts (Taffy bridging, event-handler
   storage, the `mount_before` synthetic-parent dance) are shared.
