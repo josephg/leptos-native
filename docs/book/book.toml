@@ -1,0 +1,19 @@
+[book]
+title = "Leptos Native"
+authors = ["Seph Gentle"]
+description = "Documentation for the native-only fork of Leptos targeting macOS, iOS, and Linux."
+language = "en"
+
+[output.html]
+additional-css = ["./mdbook-admonish.css"]
+git-repository-url = "https://github.com/josephg/leptos-mac"
+
+[output.html.playground]
+runnable = false
+
+[preprocessor]
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.1"
+optional = true
