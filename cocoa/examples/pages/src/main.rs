@@ -273,32 +273,30 @@ mod app {
         // dividers needed.
         view! {
             <toolbar identifier="leptos_cocoa.pages.toolbar">
-                <toolbar_item identifier="view"     label="View"     sf_symbol="sidebar.left" />
-                <toolbar_item identifier="zoom"     label="Zoom"     sf_symbol="plus.magnifyingglass" />
-                <toolbar_item identifier="add_page" label="Add Page" sf_symbol="doc.badge.plus" />
+                <toolbar_item label="View"     icon=Icon::sf_symbol("sidebar.left") />
+                <toolbar_item label="Zoom"     icon=Icon::sf_symbol("plus.magnifyingglass") />
+                <toolbar_item label="Add Page" icon=Icon::sf_symbol("doc.badge.plus") />
                 <toolbar_flexible_space />
-                <toolbar_item identifier="insert"   label="Insert"   sf_symbol="plus.square.on.square" />
-                <toolbar_item identifier="table"    label="Table"    sf_symbol="tablecells" />
-                <toolbar_item identifier="graph"    label="Graph"    sf_symbol="chart.bar" />
-                <toolbar_item identifier="text"     label="Text"     sf_symbol="textformat" />
-                <toolbar_item identifier="shape"    label="Shape"    sf_symbol="square.on.circle" />
-                <toolbar_item identifier="media"    label="Media"    sf_symbol="photo" />
-                <toolbar_item identifier="comment"  label="Comment"  sf_symbol="bubble.left" />
+                <toolbar_item label="Insert"   icon=Icon::sf_symbol("plus.square.on.square") />
+                <toolbar_item label="Table"    icon=Icon::sf_symbol("tablecells") />
+                <toolbar_item label="Graph"    icon=Icon::sf_symbol("chart.bar") />
+                <toolbar_item label="Text"     icon=Icon::sf_symbol("textformat") />
+                <toolbar_item label="Shape"    icon=Icon::sf_symbol("square.on.circle") />
+                <toolbar_item label="Media"    icon=Icon::sf_symbol("photo") />
+                <toolbar_item label="Comment"  icon=Icon::sf_symbol("bubble.left") />
                 <toolbar_flexible_space />
-                <toolbar_item identifier="share"    label="Share"    sf_symbol="square.and.arrow.up" />
+                <toolbar_item label="Share"    icon=Icon::sf_symbol("square.and.arrow.up") />
                 <toolbar_item
-                    identifier="format"
                     label="Format"
-                    sf_symbol="paintbrush"
+                    icon=Icon::sf_symbol("paintbrush")
                     on:action=move |_| inspector.update(|i| *i = match *i {
                         Inspector::Format => Inspector::Hidden,
                         _ => Inspector::Format,
                     })
                 />
                 <toolbar_item
-                    identifier="document"
                     label="Document"
-                    sf_symbol="doc.text"
+                    icon=Icon::sf_symbol("doc.text")
                     on:action=move |_| inspector.update(|i| *i = match *i {
                         Inspector::Document => Inspector::Hidden,
                         _ => Inspector::Document,

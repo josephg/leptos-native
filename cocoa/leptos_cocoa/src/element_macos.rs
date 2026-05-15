@@ -22,7 +22,9 @@ pub use crate::cocoa::element::{
 // module since NSToolbar is not a view — attaches to the
 // containing NSWindow at mount time.
 pub use crate::cocoa::toolbar::{
-    toolbar, toolbar_flexible_space, toolbar_item, toolbar_space,
+    toolbar, toolbar_flexible_space, toolbar_item, toolbar_print,
+    toolbar_search_item, toolbar_sidebar_tracking_separator, toolbar_space,
+    toolbar_toggle_sidebar,
 };
 
 // Split-view: `<split_view>` + `<split_pane>` — native

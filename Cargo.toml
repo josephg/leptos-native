@@ -39,6 +39,7 @@ members = [
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
   "cocoa/examples/timer",
+  "cocoa/examples/toolbar_demo",
   "cocoa/examples/two_windows",
 
   # iOS examples
@@ -93,6 +94,7 @@ default-members = [
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
   "cocoa/examples/timer",
+  "cocoa/examples/toolbar_demo",
   "cocoa/examples/two_windows",
 
   # GTK examples — listed in `members` above so `cargo build --workspace`

@@ -19,7 +19,7 @@
 //! just the tachys-side `Render`/`Mountable` glue.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use renderer::view::{Mountable, Render};
+use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
     layout,
@@ -43,6 +43,8 @@ pub struct Window<Children> {
     position: Option<MaybeReactive<WindowPosition>>,
     on_close: Option<Box<dyn FnMut() + Send + 'static>>,
     handle: Option<WindowHandle>,
+    toolbar_style:
+        Option<MaybeReactive<cocoa_dom::toolbar::WindowToolbarStyle>>,
     children: Children,
 }
 
@@ -159,6 +161,7 @@ pub fn window() -> Window<()> {
         position: None,
         on_close: None,
         handle: None,
+        toolbar_style: None,
         children: (),
     }
 }
@@ -213,6 +216,21 @@ impl<Ch> Window<Ch> {
         self
     }
 
+    /// macOS 11+ toolbar layout style — `Automatic` (default),
+    /// `Expanded` (legacy band below title bar), `Preference`,
+    /// `Unified` (modern integrated look), or `UnifiedCompact`.
+    /// Reactive.
+    ///
+    /// Only meaningful if the window also has a `<toolbar>` child.
+    /// Without a toolbar, AppKit ignores the style.
+    pub fn toolbar_style<V>(mut self, style: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::toolbar::WindowToolbarStyle>,
+    {
+        self.toolbar_style = Some(style.into_maybe_reactive());
+        self
+    }
+
     pub fn child<NewCh>(self, c: NewCh) -> Window<(Ch, NewCh)> {
         Window {
             title: self.title,
@@ -220,6 +238,7 @@ impl<Ch> Window<Ch> {
             position: self.position,
             on_close: self.on_close,
             handle: self.handle,
+            toolbar_style: self.toolbar_style,
             children: (self.children, c),
         }
     }
@@ -257,6 +276,27 @@ impl crate::event_macos::EventDescriptor for CloseEvent {
 }
 
 impl<Ch> SupportsWindowEvent<CloseEvent> for Window<Ch> {}
+
+// Spread attributes on `<window>` aren't meaningful — Window
+// isn't an NSControl and has no untyped attribute slot. Match the
+// container-builder pattern (Stack/Grid/Toolbar) with a clear
+// panic. The impl is still required so `View<Window<...>>` can
+// satisfy `IntoView<Dom>` when a Window is returned from a
+// `#[component]`.
+impl<Ch> AddAnyAttr<Dom> for Window<Ch> {
+    #[track_caller]
+    fn add_any_attr<A>(self, _attr: A) -> Self
+    where
+        A: ApplyAttr<Dom>,
+    {
+        panic!(
+            "AddAnyAttr<Dom>::add_any_attr on Window. Spread attributes \
+             (`<window {{..attr}}/>`) aren't supported — configure the \
+             window via its named setters (title, size, position, \
+             toolbar_style, on:close, ...) instead."
+        )
+    }
+}
 
 #[allow(missing_docs)]
 pub struct WindowState {
@@ -351,6 +391,22 @@ where
             if let Some(eff) = install(pos_attr, move |p: WindowPosition| {
                 nswindow.setFrameOrigin(NSPoint::new(p.0, p.1));
             }) {
+                effects.push(eff);
+            }
+        }
+
+        // Reactive toolbar style — only matters if a `<toolbar>`
+        // child attaches an NSToolbar later in the mount cascade.
+        // No effect otherwise (AppKit ignores toolbarStyle on
+        // toolbar-less windows).
+        if let Some(ts_attr) = self.toolbar_style {
+            let nswindow = opened.nswindow.clone();
+            if let Some(eff) = install(
+                ts_attr,
+                move |s: cocoa_dom::toolbar::WindowToolbarStyle| {
+                    nswindow.setToolbarStyle(s.to_appkit());
+                },
+            ) {
                 effects.push(eff);
             }
         }

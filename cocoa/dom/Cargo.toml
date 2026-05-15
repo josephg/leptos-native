@@ -141,6 +141,11 @@ name = "app_menu"
 path = "tests/app_menu.rs"
 harness = false
 
+[[test]]
+name = "icon"
+path = "tests/icon.rs"
+harness = false
+
 
 [[test]]
 name = "interval"

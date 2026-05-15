@@ -21,7 +21,6 @@ mod app {
     const TXT_SECONDARY: Color = Color { r: 0.702, g: 0.702, b: 0.702, a: 1.0 }; // #B3B3B3
     const TXT_MUTED: Color     = Color { r: 0.4, g: 0.4, b: 0.4, a: 1.0 };
     const ACCENT_GREEN: Color  = Color { r: 0.114, g: 0.725, b: 0.329, a: 1.0 }; // #1DB954
-    const AVATAR_ORANGE: Color = Color { r: 0.95, g: 0.55, b: 0.16, a: 1.0 };
 
     // Album-art placeholder palettes — bright color squares with a
     // single-letter "cover" so we can fake the iconography without
@@ -103,58 +102,6 @@ mod app {
         }
     }
 
-    /// Filled circular text-glyph button — used for the green play
-    /// button and the avatar bubble. `glyph` is rendered as the
-    /// NSButton title (any Unicode character or short text). For
-    /// SF Symbol icons use [`circle_icon_button`].
-    fn circle_button(
-        size: f32,
-        bg: Color,
-        glyph: &'static str,
-        glyph_size: f64,
-        on_click: impl FnMut() + Send + 'static,
-    ) -> impl IntoView {
-        let mut on_click = on_click;
-        view! {
-            <button
-                width=size
-                height=size
-                corner_radius=size / 2.0
-                background_color=bg
-                bordered=false
-                on:click=move |_| on_click()
-                font_size=glyph_size
-                bold=true
-                alignment=TextAlignment::CENTER
-            >
-                {glyph}
-            </button>
-        }
-    }
-
-    /// Filled circular SF-Symbol button. The SF Symbol renders as
-    /// the NSButton's image slot (centred when the title is empty).
-    fn circle_icon_button(
-        size: f32,
-        bg: Color,
-        sf_symbol: &'static str,
-        on_click: impl FnMut() + Send + 'static,
-    ) -> impl IntoView {
-        let mut on_click = on_click;
-        view! {
-            <button
-                width=size
-                height=size
-                corner_radius=size / 2.0
-                background_color=bg
-                bordered=false
-                on:click=move |_| on_click()
-                sf_symbol=sf_symbol
-                text_color=TXT_PRIMARY
-            />
-        }
-    }
-
     /// "Pill" toggle chip — the filter buttons under "Your Library".
     /// Active chips are white-on-black; inactive are light-on-dark.
     fn chip<F>(label: &'static str, active: F) -> impl IntoView
@@ -183,110 +130,121 @@ mod app {
         provide_context(page);
 
         view! {
-            <vstack flex_grow=1.0 background_color=BG_BODY>
-                <TopBar />
-                <hstack flex_grow=1.0 gap=8.0 padding=8.0>
-                    <Sidebar />
-                    <vstack
-                        flex_grow=1.0
-                        background_color=BG_RAISED
-                        corner_radius=8.0
-                        clip=true
-                    >
-                        <Switch>
-                            <Match when=move || page.get() == Page::Home>
-                                <HomePage />
-                            </Match>
-                            <Match when=move || page.get() == Page::Playlist>
-                                <PlaylistPage />
-                            </Match>
-                            <Match when=move || page.get() == Page::Artist>
-                                <ArtistPage />
-                            </Match>
-                        </Switch>
-                    </vstack>
-                </hstack>
-                <PlayerBar />
-            </vstack>
-        }
-    }
-
-    // ---- top bar ----------------------------------------------------
-
-    #[component]
-    fn TopBar() -> impl IntoView {
-        let page = use_context::<RwSignal<Page>>().expect("page ctx");
-        // Custom in-content bar (not a native NSToolbar — it embeds
-        // a `<text_field>` for search, which the leaf-attribute
-        // `<toolbar_item>` doesn't support in v1). Plain hstack
-        // with toolbar-ish styling.
-        view! {
-            <hstack
-                height=64.0
-                background_color=BG_BODY
-                padding=8.0
-                gap=8.0
-                align=AlignItems::Center
+            <window
+                title="Spotify"
+                size=(1100.0, 760.0)
+                toolbar_style=WindowToolbarStyle::Unified
             >
-                // Nav: back/forward + home
-                <hstack gap=8.0 align=AlignItems::Center>
-                    {circle_icon_button(32.0, BG_CHIP, "chevron.left",
-                        move || page.set(Page::Home))}
-                    {circle_icon_button(32.0, BG_CHIP, "chevron.right",
-                        move || {})}
-                </hstack>
-
-                // Center: home pill + search field
-                <hstack
-                    flex_grow=1.0
-                    gap=8.0
-                    justify_content=JustifyContent::Center
-                    align=AlignItems::Center
+                // Native NSToolbar across the title bar. Replaces the
+                // previous custom `<TopBar/>` hstack. The search field
+                // and the embedded "Explore Premium" label have moved
+                // into a slim sub-bar below the toolbar, since
+                // `<toolbar_item>` is a leaf-attribute element in v1
+                // and can't host an `<text_field>` directly.
+                //
+                // The toolbar must be a child of `<window>` (not a
+                // top-level sibling) so its mount can walk up the
+                // parent NSView and call `setToolbar:` on the
+                // containing NSWindow.
+                <toolbar
+                    identifier="spotify.main"
+                    display_mode=ToolbarDisplayMode::IconOnly
                 >
-                    {circle_icon_button(40.0, BG_CHIP, "house.fill",
-                        move || page.set(Page::Home))}
-                    <hstack
-                        width=Dim::px(440.0)
-                        height=40.0
-                        background_color=BG_CHIP
-                        corner_radius=20.0
-                        padding=2.0
-                        gap=6.0
-                        align=AlignItems::Center
-                    >
-                        <image_view
-                            sf_symbol="magnifyingglass"
-                            tint=TXT_SECONDARY
-                            width=16.0
-                            height=16.0
-                            margin=Edges::ZERO.left(8.0)
-                        />
-                        <text_field
-                            placeholder="What do you want to play?"
-                            flex_grow=1.0
-                            text_color=TXT_PRIMARY
-                            font_size=14.0
-                            bordered=false
-                        />
-                        <image_view
-                            sf_symbol="dot.radiowaves.left.and.right"
-                            tint=TXT_SECONDARY
-                            width=16.0
-                            height=16.0
-                            margin=Edges::ZERO.right(8.0)
-                        />
-                    </hstack>
-                </hstack>
+                    // Back / forward — navigational items, styled as
+                    // back/forward by AppKit (macOS 12+).
+                    <toolbar_item
+                        identifier="back"
+                        label="Back"
+                        icon=Icon::sf_symbol("chevron.left")
+                        tool_tip="Go back"
+                        navigational=true
+                        bordered=true
+                        on:action=move |_| page.set(Page::Home)
+                    />
+                    <toolbar_item
+                        identifier="forward"
+                        label="Forward"
+                        icon=Icon::sf_symbol("chevron.right")
+                        tool_tip="Go forward"
+                        navigational=true
+                        bordered=true
+                    />
 
-                // Right: notifications + avatar
-                <hstack gap=8.0 align=AlignItems::Center>
-                    <label text_color=TXT_SECONDARY font_size=14.0>
-                        "Explore Premium"
-                    </label>
-                    {circle_icon_button(32.0, BG_CHIP, "bell", move || {})}
-                    {circle_button(32.0, AVATAR_ORANGE, "S", 14.0, move || {})}
-                </hstack>
-            </hstack>
+                    <toolbar_space/>
+
+                    // Home — single bordered button.
+                    <toolbar_item
+                        identifier="home"
+                        label="Home"
+                        icon=Icon::sf_symbol("house.fill")
+                        tool_tip="Home"
+                        bordered=true
+                        on:action=move |_| page.set(Page::Home)
+                    />
+
+                    // Native NSSearchToolbarItem — gives the proper
+                    // search-field chrome (magnifying-glass icon,
+                    // clear ×, recent-searches support) and the
+                    // correct toolbar expand/collapse behaviour.
+                    <toolbar_search_item
+                        identifier="search"
+                        label="Search"
+                        tool_tip="Search Spotify"
+                        placeholder="What do you want to play?"
+                        preferred_width=320.0
+                    />
+
+                    <toolbar_flexible_space/>
+
+                    // Trailing controls.
+                    <toolbar_item
+                        identifier="premium"
+                        label="Premium"
+                        icon=Icon::sf_symbol("sparkles")
+                        tool_tip="Explore Premium"
+                        bordered=true
+                    />
+                    <toolbar_item
+                        identifier="notifications"
+                        label="Notifications"
+                        icon=Icon::sf_symbol("bell")
+                        tool_tip="Notifications"
+                        bordered=true
+                    />
+                    <toolbar_item
+                        identifier="account"
+                        label="Account"
+                        icon=Icon::sf_symbol("person.crop.circle.fill")
+                        tool_tip="Your account"
+                        bordered=true
+                    />
+                </toolbar>
+
+                <vstack flex_grow=1.0 background_color=BG_BODY>
+                    <hstack flex_grow=1.0 gap=8.0 padding=8.0>
+                        <Sidebar />
+                        <vstack
+                            flex_grow=1.0
+                            background_color=BG_RAISED
+                            corner_radius=8.0
+                            clip=true
+                        >
+                            <Switch>
+                                <Match when=move || page.get() == Page::Home>
+                                    <HomePage />
+                                </Match>
+                                <Match when=move || page.get() == Page::Playlist>
+                                    <PlaylistPage />
+                                </Match>
+                                <Match when=move || page.get() == Page::Artist>
+                                    <ArtistPage />
+                                </Match>
+                            </Switch>
+                        </vstack>
+                    </hstack>
+                    <PlayerBar />
+                </vstack>
+            </window>
         }
     }
 
@@ -1109,9 +1067,7 @@ mod app {
     }
 
     pub fn main() {
-        mount_to_window("Spotify", (1100.0, 760.0), || {
-            view! { <App /> }
-        });
+        run(|| view! { <App /> });
     }
 }
 

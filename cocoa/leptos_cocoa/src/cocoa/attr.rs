@@ -24,7 +24,8 @@
 pub use renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeReactive};
 use cocoa_dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
-    Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment,
+    toolbar::{ToolbarDisplayMode, WindowToolbarStyle},
+    Color, Date, DatePickerStyle, Icon, LineBreak, SegmentStyle, TextAlignment,
 };
 
 /// Conversion trait so attribute setters can take either a bare
@@ -64,6 +65,7 @@ impl_pair!(
     String, bool, i32, f32, f64, usize, Dim, Edges,
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
     Color, Date, TextAlignment, LineBreak, SegmentStyle, DatePickerStyle,
+    ToolbarDisplayMode, WindowToolbarStyle, Icon,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

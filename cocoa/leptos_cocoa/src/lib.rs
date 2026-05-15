@@ -137,7 +137,8 @@ pub mod prelude {
 
     // Split-view builders + the pane-behavior enum.
     pub use crate::cocoa::split::{
-        split_pane, split_view, PaneBehavior, SplitPane, SplitView,
+        split_pane, split_view, CollapseBehavior, PaneBehavior, SplitPane,
+        SplitView,
     };
 
     // Window types (handle, size, position) so user code can
@@ -161,8 +162,12 @@ pub mod prelude {
     // time. `<toolbar_item>` is a leaf with attributes (label,
     // sf_symbol, on:action, ...).
     pub use crate::cocoa::toolbar::{
-        toolbar, toolbar_flexible_space, toolbar_item, toolbar_space,
-        Toolbar, ToolbarFlexibleSpace, ToolbarItem, ToolbarSpace,
+        toolbar, toolbar_flexible_space, toolbar_item, toolbar_print,
+        toolbar_search_item, toolbar_sidebar_tracking_separator,
+        toolbar_space, toolbar_toggle_sidebar, Toolbar, ToolbarDisplayMode,
+        ToolbarFlexibleSpace, ToolbarHandle, ToolbarItem, ToolbarPrint,
+        ToolbarSearchItem, ToolbarSidebarTrackingSeparator, ToolbarSpace,
+        ToolbarToggleSidebar, WindowToolbarStyle,
     };
 
     // Cocoa-flavoured element builders, exposed as bare functions
@@ -221,8 +226,8 @@ pub mod prelude {
     // `Option<Element>`).
     pub use cocoa_dom::{
         local_storage, set_interval, set_interval_with_handle, Color, Date,
-        DatePickerStyle, Element, IntervalError, IntervalHandle, KeyEvent,
-        LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
+        DatePickerStyle, Element, Icon, IntervalError, IntervalHandle,
+        KeyEvent, LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
     };
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.

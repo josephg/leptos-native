@@ -60,10 +60,10 @@ use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
-    NSBackingStoreType, NSSplitViewController, NSSplitViewItem, NSViewController,
-    NSWindow, NSWindowStyleMask,
+    NSBackingStoreType, NSLayoutConstraint, NSLayoutGuide, NSSplitViewController,
+    NSSplitViewItem, NSView, NSViewController, NSWindow, NSWindowStyleMask,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 
 // ---------------------------------------------------------------------
 // PaneBehavior — mirrors NSSplitViewItem.Behavior
@@ -93,6 +93,63 @@ pub enum PaneBehavior {
 // underlying NSSplitViewItem.behavior implicitly. If we later
 // need to read the behavior back from the item, add a conversion
 // here.
+
+// ---------------------------------------------------------------------
+// CollapseBehavior — mirrors NSSplitViewItem.CollapseBehavior
+// ---------------------------------------------------------------------
+
+/// What happens to the surrounding layout when this pane toggles
+/// its collapsed state. Maps 1:1 to AppKit's
+/// `NSSplitViewItem.CollapseBehavior`.
+///
+/// The two interesting cases:
+///
+/// - [`Self::PreferResizingSiblingsWithFixedSplitView`] — the
+///   **split view (and hence the window) stays the same size**;
+///   the OTHER panes grow / shrink to absorb the freed space.
+///   This is the "Preview / Notes" feel — sidebar slides in from
+///   the left without moving the window.
+/// - [`Self::PreferResizingSplitViewWithFixedSiblings`] — the
+///   other panes' onscreen positions stay fixed; the **split view
+///   (and the window) resizes** to make room. This is the "Mail
+///   / Finder" feel where the window grows when the sidebar
+///   appears.
+///
+/// `Default` lets AppKit pick — historically this matches
+/// `PreferResizingSplitViewWithFixedSiblings` for sidebar /
+/// inspector panes (the window resizes). If you want
+/// Preview-style behavior, set
+/// `PreferResizingSiblingsWithFixedSplitView` explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollapseBehavior {
+    /// AppKit-picked default.
+    Default,
+    /// Keep the split view fixed; resize other panes to absorb.
+    /// **The window-stays-put choice.**
+    PreferResizingSiblingsWithFixedSplitView,
+    /// Keep sibling panes' positions fixed; resize the split
+    /// view (and hence the window) instead.
+    PreferResizingSplitViewWithFixedSiblings,
+    /// Defer to Auto-Layout constraints to determine behavior.
+    UseConstraints,
+}
+
+impl CollapseBehavior {
+    /// Convert to AppKit's `NSSplitViewItemCollapseBehavior`.
+    pub fn to_appkit(self) -> objc2_app_kit::NSSplitViewItemCollapseBehavior {
+        use objc2_app_kit::NSSplitViewItemCollapseBehavior as B;
+        match self {
+            Self::Default => B::Default,
+            Self::PreferResizingSiblingsWithFixedSplitView => {
+                B::PreferResizingSiblingsWithFixedSplitView
+            }
+            Self::PreferResizingSplitViewWithFixedSiblings => {
+                B::PreferResizingSplitViewWithFixedSiblings
+            }
+            Self::UseConstraints => B::UseConstraints,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------
 // PaneSpec — caller-supplied configuration for a single pane
@@ -131,6 +188,11 @@ pub struct PaneSpec {
     /// only the relative order. `NSLayoutPriorityDefaultLow` is
     /// `250`; `defaultHigh` is `750`; `required` is `1000`.
     pub holding_priority: Option<f32>,
+    /// Collapse animation policy. `None` leaves AppKit's default
+    /// in place (window resizes on sidebar toggle); set to
+    /// [`CollapseBehavior::PreferResizingSiblingsWithFixedSplitView`]
+    /// for Preview-style "window stays put."
+    pub collapse_behavior: Option<CollapseBehavior>,
 }
 
 impl Default for PaneSpec {
@@ -143,6 +205,7 @@ impl Default for PaneSpec {
             minimum_thickness: None,
             maximum_thickness: None,
             holding_priority: None,
+            collapse_behavior: None,
         }
     }
 }
@@ -395,26 +458,103 @@ pub fn open_split_window(
         panes.push(pane);
     }
 
-    // Three-step wiring to land the window at the requested size:
+    // Window-content wiring. The "obvious" approach
+    // (`setContentViewController:` with the split controller)
+    // makes `splitController.view` the contentView directly,
+    // which means AppKit pins it to the *full* contentView area
+    // — including the band the toolbar overlays in
+    // FullSizeContentView / unified-toolbar mode. The toolbar
+    // then visually clips the top of our content.
     //
-    // 1. `setPreferredContentSize` on the controller — establishes
-    //    the size NSSplitViewController solves toward when it has
-    //    no other intrinsic-size info. Without this, the controller
-    //    reports `(0, 0)` and step 2 shrinks the window.
-    // 2. `setContentViewController:` — installs the controller and
-    //    its view as the window's contentView. AppKit then resizes
-    //    the window to fit the controller's fitting size, which
-    //    is the preferred content size from step 1.
-    // 3. `setContentSize` — defensive belt-and-braces: in practice
-    //    step 2 produces the right size, but AppKit has, on some
-    //    macOS versions, been observed to apply a stale fitting
-    //    size before the preferred-content-size constraint
-    //    propagates. Re-applying the requested size explicitly
-    //    here closes that timing gap.
+    // Instead, install a tiny **container view controller** as
+    // the window's `contentViewController`, add the split
+    // controller as its child (so the responder chain still
+    // routes `toggleSidebar:` to it), then add
+    // `splitController.view` as a subview of the container's
+    // view and pin its four edges to `window.contentLayoutGuide`
+    // via Auto Layout. The layout guide automatically tracks the
+    // "non-obscured" portion of the contentView, so the split
+    // view follows the safe area as the toolbar toggles or the
+    // window resizes — no manual layout-pass plumbing required.
     let target = NSSize::new(size.0, size.1);
-    split_controller.setPreferredContentSize(target);
-    nswindow.setContentViewController(Some(split_controller.as_ref()));
+
+    let container_view: Retained<NSView> = NSView::initWithFrame(
+        NSView::alloc(mtm),
+        NSRect::new(NSPoint::ZERO, target),
+    );
+
+    let container_controller: Retained<NSViewController> = unsafe {
+        msg_send![NSViewController::alloc(mtm), init]
+    };
+    unsafe {
+        let _: () = msg_send![&*container_controller, setView: &*container_view];
+    }
+
+    // Set preferred content size on the container so AppKit
+    // resizes the window to fit at install time.
+    container_controller.setPreferredContentSize(target);
+    nswindow.setContentViewController(Some(container_controller.as_ref()));
     nswindow.setContentSize(target);
+    // Clear preferredContentSize once initial size is locked —
+    // leaving it set would pin the contentView at exactly
+    // `target` forever, fighting AppKit when the window resizes.
+    container_controller.setPreferredContentSize(NSSize::new(0.0, 0.0));
+
+    // Add the split controller as a child of the container so
+    // it's in the responder chain. `toggleSidebar:` (sent by
+    // `<toolbar_toggle_sidebar/>`) walks the responder chain and
+    // NSSplitViewController implements it natively.
+    unsafe {
+        let _: () = msg_send![
+            &*container_controller,
+            addChildViewController: &*split_controller
+        ];
+    }
+
+    // Add splitController.view as a subview of the container view
+    // and pin its four edges to `window.contentLayoutGuide`. The
+    // guide tracks `contentLayoutRect` — the area NOT obscured by
+    // a toolbar in `FullSizeContentView`-style layouts — so the
+    // split view (and its panes) automatically inset for the
+    // toolbar without us doing any safe-area bookkeeping.
+    let split_view_root: Retained<NSView> =
+        unsafe { Retained::cast_unchecked(split_controller.view()) };
+    split_view_root.setTranslatesAutoresizingMaskIntoConstraints(false);
+    container_view.addSubview(&split_view_root);
+
+    if let Some(guide_any) = nswindow.contentLayoutGuide() {
+        let guide: Retained<NSLayoutGuide> =
+            unsafe { Retained::cast_unchecked(guide_any) };
+        let constraints = [
+            split_view_root
+                .topAnchor()
+                .constraintEqualToAnchor(&guide.topAnchor()),
+            split_view_root
+                .leadingAnchor()
+                .constraintEqualToAnchor(&guide.leadingAnchor()),
+            split_view_root
+                .trailingAnchor()
+                .constraintEqualToAnchor(&guide.trailingAnchor()),
+            split_view_root
+                .bottomAnchor()
+                .constraintEqualToAnchor(&guide.bottomAnchor()),
+        ];
+        let refs: Vec<&NSLayoutConstraint> =
+            constraints.iter().map(|c| c.as_ref()).collect();
+        let array = NSArray::from_slice(&refs);
+        NSLayoutConstraint::activateConstraints(&array);
+    } else {
+        // Fall back to pinning the split view to the container's
+        // bounds via autoresizing if contentLayoutGuide isn't
+        // available (very old macOS).
+        split_view_root.setTranslatesAutoresizingMaskIntoConstraints(true);
+        split_view_root.setFrame(container_view.bounds());
+        use objc2_app_kit::NSAutoresizingMaskOptions;
+        split_view_root.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable
+                | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
+    }
 
     OpenedSplitWindow {
         nswindow,
@@ -504,6 +644,9 @@ fn build_pane(
         item.setHoldingPriority(hp);
     }
     item.setCollapsed(spec.collapsed);
+    if let Some(cb) = spec.collapse_behavior {
+        item.setCollapseBehavior(cb.to_appkit());
+    }
 
     // No manual constraints — `NSSplitViewItem`'s minimum /
     // maximum / preferred thickness install constraints

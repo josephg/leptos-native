@@ -52,7 +52,7 @@ use renderer::view::{Mountable, Render};
 
 // Re-export the cocoa-side enum so user code says
 // `PaneBehavior::Inspector` without a separate import.
-pub use cocoa_dom::split_window::PaneBehavior;
+pub use cocoa_dom::split_window::{CollapseBehavior, PaneBehavior};
 
 // ---------------------------------------------------------------------
 // SplitPane builder
@@ -81,6 +81,7 @@ pub struct SplitPane<Children> {
     /// `IntoMaybeReactive`. Driven by a signal in real apps so
     /// the toolbar toggle propagates here.
     pub(crate) collapsed:           Option<MaybeReactive<bool>>,
+    pub(crate) collapse_behavior:   Option<CollapseBehavior>,
     pub(crate) children:            Children,
 }
 
@@ -95,6 +96,7 @@ pub fn split_pane() -> SplitPane<()> {
         holding_priority:    None,
         can_collapse:        None,
         collapsed:           None,
+        collapse_behavior:   None,
         children:            (),
     }
 }
@@ -151,6 +153,23 @@ impl<Ch> SplitPane<Ch> {
         self
     }
 
+    /// How the surrounding layout reacts to this pane's collapse /
+    /// expand. The two interesting choices:
+    ///
+    /// - [`CollapseBehavior::PreferResizingSiblingsWithFixedSplitView`] —
+    ///   the window stays put; siblings absorb the freed space.
+    ///   This is the Preview / Notes feel.
+    /// - [`CollapseBehavior::PreferResizingSplitViewWithFixedSiblings`] —
+    ///   siblings stay onscreen; the window grows / shrinks
+    ///   instead. This is the Mail / Finder feel and is AppKit's
+    ///   default for sidebar / inspector panes.
+    ///
+    /// Leaving this unset preserves AppKit's default.
+    pub fn collapse_behavior(mut self, cb: CollapseBehavior) -> Self {
+        self.collapse_behavior = Some(cb);
+        self
+    }
+
     /// `view!{}`-emitted child accumulator. Append `child` to the
     /// existing children tuple.
     pub fn child<NewCh>(self, child: NewCh) -> SplitPane<(Ch, NewCh)> {
@@ -162,6 +181,7 @@ impl<Ch> SplitPane<Ch> {
             holding_priority:    self.holding_priority,
             can_collapse:        self.can_collapse,
             collapsed:           self.collapsed,
+            collapse_behavior:   self.collapse_behavior,
             children:            (self.children, child),
         }
     }
@@ -187,6 +207,7 @@ impl<Ch> SplitPane<Ch> {
             minimum_thickness:   self.minimum_thickness,
             maximum_thickness:   self.maximum_thickness,
             holding_priority:    self.holding_priority,
+            collapse_behavior:   self.collapse_behavior,
         }
     }
 }

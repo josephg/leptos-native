@@ -59,11 +59,13 @@ mod app {
                     <menu title="File">
                         <menu_item
                             title="New"
+                            icon=Icon::sf_symbol("doc.badge.plus")
                             shortcut="n"
                             on:action=move |_| count.update(|n| *n += 1)
                         />
                         <menu_item
                             title="Reset"
+                            icon=Icon::sf_symbol("arrow.counterclockwise")
                             shortcut="r"
                             modifiers=Modifiers::CMD_SHIFT
                             on:action=move |_| count.set(0)

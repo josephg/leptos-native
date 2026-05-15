@@ -32,6 +32,7 @@ pub mod debug_overlay;
 pub mod date;
 pub mod event;
 pub mod flipped_view;
+pub mod icon;
 pub mod interval;
 pub mod key_event;
 pub mod layout;
@@ -47,6 +48,7 @@ pub mod window;
 
 pub use color::Color;
 pub use date::Date;
+pub use icon::Icon;
 pub use objc_enums::{DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,

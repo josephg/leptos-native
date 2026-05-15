@@ -415,12 +415,13 @@ is an implementation detail the framework should hide.
 - "Cmd-Q closes the whole app" is the only termination model — no
   `App::terminate()`, no `Window::close()`.
 
-#### 2.2.12 No menu / menubar API
+#### 2.2.12 ~~No menu / menubar API~~ **Addressed** — see §2.4
 
-Examples that need real macOS app polish (Cmd-N for new window,
-File / Edit menus, Quit handler) have no way to do it. `init_app`
-sets up a default menu bar internally but doesn't expose a builder.
-For a "production macOS app" story this is a significant gap.
+Done. `<menu_bar>` / `<menu>` / `<menu_item>` / `<menu_separator/>`
+ship; reactive `title` / `enabled` / `checked`, static
+`shortcut` + `modifiers`, single `on:action` handler. Cocoa-side
+implementation in `cocoa_dom::menu` + `leptos_cocoa::cocoa::menu`.
+See §2.4 for outstanding gaps and review notes on the new code.
 
 #### 2.2.13 No drag & drop, clipboard, accessibility, or printing APIs
 
@@ -473,6 +474,176 @@ use leptos::tachys::{
 
 Two import paths for the same set of functions is dual-API surface
 that doesn't need to exist.
+
+### 2.4 Review of recently-added APIs (menus + toolbars)
+
+Both were added since the original review. They follow the existing
+patterns (port-local cascade trait, reactive setters via
+`install()` + `MaybeReactive`, fail-loud panics on misuse) and
+both compose correctly with `<For>` / `<Show>` over leaf items
+(structurally static after build — same caveat documented in both
+modules).
+
+#### 2.4.1 Menus — what shipped
+
+- `<menu_bar>` sibling of `<window>` in `run()`; descends into
+  `<menu title=…>` children, installs onto `NSApp.mainMenu`.
+- `<menu_item>` with reactive `title` / `enabled` / `checked`,
+  static `shortcut` + `modifiers`, `on:action`. Default modifier
+  is `Modifiers::CMD`.
+- `<menu_separator/>` zero-config divider.
+- Nested submenus work (`<menu>` inside `<menu>`).
+- `<menu_item>` directly under `<menu_bar>` is a build-time panic.
+- ActionTarget retain is released on state drop via
+  `MenuItemState::drop`'s `drop_handlers` call.
+
+#### 2.4.2 Toolbars — what shipped
+
+- `<toolbar identifier=… display_mode=… visible=… handle=…>` —
+  attaches an `NSToolbar` to the containing `NSWindow` at mount
+  time by walking up the parent NSView. Reactive `display_mode`
+  and `visible`.
+- `<toolbar_item>` leaf: `identifier` (required, unique),
+  reactive `label` / `palette_label` / `tool_tip` /
+  `sf_symbol` / `image` / `enabled` / `bordered` / `navigational`,
+  single `on:action`. Custom-view items via `.view(child)`.
+- Specialised items: `<toolbar_search_item>`
+  (NSSearchToolbarItem + NSSearchField with `bind:value`,
+  `preferred_width`, `width`, `on:input`, `on:action`),
+  `<toolbar_toggle_sidebar/>`, `<toolbar_sidebar_tracking_separator/>`,
+  `<toolbar_print/>`, `<toolbar_space/>`, `<toolbar_flexible_space/>`.
+- `ToolbarHandle` (`Copy`, `RwSignal`-backed) for imperative
+  insert/remove after build.
+- `NSWindow.contentLayoutGuide` pinning in `mount_to_split_window`
+  so the toolbar overlays correctly without clipping pane content.
+
+#### 2.4.3 Issues + inconsistencies found in review
+
+In rough order of impact:
+
+1. **`set_sf_symbol` / `set_image_path` / `set_image` have no
+   diff.** Every effect emission rebuilds the NSImage and calls
+   `setImage`, even when the symbol name is unchanged. Combined
+   with NSToolbar's re-layout on label changes, this can cause
+   adjacent items to redraw unnecessarily. The other reactive
+   setters (`set_enabled`, `set_label`, `set_tool_tip`,
+   `set_palette_label`) were given diffs after the
+   Reset-blink bug was reported; the image setters still don't
+   have one. **Action: add a `RefCell<Option<String>>` "last name"
+   to the dom `ToolbarItem` for `sf_symbol` and bail on no-op.**
+
+2. **The `ToolbarSearchItem` builder's internal field name
+   `min_width` is now misleading.** The public setter is `.width`,
+   and the implementation pins the embedded `NSSearchField` to an
+   `equalToConstant` (not `min`) Auto Layout constraint. Rename
+   the field to `width` — internal only, no API impact.
+
+3. **`bordered` and `navigational` are installed *before*
+   `set_action` in `build_into_toolbar`.** We learned (the
+   reset-disable bug) that AppKit's target/action wiring can
+   reset NSToolbarItem properties on `setAction:`. We don't know
+   whether `bordered` / `navigational` get reset; needs a quick
+   test, and if so, move them after action (same fix as `enabled`).
+
+4. **The `<toolbar>` Mountable::mount walks up from the parent
+   NSView to find the containing NSWindow.** If a future code
+   path mounts the `<toolbar>` before its parent has been
+   attached to a window, the walk returns nil and we panic with
+   a wall of text. Fine today; flag for future regression.
+
+5. **No menu-item `image=` / `sf_symbol=` setter.** `NSMenuItem`
+   supports per-item icons (e.g. file-format icons in an "Open
+   Recent" submenu, status dots). Easy add, mirrors the toolbar
+   item shape.
+
+6. **Menu shortcut is static-only.** Documented as deliberate
+   ("reactive shortcuts aren't useful in practice"), but
+   inconsistent with the rest of the surface where every
+   user-visible attribute is reactive. Probably the right call;
+   worth a sentence in the README to set expectations.
+
+7. **Menus have no `ItemHandle` equivalent of `ToolbarHandle`**
+   for dynamic add/remove. The `Vec<MenuItem>` + `For` pattern
+   works at build time but can't insert/remove after that. Less
+   commonly needed for menus, but worth surfacing as a future
+   gap.
+
+8. **`NSMenuItem.image`, `NSMenuItem.allowsKeyEquivalentWhenHidden`,
+   menu item validation protocol, autoenablesItems = NO** —
+   missing knobs that production apps end up wanting. None
+   blocking; flag for P3.
+
+9. **`display_mode=ToolbarDisplayMode::Default` is documented as
+   "system default" but on modern macOS the system default IS
+   `IconAndLabel`** — the two enum values are functionally
+   indistinguishable post-macOS 10.7. Either document the
+   equivalence or collapse to one variant.
+
+10. **`<toolbar>` identifier defaults to `"leptos_cocoa.toolbar"`
+    when not set.** Two `<toolbar>`s in different windows of the
+    same app would share that identifier — fine today
+    (autosaving disabled) but a footgun when customisation
+    lands. Should require an explicit identifier, or auto-suffix
+    with a UUID.
+
+11. **`<toolbar_item view=child>` doesn't mount the child to a
+    parent.** Self-contained controls work (`<text_field>`,
+    `<slider>`); composite children that need their own subview
+    tree (e.g. `<hstack><image/><label/></hstack>`) won't lay
+    out correctly. The doc says so; no compile-time gate. Could
+    detect at runtime with `state.elements().len() != 1` plus
+    "are any children mounted" introspection — but that's
+    intrusive. Status-quo: document, fix when someone hits it.
+
+12. **`<toolbar_search_item>` `width=` field passes through the
+    handle name `min_width` internally (issue #2 above).**
+
+13. **Toolbar item ordering and identifier map.** The delegate's
+    `items: HashMap<String, ToolbarItemRegistration>` +
+    `ordered_identifiers: Vec<String>` is two sources of truth.
+    Could be a single `IndexMap<String, …>` (preserves
+    insertion order + O(1) lookup). Pure cleanup; the
+    invariant is maintained correctly.
+
+14. **`set_visible` lives in the dom layer as both a method and
+    a free function** (`Toolbar::set_visible` + free
+    `set_toolbar_visible`). The high-level builder uses the
+    free function because the install closure can only capture
+    the raw `Retained<NSToolbar>`, not the Rust struct (which
+    isn't `Clone`-able). Works, but the dual surface invites
+    drift — if someone adds a "force layout pass" to one path
+    and forgets the other, they'll diverge again. Worth
+    consolidating into a single helper.
+
+15. **Toolbar tests live in `tests/toolbar.rs` (9 tests).** None
+    cover the recent contentLayoutGuide fix, the `width`
+    constraint, or the auto-validation-off behaviour for
+    `enabled`. Each is a non-trivial UI-driven assertion;
+    optional but useful as regression guards.
+
+#### 2.4.4 Design philosophy fit — verdict
+
+The recent additions DO fit the design philosophy. They:
+
+- Follow the failure-mode hierarchy: compile error → runtime
+  panic → silent no-op, in that order. Wrong placement
+  (`<menu_item>` under `<menu_bar>`) is a compile-error-shaped
+  panic. Duplicate toolbar identifier is a build-time panic.
+- Use existing infrastructure (`MaybeReactive`, `install`,
+  `ActionTarget`, `HANDLER_STORE`).
+- Mirror upstream concepts (port-local `MenuMountable` /
+  `ToolbarMountable` parallel `Mountable<Dom>`).
+- Don't leak `cocoa_dom::` into user-facing surface (except for
+  `ToolbarDisplayMode` and `WindowToolbarStyle` enums which sit
+  in the dom crate for cross-crate reasons — should probably
+  re-export from `renderer` like other enums).
+
+The one real coherence wart: **identifier handling differs across
+the surface.** Menu items have no identifier; toolbar items
+require one. `<menu_bar>` doesn't have an identifier; `<toolbar>`
+does. Inside an app the autosave story for menus and toolbars
+will eventually require identifiers everywhere — punt for now
+but plan to revisit.
 
 ### 2.3 Hidden complexity that user code has to know about
 
@@ -544,6 +715,66 @@ sharp edges.
    accept `Signal<usize>` via `bind:value=` on PopUpButton and
    SegmentedControl. One key, less to remember.
 
+### P1 — Menu / toolbar polish (added by §2.4) **— done**
+
+These were the low-cost fixes for issues uncovered by the post-
+addition review. All landed; outstanding follow-ups noted inline.
+
+T1. ✅ **Diffed `set_sf_symbol` / `set_image_path` / `set_image`**
+    in `dom_toolbar::ToolbarItem` via shared
+    `Rc<RefCell<Option<String>>>` cells for the last applied name
+    / path. Same diff added to `dom_menu::MenuItem` while T4 was
+    being wired. Mirrors the pattern already used by
+    `set_enabled` / `set_label` / `set_tool_tip` /
+    `set_palette_label` (added after the Reset-blink bug).
+
+T2. ✅ **Moved `bordered` / `navigational` installs AFTER
+    `set_action`** in `ToolbarItem::build_into_toolbar`. AppKit
+    may recompute these on target/action change (same shape that
+    bit `enabled`); installing them after `setAction:` means our
+    values land last and stick.
+
+T3. ✅ **Renamed internal `min_width` → `width`** on
+    `ToolbarSearchItem`. The implementation is a `widthAnchor`
+    equal-constraint (not min), so the public setter and the
+    field now agree.
+
+T4. ✅ **Added `image` / `sf_symbol` setters to `<menu_item>`.**
+    Reactive, mutually-exclusive with each other (symbol wins
+    when both are set, mirroring the toolbar item). Demo updated
+    to use SF symbols on the File menu's New / Reset entries.
+
+T5. ✅ **Toolbar item identifiers are now optional** (auto-
+    generated via a thread-local counter when not set). AppKit's
+    NSToolbar architecture requires identifiers internally, so
+    we can't remove them — but users only need to think about
+    them when they want a stable handle for
+    `ToolbarHandle::remove_item` or (future) customisation
+    autosave. The demo's static items dropped their explicit
+    identifiers; only the dynamically-managed ones keep them.
+
+    **Follow-up:** wire `<toolbar_item ref=…/>` (NodeRef-style)
+    so `ToolbarHandle` operations don't need string identifiers
+    at all. Item refs would capture the auto-generated
+    identifier post-build, replacing the string-keyed API.
+    Promoted to P2 as **T9'**.
+
+T6. ✅ **`impl Default for ToolbarDisplayMode`** + docstring
+    explaining that `Default` and `IconAndLabel` are
+    functionally identical on modern macOS. The `Default`
+    variant stays so callers can opt into "let AppKit decide."
+
+T7. ✅ **Consolidated `set_visible`** — dropped the dom-side
+    `Toolbar::set_visible` method, kept only the free
+    `set_toolbar_visible` helper that the install closure
+    captures.
+
+T8. ✅ **Re-exported `ToolbarDisplayMode` / `WindowToolbarStyle`
+    from `leptos_cocoa::cocoa::toolbar`** (and pulled them into
+    the prelude from there). `cocoa_dom::toolbar::*` is no longer
+    in any user-facing import path. `CollapseBehavior` was
+    already routed through `leptos_cocoa::cocoa::split`.
+
 ### Priority 2 — Architectural cleanups
 
 These are bigger changes that meaningfully reshape the surface, but
@@ -576,10 +807,11 @@ the library is small enough that the cost is contained.
     but the right AppKit path needs research (NSButton's
     `attributedTitle` for inline images vs an `image:` + `title:`
     pair vs a custom-view subview).
-12. **A real menu/menubar API.** `app::menu_bar()` builder taking a
-    list of `Menu` / `MenuItem` children with `key_equivalent`,
-    `on:click`, separators, sub-menus. Essential for "production
-    macOS app" use cases.
+12. ~~**A real menu/menubar API.**~~ **Done.** `<menu_bar>` /
+    `<menu>` / `<menu_item>` / `<menu_separator/>` with reactive
+    `title` / `enabled` / `checked`, static `shortcut` +
+    `modifiers`, single `on:action`. Outstanding items folded
+    into the P1/P2 lists below — see §2.4.
 13. **Stub-then-grow a `Window` lifecycle:**
     - Reactive `title=`, `size=` that work after build.
     - `Window::position(x, y)` (initial position, reactive).
@@ -594,6 +826,46 @@ the library is small enough that the cost is contained.
     values" version would lift the polish
     ceiling enormously.
 
+### P2 — Menu / toolbar architectural (added by §2.4)
+
+T9. **`MenuHandle` for imperative menu insert/remove**, mirroring
+    `ToolbarHandle`. Less common than toolbar dynamic items
+    (a static `<menu>` covers most apps) but consistency matters.
+    Same pattern: `Copy` struct over an `RwSignal<Option<…>>`
+    filled at `Menu::build` time.
+
+T9'. **`<toolbar_item ref=…/>` and `<menu_item ref=…/>`
+    NodeRef-style refs.** Today `ToolbarHandle::remove_item`
+    takes a string identifier, requiring users to set an
+    explicit `identifier=…` on items they want to remove later.
+    A `ToolbarItemRef` (mirroring `NodeRef`) would capture the
+    auto-generated identifier post-build; `handle.remove_item(my_ref)`
+    would then work without users ever touching identifier
+    strings. Same story for the future `MenuHandle`.
+
+T10. **NSMenu validation protocol** (`autoenablesItems` +
+     `validateMenuItem:`). Today menu items use static or
+     reactive `enabled`. The validation protocol is how AppKit
+     apps drive enabled state from the responder chain (e.g.
+     "Copy" is enabled iff there's a selection). Hooking it up
+     would let users opt into responder-chain semantics for
+     menu items the same way they do for toolbar
+     `<toolbar_toggle_sidebar/>`.
+
+T11. **NSToolbar customisation sheet** (`allowsUserCustomization`,
+     `autosavesConfiguration`, persistent identifier). Forces T5
+     to be done first (real per-toolbar identifiers).
+
+T12. **`NSToolbarItemGroup`** as a separate
+     `<toolbar_item_group>` element with `selection_mode=`
+     (single, momentary, ...). Common for back/forward pairs
+     visually grouped into one item, view-mode toggles, etc.
+
+T13. **`NSMenuToolbarItem`** — dropdown menus in the toolbar.
+     Composes `<menu>` and `<toolbar_item>`. Concrete shape
+     question: `<toolbar_menu_item><menu_item .../>...</toolbar_menu_item>`
+     or `<toolbar_item menu=…>` taking a pre-built `Menu` builder.
+
 ### Priority 3 — New features that the library will need
 
 15. **Image API:** `ImageView::data(&[u8])`, `ImageView::url(...)`
@@ -604,9 +876,14 @@ the library is small enough that the cost is contained.
 17. **Clipboard and drag-and-drop primitives.** Basic
     `Clipboard::get_string()` / `set_string(s)` would cover 80% of
     needs.
-18. **Toolbar / `<toolbar>`.** Macos apps live or die by their
-    toolbar; the spotify and pages mockups had to fake it in hstack.
-    Native NSToolbar integration would be a real differentiator.
+18. ~~**Toolbar / `<toolbar>`.**~~ **Done.** Native `NSToolbar`
+    backing with `<toolbar_item>` (icon + label + on:action +
+    `.view(child)`), `<toolbar_search_item>` (`NSSearchToolbarItem`
+    + bind:value + width pin), `<toolbar_toggle_sidebar/>`,
+    `<toolbar_sidebar_tracking_separator/>`, `<toolbar_print/>`,
+    spacers, `ToolbarHandle` for dynamic items, contentLayoutGuide
+    pinning for split-window layouts. Outstanding items folded
+    into the P1/P2 lists below — see §2.4.
 19. **More builtin controls** (matching CLAUDE.md's "not implemented"
     list and visible gaps from examples):
     - Native `<table>` / `<list>` (NSTableView / NSOutlineView) —

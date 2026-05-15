@@ -16,10 +16,10 @@ use crate::event::{
     action_fired_sel, drop_action_target_for_key, keep_target_alive_for_key,
     ActionTarget,
 };
-use objc2::{rc::Retained, runtime::NSObject, MainThreadMarker};
+use objc2::{rc::Retained, runtime::NSObject, AllocAnyThread, MainThreadMarker};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn,
-    NSEventModifierFlags, NSMenu, NSMenuItem,
+    NSEventModifierFlags, NSImage, NSMenu, NSMenuItem,
 };
 use objc2_foundation::NSString;
 use renderer::menu::Modifiers;
@@ -170,16 +170,32 @@ impl Menu {
 /// target/action object that backs `NSButton on:click`. A second
 /// `set_action` call on the same item panics rather than silently
 /// overwriting, matching `on_control_action`'s contract.
+///
+/// `Clone` is shallow: the wrapped `NSMenuItem` plus the
+/// `last_icon` diff cell are shared via `Rc`, so all clones
+/// observe the same "last applied" icon.
 #[derive(Clone)]
 pub struct MenuItem {
     ns_item: Retained<NSMenuItem>,
+    /// Last [`crate::Icon`] applied via [`Self::set_icon`].
+    /// Single source of truth for diffing repeated emissions of
+    /// the same icon and for variant transitions (SF Symbol →
+    /// file path).
+    last_icon: std::rc::Rc<std::cell::RefCell<Option<crate::Icon>>>,
+}
+
+fn new_menu_item(ns_item: Retained<NSMenuItem>) -> MenuItem {
+    MenuItem {
+        ns_item,
+        last_icon: std::rc::Rc::new(std::cell::RefCell::new(None)),
+    }
 }
 
 /// Construct a fresh, blank `MenuItem`. Title is empty, no key
 /// equivalent, no action. The higher-level builder fills these in
 /// from its `MaybeReactive` slots.
 pub fn menu_item(mtm: MainThreadMarker) -> MenuItem {
-    MenuItem { ns_item: NSMenuItem::new(mtm) }
+    new_menu_item(NSMenuItem::new(mtm))
 }
 
 /// Construct a separator menu item — a thin horizontal line used
@@ -187,7 +203,7 @@ pub fn menu_item(mtm: MainThreadMarker) -> MenuItem {
 /// `+[NSMenuItem separatorItem]` returns a singleton item kind,
 /// distinct from regular menu items.
 pub fn menu_separator(mtm: MainThreadMarker) -> MenuItem {
-    MenuItem { ns_item: NSMenuItem::separatorItem(mtm) }
+    new_menu_item(NSMenuItem::separatorItem(mtm))
 }
 
 impl MenuItem {
@@ -217,6 +233,62 @@ impl MenuItem {
         } else {
             NSControlStateValueOff
         });
+    }
+
+    /// Install an `NSImage` directly, bypassing the
+    /// [`crate::Icon`] abstraction. Empty / `None` clears the
+    /// image. Resets the Icon-diff state to `None`.
+    pub fn set_image(&self, image: Option<&NSImage>) {
+        self.ns_item.setImage(image);
+        *self.last_icon.borrow_mut() = None;
+    }
+
+    /// Set the item's icon from the unified [`crate::Icon`] enum.
+    /// Single source of truth for both SF Symbol and file-path
+    /// images.
+    ///
+    /// Diffs against the last `Icon` applied — re-emitting the
+    /// same variant + payload is a no-op. Switching variants
+    /// replaces the image atomically; no stale "both kinds set
+    /// at once" state is possible.
+    pub fn set_icon(&self, icon: Option<&crate::Icon>) {
+        if self.last_icon.borrow().as_ref() == icon {
+            return;
+        }
+        match icon {
+            Some(crate::Icon::SfSymbol(name)) => {
+                // sf_symbol_image returns None for empty / unknown
+                // names, so no explicit empty-string check needed.
+                let img = crate::node::sf_symbol_image(name);
+                self.ns_item.setImage(img.as_deref());
+            }
+            Some(crate::Icon::Image(path)) => {
+                if path.is_empty() {
+                    self.ns_item.setImage(None);
+                } else {
+                    let path_ns = NSString::from_str(path);
+                    let image = NSImage::initWithContentsOfFile(
+                        NSImage::alloc(),
+                        &path_ns,
+                    );
+                    self.ns_item.setImage(image.as_deref());
+                }
+            }
+            None => {
+                self.ns_item.setImage(None);
+            }
+        }
+        *self.last_icon.borrow_mut() = icon.cloned();
+    }
+
+    /// Shorthand for `set_icon(Some(&Icon::sf_symbol(name)))`.
+    pub fn set_sf_symbol(&self, name: &str) {
+        self.set_icon(Some(&crate::Icon::sf_symbol(name)));
+    }
+
+    /// Shorthand for `set_icon(Some(&Icon::image(path)))`.
+    pub fn set_image_path(&self, path: &str) {
+        self.set_icon(Some(&crate::Icon::image(path)));
     }
 
     /// Bind a keyboard shortcut to the item. `key` is the

@@ -350,6 +350,9 @@ pub struct MenuItem {
     pub(crate) checked:  Option<MaybeReactive<bool>>,
     pub(crate) shortcut_key:       Option<String>,
     pub(crate) shortcut_modifiers: Option<Modifiers>,
+    /// Icon shown in the menu-item icon column. SF Symbol or
+    /// file path — see [`cocoa_dom::Icon`]. Reactive.
+    pub(crate) icon: Option<MaybeReactive<cocoa_dom::Icon>>,
     /// Single `on:action` slot. `None` is valid (informational
     /// item). Second `.on(event::action, …)` call panics — see the
     /// `on()` method.
@@ -365,6 +368,7 @@ pub fn menu_item() -> MenuItem {
         checked:  None,
         shortcut_key:       None,
         shortcut_modifiers: None,
+        icon:     None,
         on_action: None,
     }
 }
@@ -393,6 +397,19 @@ impl MenuItem {
         V: IntoMaybeReactive<bool>,
     {
         self.checked = Some(b.into_maybe_reactive());
+        self
+    }
+
+    /// Icon shown in the menu item's icon column. Pass an
+    /// [`cocoa_dom::Icon`] directly
+    /// (`Icon::sf_symbol("doc.badge.plus")` or
+    /// `Icon::image("/path/to/file.png")`), or a reactive closure
+    /// returning one.
+    pub fn icon<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<cocoa_dom::Icon>,
+    {
+        self.icon = Some(v.into_maybe_reactive());
         self
     }
 
@@ -498,6 +515,15 @@ impl MenuMountable for MenuItem {
         if let Some(c) = self.checked {
             let it = item.clone();
             if let Some(eff) = install(c, move |b| it.set_checked(b)) {
+                effects.push(eff);
+            }
+        }
+        // Icon (SF Symbol or file path, unified).
+        if let Some(ic) = self.icon {
+            let it = item.clone();
+            if let Some(eff) = install(ic, move |icon| {
+                it.set_icon(Some(&icon));
+            }) {
                 effects.push(eff);
             }
         }
