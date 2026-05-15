@@ -84,7 +84,7 @@ pub mod prelude {
 
     pub use crate::IntoView;
 
-    pub use crate::mount::run;
+    pub use crate::mount::{mount, run};
 
     pub use crate::ios::{
         attr::{IntoMaybeReactive, MaybeReactive},

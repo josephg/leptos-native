@@ -19,6 +19,9 @@ pub const input: InputEvent = InputEvent;
 pub struct ChangeEvent;
 pub const change: ChangeEvent = ChangeEvent;
 
+pub struct CommitEvent;
+pub const commit: CommitEvent = CommitEvent;
+
 pub struct FocusEvent;
 pub const focus: FocusEvent = FocusEvent;
 
@@ -59,12 +62,22 @@ impl EventDescriptor for InputEvent {
 }
 
 impl EventDescriptor for ChangeEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Change(Box::new(move || handler(())))
+    }
+}
+
+impl EventDescriptor for CommitEvent {
     type EventType = String;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
         F: FnMut(String) + Send + 'static,
     {
-        PendingHandler::Change(Box::new(handler))
+        PendingHandler::Commit(Box::new(handler))
     }
 }
 
@@ -120,8 +133,9 @@ pub trait SupportsEvent<E: EventDescriptor> {}
 
 pub enum PendingHandler {
     Click(Box<dyn FnMut() + Send + 'static>),
+    Change(Box<dyn FnMut() + Send + 'static>),
     Input(Box<dyn FnMut(String) + Send + 'static>),
-    Change(Box<dyn FnMut(String) + Send + 'static>),
+    Commit(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
     KeyDown(Box<dyn FnMut(ios_dom::KeyEvent) + Send + 'static>),
@@ -132,8 +146,12 @@ impl PendingHandler {
     pub fn apply_to(self, el: &ios_dom::Element) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
+            // Change is universal "value changed". on_value_change
+            // fans to text-field delegate or UIControl ValueChanged
+            // depending on the underlying view.
+            PendingHandler::Change(cb) => el.on_value_change(cb),
             PendingHandler::Input(cb) => el.on_text_change(cb),
-            PendingHandler::Change(cb) => el.on_text_end_editing(cb),
+            PendingHandler::Commit(cb) => el.on_text_end_editing(cb),
             PendingHandler::Focus(cb) => el.on_text_focus(cb),
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
             PendingHandler::KeyDown(cb) => el.on_text_keydown(cb),

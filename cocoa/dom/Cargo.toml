@@ -24,6 +24,7 @@ send_wrapper = { workspace = true, default-features = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
+leptos_apple_shared = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -177,3 +178,18 @@ name = "debug_overlay"
 path = "tests/debug_overlay.rs"
 harness = false
 required-features = ["debug-overlay"]
+
+[[test]]
+name = "async_bridge"
+path = "tests/async_bridge.rs"
+harness = false
+
+[[test]]
+name = "image_bytes"
+path = "tests/image_bytes.rs"
+harness = false
+
+[[test]]
+name = "signal_mt"
+path = "tests/signal_mt.rs"
+harness = false

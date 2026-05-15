@@ -133,21 +133,14 @@ pub(crate) fn install_slider_value_bind(
 }
 
 // ---------------------------------------------------------------------
-// PopUpButton — bind:selection=usize signal
+// PopUpButton — bind:value=usize signal (matches Cocoa naming)
 // ---------------------------------------------------------------------
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Selection;
-
-impl crate::keys::AttributeKey for Selection {
-    const KEY: &'static str = "selection";
-}
-
-impl<Sig> BindAttribute<Selection, Sig> for PopUpButton
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for PopUpButton
 where
     Sig: IntoSignal<usize>,
 {
-    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_selection(BoundIndex { getter, setter });

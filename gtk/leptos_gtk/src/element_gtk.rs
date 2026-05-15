@@ -8,7 +8,7 @@
 
 pub use crate::gtk::element::{
     button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
-    slider, stack, stack_view, text_field, view, vstack,
+    slider, stack, stack_view, text_field, toggle, vstack,
 };
 
 // Menus: `<menu_bar>` + `<menu>` + `<menu_item>` + `<menu_separator>`.

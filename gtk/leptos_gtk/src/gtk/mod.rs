@@ -8,6 +8,7 @@
 
 pub mod attr;
 pub mod bind;
+pub mod decoration;
 pub(crate) mod directives;
 pub mod element;
 pub mod menu;
@@ -16,10 +17,12 @@ pub mod window;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal};
+pub use decoration::WithDecoration;
 pub use element::{
     button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
-    slider, stack, stack_view, text_field, view, vstack,
+    slider, stack, stack_view, text_field, toggle, vstack,
 };
+pub use gtk_dom::Color;
 pub use node_ref::NodeRef;
 pub use window::{window, Window};
 

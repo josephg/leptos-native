@@ -1,0 +1,15 @@
+[package]
+name = "ipify_cocoa"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Network-dependent demo. Excluded from `default-members` in the
+# workspace Cargo.toml so `cargo build --workspace` doesn't try to
+# fetch crates.io's TLS stack just to smoke-build everything.
+
+[dependencies]
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }

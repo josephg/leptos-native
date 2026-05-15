@@ -17,27 +17,27 @@ mod app {
 
     // Toolbar / sidebar are dark; canvas is white.
     #[allow(dead_code)] // background was used by the old hstack-based toolbar; NSToolbar paints its own.
-    const TOOLBAR_BG:   Color = Color { r: 0.165, g: 0.165, b: 0.165, a: 1.0 };
-    const SIDEBAR_BG:   Color = Color { r: 0.176, g: 0.176, b: 0.176, a: 1.0 };
+    const TOOLBAR_BG:   Color = Color::Rgba { r: 0.165, g: 0.165, b: 0.165, a: 1.0 };
+    const SIDEBAR_BG:   Color = Color::Rgba { r: 0.176, g: 0.176, b: 0.176, a: 1.0 };
     const CANVAS_BG:    Color = Color::WHITE;
-    const APP_BG:       Color = Color { r: 0.082, g: 0.082, b: 0.082, a: 1.0 };
+    const APP_BG:       Color = Color::Rgba { r: 0.082, g: 0.082, b: 0.082, a: 1.0 };
 
-    const TXT_PRIMARY:   Color = Color { r: 0.95,  g: 0.95,  b: 0.95,  a: 1.0 };
-    const TXT_SECONDARY: Color = Color { r: 0.62,  g: 0.62,  b: 0.62,  a: 1.0 };
-    const TXT_DARK:      Color = Color { r: 0.05,  g: 0.05,  b: 0.05,  a: 1.0 };
-    const TXT_BODY:      Color = Color { r: 0.20,  g: 0.20,  b: 0.20,  a: 1.0 };
+    const TXT_PRIMARY:   Color = Color::Rgba { r: 0.95,  g: 0.95,  b: 0.95,  a: 1.0 };
+    const TXT_SECONDARY: Color = Color::Rgba { r: 0.62,  g: 0.62,  b: 0.62,  a: 1.0 };
+    const TXT_DARK:      Color = Color::Rgba { r: 0.05,  g: 0.05,  b: 0.05,  a: 1.0 };
+    const TXT_BODY:      Color = Color::Rgba { r: 0.20,  g: 0.20,  b: 0.20,  a: 1.0 };
 
-    const ACCENT_ORANGE: Color = Color { r: 1.00,  g: 0.58,  b: 0.0,   a: 1.0 };
-    const ACCENT_BLUE:   Color = Color { r: 0.31,  g: 0.58,  b: 1.00,  a: 1.0 };
-    const FIELD_BG:      Color = Color { r: 0.231, g: 0.231, b: 0.231, a: 1.0 };
-    const FIELD_BORDER:  Color = Color { r: 0.30,  g: 0.30,  b: 0.30,  a: 1.0 };
-    const HAIRLINE:      Color = Color { r: 0.30,  g: 0.30,  b: 0.30,  a: 1.0 };
+    const ACCENT_ORANGE: Color = Color::Rgba { r: 1.00,  g: 0.58,  b: 0.0,   a: 1.0 };
+    const ACCENT_BLUE:   Color = Color::Rgba { r: 0.31,  g: 0.58,  b: 1.00,  a: 1.0 };
+    const FIELD_BG:      Color = Color::Rgba { r: 0.231, g: 0.231, b: 0.231, a: 1.0 };
+    const FIELD_BORDER:  Color = Color::Rgba { r: 0.30,  g: 0.30,  b: 0.30,  a: 1.0 };
+    const HAIRLINE:      Color = Color::Rgba { r: 0.30,  g: 0.30,  b: 0.30,  a: 1.0 };
 
     // Image placeholder color (the bedroom photo stand-in).
-    const PHOTO_BG: Color = Color { r: 0.45, g: 0.43, b: 0.40, a: 1.0 };
+    const PHOTO_BG: Color = Color::Rgba { r: 0.45, g: 0.43, b: 0.40, a: 1.0 };
 
     // Orange highlight tint (the "T" drop cap).
-    const DROPCAP_BG: Color = Color { r: 0.95, g: 0.79, b: 0.65, a: 1.0 };
+    const DROPCAP_BG: Color = Color::Rgba { r: 0.95, g: 0.79, b: 0.65, a: 1.0 };
 
     // ---- model ------------------------------------------------------
 

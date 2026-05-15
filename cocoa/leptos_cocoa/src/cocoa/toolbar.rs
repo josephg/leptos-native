@@ -637,6 +637,26 @@ impl ToolbarItem {
         self
     }
 
+    /// Shorthand for `.icon(Icon::sf_symbol(name))` — the common
+    /// case. Pass an SF Symbol name string or a reactive closure
+    /// returning one.
+    pub fn sf_symbol<V: IntoMaybeReactive<String>>(mut self, name: V) -> Self {
+        use renderer::attrs::MaybeReactive;
+        let mr: MaybeReactive<String> = name.into_maybe_reactive();
+        let icon_mr: MaybeReactive<cocoa_dom::Icon> = match mr {
+            MaybeReactive::Static(s) => {
+                MaybeReactive::Static(cocoa_dom::Icon::sf_symbol(s))
+            }
+            MaybeReactive::Reactive(f) => {
+                MaybeReactive::Reactive(Box::new(move || {
+                    cocoa_dom::Icon::sf_symbol(f())
+                }))
+            }
+        };
+        self.icon = Some(icon_mr);
+        self
+    }
+
     pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
         self.enabled = Some(v.into_maybe_reactive());
         self

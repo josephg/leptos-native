@@ -78,16 +78,17 @@ A component invocation expands to inline code. There's no wrapper
 view, no extra DOM node, no host element. `<Counter />` in your
 view tree is literally the contents that `Counter`'s body returns.
 
-This has two consequences worth remembering:
+One subtle consequence: spread attributes — including
+`on:click=` written directly on a component invocation — work
+on **leaf** root elements only. If your component returns
+`view! { <button>...</button> }`, the caller can attach
+`on:click=` to your invocation and it flows through to the
+button. If it returns `view! { <stack>...</stack> }`, attaching
+`on:click=` (or any spread attribute) at the call site is a
+compile error.
 
-- You can't put `on:click=` directly on a component invocation
-  and have the component magically attach it to its root element.
-  Components opt into outer event handlers by accepting them as
-  props (see [Parent–Child Communication](./08_parent_child.md),
-  "Method 3").
-- Spread attributes (`{..my_props}`) work on **leaf** elements,
-  not container builders. Trying to spread attributes onto
-  `<stack>`, `<grid>`, etc. is a compile error.
+See [Parent–Child Communication](./08_parent_child.md), Method 3,
+for the working pattern.
 
 ## Naming
 

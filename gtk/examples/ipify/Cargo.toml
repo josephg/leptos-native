@@ -1,0 +1,20 @@
+[package]
+name = "ipify_gtk"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Network-dependent demo. See workspace Cargo.toml — excluded from
+# `default-members`. Linux only; the gtk feature on leptos_gtk
+# pulls in gtk4 at link time.
+
+[dependencies]
+leptos = { package = "leptos_gtk", path = "../../leptos_gtk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(leptos_debuginfo)',
+] }

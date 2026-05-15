@@ -755,6 +755,13 @@ pub struct Checkbox {
     layout: LayoutAttrs,
 }
 
+/// Portable name for the boolean toggle. On GTK this is the
+/// same widget as `<checkbox>` (gtk::CheckButton); on iOS it
+/// maps to UISwitch.
+pub fn toggle() -> Checkbox {
+    checkbox()
+}
+
 pub fn checkbox() -> Checkbox {
     Checkbox {
         title: MaybeReactive::Static(String::new()),
@@ -989,6 +996,11 @@ impl WithUniversal for Slider {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
+    for Slider
+{
+}
+
 impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
 
@@ -1128,6 +1140,11 @@ impl WithLayout for PopUpButton {
 }
 impl WithUniversal for PopUpButton {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
+    for PopUpButton
+{
 }
 
 impl Render<Dom> for PopUpButton {
@@ -1398,6 +1415,10 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
     for TextField
 {
 }
+impl crate::event_gtk::SupportsEvent<crate::event_gtk::CommitEvent>
+    for TextField
+{
+}
 impl crate::event_gtk::SupportsEvent<crate::event_gtk::FocusEvent>
     for TextField
 {
@@ -1535,3 +1556,18 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
         )
     }
 }
+
+// ---------------------------------------------------------------------
+// WithDecoration — portable warn-and-ignore for inline styling attrs.
+// See `crate::gtk::decoration` for the trait. Each impl is empty; the
+// trait provides default warning methods for every builder.
+// ---------------------------------------------------------------------
+
+impl<C> crate::gtk::decoration::WithDecoration for Stack<C> {}
+impl<C> crate::gtk::decoration::WithDecoration for Grid<C> {}
+impl crate::gtk::decoration::WithDecoration for Button {}
+impl crate::gtk::decoration::WithDecoration for Checkbox {}
+impl crate::gtk::decoration::WithDecoration for Slider {}
+impl crate::gtk::decoration::WithDecoration for PopUpButton {}
+impl crate::gtk::decoration::WithDecoration for Label {}
+impl crate::gtk::decoration::WithDecoration for TextField {}

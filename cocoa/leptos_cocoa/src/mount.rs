@@ -90,17 +90,32 @@ where
     run_loop(&app);
 }
 
-/// Open a single macOS window and mount the view returned by `f` as
-/// its content. Sugar over [`run`] for the common case.
-///
-/// `title` is shown in the window's title bar; `size` is the initial
-/// content-area size in points.
-pub fn mount_to_window<F, V>(title: &str, size: (f64, f64), f: F)
+/// One-call entry point: opens a sensible default window
+/// (640×480, titled "App") and mounts the view returned by `f`.
+/// Sugar over [`mount_to_window`] for the simplest "I just want
+/// to see something on screen" case.
+pub fn mount<F, V>(f: F)
 where
     F: FnOnce() -> V + 'static,
     V: Render<Dom> + 'static,
 {
+    mount_to_window("App", (640.0, 480.0), f);
+}
+
+/// Open a single macOS window and mount the view returned by `f` as
+/// its content. Sugar over [`run`] for the common case.
+///
+/// `title` is shown in the window's title bar; `size` is the
+/// initial content-area size. Accepts `(f64, f64)`, `(i32, i32)`,
+/// or any other `Into<WindowSize>`.
+pub fn mount_to_window<F, V, S>(title: &str, size: S, f: F)
+where
+    F: FnOnce() -> V + 'static,
+    V: Render<Dom> + 'static,
+    S: Into<crate::cocoa::window::WindowSize> + 'static,
+{
     let title = title.to_owned();
+    let size: crate::cocoa::window::WindowSize = size.into();
     run(move || window().title(title).size(size).child(f()));
 }
 
@@ -130,11 +145,12 @@ where
 ///     }
 /// });
 /// ```
-pub fn mount_to_split_window<F, V, P>(title: &str, size: (f64, f64), f: F)
+pub fn mount_to_split_window<F, V, P, S>(title: &str, size: S, f: F)
 where
     F: FnOnce() -> V + 'static,
     V: IntoSplitView<P> + 'static,
     P: SplitPaneList,
+    S: Into<crate::cocoa::window::WindowSize> + 'static,
 {
     let mtm = MainThreadMarker::new()
         .expect("mount_to_split_window must be called from the main thread");
@@ -150,7 +166,12 @@ where
     // (which wraps the SplitView in `View<...>`) or a direct
     // builder call. `IntoSplitView` handles both.
     let split_view = f().into_split_view();
-    let (opened, state) = split_view.build_and_install(title, size, mtm);
+    let size: crate::cocoa::window::WindowSize = size.into();
+    let (opened, state) = split_view.build_and_install(
+        title,
+        (size.width(), size.height()),
+        mtm,
+    );
 
     opened.show(mtm);
 

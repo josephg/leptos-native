@@ -48,21 +48,14 @@ pub struct Window<Children> {
     children: Children,
 }
 
-/// Window content-area size in points. Implements `From<(f64, f64)>`
-/// so `<window size=(640.0, 480.0)>` and `.size((640.0, 480.0))` both
-/// work. The two-arg `.size(w, h)` shape was retired when menus
-/// landed — the macro can only emit single-value attributes.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WindowSize(pub f64, pub f64);
-
-impl From<(f64, f64)> for WindowSize {
-    fn from((w, h): (f64, f64)) -> Self {
-        WindowSize(w, h)
-    }
-}
+// `WindowSize` / `WindowPosition` types now live in
+// `renderer::window` and are shared across ports. We re-export
+// them and add the per-port reactive-attr plumbing here.
+pub use renderer::window::{WindowPosition, WindowSize};
 
 // Reactive support: bare `WindowSize` is static; closures returning
-// `WindowSize` become Reactive; tuples auto-lift.
+// `WindowSize` become Reactive; tuples auto-lift (both i32 and
+// f64 pairs, via the shared From impls).
 impl IntoMaybeReactive<WindowSize> for WindowSize {
     fn into_maybe_reactive(self) -> MaybeReactive<WindowSize> {
         MaybeReactive::Static(self)
@@ -70,7 +63,12 @@ impl IntoMaybeReactive<WindowSize> for WindowSize {
 }
 impl IntoMaybeReactive<WindowSize> for (f64, f64) {
     fn into_maybe_reactive(self) -> MaybeReactive<WindowSize> {
-        MaybeReactive::Static(WindowSize(self.0, self.1))
+        MaybeReactive::Static(WindowSize::from(self))
+    }
+}
+impl IntoMaybeReactive<WindowSize> for (i32, i32) {
+    fn into_maybe_reactive(self) -> MaybeReactive<WindowSize> {
+        MaybeReactive::Static(WindowSize::from(self))
     }
 }
 impl<F> IntoMaybeReactive<WindowSize> for F
@@ -82,18 +80,6 @@ where
     }
 }
 
-/// Window screen position in points, from the bottom-left of the
-/// main screen (AppKit's native origin convention). Implements
-/// `From<(f64, f64)>` for `<window position=(0.0, 0.0)>` syntax.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct WindowPosition(pub f64, pub f64);
-
-impl From<(f64, f64)> for WindowPosition {
-    fn from((x, y): (f64, f64)) -> Self {
-        WindowPosition(x, y)
-    }
-}
-
 impl IntoMaybeReactive<WindowPosition> for WindowPosition {
     fn into_maybe_reactive(self) -> MaybeReactive<WindowPosition> {
         MaybeReactive::Static(self)
@@ -101,7 +87,12 @@ impl IntoMaybeReactive<WindowPosition> for WindowPosition {
 }
 impl IntoMaybeReactive<WindowPosition> for (f64, f64) {
     fn into_maybe_reactive(self) -> MaybeReactive<WindowPosition> {
-        MaybeReactive::Static(WindowPosition(self.0, self.1))
+        MaybeReactive::Static(WindowPosition::from(self))
+    }
+}
+impl IntoMaybeReactive<WindowPosition> for (i32, i32) {
+    fn into_maybe_reactive(self) -> MaybeReactive<WindowPosition> {
+        MaybeReactive::Static(WindowPosition::from(self))
     }
 }
 impl<F> IntoMaybeReactive<WindowPosition> for F

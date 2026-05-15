@@ -34,7 +34,7 @@ mod app {
 
                 <text_field
                     value=move || interval.get().to_string()
-                    on:change=move |s: String| {
+                    on:commit=move |s: String| {
                         if let Ok(v) = s.parse::<u64>() {
                             interval.set(v);
                         }

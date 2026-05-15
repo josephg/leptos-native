@@ -59,6 +59,7 @@ impl_pair!(
     String, bool, i32, f32, f64, usize, Dim,
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
     Color, Date, TextAlignment, DatePickerStyle,
+    Option<Vec<u8>>,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

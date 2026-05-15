@@ -103,7 +103,7 @@ pub mod prelude {
     pub use crate::IntoView;
 
     // Mounting
-    pub use crate::mount::{mount_to_window, run};
+    pub use crate::mount::{mount, mount_to_window, run};
 
     // GTK-flavoured element builders, exposed as bare functions so
     // user code that writes them directly (instead of via the
@@ -111,9 +111,10 @@ pub mod prelude {
     pub use crate::gtk::{
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
+        decoration::WithDecoration,
         element::{
             button, checkbox, grid, hstack, label, pop_up_button,
-            secure_text_field, slider, stack_view, text_field, view,
+            secure_text_field, slider, stack, stack_view, text_field, toggle,
             vstack,
         },
         node_ref::NodeRef,

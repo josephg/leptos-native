@@ -4,7 +4,7 @@
 //!
 //! - The switch two-way binds to a `bool` signal.
 //! - The text field uses `bind:value` for two-way state AND
-//!   `on:input` to count keystrokes AND `on:change` to record the
+//!   `on:input` to count keystrokes AND `on:commit` to record the
 //!   most recently committed value (return key / focus loss).
 //!   This verifies all three coexist on the same field — they
 //!   share one fan-out delegate.
@@ -30,7 +30,7 @@ mod app {
                     on:input=move |_v: String| {
                         keystroke_count.update(|c| *c += 1);
                     }
-                    on:change=move |v: String| {
+                    on:commit=move |v: String| {
                         last_committed.set(v);
                     } />
 

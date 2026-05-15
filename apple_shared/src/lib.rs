@@ -10,3 +10,6 @@
 
 pub mod attr_keys;
 pub mod directive;
+pub mod main_thread;
+
+pub use main_thread::on_main;

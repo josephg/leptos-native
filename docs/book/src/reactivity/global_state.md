@@ -108,7 +108,10 @@ provide_context(Compact(RwSignal::new(false)));
 
 ## Persistence
 
-To persist global state, drive an `Effect` off the signal:
+To persist global state, drive an `Effect` off the signal or the
+store fields. Stores don't expose a single "snapshot the whole
+struct" call — instead, subscribe to the fields you actually want
+to persist:
 
 ```rust
 let state = Store::new(AppState::load_from_disk());
@@ -116,14 +119,20 @@ let state = Store::new(AppState::load_from_disk());
 Effect::new({
     let state = state.clone();
     move |_| {
-        // Subscribe to anything we want to persist.
-        let snapshot = state.snapshot();
-        save_to_disk(&snapshot);
+        // Read each persisted field — each read subscribes
+        // the effect to that field's changes.
+        save_dark_mode(state.dark_mode().get());
+        save_user(state.current_user().get());
     }
 });
 
 provide_context(state);
 ```
+
+If you really do want a "the whole struct changed" hook, derive
+`Clone` on your state and use a single `RwSignal<AppState>`
+instead of a `Store<AppState>`. Stores give you per-field
+granularity in exchange for losing the "snapshot" affordance.
 
 For macOS, that "disk" is typically `UserDefaults`. For GTK,
 `gio::Settings`. For iOS, also `UserDefaults` (via the

@@ -23,11 +23,11 @@ A scrollable container. Covered in more depth in
 
 ## Attributes
 
-| Attribute                 | Type   | Cocoa | iOS | Notes                                  |
-|---------------------------|--------|:-----:|:---:|----------------------------------------|
-| `has_vertical_scroller`   | `bool` | ✓     | ✓   |                                        |
-| `has_horizontal_scroller` | `bool` | ✓     | ✓   |                                        |
-| `autohides_scrollers`     | `bool` | ✓     |     | Cocoa: hide scrollers when content fits. |
+| Attribute                 | Type   | Default | Cocoa | iOS | Notes                                  |
+|---------------------------|--------|---------|:-----:|:---:|----------------------------------------|
+| `has_vertical_scroller`   | `bool` | `true`  | ✓     | ✓   |                                        |
+| `has_horizontal_scroller` | `bool` | `false` | ✓     | ✓   |                                        |
+| `autohides_scrollers`     | `bool` | `true`  | ✓     |     | Cocoa: hide scrollers when content fits. |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).

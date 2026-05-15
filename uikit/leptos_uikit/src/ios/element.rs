@@ -212,6 +212,13 @@ pub struct View<Children> {
     children: Children,
 }
 
+/// Generic flex container with no direction preset. Use
+/// `<stack>` in the macro; alias of the legacy internal `view()`
+/// builder.
+pub fn stack() -> View<()> {
+    view()
+}
+
 pub fn view() -> View<()> {
     View {
         flex_direction: None,
@@ -760,6 +767,7 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
 pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
+    sf_symbol: Option<MaybeReactive<String>>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
@@ -772,6 +780,7 @@ pub fn button() -> Button {
     Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
+        sf_symbol: None,
         handlers: Vec::new(),
         pending_spreads: Vec::new(),
         node_ref: None,
@@ -792,6 +801,12 @@ impl Button {
     }
     pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
         self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    /// Set an SF Symbol as the button's image. Pair with `text_color=`
+    /// to tint template symbols. iOS 13+; older systems are no-op.
+    pub fn sf_symbol<V: IntoMaybeReactive<String>>(mut self, name: V) -> Self {
+        self.sf_symbol = Some(name.into_maybe_reactive());
         self
     }
     pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
@@ -839,6 +854,15 @@ impl Render<Dom> for Button {
             let el_for_en = el.clone();
             if let Some(eff) = install(enabled, move |b| {
                 el_for_en.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(name) = self.sf_symbol {
+            let el_for_sym = el.clone();
+            if let Some(eff) = install(name, move |n| {
+                el_for_sym.set_sf_symbol(&n);
             }) {
                 effects.push(eff);
             }
@@ -1067,6 +1091,7 @@ impl TextField {
 // blur are UIControl `editingDidBegin` / `editingDidEnd`.
 impl SupportsEvent<crate::event_ios::InputEvent> for TextField {}
 impl SupportsEvent<crate::event_ios::ChangeEvent> for TextField {}
+impl SupportsEvent<crate::event_ios::CommitEvent> for TextField {}
 impl SupportsEvent<crate::event_ios::FocusEvent> for TextField {}
 impl SupportsEvent<crate::event_ios::BlurEvent> for TextField {}
 
@@ -1158,6 +1183,13 @@ pub struct Switch {
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
+}
+
+/// Portable name for the boolean toggle. On iOS this is the
+/// same widget as `<switch>` (UISwitch); on Cocoa/GTK it maps
+/// to a checkbox.
+pub fn toggle() -> Switch {
+    switch_()
 }
 
 pub fn switch_() -> Switch {
@@ -1340,7 +1372,7 @@ impl Slider {
     }
 }
 
-impl SupportsEvent<crate::event_ios::ClickEvent> for Slider {}
+impl SupportsEvent<crate::event_ios::ChangeEvent> for Slider {}
 
 impl WithLayout for Slider {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
@@ -1482,7 +1514,7 @@ impl Stepper {
     }
 }
 
-impl SupportsEvent<crate::event_ios::ClickEvent> for Stepper {}
+impl SupportsEvent<crate::event_ios::ChangeEvent> for Stepper {}
 
 impl WithLayout for Stepper {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
@@ -1628,6 +1660,9 @@ impl Render<Dom> for ProgressIndicator {
 
 pub struct ImageView {
     source: MaybeReactive<String>,
+    bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
+    sf_symbol: Option<MaybeReactive<String>>,
+    tint: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
@@ -1638,6 +1673,9 @@ pub struct ImageView {
 pub fn image_view() -> ImageView {
     ImageView {
         source: MaybeReactive::Static(String::new()),
+        bytes: None,
+        sf_symbol: None,
+        tint: None,
         handlers: Vec::new(),
         pending_spreads: Vec::new(),
         node_ref: None,
@@ -1653,6 +1691,27 @@ impl ImageView {
     /// handles PNG, JPEG, PDF, etc.
     pub fn source<V: IntoMaybeReactive<String>>(mut self, v: V) -> Self {
         self.source = v.into_maybe_reactive();
+        self
+    }
+    /// In-memory image bytes (PNG/JPEG/GIF/TIFF/HEIC, auto-detected
+    /// by UIImage). `None` clears. Reactive. Use this for HTTP-
+    /// fetched images — see the Working with Async docs for the
+    /// bridging pattern.
+    pub fn bytes<V: IntoMaybeReactive<Option<Vec<u8>>>>(mut self, v: V) -> Self {
+        self.bytes = Some(v.into_maybe_reactive());
+        self
+    }
+    /// Render an SF Symbol as the image. iOS 13+; older systems
+    /// are no-op. Pair with `.tint(...)` to colour a template
+    /// symbol.
+    pub fn sf_symbol<V: IntoMaybeReactive<String>>(mut self, name: V) -> Self {
+        self.sf_symbol = Some(name.into_maybe_reactive());
+        self
+    }
+    /// Tint the image. Most useful with SF Symbols / template
+    /// images; UIKit propagates the tint through automatically.
+    pub fn tint<V: IntoMaybeReactive<ios_dom::Color>>(mut self, c: V) -> Self {
+        self.tint = Some(c.into_maybe_reactive());
         self
     }
     pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
@@ -1693,6 +1752,33 @@ impl Render<Dom> for ImageView {
             install(self.source, move |s| el_for.set_image_view_path(&s))
         {
             effects.push(eff);
+        }
+
+        if let Some(b) = self.bytes {
+            let el_for_b = el.clone();
+            if let Some(eff) = install(b, move |bytes| {
+                el_for_b.set_image_view_bytes(bytes.as_deref())
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(name) = self.sf_symbol {
+            let el_for_sym = el.clone();
+            if let Some(eff) = install(name, move |n| {
+                el_for_sym.set_sf_symbol(&n);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(t) = self.tint {
+            let el_for_tint = el.clone();
+            if let Some(eff) = install(t, move |c| {
+                el_for_tint.set_tint(Some(c));
+            }) {
+                effects.push(eff);
+            }
         }
 
         for h in self.handlers {
@@ -1787,7 +1873,7 @@ impl SegmentedControl {
     }
 }
 
-impl SupportsEvent<crate::event_ios::ClickEvent> for SegmentedControl {}
+impl SupportsEvent<crate::event_ios::ChangeEvent> for SegmentedControl {}
 
 impl WithLayout for SegmentedControl {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
@@ -1931,7 +2017,7 @@ impl DatePicker {
     }
 }
 
-impl SupportsEvent<crate::event_ios::ClickEvent> for DatePicker {}
+impl SupportsEvent<crate::event_ios::ChangeEvent> for DatePicker {}
 
 impl WithLayout for DatePicker {
     fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }

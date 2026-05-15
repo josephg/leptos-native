@@ -1,0 +1,14 @@
+[package]
+name = "ipify_current_thread_cocoa"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Network-dependent demo. See workspace Cargo.toml — excluded from
+# `default-members` so it's skipped by bare `cargo build`.
+
+[dependencies]
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+tokio = { version = "1", features = ["rt", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }

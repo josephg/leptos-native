@@ -19,8 +19,8 @@ pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal, Selection};
 pub use element::{
     button, date_picker, grid, hstack, image_view, label, progress_indicator,
-    scroll_view, secure_text_field, segmented_control, slider, stepper,
-    switch_, text_field, text_view, view, vstack, IosText, WithText,
+    scroll_view, secure_text_field, segmented_control, slider, stack, stepper,
+    switch_, text_field, text_view, vstack, IosText, WithText,
 };
 pub use node_ref::NodeRef;
 

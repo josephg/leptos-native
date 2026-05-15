@@ -15,6 +15,7 @@ pub mod attr;
 pub mod bind;
 pub(crate) mod directives;
 pub mod element;
+pub(crate) mod error_guard;
 pub mod menu;
 pub mod node_ref;
 pub mod split;

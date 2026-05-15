@@ -55,7 +55,7 @@ Four ideas show up in almost every form:
 Each field owns a signal, and `bind:value=` (or `bind:checked=`)
 keeps the field and the signal synchronised in both directions.
 
-You can mix in additional `on:input` / `on:change` handlers if you
+You can mix in additional `on:input` / `on:commit` handlers if you
 need to do something beyond the binding — count keystrokes, log
 validation events, persist on every commit, etc. They all
 coexist:
@@ -64,7 +64,7 @@ coexist:
 <text_field
     bind:value=email
     on:input=move |_| keystroke_count.update(|c| *c += 1)
-    on:change=move |v: String| last_committed.set(v) />
+    on:commit=move |v: String| last_committed.set(v) />
 ```
 
 ## 2. `Memo` for derived validity
@@ -118,7 +118,7 @@ prop — the greyed-out hint text shown when empty.
 | `checkbox` *(Cocoa/GTK)* / `switch` *(iOS)* | `bind:checked` | `RwSignal<bool>` |
 | `slider`               | `bind:value` | `RwSignal<f64>`    |
 | `stepper`              | `bind:value` | `RwSignal<f64>`    |
-| `pop_up_button` *(Cocoa)* | `bind:value` | `RwSignal<usize>` (selected index) |
+| `pop_up_button` *(Cocoa, GTK)* | `bind:value` | `RwSignal<usize>` (selected index) |
 | `segmented_control`    | `bind:selection` | `RwSignal<usize>` |
 | `date_picker`          | `bind:value` | `RwSignal<Date>`   |
 | `color_well` *(Cocoa)*  | `bind:value` | `RwSignal<Color>`  |

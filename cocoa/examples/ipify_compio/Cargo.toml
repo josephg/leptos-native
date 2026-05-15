@@ -1,0 +1,29 @@
+[package]
+name = "ipify_compio_cocoa"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Network-dependent demo. See workspace Cargo.toml — excluded from
+# `default-members` so it's skipped by bare `cargo build`.
+#
+# Demonstrates the same bridging pattern as the tokio examples,
+# but with compio as the off-main async runtime. The framework
+# doesn't care which runtime sits on the other side of the
+# channel — anything that produces a `Send` Future the main-thread
+# spawner can poll works.
+
+[dependencies]
+leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+
+# compio: thread-per-core runtime. On macOS, io-uring isn't
+# available, so we enable `polling` (kqueue under the hood via
+# the `polling` crate). The `dispatcher` feature gives us
+# `compio_dispatcher::Dispatcher` for ferrying work onto a side
+# thread that owns a compio runtime — analogous to how the tokio
+# examples park a tokio runtime on a worker thread.
+compio = { version = "0.18", default-features = false, features = [
+    "polling", "runtime", "dispatcher", "net", "io",
+] }
+
+futures-channel = "0.3"

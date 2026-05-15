@@ -19,6 +19,7 @@ leptos_apple_shared = { workspace = true }
 either_of = { workspace = true }
 oco_ref = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
+throw_error = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa_dom = { path = "../dom", version = "0.1.0" }

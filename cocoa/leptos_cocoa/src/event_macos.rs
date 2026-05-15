@@ -29,11 +29,23 @@ pub const click: ClickEvent = ClickEvent;
 pub struct InputEvent;
 pub const input: InputEvent = InputEvent;
 
-/// Marker type for the change event — fires when text editing
-/// commits (return key, focus loss). AppKit equivalent:
-/// `controlTextDidEndEditing:`.
+/// Marker type for the change event — fires when a control's
+/// value changes. Universal across controls; payload is `()`
+/// because the new value lives in the control's bound signal.
+///
+/// For text fields specifically: fires on every change as the
+/// user types (same as `on:input`, minus the String payload).
+/// See [`CommitEvent`] (`on:commit`) for the "Return / blur"
+/// semantics.
 pub struct ChangeEvent;
 pub const change: ChangeEvent = ChangeEvent;
+
+/// Marker type for the commit event — text-field specific. Fires
+/// when text editing commits (return key, focus loss). AppKit
+/// equivalent: `controlTextDidEndEditing:`. Payload is the
+/// committed text.
+pub struct CommitEvent;
+pub const commit: CommitEvent = CommitEvent;
 
 /// Marker type for the focus event — fires when a control gains
 /// keyboard focus. For text fields this is
@@ -112,12 +124,22 @@ impl EventDescriptor for InputEvent {
 }
 
 impl EventDescriptor for ChangeEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Change(Box::new(move || handler(())))
+    }
+}
+
+impl EventDescriptor for CommitEvent {
     type EventType = String;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
         F: FnMut(String) + Send + 'static,
     {
-        PendingHandler::Change(Box::new(handler))
+        PendingHandler::Commit(Box::new(handler))
     }
 }
 
@@ -199,8 +221,9 @@ pub trait SupportsEvent<E: EventDescriptor> {}
 ///
 /// Routing per variant (in `apply_to`):
 ///   * `Click`  — `Element::on_click`            (NSButton target/action)
+///   * `Change` — `Element::on_value_change`     (NSControl target/action, value-bearing)
 ///   * `Input`  — `Element::on_text_change`      (controlTextDidChange:)
-///   * `Change` — `Element::on_text_end_editing` (controlTextDidEndEditing:)
+///   * `Commit` — `Element::on_text_end_editing` (controlTextDidEndEditing:)
 ///
 /// Builder-side compile-time checks via [`SupportsEvent`] should
 /// prevent mismatched (handler, control) pairs from reaching here
@@ -210,8 +233,9 @@ pub trait SupportsEvent<E: EventDescriptor> {}
 /// downcast and silently no-op.
 pub enum PendingHandler {
     Click(Box<dyn FnMut() + Send + 'static>),
+    Change(Box<dyn FnMut() + Send + 'static>),
     Input(Box<dyn FnMut(String) + Send + 'static>),
-    Change(Box<dyn FnMut(String) + Send + 'static>),
+    Commit(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
     KeyDown(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
@@ -232,8 +256,14 @@ impl PendingHandler {
     pub fn apply_to(self, el: &cocoa_dom::Element) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
+            // Change is the universal "value changed" event:
+            // every drag tick on sliders/steppers, every keystroke
+            // on text fields, every popup/segmented selection
+            // change. on_value_change does the right thing per
+            // underlying control.
+            PendingHandler::Change(cb) => el.on_value_change(cb),
             PendingHandler::Input(cb) => el.on_text_change(cb),
-            PendingHandler::Change(cb) => el.on_text_end_editing(cb),
+            PendingHandler::Commit(cb) => el.on_text_end_editing(cb),
             PendingHandler::Focus(cb) => el.on_text_focus(cb),
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
             PendingHandler::KeyDown(cb) => el.on_text_keydown(cb),

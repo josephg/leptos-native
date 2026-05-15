@@ -71,7 +71,7 @@ The supported keys are:
 |-----------------|----------------------------------|----------------------------------|
 | `bind:value`    | `RwSignal<String>`               | `text_field`, `secure_text_field`, `text_view` |
 | `bind:value`    | `RwSignal<f64>`                  | `slider`, `stepper`              |
-| `bind:value`    | `RwSignal<usize>`                | `pop_up_button` *(Cocoa)*        |
+| `bind:value`    | `RwSignal<usize>`                | `pop_up_button` *(Cocoa, GTK)*   |
 | `bind:value`    | `RwSignal<Date>`                 | `date_picker`                    |
 | `bind:value`    | `RwSignal<Color>`                | `color_well` *(Cocoa)*           |
 | `bind:checked`  | `RwSignal<bool>`                 | `checkbox` *(Cocoa/GTK)*, `switch` *(iOS)* |
@@ -92,8 +92,9 @@ Events use the same `on:` prefix you know from web Leptos:
 Event handlers are `FnMut` closures. The payload type depends on
 the event:
 
-- `click`, `focus`, `blur`, `action` — `()`.
-- `input`, `change` — `String` (the field's current text).
+- `click`, `change`, `focus`, `blur`, `action` — `()`. Read the
+  bound signal for any associated value.
+- `input`, `commit` — `String` (text-field only).
 - `keydown`, `keyup` — `KeyEvent`.
 
 Each element only supports a subset of events; passing an unsupported
@@ -109,7 +110,7 @@ field. They all share one underlying delegate:
 <text_field
     bind:value=email
     on:input=move |_| keystroke_count.update(|c| *c += 1)
-    on:change=move |v: String| last_committed.set(v) />
+    on:commit=move |v: String| last_committed.set(v) />
 ```
 
 This is taken straight from the `checkbox` example

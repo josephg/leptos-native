@@ -23,21 +23,22 @@ UIColorPickerViewController via NodeRef + objc2 bindings.
 
 ## Attributes
 
-| Attribute    | Type     | Cocoa | Notes                                |
-|--------------|----------|:-----:|--------------------------------------|
-| `value`      | `Color`  | ✓     | Current colour. Prefer `bind:value`. |
-| `enabled`    | `bool`   | ✓     |                                      |
+| Attribute    | Type     | Default | Cocoa | Notes                                |
+|--------------|----------|---------|:-----:|--------------------------------------|
+| `value`      | `Color`  | `WHITE` | ✓     | Current colour. Prefer `bind:value`. |
+| `enabled`    | `bool`   | `true`  | ✓     |                                      |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event      | Cocoa | Payload |
-|------------|:-----:|---------|
-| `on:click` | ✓     | `()`    |
+| Event       | Cocoa | Payload |
+|-------------|:-----:|---------|
+| `on:change` | ✓     | `()`    |
 
-Fires when the user selects a colour.
+Fires when the user selects a colour. Read the new value from
+the bound signal.
 
 ## Bindings
 

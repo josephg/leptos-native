@@ -21,10 +21,20 @@ pub const click: ClickEvent = ClickEvent;
 pub struct InputEvent;
 pub const input: InputEvent = InputEvent;
 
-/// Marker type for the change event — fires when text editing
-/// commits (Return key). GTK signal: `Entry::activate`.
+/// Marker type for the change event — fires whenever a control's
+/// value changes. Universal across controls; payload is `()`
+/// because the new value lives in the bound signal.
+///
+/// For text fields: same as `on:input`, with `()` payload. For
+/// "fires on Return / blur" semantics see [`CommitEvent`].
 pub struct ChangeEvent;
 pub const change: ChangeEvent = ChangeEvent;
+
+/// Marker type for the commit event — text-field specific. Fires
+/// when text editing commits (Return key, focus loss). GTK signal:
+/// `Entry::activate`. Payload is the committed text.
+pub struct CommitEvent;
+pub const commit: CommitEvent = CommitEvent;
 
 /// Marker type for the focus event.
 pub struct FocusEvent;
@@ -74,12 +84,22 @@ impl EventDescriptor for InputEvent {
 }
 
 impl EventDescriptor for ChangeEvent {
+    type EventType = ();
+    fn into_pending<F>(mut handler: F) -> PendingHandler
+    where
+        F: FnMut(()) + Send + 'static,
+    {
+        PendingHandler::Change(Box::new(move || handler(())))
+    }
+}
+
+impl EventDescriptor for CommitEvent {
     type EventType = String;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
         F: FnMut(String) + Send + 'static,
     {
-        PendingHandler::Change(Box::new(handler))
+        PendingHandler::Commit(Box::new(handler))
     }
 }
 
@@ -127,8 +147,9 @@ pub trait SupportsEvent<E: EventDescriptor> {}
 
 pub enum PendingHandler {
     Click(Box<dyn FnMut() + Send + 'static>),
+    Change(Box<dyn FnMut() + Send + 'static>),
     Input(Box<dyn FnMut(String) + Send + 'static>),
-    Change(Box<dyn FnMut(String) + Send + 'static>),
+    Commit(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
     /// Menu-item activation — see [`ActionEvent`]. Consumed by the
@@ -142,8 +163,9 @@ impl PendingHandler {
     pub fn apply_to(self, el: &gtk_dom::Element) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
+            PendingHandler::Change(cb) => el.on_value_change(cb),
             PendingHandler::Input(cb) => el.on_text_change(cb),
-            PendingHandler::Change(cb) => el.on_text_end_editing(cb),
+            PendingHandler::Commit(cb) => el.on_text_end_editing(cb),
             PendingHandler::Focus(cb) => el.on_text_focus(cb),
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
             PendingHandler::Action(_) => panic!(

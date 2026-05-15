@@ -1,40 +1,49 @@
-# `<checkbox>` / `<switch>`
+# `<toggle>` / `<checkbox>` / `<switch>`
 
 A boolean toggle.
 
 ```rust
-// Cocoa / GTK
-<checkbox bind:checked=subscribed>"Subscribe to newsletter"</checkbox>
+// Portable — same on all three ports.
+<toggle bind:checked=subscribed>"Subscribe to newsletter"</toggle>
 
-// iOS
-<switch bind:checked=notifications_on />
+// Native-named aliases:
+<checkbox bind:checked=remember>"Remember me"</checkbox>  // Cocoa / GTK
+<switch bind:checked=notifications_on />                  // iOS
 ```
 
 ## Tag naming
 
-- **Cocoa / GTK** use `<checkbox>`.
-- **iOS** uses `<switch>` — UISwitch is the canonical iOS
-  toggle, and visually it's a slider, not a checkmark. There is
-  no `<checkbox>` on iOS.
+- **`<toggle>`** — portable; available on all three ports. Maps
+  to whatever the native toggle widget is.
+- **`<checkbox>`** — Cocoa / GTK alias. Same widget as `<toggle>`
+  on those ports.
+- **`<switch>`** — iOS alias. UISwitch is the canonical iOS
+  toggle (visually a slider, not a checkmark). Same widget as
+  `<toggle>` on iOS.
 
 `<switch>` collides with a Rust keyword; the iOS macro emits
 `r#switch` internally. You don't need to worry about this at the
 source level — just write `<switch>`.
 
+For portable code that runs on all three ports, prefer
+`<toggle>`. For per-port code where the native name is
+expected, use `<checkbox>` / `<switch>`.
+
 ## Platforms
 
 | Tag         | Cocoa             | GTK             | iOS      |
 |-------------|-------------------|-----------------|----------|
+| `toggle`    | NSButton (Switch) | gtk::CheckButton| UISwitch |
 | `checkbox`  | NSButton (Switch) | gtk::CheckButton| —        |
 | `switch`    | —                 | —               | UISwitch |
 
 ## Attributes
 
-| Attribute  | Type     | Cocoa | GTK | iOS | Notes                                                    |
-|------------|----------|:-----:|:---:|:---:|----------------------------------------------------------|
-| `title`    | `String` | ✓     | ✓   |     | Cocoa/GTK: trailing text label. iOS UISwitch has no label.|
-| `checked`  | `bool`   | ✓     | ✓   | ✓   | Current state. Prefer `bind:checked`.                    |
-| `enabled`  | `bool`   | ✓     | ✓   | ✓   |                                                          |
+| Attribute  | Type     | Default  | Cocoa | GTK | iOS | Notes                                                    |
+|------------|----------|----------|:-----:|:---:|:---:|----------------------------------------------------------|
+| `title`    | `String` | `""`     | ✓     | ✓   |     | Cocoa/GTK: trailing text label. iOS UISwitch has no label.|
+| `checked`  | `bool`   | `false`  | ✓     | ✓   | ✓   | Current state. Prefer `bind:checked`.                    |
+| `enabled`  | `bool`   | `true`   | ✓     | ✓   | ✓   |                                                          |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).

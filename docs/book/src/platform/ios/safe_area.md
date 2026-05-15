@@ -80,9 +80,13 @@ without any extra code. The bottom button stays accessible.
 
 ## A note on long forms
 
-If your content is longer than the safe area minus keyboard
-height (typical for a settings screen with many fields), wrap
-the form in a `<scroll_view>`:
+The keyboard inset is applied to the **content root** — the
+whole view tree shifts up. For very short forms (login,
+two-field dialog) that's enough; the form is short enough that
+the entire vstack fits in the visible area above the keyboard.
+
+For longer forms, the shift can push the top of the form off
+the screen. Wrap such forms in a `<scroll_view>`:
 
 ```rust
 <scroll_view>
@@ -92,5 +96,8 @@ the form in a `<scroll_view>`:
 </scroll_view>
 ```
 
-The scroll view handles scrolling to the focused field as the
-keyboard rises.
+The scroll view's bounds are recomputed when the keyboard
+appears, so the user can scroll the form into view. Note: this
+fork does not yet auto-scroll to the focused field — that's an
+open enhancement. Until it lands, users manually scroll to the
+field they're editing.

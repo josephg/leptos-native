@@ -17,16 +17,17 @@ A read-only text display.
 
 ## Attributes
 
-| Attribute    | Type            | Cocoa | GTK | iOS | Notes                                                       |
-|--------------|-----------------|:-----:|:---:|:---:|-------------------------------------------------------------|
-| `text`       | `String`        | ✓     | ✓   | ✓   | The displayed text. A string child (`>"..."<`) sets it too. |
-| `text_color` | `Color`         | ✓     |     | ✓   |                                                             |
-| `alignment`  | text alignment  | ✓     |     | ✓   |                                                             |
-| `font_size`  | `f32`           | ✓     |     | ✓   |                                                             |
-| `bold`       | `bool`          | ✓     |     |     |                                                             |
-| `line_break` | line-break mode | ✓     |     |     | How long text wraps/truncates.                              |
-| `multiline`  | `bool`          | ✓     |     |     | Allow wrapping to multiple lines.                           |
-| `selectable` | `bool`          | ✓     |     |     | Allow user to select & copy the text.                       |
+| Attribute    | Type            | Default       | Cocoa | GTK | iOS | Notes                                                       |
+|--------------|-----------------|---------------|:-----:|:---:|:---:|-------------------------------------------------------------|
+| `text`       | `String`        | `""`          | ✓     | ✓   | ✓   | The displayed text. A string child (`>"..."<`) sets it too. |
+| `try_text`   | `Fn() -> Result<String, E>` | unset | ✓ |  |  | On `Ok`, sets the text; on `Err`, renders empty and flows the error to the nearest `<ErrorBoundary>`. |
+| `text_color` | `Color`         | system label  | ✓     |     | ✓   | System label colour (dark-mode aware) when unset.           |
+| `alignment`  | text alignment  | natural       | ✓     |     | ✓   | "Natural" follows the user's locale reading direction.      |
+| `font_size`  | `f32`           | system size   | ✓     |     | ✓   |                                                             |
+| `bold`       | `bool`          | `false`       | ✓     |     |     |                                                             |
+| `line_break` | line-break mode | `TruncatingTail` | ✓  |     |     | How long text wraps/truncates.                              |
+| `multiline`  | `bool`          | `false`       | ✓     |     |     | Allow wrapping to multiple lines.                           |
+| `selectable` | `bool`          | `false`       | ✓     |     |     | Allow user to select & copy the text.                       |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
@@ -45,21 +46,29 @@ attributes](../layout/attributes.md).
 
 ## Child = text only
 
-`<label>` accepts a string-typed child only. To render a value
-that might be a `Result<T, E>` (so it can flow through an
-[`<ErrorBoundary>`](../view/07_errors.md)), wrap it in `<stack>`:
+`<label>`'s string-typed child accepts only `IntoMaybeReactive<String>`.
+To render a value that might be a `Result<T, E>` (so it can flow
+through an [`<ErrorBoundary>`](../view/07_errors.md)), use
+`.try_text()`:
 
 ```rust
-// BAD — won't compile if value() returns Result<String, _>
-<label>{move || value()}</label>
+<label try_text=move || "12".parse::<i32>().map(|n| n.to_string()) />
+```
 
-// GOOD — <stack> takes arbitrary Render children
+On `Ok(s)`, the label shows `s`. On `Err(e)`, the label renders
+empty *and* the error is registered with the nearest
+`<ErrorBoundary>` (so its `fallback` takes over the subtree).
+
+The longer-hand alternative — wrapping in `<stack>` — still
+works for arbitrary `Result<T, E>` shapes:
+
+```rust
 <stack>{move || value()}</stack>
 ```
 
-This is the most common "label rejected my closure" gotcha. The
-restriction exists because Label's child setter is typed as
-`IntoMaybeReactive<String>` for diff-based update efficiency.
+Use `<stack>` when the success value is more complex than a
+`String`. Use `.try_text()` for the common case of "label that
+might fail to parse / format / fetch."
 
 ## Multi-line
 

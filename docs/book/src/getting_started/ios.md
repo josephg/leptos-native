@@ -104,15 +104,41 @@ didn't crash.
 
 ## Running the bundled examples
 
+Each example ships a `run_ios.sh` shim that calls the shared
+script at `uikit/tools/run_ios.sh`:
+
 ```sh
-cd uikit/examples/counter   && ./run_ios.sh -t 3
-cd uikit/examples/counters  && ./run_ios.sh -t 3
-cd uikit/examples/greeter   && ./run_ios.sh -t 3
-cd uikit/examples/grid      && ./run_ios.sh -t 3
-cd uikit/examples/controls  && ./run_ios.sh -t 3
+cd uikit/examples/counter     && ./run_ios.sh -t 3
+cd uikit/examples/counters    && ./run_ios.sh -t 3
+cd uikit/examples/greeter     && ./run_ios.sh -t 3
+cd uikit/examples/controls    && ./run_ios.sh -t 3
 cd uikit/examples/switch_demo && ./run_ios.sh -t 3
-cd uikit/examples/todomvc   && ./run_ios.sh -t 3
+cd uikit/examples/todomvc     && ./run_ios.sh -t 3
 ```
+
+Or call the shared script directly from anywhere:
+
+```sh
+uikit/tools/run_ios.sh uikit/examples/counter -t 3
+```
+
+## Inner workspace
+
+The iOS examples live in their own Cargo workspace at
+`uikit/examples/`. From inside that directory, the iOS target
+is set by default (`.cargo/config.toml`) and the workspace
+shares the parent `target/` directory:
+
+```sh
+cd uikit/examples
+cargo build --workspace    # builds every iOS example
+cargo build -p counter_ios # builds one
+```
+
+`uikit/leptos_uikit` and `uikit/dom` (the framework crates
+themselves) remain members of the top-level workspace, so
+`cargo check --workspace` from the repo root still verifies
+them against `common/*` changes.
 
 ## Type-checking without the full build
 
@@ -123,13 +149,19 @@ cargo check -p leptos_uikit   --target aarch64-apple-ios-sim
 
 ## Building outside `run_ios.sh`
 
-Set `CARGO_TARGET_DIR` so the build lands in the shared workspace
-`target/` rather than a per-example dir:
+From inside `uikit/examples/`, the iOS target and shared
+`target/` directory are configured by default:
 
 ```sh
-CARGO_TARGET_DIR=$(pwd)/target cargo build \
-  --manifest-path uikit/examples/counter/Cargo.toml \
-  --target aarch64-apple-ios-sim
+cd uikit/examples
+cargo build -p counter_ios
+```
+
+From the repo root, pass the inner workspace's directory:
+
+```sh
+cargo build --manifest-path uikit/examples/counter/Cargo.toml \
+            --target aarch64-apple-ios-sim
 ```
 
 ## Where to go next

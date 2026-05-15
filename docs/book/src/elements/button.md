@@ -16,17 +16,17 @@ A momentary push-button.
 
 ## Attributes
 
-| Attribute        | Type     | Cocoa | GTK | iOS | Notes                                                                  |
-|------------------|----------|:-----:|:---:|:---:|------------------------------------------------------------------------|
-| `title`          | `String` | ✓     | ✓   | ✓   | Visible label. `child=` and a string child (`>"OK"<`) also set it.     |
-| `enabled`        | `bool`   | ✓     | ✓   | ✓   | Greyed-out if `false`.                                                 |
-| `bordered`       | `bool`   | ✓     |     |     | Toggle the bezel.                                                      |
-| `key_equivalent` | `String` | ✓     |     |     | Default activator (e.g. `"\r"` for Return).                            |
-| `text_color`     | `Color`  | ✓     |     | ✓   |                                                                        |
-| `bold`           | `bool`   | ✓     |     |     |                                                                        |
-| `sf_symbol`      | `String` | ✓     |     | ✓   | Use an [SF Symbol](../platform/cocoa/sf_symbols.md) for the button image. |
-| `font_size`      | `f32`    | ✓     |     | ✓   | Inherited from `WithText`.                                             |
-| `alignment`      | text alignment | ✓ |    | ✓   |                                                                        |
+| Attribute        | Type     | Default       | Cocoa | GTK | iOS | Notes                                                                  |
+|------------------|----------|---------------|:-----:|:---:|:---:|------------------------------------------------------------------------|
+| `title`          | `String` | `""`          | ✓     | ✓   | ✓   | Visible label. `child=` and a string child (`>"OK"<`) also set it.     |
+| `enabled`        | `bool`   | `true`        | ✓     | ✓   | ✓   | Greyed-out if `false`.                                                 |
+| `bordered`       | `bool`   | `true`        | ✓     |     |     | Toggle the bezel.                                                      |
+| `key_equivalent` | `String` | `""` (none)   | ✓     |     |     | Default activator (e.g. `"\r"` for Return).                            |
+| `text_color`     | `Color`  | system label  | ✓     |     | ✓   | System label colour (dark-mode aware) when unset.                      |
+| `bold`           | `bool`   | `false`       | ✓     |     |     |                                                                        |
+| `sf_symbol`      | `String` | `""` (no icon)| ✓     |     | ✓   | Use an [SF Symbol](../platform/cocoa/sf_symbols.md) for the button image. |
+| `font_size`      | `f32`    | system size   | ✓     |     | ✓   | Inherited from `WithText`.                                             |
+| `alignment`      | text alignment | center  | ✓     |     | ✓   |                                                                        |
 
 Plus all [shared layout attributes](../layout/attributes.md)
 (`padding`, `margin`, `width`, `flex_grow`, etc.) and

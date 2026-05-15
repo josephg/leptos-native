@@ -29,21 +29,28 @@
 - [Reactivity and Functions](./reactivity/functions.md)
 - [Global State](./reactivity/global_state.md)
 
-# Part 3: Layout
+# Part 3: Working with Async
+
+- [Overview](./async/README.md)
+- [Signals Across Threads](./async/signals.md)
+- [Tokio](./async/tokio.md)
+- [Other Runtimes](./async/other_runtimes.md)
+
+# Part 4: Layout
 
 - [Flexbox](./layout/flexbox.md)
 - [Grid](./layout/grid.md)
 - [Shared Layout Attributes](./layout/attributes.md)
 - [Scrolling](./layout/scroll.md)
 
-# Part 4: Element Reference
+# Part 5: Element Reference
 
 - [Overview](./elements/README.md)
 - [button](./elements/button.md)
 - [label](./elements/label.md)
 - [text_field / secure_text_field](./elements/text_field.md)
 - [text_view](./elements/text_view.md)
-- [checkbox / switch](./elements/checkbox.md)
+- [toggle / checkbox / switch](./elements/checkbox.md)
 - [slider](./elements/slider.md)
 - [stepper](./elements/stepper.md)
 - [segmented_control](./elements/segmented_control.md)
@@ -53,10 +60,10 @@
 - [progress_indicator](./elements/progress_indicator.md)
 - [image_view](./elements/image_view.md)
 - [scroll_view](./elements/scroll_view.md)
-- [stack / vstack / hstack / view](./elements/stack.md)
+- [stack / vstack / hstack](./elements/stack.md)
 - [grid](./elements/grid.md)
 
-# Part 5: Platform Features
+# Part 6: Platform Features
 
 - [macOS / Cocoa](./platform/cocoa/README.md)
   - [Windows](./platform/cocoa/windows.md)

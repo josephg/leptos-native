@@ -80,6 +80,38 @@ including from sibling branches. The `Errors` map is keyed by an
 internal id, so you'll see every active error in the fallback,
 not just the first.
 
+```rust
+let a = RwSignal::new(String::from("1"));
+let b = RwSignal::new(String::from("2"));
+
+view! {
+    <ErrorBoundary fallback=|errors| {
+        let errors = errors.clone();
+        view! {
+            <vstack>
+                <label>"Errors:"</label>
+                <For
+                    each=move || errors.read().iter()
+                        .map(|(_, e)| e.to_string())
+                        .collect::<Vec<_>>()
+                    key=|s| s.clone()
+                    children=|s| view! { <label>{s}</label> } />
+            </vstack>
+        }
+    }>
+        <vstack gap=8.0>
+            <text_field bind:value=a />
+            <text_field bind:value=b />
+            <stack>{move || a.get().parse::<i32>().map(|x| x.to_string())}</stack>
+            <stack>{move || b.get().parse::<i32>().map(|x| x.to_string())}</stack>
+        </vstack>
+    </ErrorBoundary>
+}
+```
+
+Type a non-number into both fields and the fallback shows both
+errors at once.
+
 ## Custom error types
 
 Any error that `Into`s into `leptos::Error` works:

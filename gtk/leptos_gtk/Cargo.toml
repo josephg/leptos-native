@@ -11,14 +11,16 @@ edition.workspace = true
 name = "leptos_gtk"
 
 [features]
-default = []
+default = ["gtk"]
 # Build the GTK backend. Forwards to `gtk_dom/gtk` and pulls in the
-# gtk4 / glib / gio system bindings. Off by default so that
-# `cargo build` on macOS/iOS doesn't try to link gtk4 unless the user
-# opts in. To test the GTK rendering backend on macOS, install gtk4
-# via Homebrew (`brew install gtk4`) and pass `--features gtk` (or
-# build a GTK example which activates the feature transitively via
-# its dep declaration).
+# gtk4 / glib / gio system bindings. Enabled by default: a user
+# adding `leptos = { package = "leptos_gtk" }` to their Cargo.toml
+# gets a working build with no extra feature flag.
+#
+# Disable with `default-features = false` to typecheck the
+# renderer-agnostic core on a machine without gtk4 headers — that
+# mode is for contributors working on `common/renderer` from a
+# non-Linux host, not for end users.
 gtk = ["gtk_dom/gtk", "dep:gtk_dom", "dep:gtk4", "dep:glib", "dep:gio", "dep:any_spawner"]
 # Strokes a 1px outline around every Taffy-tracked node, toggled with
 # the `~` key. Forwards to `gtk_dom/debug-overlay`.

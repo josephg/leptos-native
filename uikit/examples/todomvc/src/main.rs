@@ -184,7 +184,7 @@ mod app {
                 <switch bind:checked=completed />
                 <text_field
                     bind:value=edit_text
-                    on:change=commit
+                    on:commit=commit
                     flex_grow=1.0
                 />
                 <button on:click=move |_| parent_todos.update(|t| t.remove(id))>

@@ -6,6 +6,7 @@ rust-version.workspace = true
 description = "Shared helpers for the Cocoa (macOS) and UIKit (iOS) Leptos ports."
 
 [dependencies]
+dispatch2 = "0.3"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [] }

@@ -77,10 +77,6 @@ of this fork**:
   `AsyncDerived` and `spawn_local`.
 - **No `<Transition>`, `<AnimatedShow>`, or `<Slots>`** yet —
   these are on the punch-list.
-- **`<Show>` has no `fallback` prop** — the upstream version
-  relied on `AnyView` type erasure, which the native renderer
-  doesn't provide. Use `<Switch>` / `<Match>` for branches with
-  fallbacks.
 
 The [Migrating from Web Leptos](./appendix/migration.md) appendix
 covers these in more detail.

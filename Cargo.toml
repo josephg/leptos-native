@@ -19,22 +19,27 @@ members = [
   "uikit/dom",
 
   # cocoa examples
+  "cocoa/examples/async_derived",
+  "cocoa/examples/bind_tuple_form",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
   "cocoa/examples/counter",
   "cocoa/examples/counter_without_macros",
   "cocoa/examples/counters",
+  "cocoa/examples/dark_mode",
   "cocoa/examples/directives",
   "cocoa/examples/error_boundary",
   "cocoa/examples/greeter",
   "cocoa/examples/grid",
   "cocoa/examples/login_form",
   "cocoa/examples/menu_demo",
+  "cocoa/examples/multi_error_boundary",
   "cocoa/examples/pages",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",
   "cocoa/examples/scroll_view",
   "cocoa/examples/settings",
+  "cocoa/examples/show_fallback",
   "cocoa/examples/showcase",
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
@@ -42,21 +47,34 @@ members = [
   "cocoa/examples/toolbar_demo",
   "cocoa/examples/two_windows",
 
-  # iOS examples
-  "uikit/examples/*",
+  # Network-dependent async examples — listed in `members` so they
+  # build with `cargo build --workspace`, but kept OUT of
+  # `default-members` so they're skipped by `cargo build` with no
+  # args. See docs/book/src/async/ for what they demonstrate.
+  "cocoa/examples/async_patterns",
+  "cocoa/examples/ipify",
+  "cocoa/examples/ipify_compio",
+  "cocoa/examples/ipify_current_thread",
+  "cocoa/examples/placecats",
+
+  # iOS examples live in their own workspace at uikit/examples/.
+  # See uikit/examples/Cargo.toml.
 
   # GTK examples — analogous to the cocoa examples list. Each
   # example's `[target.'cfg(target_os = "linux")'.dependencies]`
   # gates the leptos_gtk dep so they compile to empty rlibs on
   # macOS (still needed for `cargo build --workspace` to succeed
   # cross-platform).
+  "gtk/examples/async_patterns",
   "gtk/examples/checkbox",
   "gtk/examples/counter",
   "gtk/examples/counters",
   "gtk/examples/greeter",
   "gtk/examples/grid",
+  "gtk/examples/ipify",
   "gtk/examples/login_form",
   "gtk/examples/menu_demo",
+  "gtk/examples/persistent_settings",
   "gtk/examples/settings",
 ]
 
@@ -74,22 +92,27 @@ default-members = [
   "gtk/dom",
   "gtk/leptos_gtk",
 
+  "cocoa/examples/async_derived",
+  "cocoa/examples/bind_tuple_form",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
   "cocoa/examples/counter",
   "cocoa/examples/counter_without_macros",
   "cocoa/examples/counters",
+  "cocoa/examples/dark_mode",
   "cocoa/examples/directives",
   "cocoa/examples/error_boundary",
   "cocoa/examples/greeter",
   "cocoa/examples/grid",
   "cocoa/examples/login_form",
   "cocoa/examples/menu_demo",
+  "cocoa/examples/multi_error_boundary",
   "cocoa/examples/pages",
   "cocoa/examples/parent_child",
   "cocoa/examples/persistent_counter",
   "cocoa/examples/scroll_view",
   "cocoa/examples/settings",
+  "cocoa/examples/show_fallback",
   "cocoa/examples/showcase",
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
@@ -108,21 +131,10 @@ exclude = [
   "benchmarks",
   "projects",
   "uikit/xcuitests",
-  # iOS examples — kept out of the workspace because Cargo
-  # doesn't support target-conditional members and they only build
-  # for aarch64-apple-ios-sim. Each example writes into the
-  # workspace target/ via a per-example .cargo/config.toml
-  # (target-dir = ../../../target).
-  "uikit/examples/checkbox",
-  "uikit/examples/controls",
-  "uikit/examples/counter",
-  "uikit/examples/counters",
-  "uikit/examples/greeter",
-  "uikit/examples/login_form",
-  "uikit/examples/settings",
-  "uikit/examples/switch_demo",
-  "uikit/examples/timer",
-  "uikit/examples/todomvc",
+  # iOS examples live in their own workspace at uikit/examples/.
+  # See uikit/examples/Cargo.toml. They build only for iOS
+  # targets, which Cargo can't gate via workspace membership.
+  "uikit/examples",
 
   # Cocoa examples that don't build today — they hit features
   # still on the deferred punch list (Slots, Resource, AnyView,

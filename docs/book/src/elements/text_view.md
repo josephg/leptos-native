@@ -17,13 +17,13 @@ view! { <text_view bind:value=body /> }
 
 ## Attributes
 
-| Attribute     | Type           | Cocoa | iOS | Notes                                            |
-|---------------|----------------|:-----:|:---:|--------------------------------------------------|
-| `value`       | `String`       | ✓     | ✓   | Current text. Prefer `bind:value`.               |
-| `enabled`     | `bool`         | ✓     | ✓   | iOS: maps to `editable`, not `enabled`.          |
-| `text_color`  | `Color`        | ✓     | ✓   |                                                  |
-| `font_size`   | `f32`          | ✓     | ✓   |                                                  |
-| `alignment`   | text alignment | ✓     | ✓   |                                                  |
+| Attribute     | Type           | Default       | Cocoa | iOS | Notes                                            |
+|---------------|----------------|---------------|:-----:|:---:|--------------------------------------------------|
+| `value`       | `String`       | `""`          | ✓     | ✓   | Current text. Prefer `bind:value`.               |
+| `enabled`     | `bool`         | `true`        | ✓     | ✓   | iOS: maps to `editable`, not `enabled`.          |
+| `text_color`  | `Color`        | system label  | ✓     | ✓   |                                                  |
+| `font_size`   | `f32`          | system size   | ✓     | ✓   |                                                  |
+| `alignment`   | text alignment | natural       | ✓     | ✓   |                                                  |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 
@@ -41,8 +41,8 @@ inside an `Effect` for "did something change" behavior.
 |--------------|--------------------|:-----:|:---:|
 | `bind:value` | `RwSignal<String>` | ✓     | ✓   |
 
-Wired via a `UITextViewDelegate` / `NSTextDelegate` that pushes
-edits into the signal as the user types.
+Wired via a `UITextViewDelegate` / `NSTextViewDelegate` that
+pushes edits into the signal as the user types.
 
 ## Sizing
 

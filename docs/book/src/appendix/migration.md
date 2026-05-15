@@ -67,9 +67,6 @@ checking of every renderable value but also what makes
 
 These would fit the architecture but haven't been built:
 
-- **`<Show fallback=...>`** — the upstream variant relied on
-  `AnyView`. Use `<Switch>` / `<Match>` with two arms for the
-  same effect.
 - **`<Transition>`, `<AnimatedShow>`** — would need platform
   animation integration (CoreAnimation on macOS / iOS, GTK
   transitions).

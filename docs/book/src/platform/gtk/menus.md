@@ -8,6 +8,14 @@ the widget tree. They're a `gio::Menu` data model, and the
 a classic title-bar menu on Cinnamon/XFCE, or a global menu via
 extensions on macOS-style overlays.
 
+When you build `<menu_item>`s outside the `view!{}` macro (e.g.
+from a `Vec` in a loop), import the event marker explicitly so
+`on(event::action, …)` resolves:
+
+```rust
+use leptos::tachys::html::event;
+```
+
 ```rust
 use leptos::prelude::*;
 

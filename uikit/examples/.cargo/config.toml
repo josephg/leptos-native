@@ -1,0 +1,10 @@
+# Share the parent workspace's target/ so artifacts don't get
+# duplicated. `uikit/tools/run_ios.sh` looks here for built
+# binaries. Override locally with `CARGO_TARGET_DIR` if needed.
+[build]
+target-dir = "../../target"
+
+# Default to the iOS simulator target when invoked inside this
+# workspace without an explicit --target. iOS examples don't
+# build for any other target, so this saves a flag.
+target = "aarch64-apple-ios-sim"

@@ -87,4 +87,8 @@ GTK is via CSS, not inline attributes.
 
 - `gtk/examples/settings/src/main.rs` — a settings panel demo
   that uses `bind:value` on the slider, checkbox, and popup.
-  Persistence to GSettings is left as an exercise.
+- `gtk/examples/persistent_settings/src/main.rs` — same UI with
+  the state round-tripped through a JSON file in
+  `~/.config/leptos_persistent_settings/state.json`. Showcases
+  the signal-to-disk pattern; swap the JSON for `gio::Settings`
+  if you have a registered schema.

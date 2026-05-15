@@ -98,13 +98,15 @@ mod app {
                     <Section title="Color well — bind:value">
                         <color_well bind:value=color />
                         <label>{move || {
-                            let c = color.get();
-                            format!(
-                                "rgb({:.0}, {:.0}, {:.0})",
-                                c.r * 255.0,
-                                c.g * 255.0,
-                                c.b * 255.0,
-                            )
+                            match color.get() {
+                                Color::Rgba { r, g, b, .. } => format!(
+                                    "rgb({:.0}, {:.0}, {:.0})",
+                                    r * 255.0,
+                                    g * 255.0,
+                                    b * 255.0,
+                                ),
+                                Color::System(_) => "(system color)".to_string(),
+                            }
                         }}</label>
                     </Section>
 

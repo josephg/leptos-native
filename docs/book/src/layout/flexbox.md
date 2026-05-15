@@ -6,15 +6,10 @@ mental model is CSS Flexbox / Grid, ported to native widgets.
 
 The flex containers are:
 
-- **`<vstack>`** — vertical stack. Equivalent to `<view
-  direction=FlexDirection::Column>`.
-- **`<hstack>`** — horizontal stack.
-  `<view direction=FlexDirection::Row>`.
+- **`<vstack>`** — vertical stack. Direction preset to Column.
+- **`<hstack>`** — horizontal stack. Direction preset to Row.
 - **`<stack>`** — generic flex container with no direction
-  preset.
-- **`<view>`** — alias for `<stack>` on Cocoa, defaults to
-  vertical on GTK. Use `<vstack>` / `<hstack>` if you want
-  unambiguous direction across ports.
+  preset. Set `direction=` explicitly.
 
 ```rust
 view! {

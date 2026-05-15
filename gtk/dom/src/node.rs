@@ -628,6 +628,22 @@ impl Element {
         crate::event::on_action(self.widget(), cb);
     }
 
+    /// Unit-payload "value changed" hook. For text entries this
+    /// fans into on_text_change (discarding the String). For
+    /// other controls (slider, dropdown, etc.) it delegates to
+    /// on_action.
+    pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
+        if let Some(_entry) = self.widget().downcast_ref::<gtk4::Entry>() {
+            crate::event::on_text_change(self.widget(), move |_| cb());
+            return;
+        }
+        if let Some(_entry) = self.widget().downcast_ref::<gtk4::PasswordEntry>() {
+            crate::event::on_text_change(self.widget(), move |_| cb());
+            return;
+        }
+        crate::event::on_action(self.widget(), cb);
+    }
+
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
         crate::event::on_text_change(self.widget(), cb);
     }

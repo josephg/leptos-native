@@ -26,16 +26,21 @@
 #![cfg(feature = "gtk")]
 
 pub mod app;
+pub mod color;
 #[cfg(feature = "debug-overlay")]
 pub mod debug_overlay;
 pub mod event;
 pub mod layout;
+pub mod main_thread;
 pub mod menu;
 pub mod node;
 pub mod renderer;
 pub mod spawner;
 pub mod taffy_layout;
 pub mod window;
+
+pub use color::Color;
+pub use main_thread::on_main;
 
 pub use node::{
     BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,

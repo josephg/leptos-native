@@ -25,29 +25,32 @@ choice sets, or build a custom modal sheet.
 
 ## Attributes
 
-| Attribute    | Type           | Cocoa | GTK | Notes                                                |
-|--------------|----------------|:-----:|:---:|------------------------------------------------------|
-| `items`      | `Vec<String>`  | ✓     | ✓   | Choice titles. Static (set once at build).           |
-| `selection`  | `usize`        | ✓     | ✓   | Selected index. Prefer `bind:value`.                 |
-| `enabled`    | `bool`         | ✓     | ✓   |                                                      |
-| `pulls_down` | `bool`         | ✓     |     | Cocoa: pull-down menu style instead of pop-up.       |
+| Attribute    | Type           | Default | Cocoa | GTK | Notes                                                |
+|--------------|----------------|---------|:-----:|:---:|------------------------------------------------------|
+| `items`      | `Vec<String>`  | `[]`    | ✓     | ✓   | Choice titles. Static (set once at build).           |
+| `selection`  | `usize`        | `0`     | ✓     | ✓   | Selected index. Prefer `bind:value`.                 |
+| `enabled`    | `bool`         | `true`  | ✓     | ✓   |                                                      |
+| `pulls_down` | `bool`         | `false` | ✓     |     | Cocoa: pull-down menu style instead of pop-up.       |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event      | Cocoa | GTK | Payload |
-|------------|:-----:|:---:|---------|
-| `on:click` | ✓     | ✓   | `()`    |
+| Event       | Cocoa | GTK | Payload |
+|-------------|:-----:|:---:|---------|
+| `on:change` | ✓     | ✓   | `()`    |
 
-Fires when the selection changes.
+Fires when the selection changes. Read the bound signal for the
+new index.
 
 ## Bindings
 
-| Bind         | Signal type        | Cocoa | GTK |
-|--------------|--------------------|:-----:|:---:|
-| `bind:value` | `RwSignal<usize>`  | ✓     | ✓   |
+| Bind             | Signal type        | Cocoa | GTK |
+|------------------|--------------------|:-----:|:---:|
+| `bind:value`     | `RwSignal<usize>`  | ✓     | ✓   |
+
+The bound value is the **selected index**, not the string.
 
 The bound value is the **selected index**, not the string. Map
 to your domain type with a `Memo`:

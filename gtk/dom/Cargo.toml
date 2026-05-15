@@ -97,3 +97,8 @@ harness = false
 name = "thread_safety"
 path = "tests/thread_safety.rs"
 harness = false
+
+[[test]]
+name = "async_bridge"
+path = "tests/async_bridge.rs"
+harness = false

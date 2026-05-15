@@ -333,13 +333,16 @@ fn color_well_value_round_trips() {
     let red = cocoa_dom::Color::rgb(1.0, 0.0, 0.0);
     el.set_color_well_value(red);
     let got = el.color_well_value();
+    let cocoa_dom::Color::Rgba { r, g, b, a } = got else {
+        panic!("expected Color::Rgba from NSColor round-trip, got {got:?}");
+    };
     // Components might shift slightly through colorspace conversion;
     // assert each within tight tolerance.
     let tol = 1e-3;
-    assert!((got.r - 1.0).abs() < tol);
-    assert!(got.g.abs() < tol);
-    assert!(got.b.abs() < tol);
-    assert!((got.a - 1.0).abs() < tol);
+    assert!((r - 1.0).abs() < tol);
+    assert!(g.abs() < tol);
+    assert!(b.abs() < tol);
+    assert!((a - 1.0).abs() < tol);
 }
 
 fn segmented_control_is_nssegmentedcontrol() {
@@ -477,10 +480,13 @@ fn text_color_on_text_field() {
     let f = any.downcast_ref::<NSTextField>().unwrap();
     let got = f.textColor().expect("textColor should be set");
     let c = cocoa_dom::Color::from_nscolor(&got).unwrap();
+    let cocoa_dom::Color::Rgba { r, g, b, .. } = c else {
+        panic!("expected Color::Rgba from NSColor round-trip, got {c:?}");
+    };
     let tol = 1e-3;
-    assert!((c.r - 1.0).abs() < tol);
-    assert!(c.g.abs() < tol);
-    assert!(c.b.abs() < tol);
+    assert!((r - 1.0).abs() < tol);
+    assert!(g.abs() < tol);
+    assert!(b.abs() < tol);
 }
 
 fn text_color_on_label() {

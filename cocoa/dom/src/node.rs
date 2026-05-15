@@ -957,6 +957,23 @@ impl Element {
         }
     }
 
+    /// Wire a unit-payload callback that fires whenever a control's
+    /// value changes — every keystroke for text fields (delegate
+    /// based; supports multiple handlers); every drag tick for
+    /// sliders / steppers / etc. (NSControl target/action; single
+    /// handler). No-op for elements that aren't value-bearing.
+    pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
+        // Text fields go through the delegate fan-out so we can
+        // stack multiple handlers (matches on_text_change's pattern).
+        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
+            crate::event::on_text_field_change(field, move |_| cb());
+            return;
+        }
+        if let Some(c) = downcast::<NSControl>(self.ns_view()) {
+            crate::event::on_control_action(c, cb);
+        }
+    }
+
     /// Wire a callback that fires whenever the text content of a
     /// text-field changes (every keystroke / paste / etc.). No-op
     /// if this element isn't an NSTextField. Multiple handlers are
@@ -1816,6 +1833,33 @@ impl Element {
         let path_str = NSString::from_str(path);
         let image =
             NSImage::initWithContentsOfFile(NSImage::alloc(), &path_str);
+        iv.setImage(image.as_deref());
+        crate::layout::schedule_relayout(&self.node);
+    }
+
+    /// Load an image into an `<image_view>` from in-memory bytes.
+    /// `None` or an empty slice clears the image; data that AppKit
+    /// can't decode also clears it (matching `set_image_view_path`'s
+    /// no-panic semantics). NSImage's `initWithData:` auto-detects
+    /// PNG, JPEG, GIF, TIFF, HEIC, PDF.
+    ///
+    /// Typical use: HTTP fetch the bytes on a background thread,
+    /// hand them to a signal via the async-bridge pattern, then this
+    /// reactive setter fires on the main thread.
+    pub fn set_image_view_bytes(&self, bytes: Option<&[u8]>) {
+        use objc2_app_kit::{NSImage, NSImageView};
+        use objc2_foundation::NSData;
+        let Some(iv) = downcast::<NSImageView>(self.ns_view()) else {
+            return;
+        };
+        let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
+            iv.setImage(None);
+            crate::layout::schedule_relayout(&self.node);
+            return;
+        };
+        use objc2::AllocAnyThread;
+        let data = NSData::with_bytes(bytes);
+        let image = NSImage::initWithData(NSImage::alloc(), &data);
         iv.setImage(image.as_deref());
         crate::layout::schedule_relayout(&self.node);
     }

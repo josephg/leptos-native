@@ -687,6 +687,20 @@ impl Element {
         }
     }
 
+    /// Unit-payload "value changed" hook. Text fields fan to
+    /// editingChanged (every keystroke). UISwitch / UISlider /
+    /// UIStepper / UISegmentedControl / UIDatePicker fan to
+    /// ValueChanged. Other views are no-op.
+    pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
+        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
+            crate::event::on_text_field_change(field, move |_| cb());
+            return;
+        }
+        if let Some(c) = downcast::<UIControl>(self.ui_view()) {
+            crate::event::on_control_action(c, cb);
+        }
+    }
+
     /// Wire a callback that fires on every text change (keystroke /
     /// paste / clear). Uses `editingChanged` UIControl event on
     /// UITextField. No-op on non-UITextField.
@@ -1193,6 +1207,76 @@ impl Element {
             UIImage::imageWithContentsOfFile(&path_str);
         iv.setImage(image.as_deref());
         crate::layout::schedule_relayout(&self.node);
+    }
+
+    /// Load an image into an `<image_view>` from in-memory bytes.
+    /// `None` or an empty slice clears the image; data UIKit can't
+    /// decode also clears it. `UIImage::imageWithData:` auto-detects
+    /// PNG, JPEG, GIF, TIFF, HEIC.
+    ///
+    /// Typical use: HTTP-fetch on a background async runtime, hand
+    /// the bytes back to main thread via a channel, then this
+    /// reactive setter fires on main.
+    pub fn set_image_view_bytes(&self, bytes: Option<&[u8]>) {
+        use objc2_ui_kit::{UIImage, UIImageView};
+        use objc2_foundation::NSData;
+        let Some(iv) = downcast::<UIImageView>(self.ui_view()) else {
+            return;
+        };
+        let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
+            iv.setImage(None);
+            crate::layout::schedule_relayout(&self.node);
+            return;
+        };
+        let data = NSData::with_bytes(bytes);
+        let image = UIImage::imageWithData(&data);
+        iv.setImage(image.as_deref());
+        crate::layout::schedule_relayout(&self.node);
+    }
+
+    /// Resolve an SF Symbol name to a `UIImage`. Returns `None`
+    /// for empty names or unknown symbols.
+    fn sf_symbol_image(name: &str) -> Option<objc2::rc::Retained<objc2_ui_kit::UIImage>> {
+        use objc2_ui_kit::UIImage;
+        if name.is_empty() {
+            return None;
+        }
+        let ns_name = NSString::from_str(name);
+        UIImage::systemImageNamed(&ns_name)
+    }
+
+    /// Set an SF Symbol as the image on a `<button>` (UIButton)
+    /// or `<image_view>` (UIImageView). Empty name clears.
+    /// iOS 13+; no-op on older systems.
+    pub fn set_sf_symbol(&self, name: &str) {
+        let view = self.ui_view();
+        let image = Self::sf_symbol_image(name);
+        if let Some(button) = downcast::<UIButton>(view) {
+            button.setImage_forState(
+                image.as_deref(),
+                objc2_ui_kit::UIControlState::Normal,
+            );
+            crate::layout::schedule_relayout(&self.node);
+            return;
+        }
+        if let Some(iv) = downcast::<objc2_ui_kit::UIImageView>(view) {
+            iv.setImage(image.as_deref());
+            crate::layout::schedule_relayout(&self.node);
+        }
+    }
+
+    /// Set the `tintColor` on the view. Applies to UIImageView,
+    /// UIButton, and any UIView in general — UIKit propagates
+    /// tint through SF Symbols (template images) automatically.
+    pub fn set_tint(&self, color: Option<crate::Color>) {
+        let view = self.ui_view();
+        unsafe {
+            if let Some(c) = color {
+                view.setTintColor(Some(&c.to_uicolor()));
+            } else {
+                view.setTintColor(None);
+            }
+        }
     }
 
     // -----------------------------------------------------------------

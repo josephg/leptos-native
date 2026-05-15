@@ -70,12 +70,32 @@ pub fn quit() {
 // AppDelegate — quit on last-window-close
 // ---------------------------------------------------------------------
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether the app should quit when the last window closes.
+/// Defaults to `true`; menu-bar–style apps can disable via
+/// [`set_quit_on_last_window_close`].
+static QUIT_ON_LAST_WINDOW: AtomicBool = AtomicBool::new(true);
+
+/// Configure whether the application terminates when its last
+/// visible window closes. Default is `true` — matches the
+/// behaviour of most document-based AppKit apps.
+///
+/// Set to `false` for menu-bar / status-item apps that should
+/// keep running with no windows visible. The change applies on
+/// the next call to `applicationShouldTerminateAfterLastWindowClosed:`,
+/// so calling this *before* the app's first window opens (or
+/// before `mount_to_window`) is the safe pattern.
+pub fn set_quit_on_last_window_close(quit: bool) {
+    QUIT_ON_LAST_WINDOW.store(quit, Ordering::SeqCst);
+}
+
 define_class!(
     /// Tiny NSApplicationDelegate that quits the app when the user
-    /// closes the last open window. Mirrors the default behaviour of
-    /// document-based AppKit apps. No other delegate methods are
-    /// implemented yet — extend here when we need lifecycle hooks
-    /// (open file, sleep/wake, etc.).
+    /// closes the last open window (configurable via
+    /// [`set_quit_on_last_window_close`]). No other delegate
+    /// methods are implemented yet — extend here when we need
+    /// lifecycle hooks (open file, sleep/wake, etc.).
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[ivars = ()]
@@ -89,7 +109,7 @@ define_class!(
             &self,
             _sender: &NSApplication,
         ) -> bool {
-            true
+            QUIT_ON_LAST_WINDOW.load(Ordering::SeqCst)
         }
     }
 );

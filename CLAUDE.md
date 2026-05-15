@@ -22,8 +22,10 @@ removed; `tachys` was unbundled into a renderer-agnostic core
 `gtk/leptos_gtk`, `uikit/leptos_uikit`). There is no `native-ui`
 feature flag or `cfg(leptos_native)` toggle — every binary picks a
 port crate directly via its `Cargo.toml`. Build commands operate on
-the host OS's port (cocoa on macOS, gtk on Linux); iOS examples are
-out-of-workspace and built with `--target aarch64-apple-ios-sim`.
+the host OS's port (cocoa on macOS, gtk on Linux); iOS examples
+live in an inner workspace at `uikit/examples/` that defaults to
+the `aarch64-apple-ios-sim` target and shares the parent
+`target/` directory.
 
 Read these before diving in:
 - `implementation_log.md` — chronological design-decision journal for
@@ -145,19 +147,25 @@ cargo run -p grid_gtk
 # ...etc. See gtk/examples/.
 
 cargo check -p gtk_dom
-cargo check -p leptos_gtk --features gtk
+cargo check -p leptos_gtk
+# Contributor mode (typecheck without linking gtk4):
+cargo check -p leptos_gtk --no-default-features
 ```
 
 GTK examples are workspace members (so `cargo build --workspace`
-discovers them) but excluded from `default-members` because their
-`Cargo.toml` activates the `leptos_gtk/gtk` feature and therefore
-links against gtk4 at build time.
+discovers them) but excluded from `default-members` because
+their `leptos_gtk` dependency uses the default features (which
+include `gtk`) and therefore links against gtk4 at build time.
 
 ### iOS / UIKit
 
-iOS examples each ship a `run_ios.sh` script that builds for the
-simulator, hand-rolls a `.app` bundle, terminates any prior instance,
-then `xcrun simctl install`s + launches. No Xcode project required.
+iOS examples live in their own Cargo workspace at
+`uikit/examples/`, which sets `aarch64-apple-ios-sim` as the
+default target and shares `target/` with the parent workspace.
+Each example ships a `run_ios.sh` shim that calls the shared
+`uikit/tools/run_ios.sh` — which builds the example, hand-rolls
+a `.app` bundle, terminates any prior instance, then
+`xcrun simctl install`s + launches it. No Xcode project required.
 
 ```sh
 # Interactive: launches the app, leaves it running for the user to
@@ -165,7 +173,6 @@ then `xcrun simctl install`s + launches. No Xcode project required.
 # `xcrun simctl launch --console`; you have to Cmd-Q the simulator
 # app or kill the process to get your terminal back.
 cd uikit/examples/counter && ./run_ios.sh
-cd uikit/examples/grid && ./run_ios.sh
 
 # Non-interactive (USE THIS FROM AGENTS / CI / ANY AUTOMATED FLOW):
 # `-t SECONDS` auto-terminates the app after the given timeout.
@@ -175,17 +182,17 @@ cd uikit/examples/grid && ./run_ios.sh
 # and didn't immediately crash.
 cd uikit/examples/counter && ./run_ios.sh -t 3
 
-# Just typecheck the iOS-target build:
+# Or call the shared script directly from anywhere:
+uikit/tools/run_ios.sh uikit/examples/counter -t 3
+
+# Just typecheck the iOS-target build (uikit/leptos_uikit and
+# uikit/dom are top-level workspace members):
 cargo check -p ios_dom --target aarch64-apple-ios-sim
 cargo check -p leptos_uikit --target aarch64-apple-ios-sim
 
-# Direct iOS-example builds outside run_ios.sh — set CARGO_TARGET_DIR
-# so the build lands in the shared workspace target/ rather than a
-# per-example target/ (iOS examples aren't workspace members because
-# Cargo doesn't support target-conditional members):
-CARGO_TARGET_DIR=$(pwd)/target cargo build \
-  --manifest-path uikit/examples/counter/Cargo.toml \
-  --target aarch64-apple-ios-sim
+# Build the iOS examples (from inside the inner workspace, the
+# iOS target and shared target/ are configured by default):
+cd uikit/examples && cargo build --workspace
 ```
 
 Prereqs: Xcode + the iOS Rust targets (`rustup target add
@@ -479,30 +486,69 @@ broken, prefer failure modes in this order:
 
 1. **Compile error** — make the construct ill-typed, so the broken
    code doesn't build.
-2. **Runtime panic** — fail loudly at the earliest possible moment
-   (typically at view-build / mount time, before the run loop
-   starts). Include a clear message with the *kind* of view that
-   hit the limitation, why it doesn't work, and a workaround.
-3. **Warning** — `#[deprecated]`, `eprintln!`, log, or similar; only
-   when 1 and 2 are impractical.
+2. **Panic at mount / launch time** — for definitively-broken state
+   that's detectable as soon as the view tree is built. Fail before
+   the run loop starts. Include a clear message with the *kind* of
+   view that hit the limitation, why it doesn't work, and a
+   workaround.
+3. **Warning** (`eprintln!`, `tracing::warn!`, `#[deprecated]`) +
+   **graceful degrade** — for subtle, runtime-dependent cases where
+   the UI will still mostly work even if the misconfiguration isn't
+   addressed (e.g. a scroll view whose parent doesn't supply a
+   bounded main-axis size — the user just won't be able to scroll).
 4. **Silent no-op** — only as an absolute last resort, and only
    when the silence itself is the contract (e.g. event delegate
    receives a notification it doesn't care about).
 
+**When to panic vs warn.** Panic when the broken state is:
+- Detectable at mount/launch time (predictable, deterministic).
+- A bug the developer will hit during their first run of the app.
+- Without panicking, the symptom would be silent and confusing
+  (the dropped `on:click` handler scenario).
+
+Warn-and-degrade when the broken state is:
+- Subtle / context-dependent (a layout that *might* work in some
+  window sizes and not others).
+- Runtime-triggered by user-action paths the developer may not
+  have tested — panicking here would crash user apps in
+  production for non-showstopper issues.
+- Recoverable (the UI does *something* reasonable, even if not
+  the intended thing).
+
 The temptation to "make it compile by stubbing" is the bug-hiding
 pattern this hierarchy exists to prevent. A silently-dropped
 `on:click` handler is a UI bug that surfaces as "the button does
-nothing" hours later in the user's session — a far worse failure
-mode than an immediate panic at the call site.
+nothing" hours later — far worse than an immediate panic at the
+call site.
 
-Concrete example: when `AddAnyAttr<R>` was added (Phase 9), the
-trait required impls on every type that implements `IntoView<R>`,
-including branching wrappers (`Option<T>`, `Either`, `Vec<T>`,
-reactive closures, ErrorBoundary, etc.). It was tempting to make
-those impls return `self` unchanged. We instead made them
-`panic!()` with diagnostic messages naming the offending type
-(`Option<T>`, `Vec<T>` etc.) and pointing at the workaround. See
-`common/renderer/src/view/add_any_attr.rs`.
+But the inverse is also a trap: panicking on every
+runtime-discovered inconsistency turns subtle layout issues into
+hard crashes in user apps. Reserve panics for "the developer
+made this broken; they'll see the panic the first time they run
+the app." For "this might not behave perfectly under all
+inputs," prefer warn + degrade.
+
+Concrete examples:
+
+- **Compile error**: `<button on:foo=...>` for an unknown event.
+  The macro-generated `SupportsEvent<FooEvent>` bound isn't
+  satisfied; the user sees a type error.
+- **Mount-time panic**: two `on:click` handlers on the same
+  NSControl (NSControl has one target/action slot; doubling up
+  silently would lose a handler). The Cocoa Button builder
+  asserts at install time. Detectable at view-build, fixable by
+  combining the closures.
+- **Warn + degrade**: a `<scroll_view>` whose parent doesn't
+  bound its main-axis size. The scroll view still renders; it
+  just sizes to its content (no scrolling). The framework
+  `eprintln!`s an explanation the first time it happens for a
+  given element.
+- **Compile error via `AddAnyAttr<R>`**: branching wrappers
+  (`Option<T>`, `Either`, `Vec<T>`, `ErrorBoundary`) `panic!()`
+  with diagnostics if spread-attrs are installed on them. See
+  `common/renderer/src/view/add_any_attr.rs`. This is a panic
+  because the broken state is determined at view-tree
+  construction time, not at runtime.
 
 ### Shared (all ports)
 

@@ -1073,7 +1073,7 @@ fn attribute_value(
 }
 
 // Keep list alphabetized for binary search
-const TYPED_EVENTS: [&str; 128] = [
+const TYPED_EVENTS: [&str; 129] = [
     "DOMContentLoaded",
     "abort",
     // Native-only: fired by `<menu_item>` when activated via mouse,
@@ -1095,6 +1095,7 @@ const TYPED_EVENTS: [&str; 128] = [
     "change",
     "click",
     "close",
+    "commit",
     "compositionend",
     "compositionstart",
     "compositionupdate",

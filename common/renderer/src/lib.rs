@@ -58,12 +58,17 @@ pub mod setters;
 /// strings on GTK).
 pub mod menu;
 
+/// Shared `WindowSize` / `WindowPosition` newtypes with
+/// `From<(i32, i32)>` and `From<(f64, f64)>` impls.
+pub mod window;
+
 // Mirror the old `native_layout` crate root: re-export every layout
 // + setters item at the renderer root so consumer paths
 // (`use renderer::{Style, set_padding, LayoutNodeOps}`) match the
 // shape the per-port code already uses.
 pub use layout::*;
 pub use setters::*;
+pub use window::{WindowPosition, WindowSize};
 
 pub use either_of as either;
 

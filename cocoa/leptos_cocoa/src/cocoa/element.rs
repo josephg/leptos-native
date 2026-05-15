@@ -1078,6 +1078,15 @@ pub struct Checkbox {
     text: CocoaText,
 }
 
+/// Portable name for the boolean toggle. On Cocoa this is the
+/// same widget as `<checkbox>` (NSButton in switch style); on
+/// iOS it maps to UISwitch. Use `<toggle>` in code that should
+/// compile against any port; use `<checkbox>` / `<switch>` to
+/// be explicit about the native widget.
+pub fn toggle() -> Checkbox {
+    checkbox()
+}
+
 pub fn checkbox() -> Checkbox {
     Checkbox {
         title: MaybeReactive::Static(String::new()),
@@ -1390,6 +1399,10 @@ impl Slider {
     }
 }
 
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
+    for Slider
+{
+}
 
 impl Render<Dom> for Slider
 where
@@ -1608,6 +1621,10 @@ impl PopUpButton {
     }
 }
 
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
+    for PopUpButton
+{
+}
 
 impl Render<Dom> for PopUpButton
 where
@@ -1693,8 +1710,12 @@ where
 // can flow attached events / attributes through the standard
 // AddAnyAttr pipeline.
 
+type LabelTryTextFn =
+    Box<dyn FnMut() -> Result<String, throw_error::Error> + Send + 'static>;
+
 pub struct Label {
     value: MaybeReactive<String>,
+    try_text: Option<LabelTryTextFn>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
     directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
@@ -1710,6 +1731,7 @@ pub struct Label {
 pub fn label() -> Label {
     Label {
         value: MaybeReactive::Static(String::new()),
+        try_text: None,
         handlers: Vec::new(),
         node_ref: None,
         directives: Vec::new(),
@@ -1740,6 +1762,24 @@ impl Label {
         V: IntoMaybeReactive<String>,
     {
         self.text(value)
+    }
+
+    /// Set the label's text from a fallible closure. On `Ok(s)`
+    /// the label renders `s`. On `Err(e)` the label renders
+    /// nothing and registers the error with the nearest
+    /// `<ErrorBoundary>` (so its `fallback` takes over).
+    ///
+    /// This is the ergonomic shortcut for what you'd otherwise
+    /// write as `<stack>{closure_returning_result}</stack>`.
+    /// Calling `.try_text()` after (or before) `.text()` replaces
+    /// the previously-set fallible source.
+    pub fn try_text<F, E>(mut self, mut f: F) -> Self
+    where
+        F: FnMut() -> Result<String, E> + Send + 'static,
+        E: Into<throw_error::Error> + 'static,
+    {
+        self.try_text = Some(Box::new(move || f().map_err(Into::into)));
+        self
     }
 
     pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
@@ -1865,6 +1905,45 @@ where
             el_for_text.set_string_attribute(StringAttr::Value, &s);
         }) {
             effects.push(eff);
+        }
+
+        if let Some(mut tt) = self.try_text {
+            use std::cell::RefCell;
+            use std::rc::Rc;
+            let el_for_try = el.clone();
+            // Persists across reactive runs; cleared on drop so we
+            // don't leave a stale error in the boundary after the
+            // label is unmounted.
+            let active_error: Rc<
+                RefCell<Option<crate::cocoa::error_guard::ErrorGuard>>,
+            > = Rc::new(RefCell::new(None));
+            let active = active_error.clone();
+            let eff = reactive_graph::effect::RenderEffect::new(
+                move |_prev: Option<()>| {
+                    // Clear any prior error registered on a previous
+                    // run before throwing the new one.
+                    active.borrow_mut().take();
+                    match tt() {
+                        Ok(s) => {
+                            el_for_try
+                                .set_string_attribute(StringAttr::Value, &s);
+                        }
+                        Err(e) => {
+                            el_for_try
+                                .set_string_attribute(StringAttr::Value, "");
+                            *active.borrow_mut() = Some(
+                                crate::cocoa::error_guard::ErrorGuard(
+                                    throw_error::throw(e),
+                                ),
+                            );
+                        }
+                    }
+                },
+            );
+            effects.push(eff);
+            // `active_error` is held by the closure inside `eff`;
+            // when `eff` (and via it the closure) drops, the
+            // ErrorGuard inside drops and clears any active error.
         }
 
         for h in self.handlers {
@@ -2070,6 +2149,10 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::InputEvent>
 {
 }
 impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
+    for TextField
+{
+}
+impl crate::event_macos::SupportsEvent<crate::event_macos::CommitEvent>
     for TextField
 {
 }
@@ -2306,7 +2389,7 @@ impl DatePicker {
 // NSDatePicker fires target/action when the user changes the date.
 // As with ColorWell, we use the existing Click marker — semantically
 // "change" but that's what the macro emits and the wiring works.
-impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for DatePicker
 {
 }
@@ -2543,7 +2626,7 @@ impl Stepper {
     }
 }
 
-impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for Stepper
 {
 }
@@ -2892,7 +2975,7 @@ impl ColorWell {
 // semantically it's a "value committed" event, more like
 // `on:change` would be on the web. Document this divergence
 // rather than introduce a separate Color-payload event for now.
-impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for ColorWell
 {
 }
@@ -3070,7 +3153,7 @@ impl SegmentedControl {
 
 // Click semantics for segmented_control match popup: a "click"
 // is a selection change.
-impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
+impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for SegmentedControl
 {
 }
@@ -3329,6 +3412,7 @@ where
 
 pub struct ImageView {
     source: Option<MaybeReactive<String>>,
+    bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<Color>>,
     node_ref: Option<crate::cocoa::NodeRef>,
@@ -3341,6 +3425,7 @@ pub struct ImageView {
 pub fn image_view() -> ImageView {
     ImageView {
         source: None,
+        bytes: None,
         sf_symbol: None,
         tint: None,
         node_ref: None,
@@ -3365,6 +3450,27 @@ impl ImageView {
         V: IntoMaybeReactive<String>,
     {
         self.source = Some(v.into_maybe_reactive());
+        self
+    }
+
+    /// In-memory image bytes (PNG/JPEG/GIF/TIFF/HEIC/PDF, auto-
+    /// detected by NSImage). `None` clears the image. Reactive —
+    /// pass a closure to swap the bytes on signal change.
+    ///
+    /// Use this when the image data isn't on disk: HTTP fetches,
+    /// generated images, etc. Run the fetch on a background async
+    /// runtime, hand the bytes back via the reactive bridge
+    /// described in the async docs, then this setter applies them
+    /// on the main thread.
+    ///
+    /// Mutually exclusive with [`Self::source`] / [`Self::sf_symbol`];
+    /// last write wins (`bytes` is applied after `source` but
+    /// before `sf_symbol`).
+    pub fn bytes<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<Option<Vec<u8>>>,
+    {
+        self.bytes = Some(v.into_maybe_reactive());
         self
     }
 
@@ -3440,6 +3546,14 @@ where
             if let Some(eff) =
                 install(src, move |s| el_for.set_image_view_path(&s))
             {
+                effects.push(eff);
+            }
+        }
+        if let Some(b) = self.bytes {
+            let el_for = el.clone();
+            if let Some(eff) = install(b, move |bytes| {
+                el_for.set_image_view_bytes(bytes.as_deref())
+            }) {
                 effects.push(eff);
             }
         }

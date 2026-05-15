@@ -29,20 +29,20 @@ is identical across platforms.
 
 ## Container attributes
 
-| Attribute        | Type                              | Notes                                              |
-|------------------|-----------------------------------|----------------------------------------------------|
-| `columns`        | `Vec<GridTemplateComponent>`      | Explicit column tracks (`fr`, `length`, `auto`, `minmax`, etc.). |
-| `rows`           | `Vec<GridTemplateComponent>`      | Explicit row tracks.                               |
-| `auto_columns`   | `Vec<TrackSizingFunction>`        | Sizing for implicit (auto-created) columns.        |
-| `auto_rows`      | `Vec<TrackSizingFunction>`        | Sizing for implicit rows.                          |
-| `auto_flow`      | `GridAutoFlow`                    | `Row` (default), `Column`, `RowDense`, `ColumnDense`. |
-| `gap`            | `f32`                             | Spacing between cells in both axes.                |
-| `column_gap`     | `f32`                             | Overrides `gap` for columns.                       |
-| `row_gap`        | `f32`                             | Overrides `gap` for rows.                          |
-| `justify_items`  | `JustifyItems`                    | Per-cell main-axis alignment default.              |
-| `align`          | `AlignItems`                      | Per-cell cross-axis alignment default.             |
-| `justify_content`| `JustifyContent`                  | Alignment of the entire track grid.                |
-| `align_content`  | `AlignContent`                    | Cross-axis variant.                                |
+| Attribute        | Type                              | Default          | Notes                                              |
+|------------------|-----------------------------------|------------------|----------------------------------------------------|
+| `columns`        | `Vec<GridTemplateComponent>`      | `[]`             | Explicit column tracks (`fr`, `length`, `auto`, `minmax`, etc.). |
+| `rows`           | `Vec<GridTemplateComponent>`      | `[]`             | Explicit row tracks.                               |
+| `auto_columns`   | `Vec<TrackSizingFunction>`        | `[auto()]`       | Sizing for implicit (auto-created) columns.        |
+| `auto_rows`      | `Vec<TrackSizingFunction>`        | `[auto()]`       | Sizing for implicit rows.                          |
+| `auto_flow`      | `GridAutoFlow`                    | `Row`            | `Row`, `Column`, `RowDense`, `ColumnDense`.        |
+| `gap`            | `f32`                             | `0.0`            | Spacing between cells in both axes.                |
+| `column_gap`     | `f32`                             | `0.0`            | Overrides `gap` for columns.                       |
+| `row_gap`        | `f32`                             | `0.0`            | Overrides `gap` for rows.                          |
+| `justify_items`  | `JustifyItems`                    | `Stretch`        | Per-cell main-axis alignment default.              |
+| `align`          | `AlignItems`                      | `Stretch`        | Per-cell cross-axis alignment default.             |
+| `justify_content`| `JustifyContent`                  | `Start`          | Alignment of the entire track grid.                |
+| `align_content`  | `AlignContent`                    | `Start`          | Cross-axis variant.                                |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 

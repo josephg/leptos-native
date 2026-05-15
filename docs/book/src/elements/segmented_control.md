@@ -22,23 +22,24 @@ view! {
 
 ## Attributes
 
-| Attribute        | Type             | Cocoa | iOS | Notes                                       |
-|------------------|------------------|:-----:|:---:|---------------------------------------------|
-| `items`          | `Vec<String>`    | ✓     | ✓   | Segment titles in order. Static (set once at build).|
-| `selection`      | `usize`          | ✓     | ✓   | Selected index. Prefer `bind:selection`.    |
-| `enabled`        | `bool`           | ✓     | ✓   |                                             |
-| `segment_style`  | segment style    | ✓     |     | Cocoa: capsule / textured / etc.            |
+| Attribute        | Type             | Default | Cocoa | iOS | Notes                                       |
+|------------------|------------------|---------|:-----:|:---:|---------------------------------------------|
+| `items`          | `Vec<String>`    | `[]`    | ✓     | ✓   | Segment titles in order. Static (set once at build).|
+| `selection`      | `usize`          | `0`     | ✓     | ✓   | Selected index. Prefer `bind:selection`.    |
+| `enabled`        | `bool`           | `true`  | ✓     | ✓   |                                             |
+| `segment_style`  | segment style    | automatic | ✓   |     | Cocoa: capsule / textured / etc.            |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event      | Cocoa | iOS | Payload |
-|------------|:-----:|:---:|---------|
-| `on:click` | ✓     | ✓   | `()`    |
+| Event       | Cocoa | iOS | Payload |
+|-------------|:-----:|:---:|---------|
+| `on:change` | ✓     | ✓   | `()`    |
 
-Fires when the selection changes.
+Fires when the selection changes. Read the bound signal for the
+new index.
 
 ## Bindings
 

@@ -5,6 +5,105 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-15 — Async runtime integration (tokio, compio, …)
+
+Added documented support for combining the cocoa port's main-thread
+reactive spawner with a *second* async runtime (tokio in v1) that
+drives I/O on worker threads. Four new examples
+(`ipify`, `placecats`, `ipify_current_thread`, `async_patterns`) +
+a new "Working with Async" part in `docs/book/src/async/`.
+
+**Library, not framework.** User code constructs and `enter()`s its
+own runtime in `main()`. No `leptos_cocoa` feature flag for tokio,
+no auto-init wrapper around `run()` / `mount_to_window`, no
+`spawn_io` macro. The integration is just three lines in `main`
+plus `tokio::spawn(io).await` at call sites. Rationale: anything
+more would bake one runtime into the framework and force a
+feature-flag matrix the moment someone wants compio or smol.
+
+**Two executors, not three.** AppKit's `NSRunLoop`, libdispatch's
+main queue, and `cocoa/dom/src/spawner.rs` are the same executor
+from the framework's POV — the main thread. The second executor is
+tokio, on its own threads. The mental model that conflated them
+into "three interrelated executors" caused early confusion; the
+docs lead with the two-executor framing.
+
+**Why tokio can't own main.** `NSApp.run()` and
+`Runtime::block_on` are both non-cooperative blocking calls.
+Pumping tokio's current_thread runtime from a CFRunLoopTimer is
+the obvious-looking trap: latency tax (tick-rate vs CPU), starves
+the AppKit run loop under load, fights tokio's API contract.
+Don't. `current_thread` is supported only via the side-thread park
+(`std::thread::spawn(|| rt.block_on(future::pending()))`).
+
+**The load-bearing fact** that keeps the design clean:
+`tokio::JoinHandle<T>: Future` can be polled from any thread; only
+the inner task needs to run on tokio's threads. So
+`tokio::spawn(io).await` from inside a main-thread `AsyncDerived`
+just works — the task lives on tokio, the await lives on main, no
+oneshot ceremony required for the common case.
+
+**One helper, named `on_main`.** In `apple_shared`. Wraps
+`DispatchQueue::main().exec_async(f)` so push-from-tokio code can
+say `on_main(|| signal.set(v))` without learning AppKit dispatch
+vocabulary. Doubles as the portable name for the same operation on
+iOS (libdispatch is identical) and GTK (planned: wraps
+`glib::MainContext::default().invoke`). Zero new framework deps —
+`dispatch2` was already in the workspace via `cocoa_dom` / `uikit_dom`.
+
+**Four bridging patterns documented**, each demonstrated by an
+example section: (1) `tokio::spawn(fut).await`, (2) explicit
+oneshot for cancellation / fan-out, (3) long-lived `mpsc` to a
+stateful worker task, (4) `on_main` push for streams /
+subscriptions.
+
+**Image bytes on `<image_view>`.** Added `.bytes(Option<Vec<u8>>)`
+reactive builder + `cocoa_dom::Element::set_image_view_bytes` using
+`NSImage::initWithData:`. Needed because HTTP image fetches yield
+bytes, not file paths — `placecats` example wouldn't work without
+it. `Option<Vec<u8>>` joined the `impl_pair!` list in
+`leptos_cocoa::cocoa::attr` so closures returning it satisfy
+`IntoMaybeReactive`.
+
+**SendWrapper is fine.** `RwSignal` and friends are `!Send`, so
+moving a signal into a `tokio::spawn` closure (pattern 4) needs
+`send_wrapper::SendWrapper`. Already a workspace dep; the example
+shows the wrap explicitly. Documented gotcha in the tokio book
+chapter.
+
+**Network examples excluded from `default-members`.** They live in
+`members` so `cargo build --workspace` covers them, but stay out
+of bare `cargo build` to keep the smoke-build path free of
+TLS-stack downloads.
+
+**Window-size signal is still TODO.** The placecats example
+fetches at a fixed 480×320 instead of tracking the window size,
+because `WindowDelegate` doesn't currently expose a signal hook
+for `windowDidResize:`. Punted; revisit when we have a real use
+case beyond this demo.
+
+**Resource isn't supported yet** in this port (`cocoa/examples/fetch`
+remains in `exclude`). All four new examples use `AsyncDerived`
+instead. When `Resource` lands, the patterns transfer verbatim —
+the bridging side has nothing to do with which signal-shaped
+reactive primitive consumes the result.
+
+**Update (later same day):** completed the `Notify` thread-safety
+audit deferred in SIGNAL_MT.md and found that direct cross-thread
+`signal.set()` is fully sound. The Notify chain only does atomic
+flag flips + waker.wake() on the calling thread; the actual
+effect bodies (where NSView mutations happen) get re-dispatched
+to main via the framework's spawner. Pattern-4 in the
+`async_patterns` example collapses from a `thread_local!` +
+`on_main` workaround to a single `count.try_set(n)` call in the
+worker, using the `Option<T>` return value as the
+component-disposed shutdown signal. The same refactor applies to
+the iOS and GTK mirrors. SIGNAL_MT.md updated with the audit
+result; `RemoteSignal<T>` wrapper proposal abandoned (RwSignal /
+ArcRwSignal already provide what's needed).
+
+---
+
 ## 2026-05-14 — Native menus (`<menu_bar>` / `<menu>` / `<menu_item>`)
 
 Cross-cutting: see also `gtk_implementation_log.md` for the GTK side

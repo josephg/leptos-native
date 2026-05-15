@@ -133,7 +133,7 @@ pub mod prelude {
     pub use crate::IntoView;
 
     // Mounting
-    pub use crate::mount::{mount_to_split_window, mount_to_window, run};
+    pub use crate::mount::{mount, mount_to_split_window, mount_to_window, run};
 
     // Split-view builders + the pane-behavior enum.
     pub use crate::cocoa::split::{
@@ -231,6 +231,6 @@ pub mod prelude {
     };
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.
-    pub use cocoa_dom::app::quit;
+    pub use cocoa_dom::app::{quit, set_quit_on_last_window_close};
     pub use crate::Dom;
 }

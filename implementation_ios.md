@@ -6,6 +6,39 @@ top.
 
 ---
 
+## 2026-05-15 — Async runtime integration (port mirror)
+
+Mirrors the cocoa-side async work (see top entry in
+`implementation_log.md`) onto iOS. Two examples ported:
+`uikit/examples/ipify` and `uikit/examples/async_patterns`.
+
+Same `on_main` helper from `apple_shared` — libdispatch's
+`DispatchQueue::main()` is identical on macOS and iOS, so the
+port-shared module needed no iOS-specific code at all.
+
+`set_image_view_bytes` setter added to `ios_dom::Element` via
+`UIImage::imageWithData:`, plus the matching `.bytes(Option<Vec<u8>>)`
+builder on the leptos_uikit `ImageView` and `Option<Vec<u8>>` in
+the `impl_pair!` macro in `attr.rs`. Mechanical mirror of the
+cocoa changes.
+
+The iOS `<label>` builder doesn't have a `bold` attribute (cocoa
+does); both examples render labels in the default UIKit weight.
+Worth adding eventually but out of scope for this work.
+
+Examples are excluded from the workspace (iOS examples aren't
+workspace members; cargo can't conditionalise on target). Each
+ships a `run_ios.sh` derived from `counter/run_ios.sh` via sed —
+bundle name, binary path, bundle ID, and process-name predicate
+adjusted; everything else identical. Verified each launches into
+the simulator and runs without panicking.
+
+The pattern-4 thread_local workaround (see SIGNAL_MT.md) is the
+same on iOS — no difference in the cross-thread signal story
+between the two Apple ports.
+
+---
+
 ## Dark mode — adaptive colors via UIKit's named system colors
 
 `Color` is an enum: `Rgba {…}` for fixed sRGB, `System(SystemColor)`

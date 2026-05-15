@@ -23,7 +23,7 @@ dependency level.
 [dependencies]
 leptos = { package = "leptos_cocoa" }
 # or
-leptos = { package = "leptos_gtk", features = ["gtk"] }
+leptos = { package = "leptos_gtk" }
 # or
 leptos = { package = "leptos_uikit" }
 ```

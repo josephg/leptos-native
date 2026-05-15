@@ -20,29 +20,25 @@ Flex containers. Covered in depth in
 | `stack`   | NSView (Taffy)   | gtk::Box      | UIView           |
 | `vstack`  | NSView, direction=Column | gtk::Box, direction=Column | UIView, flex_direction=Column |
 | `hstack`  | NSView, direction=Row    | gtk::Box, direction=Row    | UIView, flex_direction=Row    |
-| `view`    | Alias for `stack`         | Alias, defaults to Column  | Alias for `stack`             |
 
 ## Distinguishing the variants
 
 - `vstack` / `hstack` — preset direction. Use these whenever you
   know the axis. Reads better than `<stack direction=...>`.
-- `stack` — no direction preset (Cocoa & iOS). You'll set
-  `direction=` yourself.
-- `view` — alias. Same as `stack` on Cocoa/iOS; defaults to
-  Column on GTK. Use `vstack` / `hstack` if you want unambiguous
-  behaviour across ports.
+- `stack` — no direction preset. You'll set `direction=`
+  yourself. Available on all three ports.
 
 ## Attributes
 
-| Attribute        | Type             | Cocoa | GTK | iOS | Notes                                  |
-|------------------|------------------|:-----:|:---:|:---:|----------------------------------------|
-| `direction`      | `FlexDirection`  | ✓     | ✓   | ✓   | `Row`, `Column`, etc.                  |
-| `gap`            | `f32`            | ✓     | ✓   | ✓   | Spacing between children.              |
-| `justify_content`| `JustifyContent` | ✓     | ✓   | ✓   | Main-axis alignment.                   |
-| `align`          | `AlignItems`     | ✓     | ✓   | ✓   | Cross-axis alignment.                  |
-| `align_content`  | `AlignContent`   | ✓     | ✓   | ✓   | Multi-line cross-axis alignment.       |
-| `justify_items`  | `JustifyItems`   | ✓     | ✓   | ✓   | Per-child main-axis override.          |
-| `wrap`           | `FlexWrap`       | ✓     | ✓   | ✓   | `Wrap`, `NoWrap`, `WrapReverse`.       |
+| Attribute        | Type             | Default          | Cocoa | GTK | iOS | Notes                                  |
+|------------------|------------------|------------------|:-----:|:---:|:---:|----------------------------------------|
+| `direction`      | `FlexDirection`  | `Column` for vstack, `Row` for hstack, `Row` for stack | ✓ | ✓ | ✓ | `Row`, `Column`, etc.                  |
+| `gap`            | `f32`            | `0.0`            | ✓     | ✓   | ✓   | Spacing between children.              |
+| `justify_content`| `JustifyContent` | `FlexStart`      | ✓     | ✓   | ✓   | Main-axis alignment.                   |
+| `align`          | `AlignItems`     | `Stretch`        | ✓     | ✓   | ✓   | Cross-axis alignment.                  |
+| `align_content`  | `AlignContent`   | `Stretch`        | ✓     | ✓   | ✓   | Multi-line cross-axis alignment.       |
+| `justify_items`  | `JustifyItems`   | `Stretch`        | ✓     | ✓   | ✓   | Per-child main-axis override.          |
+| `wrap`           | `FlexWrap`       | `NoWrap`         | ✓     | ✓   | ✓   | `Wrap`, `NoWrap`, `WrapReverse`.       |
 
 Plus all [shared layout
 attributes](../layout/attributes.md) (including the

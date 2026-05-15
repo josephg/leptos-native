@@ -11,16 +11,16 @@ mod app {
 
     // ---- palette ----------------------------------------------------
 
-    const BG_BODY: Color    = Color { r: 0.000, g: 0.000, b: 0.000, a: 1.0 };
-    const BG_PANEL: Color   = Color { r: 0.071, g: 0.071, b: 0.071, a: 1.0 }; // #121212
-    const BG_RAISED: Color  = Color { r: 0.094, g: 0.094, b: 0.094, a: 1.0 }; // #181818
-    const BG_ROW_HOVER: Color = Color { r: 0.165, g: 0.165, b: 0.165, a: 1.0 }; // #2a2a2a
-    const BG_CHIP: Color    = Color { r: 0.165, g: 0.165, b: 0.165, a: 1.0 };
-    const BG_CHIP_ACTIVE: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-    const TXT_PRIMARY: Color   = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-    const TXT_SECONDARY: Color = Color { r: 0.702, g: 0.702, b: 0.702, a: 1.0 }; // #B3B3B3
-    const TXT_MUTED: Color     = Color { r: 0.4, g: 0.4, b: 0.4, a: 1.0 };
-    const ACCENT_GREEN: Color  = Color { r: 0.114, g: 0.725, b: 0.329, a: 1.0 }; // #1DB954
+    const BG_BODY: Color    = Color::Rgba { r: 0.000, g: 0.000, b: 0.000, a: 1.0 };
+    const BG_PANEL: Color   = Color::Rgba { r: 0.071, g: 0.071, b: 0.071, a: 1.0 }; // #121212
+    const BG_RAISED: Color  = Color::Rgba { r: 0.094, g: 0.094, b: 0.094, a: 1.0 }; // #181818
+    const BG_ROW_HOVER: Color = Color::Rgba { r: 0.165, g: 0.165, b: 0.165, a: 1.0 }; // #2a2a2a
+    const BG_CHIP: Color    = Color::Rgba { r: 0.165, g: 0.165, b: 0.165, a: 1.0 };
+    const BG_CHIP_ACTIVE: Color = Color::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    const TXT_PRIMARY: Color   = Color::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+    const TXT_SECONDARY: Color = Color::Rgba { r: 0.702, g: 0.702, b: 0.702, a: 1.0 }; // #B3B3B3
+    const TXT_MUTED: Color     = Color::Rgba { r: 0.4, g: 0.4, b: 0.4, a: 1.0 };
+    const ACCENT_GREEN: Color  = Color::Rgba { r: 0.114, g: 0.725, b: 0.329, a: 1.0 }; // #1DB954
 
     // Album-art placeholder palettes — bright color squares with a
     // single-letter "cover" so we can fake the iconography without

@@ -10,11 +10,11 @@ takes a child, parent, or has any visual presence, it has these.
 <vstack padding=16.0 margin=8.0 gap=8.0>
 ```
 
-| Attribute | Type             | Notes                                                              |
-|-----------|------------------|--------------------------------------------------------------------|
-| `padding` | `f32` or `Edges` | Inner spacing. `f32` is uniform on all four sides.                 |
-| `margin`  | `f32` or `Edges` | Outer spacing. Same shape.                                         |
-| `gap`     | `f32`            | Container-only: spacing *between* adjacent children. Not on leaves.|
+| Attribute | Type             | Default | Notes                                                              |
+|-----------|------------------|---------|--------------------------------------------------------------------|
+| `padding` | `f32` or `Edges` | `0.0`   | Inner spacing. `f32` is uniform on all four sides.                 |
+| `margin`  | `f32` or `Edges` | `0.0`   | Outer spacing. Same shape.                                         |
+| `gap`     | `f32`            | `0.0`   | Container-only: spacing *between* adjacent children. Not on leaves.|
 
 `Edges` lets you set per-side:
 
@@ -32,16 +32,16 @@ padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left
 <view max_width=480.0 flex_grow=1.0 />
 ```
 
-| Attribute    | Type      | Notes                                          |
-|--------------|-----------|------------------------------------------------|
-| `width`      | `Dim`     | `f32` → pixels (points), or `Dim::pct(0.5)`.   |
-| `height`     | `Dim`     | Same.                                          |
-| `min_width`  | `Dim`     | Lower bound.                                   |
-| `min_height` | `Dim`     | Lower bound.                                   |
-| `max_width`  | `Dim`     | Upper bound.                                   |
-| `max_height` | `Dim`     | Upper bound.                                   |
-| `size`       | `f32`     | Sets `width = height = min = max = value` —  rigid square. |
-| `hidden`     | `bool`    | Removes the element from layout when `true`.   |
+| Attribute    | Type      | Default       | Notes                                          |
+|--------------|-----------|---------------|------------------------------------------------|
+| `width`      | `Dim`     | `auto`        | `f32` → pixels (points), or `Dim::pct(0.5)`.   |
+| `height`     | `Dim`     | `auto`        | Same.                                          |
+| `min_width`  | `Dim`     | `auto`        | Lower bound.                                   |
+| `min_height` | `Dim`     | `auto`        | Lower bound.                                   |
+| `max_width`  | `Dim`     | `auto`        | Upper bound.                                   |
+| `max_height` | `Dim`     | `auto`        | Upper bound.                                   |
+| `size`       | `f32`     | unset         | Sets `width = height = min = max = value` — rigid square. |
+| `hidden`     | `bool`    | `false`       | Removes the element from layout when `true`.   |
 
 `Dim` accepts:
 
@@ -55,12 +55,12 @@ padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left
 <view flex_grow=1.0 align_self=AlignSelf::Center />
 ```
 
-| Attribute     | Type        | Notes                                              |
-|---------------|-------------|----------------------------------------------------|
-| `flex_grow`   | `f32`       | Share of free space on the main axis.              |
-| `flex_shrink` | `f32`       | Share of *negative* space when overconstrained.    |
-| `flex_basis`  | `f32`       | Preferred main-axis size before grow/shrink applies. |
-| `align_self`  | `AlignSelf` | Override the parent container's `align` for this child. |
+| Attribute     | Type        | Default       | Notes                                              |
+|---------------|-------------|---------------|----------------------------------------------------|
+| `flex_grow`   | `f32`       | `0.0`         | Share of free space on the main axis.              |
+| `flex_shrink` | `f32`       | `1.0`         | Share of *negative* space when overconstrained.    |
+| `flex_basis`  | `f32`       | `auto`        | Preferred main-axis size before grow/shrink applies. |
+| `align_self`  | `AlignSelf` | `Auto`        | Override the parent container's `align` for this child. |
 
 ## Grid placement
 
@@ -85,10 +85,10 @@ padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left
 <button alpha=0.5 tool_tip="Disabled".to_string() ...>
 ```
 
-| Attribute  | Type     | Notes                                  |
-|------------|----------|----------------------------------------|
-| `alpha`    | `f32`    | Opacity, `0.0 ..= 1.0`.                |
-| `tool_tip` | `String` | Hover tooltip. *(Cocoa only, no-op on GTK / iOS.)* |
+| Attribute  | Type     | Default | Notes                                  |
+|------------|----------|---------|----------------------------------------|
+| `alpha`    | `f32`    | `1.0`   | Opacity, `0.0 ..= 1.0`.                |
+| `tool_tip` | `String` | unset   | Hover tooltip. *(Cocoa only, no-op on GTK / iOS.)* |
 
 ## Decoration *(Cocoa / iOS)*
 
@@ -102,13 +102,13 @@ padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left
 />
 ```
 
-| Attribute          | Type     | Notes                                                |
-|--------------------|----------|------------------------------------------------------|
-| `background_color` | `Color`  | Background fill.                                     |
-| `corner_radius`    | `f32`    | Rounded-corner radius. Pair with `clip=true` to actually clip children. |
-| `border_width`     | `f32`    | Border thickness.                                    |
-| `border_color`     | `Color`  | Border colour.                                       |
-| `clip`             | `bool`   | `overflow: hidden`.                                  |
+| Attribute          | Type     | Default       | Notes                                                |
+|--------------------|----------|---------------|------------------------------------------------------|
+| `background_color` | `Color`  | transparent   | Background fill.                                     |
+| `corner_radius`    | `f32`    | `0.0`         | Rounded-corner radius. Pair with `clip=true` to actually clip children. |
+| `border_width`     | `f32`    | `0.0`         | Border thickness.                                    |
+| `border_color`     | `Color`  | transparent   | Border colour.                                       |
+| `clip`             | `bool`   | `false`       | `overflow: hidden`.                                  |
 
 GTK styling goes through gtk4's CSS theming rather than these
 attributes — see [GTK theming](../platform/gtk/settings.md).
@@ -118,11 +118,11 @@ attributes — see [GTK theming](../platform/gtk/settings.md).
 These attributes are accepted by elements that render text:
 `label`, `button`, `text_field`, `text_view`, etc.
 
-| Attribute    | Type             | Notes                              |
-|--------------|------------------|-----------------------------------|
-| `text_color` | `Color`          | Foreground text color.            |
-| `alignment`  | `NSTextAlignment` / `TextAlignment` | Text alignment.   |
-| `font_size`  | `f32`            | Size in points.                    |
+| Attribute    | Type             | Default       | Notes                              |
+|--------------|------------------|---------------|-----------------------------------|
+| `text_color` | `Color`          | system label  | Foreground text color.            |
+| `alignment`  | `NSTextAlignment` / `TextAlignment` | natural | Text alignment.        |
+| `font_size`  | `f32`            | system size   | Size in points.                    |
 
 ## All attributes are reactive
 

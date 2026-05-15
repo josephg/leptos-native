@@ -21,6 +21,32 @@ use renderer::view::Render;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Application ID resolution. Returns the user-supplied id if any;
+/// otherwise falls back to `local.cargo.<CARGO_PKG_NAME>` so
+/// example crates and first-time apps get a working build with
+/// no extra configuration.
+///
+/// For production apps with a real domain, always pass an
+/// explicit reverse-DNS id — it's used for single-instance
+/// behaviour, settings paths, and desktop integration.
+fn resolve_app_id(id: Option<&str>) -> String {
+    if let Some(s) = id {
+        return s.to_owned();
+    }
+    let pkg = option_env!("CARGO_PKG_NAME").unwrap_or("app");
+    // Reverse-DNS schemes don't allow underscores or uppercase
+    // (per GApplication's validation). Coerce safely.
+    let safe: String = pkg
+        .chars()
+        .map(|c| match c {
+            'A'..='Z' => c.to_ascii_lowercase(),
+            'a'..='z' | '0'..='9' | '-' => c,
+            _ => '-',
+        })
+        .collect();
+    format!("local.cargo.{safe}")
+}
+
 /// Run a GTK application whose root view is built by `f`.
 ///
 /// `application_id` is a reverse-DNS string (e.g.
@@ -32,12 +58,13 @@ use std::rc::Rc;
 /// typically one or more [`tachys::gtk::Window`]s. Building those
 /// opens GtkApplicationWindows and mounts their content. Then the
 /// GTK main loop runs until the app terminates.
-pub fn run<F, V>(application_id: &str, f: F)
+pub fn run<F, V>(application_id: impl Into<Option<&'static str>>, f: F)
 where
     F: FnOnce(&gtk4::Application) -> V + 'static,
     V: Render<Dom> + 'static,
 {
-    let app = init_app(application_id);
+    let id = resolve_app_id(application_id.into());
+    let app = init_app(&id);
 
     // The user's `f` needs the gtk::Application to construct windows
     // (GtkApplicationWindow is built from one). gtk::Application
@@ -72,21 +99,38 @@ where
 /// `application_id` is the reverse-DNS app id (see [`run`]).
 /// `title` is shown in the window's title bar; `size` is the
 /// initial content-area size in pixels.
-pub fn mount_to_window<F, V>(
-    application_id: &str,
+/// One-call entry point: opens a sensible default window
+/// (640×480, titled "App", with an auto-generated application
+/// ID from `CARGO_PKG_NAME`) and mounts the view returned by
+/// `f`. Sugar over [`mount_to_window`] for the simplest "I just
+/// want to see something on screen" case.
+pub fn mount<F, V>(f: F)
+where
+    F: FnOnce() -> V + 'static,
+    V: Render<Dom> + 'static,
+{
+    mount_to_window::<_, _, (i32, i32)>(None, "App", (640, 480), f);
+}
+
+pub fn mount_to_window<F, V, S>(
+    application_id: impl Into<Option<&'static str>>,
     title: &str,
-    size: (i32, i32),
+    size: S,
     f: F,
 ) where
     F: FnOnce() -> V + 'static,
     V: Render<Dom> + 'static,
+    S: Into<renderer::window::WindowSize> + 'static,
 {
     let title = title.to_owned();
-    run(application_id, move |app| {
+    let id = application_id.into();
+    let size: renderer::window::WindowSize = size.into();
+    let (w, h) = size.as_i32_tuple();
+    run(id, move |app| {
         window()
             .application(app.clone())
             .title(title)
-            .size(size.0, size.1)
+            .size(w, h)
             .child(f())
     });
 }

@@ -1,0 +1,14 @@
+[package]
+name = "ipify_ios"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# iOS sim only; built via run_ios.sh (not a workspace member).
+# Network-dependent.
+
+[dependencies]
+leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+serde = { version = "1", features = ["derive"] }

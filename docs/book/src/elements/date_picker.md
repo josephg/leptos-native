@@ -19,24 +19,24 @@ view! { <date_picker bind:value=date /> }
 
 ## Attributes
 
-| Attribute   | Type             | Cocoa | iOS | Notes                                                  |
-|-------------|------------------|:-----:|:---:|--------------------------------------------------------|
-| `value`     | `Date`           | ✓     | ✓   | Current date. Prefer `bind:value`.                     |
-| `min_date`  | `Date`           | ✓     | ✓   | Lower bound (inclusive).                               |
-| `max_date`  | `Date`           | ✓     | ✓   | Upper bound (inclusive).                               |
-| `style`     | picker style     | ✓     | ✓   | Visual style. Cocoa: textual / stepper / clock-and-calendar. iOS: wheels / compact / inline. |
-| `enabled`   | `bool`           | ✓     | ✓   |                                                        |
+| Attribute   | Type             | Default     | Cocoa | iOS | Notes                                                  |
+|-------------|------------------|-------------|:-----:|:---:|--------------------------------------------------------|
+| `value`     | `Date`           | now         | ✓     | ✓   | Current date. Prefer `bind:value`.                     |
+| `min_date`  | `Date`           | unset       | ✓     | ✓   | Lower bound (inclusive).                               |
+| `max_date`  | `Date`           | unset       | ✓     | ✓   | Upper bound (inclusive).                               |
+| `style`     | picker style     | textual (Cocoa) / wheels (iOS) | ✓ | ✓ | Visual style. Cocoa: textual / stepper / clock-and-calendar. iOS: wheels / compact / inline. |
+| `enabled`   | `bool`           | `true`      | ✓     | ✓   |                                                        |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 
 ## Events
 
-| Event      | Cocoa | iOS | Payload |
-|------------|:-----:|:---:|---------|
-| `on:click` | ✓     | ✓   | `()`    |
+| Event       | Cocoa | iOS | Payload |
+|-------------|:-----:|:---:|---------|
+| `on:change` | ✓     | ✓   | `()`    |
 
-`on:click` fires when the date value changes. Read the new value
-from the bound signal.
+Fires when the date value changes. Read the new value from the
+bound signal.
 
 ## Bindings
 

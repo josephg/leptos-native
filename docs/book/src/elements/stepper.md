@@ -23,26 +23,25 @@ view! {
 
 ## Attributes
 
-| Attribute        | Type   | Cocoa | iOS | Notes                                       |
-|------------------|--------|:-----:|:---:|---------------------------------------------|
-| `value`          | `f64`  | ✓     | ✓   | Current value. Prefer `bind:value`.         |
-| `min_value`      | `f64`  | ✓     | ✓   | Lower bound.                                |
-| `max_value`      | `f64`  | ✓     | ✓   | Upper bound.                                |
-| `increment`      | `f64`  | ✓     | ✓   | Step size per click. iOS: `step_value`.     |
-| `enabled`        | `bool` | ✓     | ✓   |                                             |
+| Attribute        | Type   | Default | Cocoa | iOS | Notes                                       |
+|------------------|--------|---------|:-----:|:---:|---------------------------------------------|
+| `value`          | `f64`  | `0.0`   | ✓     | ✓   | Current value. Prefer `bind:value`.         |
+| `min_value`      | `f64`  | `0.0`   | ✓     | ✓   | Lower bound.                                |
+| `max_value`      | `f64`  | `100.0` | ✓     | ✓   | Upper bound.                                |
+| `increment`      | `f64`  | `1.0`   | ✓     | ✓   | Step size per click. iOS: `step_value`.     |
+| `enabled`        | `bool` | `true`  | ✓     | ✓   |                                             |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event      | Cocoa | iOS | Payload |
-|------------|:-----:|:---:|---------|
-| `on:click` | ✓     | ✓   | `()`    |
+| Event       | Cocoa | iOS | Payload |
+|-------------|:-----:|:---:|---------|
+| `on:change` | ✓     | ✓   | `()`    |
 
-Stepper "click" semantics mean *value changed*: both the up and
-down arrows fire it. Read the current value from the bound
-signal, not from the event payload.
+Fires when the value changes — both up and down arrows. Read
+the current value from the bound signal.
 
 ## Bindings
 

@@ -66,6 +66,7 @@ impl_pair!(
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
     Color, Date, TextAlignment, LineBreak, SegmentStyle, DatePickerStyle,
     ToolbarDisplayMode, WindowToolbarStyle, Icon,
+    Option<Vec<u8>>,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

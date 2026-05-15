@@ -6,6 +6,47 @@ top.
 
 ---
 
+## 2026-05-15 — Async runtime integration (port mirror)
+
+GTK side of the tokio-integration work (see top entry in
+`implementation_log.md`). Two examples ported:
+`gtk/examples/ipify` and `gtk/examples/async_patterns`.
+
+Added `gtk_dom::on_main` wrapping `glib::idle_add_once`. Same
+signature and call shape as `leptos_apple_shared::on_main` (which
+wraps libdispatch's `DispatchQueue::main().exec_async`), so user
+code is portable between the cocoa/iOS and GTK ports — just swap
+the import.
+
+Why `idle_add_once` rather than `MainContext::invoke`: invoke
+runs the closure *inline* when the calling thread owns the
+context (which it does during a GTK signal callback), and defers
+only when called from another thread. `idle_add_once` always
+defers — matching libdispatch's `exec_async` semantics across the
+two Apple ports, which makes the cross-port contract uniform.
+
+For the same lifecycle reason that motivated SIGNAL_MT.md on the
+Apple side, GTK examples' pattern-4 demo uses the `thread_local!`
+workaround to anchor a `!Send` `RwSignal` on the main thread for
+repeated push-from-tokio updates. The design discussion in
+SIGNAL_MT.md applies to GTK identically; when we ship a cleaner
+abstraction it'll land in `common/leptos` with a port-registered
+dispatcher (cocoa wires libdispatch, GTK wires `idle_add_once`).
+
+No GTK-specific framework changes were needed beyond `on_main`
+itself — `reqwest` + tokio + `glib::MainContext` coexist because
+the framework's spawner is `MainContext::spawn_local`, which
+already runs on the GTK thread and can poll `tokio::JoinHandle`
+freely (JoinHandle doesn't require a tokio context to poll).
+
+GTK examples added to `members` (so `cargo build --workspace`
+covers them on Linux), kept out of `default-members` (network +
+TLS deps shouldn't run on a vanilla smoke build). Cross-checked
+from macOS host via `cargo check` only — no native runs verified
+since gtk4 isn't installed here.
+
+---
+
 ## 2026-05-14 — Native menus (`<menu_bar>` / `<menu>` / `<menu_item>`)
 
 Cross-cutting feature; the cross-port design rationale lives in

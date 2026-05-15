@@ -51,7 +51,7 @@ where
 /// A component that renders its children only when `when` returns `true`.
 /// Renders the optional `fallback` (or nothing) when `when` is `false`.
 #[component(transparent)]
-pub fn Show<W, C, F, Fb, R>(
+pub fn Show<W, C, Fb, R>(
     /// The children rendered whenever the `when` closure returns `true`.
     children: TypedChildrenFn<C, R>,
     /// A closure that determines whether children render.
@@ -61,15 +61,11 @@ pub fn Show<W, C, F, Fb, R>(
     /// `fallback=|| view!{ <label>"loading"</label> }`).
     #[prop(optional, into)]
     fallback: Option<FallbackFn<Fb, R>>,
-    /// Marker for unused generics. Ignore.
-    #[prop(optional)]
-    _marker: PhantomData<F>,
 ) -> impl IntoView<R>
 where
     R: Renderer,
     W: Fn() -> bool + Send + Sync + 'static,
     C: IntoView<R> + 'static,
-    F: 'static,
     Fb: IntoView<R> + 'static,
 {
     let memoized_when = ArcMemo::new(move |_| when());

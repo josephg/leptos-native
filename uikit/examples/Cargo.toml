@@ -1,0 +1,38 @@
+# Inner workspace for the iOS example crates.
+#
+# Lives separately from the top-level workspace because each
+# iOS example only builds for `aarch64-apple-ios-sim` (or other
+# iOS targets) and Cargo doesn't support target-conditional
+# workspace members. From inside this directory:
+#
+#   cargo build --target aarch64-apple-ios-sim
+#   cargo build -p counter_ios --target aarch64-apple-ios-sim
+#
+# both work. Or use `uikit/tools/run_ios.sh <example_dir>` from
+# anywhere to bundle and launch one on the iOS Simulator.
+#
+# Examples build against `leptos_uikit` and `ios_dom` which live
+# in the *parent* workspace (uikit/leptos_uikit and uikit/dom);
+# Cargo path-deps work across workspace boundaries fine.
+
+[workspace]
+resolver = "2"
+members = [
+  "async_patterns",
+  "checkbox",
+  "controls",
+  "counter",
+  "counters",
+  "greeter",
+  "ipify",
+  "keyboard_avoidance",
+  "login_form",
+  "settings",
+  "switch_demo",
+  "timer",
+  "todomvc",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.88"

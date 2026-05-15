@@ -1,0 +1,13 @@
+[package]
+name = "async_patterns_ios"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# iOS sim only; built via run_ios.sh (not a workspace member).
+# Network-dependent demo of the four bridging patterns.
+
+[dependencies]
+leptos = { package = "leptos_uikit", path = "../../leptos_uikit" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

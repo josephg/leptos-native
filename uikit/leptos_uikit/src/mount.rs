@@ -50,3 +50,15 @@ where
 
     uiapplication_main()
 }
+
+/// One-call entry point. Same as [`run`] — iOS apps don't have a
+/// window/title concept, so `mount(f)` is just an alias provided
+/// for naming parity with Cocoa and GTK ports.
+pub fn mount<F, V>(f: F) -> !
+where
+    F: FnOnce() -> V + 'static,
+    V: Render<Dom>,
+    V::State: Mountable<Dom> + 'static,
+{
+    run(f)
+}

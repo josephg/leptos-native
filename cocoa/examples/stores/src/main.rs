@@ -28,7 +28,7 @@ mod app {
 
                 <text_field
                     value=move || name_field.get()
-                    on:change=move |s: String| {
+                    on:commit=move |s: String| {
                         store.patch(User { name: s });
                     }
                 />

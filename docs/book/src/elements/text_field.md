@@ -17,16 +17,16 @@ view! { <text_field bind:value=name placeholder="Your name" /> }
 
 ## Attributes
 
-| Attribute     | Type           | Cocoa | GTK | iOS | Notes                                                |
-|---------------|----------------|:-----:|:---:|:---:|------------------------------------------------------|
-| `value`       | `String`       | ✓     | ✓   | ✓   | Current text. Prefer `bind:value` for two-way state. |
-| `placeholder` | `String`       | ✓     | ✓   | ✓   | Grey hint text when empty.                           |
-| `enabled`     | `bool`         | ✓     | ✓   | ✓   |                                                      |
-| `bordered`    | `bool`         | ✓     |     |     | Cocoa: NSTextField bezel.                            |
-| `bezeled`     | `bool`         | ✓     |     |     | Cocoa: alt bezel style.                              |
-| `text_color`  | `Color`        | ✓     |     | ✓   |                                                      |
-| `font_size`   | `f32`          | ✓     |     | ✓   |                                                      |
-| `alignment`   | text alignment | ✓     |     | ✓   |                                                      |
+| Attribute     | Type           | Default       | Cocoa | GTK | iOS | Notes                                                |
+|---------------|----------------|---------------|:-----:|:---:|:---:|------------------------------------------------------|
+| `value`       | `String`       | `""`          | ✓     | ✓   | ✓   | Current text. Prefer `bind:value` for two-way state. |
+| `placeholder` | `String`       | `""` (none)   | ✓     | ✓   | ✓   | Grey hint text when empty.                           |
+| `enabled`     | `bool`         | `true`        | ✓     | ✓   | ✓   |                                                      |
+| `bordered`    | `bool`         | `true`        | ✓     |     |     | Cocoa: NSTextField bezel.                            |
+| `bezeled`     | `bool`         | `true`        | ✓     |     |     | Cocoa: alt bezel style.                              |
+| `text_color`  | `Color`        | system label  | ✓     |     | ✓   |                                                      |
+| `font_size`   | `f32`          | system size   | ✓     |     | ✓   |                                                      |
+| `alignment`   | text alignment | natural       | ✓     |     | ✓   |                                                      |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 
@@ -35,15 +35,19 @@ Plus all [shared layout attributes](../layout/attributes.md).
 | Event          | Cocoa | GTK | iOS | Payload                |
 |----------------|:-----:|:---:|:---:|------------------------|
 | `on:input`     | ✓     | ✓   | ✓   | `String` (new contents)|
-| `on:change`    | ✓     | ✓   | ✓   | `String` (committed)   |
+| `on:change`    | ✓     | ✓   | ✓   | `()` (read bound signal for value) |
+| `on:commit`    | ✓     | ✓   | ✓   | `String` (committed)   |
 | `on:focus`     | ✓     | ✓   | ✓   | `()`                   |
 | `on:blur`      | ✓     | ✓   | ✓   | `()`                   |
 | `on:keydown`   | ✓     |     | ✓   | `KeyEvent`             |
 | `on:keyup`     | ✓     |     | ✓   | `KeyEvent`             |
 
-- `on:input` fires on **every** keystroke.
-- `on:change` fires when the user **commits** — Return key,
-  focus loss, etc.
+- `on:input` fires on **every** keystroke with the new text.
+- `on:change` fires on **every** value change (effectively the
+  same as `on:input` here, with no payload) — kept for
+  consistency with other value-bearing controls.
+- `on:commit` fires when the user **commits** the edit — Return
+  key, focus loss.
 - `on:keydown` / `on:keyup` on Cocoa only fire for recognised
   command keys (Enter, Escape, Tab, arrows), not for ordinary
   text input. Use `on:input` for keystroke-level callbacks.
@@ -96,7 +100,7 @@ view! {
     <text_field
         bind:value=email
         on:input=move |_v: String| keystroke_count.update(|c| *c += 1)
-        on:change=move |v: String| last_committed.set(v) />
+        on:commit=move |v: String| last_committed.set(v) />
 
     <label>{move || format!("Keystrokes: {}", keystroke_count.get())}</label>
     <label>{move || format!("Last committed: {:?}", last_committed.get())}</label>

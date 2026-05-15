@@ -39,7 +39,7 @@ mod app {
                     <label>"Theme:"</label>
                     <pop_up_button
                         items=vec!["System", "Light", "Dark"]
-                        bind:selection=theme />
+                        bind:value=theme />
                 </hstack>
 
                 <label>{move || {

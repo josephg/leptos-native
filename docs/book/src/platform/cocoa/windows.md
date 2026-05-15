@@ -99,11 +99,33 @@ its NSWindow disposed.
 
 ## Quitting behavior
 
-The bundled `AppDelegate` returns `true` from
-`applicationShouldTerminateAfterLastWindowClosed:`, so closing
-the last visible window quits the app. If you have a menu-bar
-app that should keep running with no windows visible, this
-behavior isn't currently configurable from user code.
+By default, closing the last visible window quits the app —
+the bundled `AppDelegate` returns `true` from
+`applicationShouldTerminateAfterLastWindowClosed:`.
+
+For menu-bar / status-item apps that should keep running with
+no windows open, disable this before mounting:
+
+```rust
+use leptos::prelude::*;
+
+fn main() {
+    set_quit_on_last_window_close(false);
+
+    run(|| view! {
+        <menu_bar>...</menu_bar>
+        // The app will keep running after this window closes;
+        // re-open it from a menu-bar item.
+        <window title="Inspector" size=WindowSize(280.0, 480.0)>
+            <Inspector />
+        </window>
+    });
+}
+```
+
+You can toggle this at runtime too — call
+`set_quit_on_last_window_close(true)` later if you want the app
+to quit the next time the last window closes.
 
 ## See also
 

@@ -40,15 +40,25 @@ mixed-type branches.
 </Show>
 ```
 
-When `when()` is true, the children render; when false, nothing.
+When `when()` is true, the children render; when false, nothing
+renders (or the fallback, if provided).
 
-```admonish note
-`<Show>` in this fork does **not** have a `fallback` prop —
-upstream Leptos's fallback relied on `AnyView` type erasure,
-which the native renderer doesn't provide. For an else-branch,
-use `<Switch>`/`<Match>` (below) or two `<Show>` components with
-inverted predicates.
+### Fallback
+
+`<Show>` accepts a `fallback=` prop — any `Fn() -> impl IntoView`
+closure — for the false branch:
+
+```rust
+<Show
+    when=move || logged_in.get()
+    fallback=|| view! { <label>"Please sign in."</label> }>
+    <label>"You're signed in."</label>
+</Show>
 ```
+
+Both branches need their own concrete types (there's no
+`AnyView` in this fork), but they can be different types — the
+fallback returns one view, the children return another.
 
 ## `<Switch>` and `<Match>`
 
@@ -95,8 +105,8 @@ pattern clean:
 
 ## When to reach for what
 
-- One condition, single concrete branch → `<Show>`.
-- Multiple conditions or branches with different types →
-  `<Switch>` / `<Match>`.
+- One condition, one or two branches → `<Show>` with optional
+  `fallback=`.
+- Three or more branches → `<Switch>` / `<Match>`.
 - Dynamic list with stable identity → `<For>`.
 - Tiny inline branch with one type → `move || if cond { … } else { … }`.

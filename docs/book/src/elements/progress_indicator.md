@@ -24,12 +24,12 @@ that's not exposed in this fork.
 
 ## Attributes
 
-| Attribute                | Type   | Cocoa | iOS | Notes                                                    |
-|--------------------------|--------|:-----:|:---:|----------------------------------------------------------|
-| `value`                  | `f64`  | ✓     | ✓   | Current progress in `[0, max_value]`.                    |
-| `max_value`              | `f64`  | ✓     | ✓   | Upper bound. Default `1.0`.                              |
-| `indeterminate`          | `bool` | ✓     |     | Cocoa: switch to spinner style.                          |
-| `displayed_when_stopped` | `bool` | ✓     |     | Cocoa: stay visible (greyed) when no progress is active. |
+| Attribute                | Type   | Default | Cocoa | iOS | Notes                                                    |
+|--------------------------|--------|---------|:-----:|:---:|----------------------------------------------------------|
+| `value`                  | `f64`  | `0.0`   | ✓     | ✓   | Current progress in `[0, max_value]`.                    |
+| `max_value`              | `f64`  | `1.0`   | ✓     | ✓   | Upper bound.                                             |
+| `indeterminate`          | `bool` | `false` | ✓     |     | Cocoa: switch to spinner style.                          |
+| `displayed_when_stopped` | `bool` | `true`  | ✓     |     | Cocoa: stay visible (greyed) when no progress is active. |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 

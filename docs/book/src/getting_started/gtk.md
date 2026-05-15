@@ -38,7 +38,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-leptos = { package = "leptos_gtk", path = "../leptos-mac/gtk/leptos_gtk", features = ["gtk"] }
+leptos = { package = "leptos_gtk", path = "../leptos-mac/gtk/leptos_gtk" }
 ```
 
 ```rust
@@ -61,12 +61,27 @@ fn Counter(initial: i32) -> impl IntoView {
 
 fn main() {
     mount_to_window(
-        "org.example.counter",
+        None,                   // application_id — see note below
         "Counter",
         (320, 200),
         || view! { <Counter initial=0 /> },
     );
 }
+```
+
+Pass `None` for `application_id` and the framework picks
+`local.cargo.<crate-name>` for you. For production apps with a
+real domain, pass a stable reverse-DNS string instead — GTK
+uses it for single-instance behaviour, `gio::Settings` paths,
+and desktop integration:
+
+```rust
+mount_to_window(
+    "org.example.counter",
+    "Counter",
+    (320, 200),
+    || view! { <Counter initial=0 /> },
+);
 ```
 
 Then:
@@ -75,16 +90,13 @@ Then:
 cargo run
 ```
 
-Note three differences from the Cocoa entry point:
+Note two differences from the Cocoa entry point:
 
 - The first argument is a **GApplication ID** in reverse-DNS form
   (`org.example.counter`). GTK uses this for single-instance
   behavior and desktop integration.
 - The window size is `(i32, i32)` in pixels (not `f64` points
   like Cocoa).
-- You depend on the `gtk` feature; `leptos_gtk` keeps the gtk4
-  crate behind a feature flag so the renderer-agnostic core can
-  be type-checked without linking GTK.
 
 ## Running the bundled examples
 
@@ -104,12 +116,17 @@ GTK examples are workspace members but excluded from
 `cargo build --workspace` would fail on a machine without the
 development headers.
 
-## Type-checking without GTK linked
+## Type-checking
 
 ```sh
-cargo check -p gtk_dom                    # façade only
-cargo check -p leptos_gtk --features gtk  # full port
+cargo check -p gtk_dom                              # façade only
+cargo check -p leptos_gtk                           # full port
+cargo check -p leptos_gtk --no-default-features     # no gtk linking
 ```
+
+`--no-default-features` is for contributors who want to typecheck
+`leptos_gtk` from a machine without gtk4 headers installed. End
+users don't need it.
 
 ## Entry points
 

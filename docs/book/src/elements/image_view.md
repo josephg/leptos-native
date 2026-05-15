@@ -20,13 +20,11 @@ view! {
 
 ## Attributes
 
-| Attribute   | Type     | Cocoa | iOS | Notes                                                    |
-|-------------|----------|:-----:|:---:|----------------------------------------------------------|
-| `source`    | `String` | ✓     |     | Cocoa: file path to load (PNG/JPEG/etc.).                |
-| `image`     | image    |       | ✓   | iOS: pass a `UIImage` value (see below).                 |
-| `sf_symbol` | `String` | ✓     | ✓   | SF Symbol name. See [SF Symbols](../platform/cocoa/sf_symbols.md). |
-| `tint`      | `Color`  | ✓     |     | Cocoa: tint the image (most useful with SF Symbols).     |
-| `content_mode` | `ContentMode` |  | ✓   | iOS: scale-aspect-fit / fill / center / etc.             |
+| Attribute   | Type     | Default      | Cocoa | iOS | Notes                                                    |
+|-------------|----------|--------------|:-----:|:---:|----------------------------------------------------------|
+| `source`    | `String` | `""` (none)  | ✓     | ✓   | File path to load (PNG/JPEG/etc.).                       |
+| `sf_symbol` | `String` | `""` (none)  | ✓     | ✓   | SF Symbol name. See [SF Symbols](../platform/cocoa/sf_symbols.md). |
+| `tint`      | `Color`  | system tint  | ✓     | ✓   | Tint the image (most useful with SF Symbols).            |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
