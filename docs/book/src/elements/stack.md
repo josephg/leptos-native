@@ -44,7 +44,8 @@ Plus all [shared layout
 attributes](../layout/attributes.md) (including the
 [decoration attributes](../layout/attributes.md#decoration-cocoa--ios)
 `background_color`, `corner_radius`, `border_width`,
-`border_color`, `clip` on Cocoa and iOS).
+`border_color` on Cocoa and iOS, and [`overflow`](../layout/attributes.md#overflow)
+on every port).
 
 ## Children
 

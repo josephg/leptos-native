@@ -27,6 +27,12 @@ pub mod mount_ios {
 
 pub use renderer_ios::Dom;
 
+/// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
+pub type AnyView = renderer::view::AnyView<Dom>;
+
+/// iOS-pinned alias of [`leptos::children::ChildrenFn`].
+pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+
 pub mod attr {
     pub use crate::keys::*;
 }
@@ -84,6 +90,11 @@ pub mod prelude {
 
     pub use crate::IntoView;
 
+    // Type-erased view container — see crate-level `AnyView` alias.
+    pub use crate::AnyView;
+    pub use crate::ChildrenFn;
+    pub use renderer::view::IntoAny;
+
     pub use crate::mount::{mount, run};
 
     pub use crate::ios::{
@@ -112,7 +123,7 @@ pub mod prelude {
     // (`.padding(...)`, `.alpha(...)`, `.flex_grow(...)`, ...) into
     // scope on every builder.
     pub use ::renderer::attrs::{
-        AlignSelf, Dim, WithLayout, WithUniversal,
+        AlignSelf, Dim, Overflow, WithLayout, WithUniversal,
     };
 
     pub use ios_dom::{

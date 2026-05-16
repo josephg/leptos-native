@@ -27,7 +27,7 @@ mod app {
 
         view! {
             <vstack flex_grow=1.0>
-                <scroll_view>
+                <scroll_view flex_grow=1.0>
                     <vstack padding=20.0 gap=12.0>
                         <label font_size=22.0>"Long form"</label>
 

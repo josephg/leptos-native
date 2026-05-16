@@ -6,9 +6,10 @@
 #![allow(missing_docs)]
 
 pub use crate::ios::element::{
-    button, date_picker, grid, hstack, image_view, label, progress_indicator,
-    scroll_view, secure_text_field, segmented_control, slider, stack, stepper,
-    text_field, text_view, toggle, vstack,
+    button, color_well, date_picker, grid, hstack, image_view, label,
+    pop_up_button, progress_indicator, scroll_view, secure_text_field,
+    segmented_control, slider, stack, stepper, text_field, text_view, toggle,
+    vstack,
 };
 
 /// `<switch>` element — `switch` is a Rust keyword, so the macro

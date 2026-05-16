@@ -274,12 +274,48 @@ fn is_scroll_view(tree: &TreeRef, id: NodeId) -> bool {
     tree.meta(id).map(|m| m.is_scroll_view).unwrap_or(false)
 }
 
+/// Warn (once per process) when a `<scroll_view>` ends up with a
+/// zero-height viewport but has non-empty content. This is the
+/// "I put a scroll_view in a parent that doesn't bound its
+/// height" footgun — see book / `docs/book/src/layout/scroll.md`.
+///
+/// Per the failure-mode hierarchy in CLAUDE.md, we choose warn +
+/// graceful degrade (the user gets a blank scroll view) over a
+/// panic — runtime layout state is too dependent on transient
+/// inputs (window size, parent flex_grow, dynamic content) to
+/// safely panic.
+fn warn_if_scroll_view_unsized(
+    tree: &TreeRef,
+    root: NodeId,
+    viewport: &taffy::Layout,
+) {
+    use std::sync::Once;
+    static WARNED: Once = Once::new();
+
+    if viewport.size.height < 0.5 && !tree.children(root).is_empty() {
+        WARNED.call_once(|| {
+            eprintln!(
+                "[ios_dom] a <scroll_view> has zero-height viewport \
+                 but non-empty children — it will render blank. \
+                 The most common cause is the scroll_view's parent \
+                 not having a bounded main-axis size. Fix by \
+                 setting `flex_grow=1.0` on the scroll_view (and on \
+                 its parent if that parent is itself unbounded), \
+                 or by giving it an explicit `height`. See \
+                 docs/book/src/layout/scroll.md. (This warning \
+                 prints once per process.)"
+            );
+        });
+    }
+}
+
 fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
     if is_scroll_view(tree, root) {
         let viewport = match tree.layout(root) {
             Some(l) => l,
             None => return,
         };
+        warn_if_scroll_view_unsized(tree, root, &viewport);
         let viewport_w = viewport.size.width;
 
         let saved_style = match tree.style(root) {
@@ -520,6 +556,10 @@ impl renderer::LayoutElement for crate::node::Element {
             hidden,
         );
     }
+    // `set_clip`: iOS hasn't wired UIView::clipsToBounds yet, so
+    // `overflow=Hidden` is layout-only on this port (Taffy
+    // auto-min-size becomes 0, no visual clip). Override when
+    // clip support lands.
 }
 impl renderer::UniversalElement for crate::node::Element {
     fn set_alpha(&self, alpha: f64) {
@@ -536,8 +576,8 @@ pub use renderer::{
     set_grid_column_start, set_grid_row_end, set_grid_row_start,
     set_grid_template_columns, set_grid_template_rows, set_height,
     set_justify_content, set_justify_items, set_margin, set_max_height,
-    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
-    set_width,
+    set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
+    set_row_gap, set_width,
 };
 
 // ---------------------------------------------------------------------

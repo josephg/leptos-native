@@ -256,6 +256,45 @@ impl<S: Into<GridLine>, E: Into<GridLine>> From<(S, E)> for GridRange {
 }
 
 // ---------------------------------------------------------------------
+// Overflow — CSS-style overflow control
+// ---------------------------------------------------------------------
+
+/// Container overflow behaviour.
+///
+/// Three values mapping directly onto CSS's `overflow` keyword:
+///
+/// - [`Overflow::Visible`] (default): no clip. Children extending
+///   past the container's frame paint outside it. As a flex/grid
+///   item, this container's automatic minimum size stays
+///   content-based — its parent can't shrink it below its content's
+///   intrinsic min-size.
+/// - [`Overflow::Clip`]: visual clip at the container's frame, but
+///   the layout shape is otherwise unchanged — auto-min-size stays
+///   content-based. Use this for "round corners and clip children
+///   to the rounded shape" recipes (pair with `corner_radius`) where
+///   you want the visual clip without changing how flex parents are
+///   allowed to shrink this element.
+/// - [`Overflow::Hidden`]: visual clip **and** the Taffy
+///   auto-min-size becomes `0` — the container's parent can shrink
+///   it all the way down to zero on the scroll axis. This is the
+///   right value for content that's expected to overflow under
+///   pressure (e.g. a `<scroll_view>` viewport, or any "shrink to
+///   fit, clip the rest" container).
+///
+/// One attribute, two effects: visual clip (port-specific —
+/// `masksToBounds` on CALayer / `clipsToBounds` on UIView /
+/// `gtk_widget_set_overflow` on GtkWidget) and the Taffy layout
+/// effect for `Hidden` only. `Scroll` is not modelled here —
+/// `<scroll_view>` is the explicit scroll container today.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Overflow {
+    #[default]
+    Visible,
+    Clip,
+    Hidden,
+}
+
+// ---------------------------------------------------------------------
 // Generic IntoMaybeReactive impls
 // ---------------------------------------------------------------------
 //
@@ -290,6 +329,7 @@ macro_rules! impl_pair {
 
 impl_pair!(
     String, bool, i32, f32, f64, usize, Dim, AlignSelf, GridLine, Edges,
+    Overflow,
 );
 
 // Sugar: pass raw integer literals to grid_column / grid_row methods
@@ -422,10 +462,6 @@ pub struct DecorationAttrs<C: 'static> {
     pub corner_radius:    Option<MaybeReactive<f32>>,
     pub border_width:     Option<MaybeReactive<f32>>,
     pub border_color:     Option<MaybeReactive<C>>,
-    /// CSS `overflow: hidden` — children extending past the element's
-    /// bounds are clipped at draw time. CALayer's `masksToBounds` on
-    /// AppKit; analogous mechanism per port.
-    pub clip:             Option<MaybeReactive<bool>>,
 }
 
 impl<C: 'static> Default for DecorationAttrs<C> {
@@ -435,7 +471,6 @@ impl<C: 'static> Default for DecorationAttrs<C> {
             corner_radius:    None,
             border_width:     None,
             border_color:     None,
-            clip:             None,
         }
     }
 }
@@ -455,8 +490,8 @@ pub trait WithDecoration<C: 'static>: Sized {
         self
     }
 
-    /// Round the corners. Pair with [`Self::clip`]`(true)` to actually
-    /// clip children to the rounded shape; without `clip` the fill is
+    /// Round the corners. Pair with [`WithLayout::overflow`]`(Overflow::Clip)`
+    /// to clip children to the rounded shape; without it the fill is
     /// rounded but children draw through.
     fn corner_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
         self.decoration_mut().corner_radius = Some(r.into_maybe_reactive());
@@ -473,14 +508,6 @@ pub trait WithDecoration<C: 'static>: Sized {
     /// Border color. Only visible when `border_width > 0`.
     fn border_color<V: IntoMaybeReactive<C>>(mut self, c: V) -> Self {
         self.decoration_mut().border_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// CSS `overflow: hidden`. Children outside the element's frame
-    /// are clipped at draw time. Layout still positions them at full
-    /// size.
-    fn clip<V: IntoMaybeReactive<bool>>(mut self, c: V) -> Self {
-        self.decoration_mut().clip = Some(c.into_maybe_reactive());
         self
     }
 }
@@ -523,6 +550,9 @@ pub struct LayoutAttrs {
     /// weren't there) AND hides the underlying view. `false` restores
     /// the element to its normal display mode.
     pub hidden: Option<MaybeReactive<bool>>,
+
+    /// CSS-style overflow. See [`Overflow`] for semantics.
+    pub overflow: Option<MaybeReactive<Overflow>>,
 }
 
 /// Builder accessor for [`LayoutAttrs`]. Implementations expose
@@ -712,6 +742,16 @@ pub trait WithLayout: Sized {
     /// actually want — and what `<Show>` would do, with less ceremony.)
     fn hidden<V: IntoMaybeReactive<bool>>(mut self, h: V) -> Self {
         self.layout_mut().hidden = Some(h.into_maybe_reactive());
+        self
+    }
+
+    /// CSS `overflow`. See [`Overflow`] — `Hidden` clips content
+    /// visually at this element's frame **and** changes the Taffy
+    /// automatic-min-size for this element (as a flex/grid item)
+    /// from content-based to `0`, letting a flex parent shrink it
+    /// past its content's intrinsic size.
+    fn overflow<V: IntoMaybeReactive<Overflow>>(mut self, o: V) -> Self {
+        self.layout_mut().overflow = Some(o.into_maybe_reactive());
         self
     }
 }

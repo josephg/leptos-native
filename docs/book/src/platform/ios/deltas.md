@@ -15,29 +15,23 @@ between the two.
 `<switch>` is a Rust keyword, so the macro emits `r#switch`. You
 write `<switch>` normally in `view!{}`.
 
-## Elements not on iOS
+## Elements with native-flavoured aliases
 
-- **`<pop_up_button>`** — UIMenu and UIPickerView are different
-  shapes (UIMenu is a popover, UIPickerView is a spinner).
-- **`<color_well>`** — UIColorPickerViewController is a modal
-  sheet.
-- **`<checkbox>`** — use `<switch>`.
+- **`<checkbox>` (Cocoa/GTK) ≡ `<switch>` (iOS)** — use the
+  portable `<toggle>` alias when you want one tag that compiles
+  everywhere.
 
-If you need cross-port code that doesn't break compilation on
-either side, gate the platform-specific bits with
-`cfg(target_os = ...)`:
+## Elements with different native UX
 
-```rust
-#[cfg(target_os = "macos")]
-fn theme_picker(idx: RwSignal<usize>) -> impl IntoView {
-    view! { <pop_up_button items=vec!["Light", "Dark"] bind:value=idx /> }
-}
-
-#[cfg(target_os = "ios")]
-fn theme_picker(idx: RwSignal<usize>) -> impl IntoView {
-    view! { <segmented_control items=vec!["Light", "Dark"] bind:selection=idx /> }
-}
-```
+- **`<pop_up_button>`** — works on iOS via UIButton + UIMenu
+  (iOS 14+). The visual is a button that drops down a menu when
+  tapped; on macOS it's a click-to-reveal popup. Same `bind:value`
+  API, same `.items(...)` setter.
+- **`<color_well>`** — works on iOS via UIColorWell (iOS 14+).
+  Tapping the swatch opens the system color picker as a modal
+  sheet, vs Cocoa's inline picker panel. Same `bind:value` API
+  with the iOS-flavoured `Color` type (which supports system
+  colours / dark-mode-aware variants).
 
 ## Entry points
 
@@ -72,9 +66,14 @@ fn theme_picker(idx: RwSignal<usize>) -> impl IntoView {
 ## Decoration attributes
 
 Both ports support `background_color`, `corner_radius`,
-`border_width`, `border_color`, `clip` on container elements.
-The implementations differ (CALayer vs UIKit equivalents); the
+`border_width`, `border_color` on container elements. The
+implementations differ (CALayer vs UIKit equivalents); the
 end result looks the same.
+
+The `overflow=Overflow::Clip` / `Hidden` clipping primitive is
+Cocoa-only today. On iOS the layout half of `Overflow::Hidden`
+(Taffy's auto-min-size becoming 0) takes effect, but the visual
+clip is a no-op pending a UIView `clipsToBounds` wiring.
 
 ## SF Symbols
 

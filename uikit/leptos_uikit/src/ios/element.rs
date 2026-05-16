@@ -1937,6 +1937,272 @@ impl Render<Dom> for SegmentedControl {
 }
 
 // ---------------------------------------------------------------------
+// pop_up_button() — UIButton + UIMenu (iOS 14+).
+// API mirrors the Cocoa `pop_up_button()` for portability:
+// `.items(...)`, `.selection(...)`, `bind:value=index_signal`.
+// ---------------------------------------------------------------------
+
+pub struct PopUpButton {
+    items: Vec<String>,
+    selection: MaybeReactive<usize>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
+    handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    node_ref: Option<crate::ios::NodeRef>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
+}
+
+pub fn pop_up_button() -> PopUpButton {
+    PopUpButton {
+        items: Vec::new(),
+        selection: MaybeReactive::Static(0),
+        enabled: None,
+        pending_bind_selection: None,
+        handlers: Vec::new(),
+        pending_spreads: Vec::new(),
+        node_ref: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
+    }
+}
+
+impl PopUpButton {
+    pub fn items<I, S>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.items = items.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn selection<V: IntoMaybeReactive<usize>>(mut self, v: V) -> Self {
+        self.selection = v.into_maybe_reactive();
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_selection(
+        &mut self,
+        bound: crate::ios::bind::BoundIndex,
+    ) {
+        self.pending_bind_selection = Some(bound);
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl SupportsEvent<crate::event_ios::ChangeEvent> for PopUpButton {}
+
+impl WithLayout for PopUpButton {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for PopUpButton {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl Render<Dom> for PopUpButton {
+    type State = ElementState<(), ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("pop_up_button");
+        let mut effects = Vec::new();
+
+        // The change callback: invoked when a menu item is picked.
+        // `bind:value` threads a real setter through; otherwise it's
+        // a no-op (the user-visible title still updates because we
+        // refresh it from the reactive `selection` below, but
+        // there's no signal to write back to).
+        let mut on_change: Box<dyn FnMut(usize) + 'static> =
+            if let Some(bound) = self.pending_bind_selection {
+                let mut setter = bound.setter;
+                Box::new(move |i: usize| setter(i))
+            } else {
+                Box::new(|_| {})
+            };
+
+        // Build the menu once. Items are static-after-build for now
+        // (matches the Cocoa popup's behaviour).
+        let initial = match &self.selection {
+            MaybeReactive::Static(i) => *i,
+            MaybeReactive::Reactive(f) => f(),
+        };
+        el.set_popup_items(&self.items, initial, move |i| {
+            on_change(i);
+        });
+
+        // Reactive selection — programmatic changes to the bound
+        // signal update the displayed title.
+        let items_clone = self.items.clone();
+        let el_for = el.clone();
+        if let Some(eff) = install(self.selection, move |i| {
+            el_for.set_popup_selection(&items_clone, i);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+        for f in self.pending_spreads { f(&el); }
+
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: std::marker::PhantomData,
+            children: (),
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
+// color_well() — UIColorWell (iOS 14+). Inline swatch that manages
+// its own UIColorPickerViewController presentation on tap.
+// ---------------------------------------------------------------------
+
+pub struct ColorWell {
+    value: MaybeReactive<ios_dom::Color>,
+    enabled: Option<MaybeReactive<bool>>,
+    pending_bind_value: Option<crate::ios::bind::BoundColor>,
+    handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    node_ref: Option<crate::ios::NodeRef>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
+}
+
+pub fn color_well() -> ColorWell {
+    ColorWell {
+        value: MaybeReactive::Static(ios_dom::Color::BLACK),
+        enabled: None,
+        pending_bind_value: None,
+        handlers: Vec::new(),
+        pending_spreads: Vec::new(),
+        node_ref: None,
+        universal: UniversalAttrs::default(),
+        layout: LayoutAttrs::default(),
+    }
+}
+
+impl ColorWell {
+    pub fn value<V: IntoMaybeReactive<ios_dom::Color>>(mut self, v: V) -> Self {
+        self.value = v.into_maybe_reactive();
+        self
+    }
+    pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.enabled = Some(v.into_maybe_reactive());
+        self
+    }
+    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+        self.node_ref = Some(r);
+        self
+    }
+    pub(crate) fn set_pending_bind_value(
+        &mut self,
+        bound: crate::ios::bind::BoundColor,
+    ) {
+        self.pending_bind_value = Some(bound);
+    }
+    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+    where
+        Self: SupportsEvent<E>,
+        E: EventDescriptor,
+        F: FnMut(E::EventType) + Send + 'static,
+    {
+        self.handlers.push(E::into_pending(handler));
+        self
+    }
+}
+
+impl SupportsEvent<crate::event_ios::ChangeEvent> for ColorWell {}
+
+impl WithLayout for ColorWell {
+    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
+}
+impl WithUniversal for ColorWell {
+    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
+}
+
+impl Render<Dom> for ColorWell {
+    type State = ElementState<(), ()>;
+    fn build(self) -> Self::State {
+        let el = IosElement::create("color_well");
+        let mut effects = Vec::new();
+
+        let el_for = el.clone();
+        if let Some(eff) = install(self.value, move |c| {
+            el_for.set_color_well_value(c);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(enabled) = self.enabled {
+            let el_for = el.clone();
+            if let Some(eff) = install(enabled, move |b| {
+                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        if let Some(bound) = self.pending_bind_value {
+            let eff = crate::ios::bind::install_color_well_value_bind(&el, bound);
+            effects.push(eff);
+        }
+
+        for h in self.handlers {
+            h.apply_to(&el);
+        }
+        for f in self.pending_spreads { f(&el); }
+
+        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_layout(&el, self.layout));
+
+        if let Some(r) = self.node_ref {
+            r.load(&el);
+        }
+
+        ElementState {
+            el,
+            _effects: effects,
+            _attrs: std::marker::PhantomData,
+            children: (),
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
 // date_picker() — UIDatePicker
 // ---------------------------------------------------------------------
 

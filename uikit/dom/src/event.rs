@@ -161,6 +161,7 @@ pub fn on_control_action(
         || any.downcast_ref::<objc2_ui_kit::UISegmentedControl>().is_some()
         || any.downcast_ref::<objc2_ui_kit::UIDatePicker>().is_some()
         || any.downcast_ref::<objc2_ui_kit::UIStepper>().is_some()
+        || any.downcast_ref::<objc2_ui_kit::UIColorWell>().is_some()
     {
         objc2_ui_kit::UIControlEvents::ValueChanged
     } else {

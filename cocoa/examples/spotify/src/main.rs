@@ -227,7 +227,7 @@ mod app {
                             flex_grow=1.0
                             background_color=BG_RAISED
                             corner_radius=8.0
-                            clip=true
+                            overflow=Overflow::Clip
                         >
                             <Switch>
                                 <Match when=move || page.get() == Page::Home>
@@ -261,7 +261,7 @@ mod app {
                 width=Dim::px(320.0)
                 background_color=BG_RAISED
                 corner_radius=8.0
-                clip=true
+                overflow=Overflow::Clip
             >
                 // Header row
                 <hstack
@@ -401,22 +401,56 @@ mod app {
             ("Westworld: Season 1",     4, "W"),
         ];
 
-        // 5 daily mixes
+        // Daily mixes — enough to always overflow horizontally
+        // (≈3.8k px wide at 200/card, exceeds any laptop monitor).
         let daily_mixes = vec![
-            ("Ludovico Einaudi, Hania Rani, Nat King Cole and …", 0, "1", "Daily Mix"),
-            ("Damon Korb, Massamasta, Lena Raine and …",          1, "2", "Daily Mix"),
-            ("Vikingur Olafsson, Olga Scheps, Alexandra…",        4, "3", "Daily Mix"),
-            ("Module, Chipset, Shrobokon and more",               3, "4", "Daily Mix"),
-            ("Vikingur Olafsson, Christopher Tin, Andrea…",       6, "5", "Daily Mix"),
+            ("Ludovico Einaudi, Hania Rani, Nat King Cole and …",  0, "1",  "Daily Mix"),
+            ("Damon Korb, Massamasta, Lena Raine and …",           1, "2",  "Daily Mix"),
+            ("Vikingur Olafsson, Olga Scheps, Alexandra…",         4, "3",  "Daily Mix"),
+            ("Module, Chipset, Shrobokon and more",                3, "4",  "Daily Mix"),
+            ("Vikingur Olafsson, Christopher Tin, Andrea…",        6, "5",  "Daily Mix"),
+            ("Burial, Four Tet, Brian Eno and …",                  2, "6",  "Daily Mix"),
+            ("Jon Hopkins, Nils Frahm, Olafur Arnalds …",          5, "7",  "Daily Mix"),
+            ("Beach House, Slowdive, Cocteau Twins and …",         7, "8",  "Daily Mix"),
+            ("Charli XCX, Caroline Polachek, Robyn …",             0, "9",  "Made For You"),
+            ("Mac DeMarco, Whitney, Beach Fossils …",              3, "10", "Discover"),
+            ("Tame Impala, Pond, Connan Mockasin …",               4, "11", "Daily Mix"),
+            ("Sufjan Stevens, Bon Iver, Phoebe Bridgers …",        1, "12", "Daily Mix"),
+            ("Aphex Twin, Boards of Canada, Autechre …",           6, "13", "Discover"),
+            ("Jamie xx, Floating Points, Caribou …",               2, "14", "Daily Mix"),
+            ("Solange, Frank Ocean, Blood Orange …",               5, "15", "Made For You"),
+            ("Khruangbin, Mild High Club, Unknown Mortal Orch.",   7, "16", "Daily Mix"),
+            ("Big Thief, Adrianne Lenker, Florist …",              3, "17", "Daily Mix"),
+            ("Caroline Shaw, Nico Muhly, Anna Meredith …",         0, "18", "Discover"),
         ];
 
-        // Albums you might like
+        // Albums — likewise. ≈5.3k px wide at 200/card.
         let albums = vec![
-            ("Wild Life",   2, "W"),
-            ("Charm Bracelet", 5, "C"),
-            ("Lover",       6, "L"),
-            ("Radiohead",   3, "R"),
-            ("Yellow",      7, "Y"),
+            ("Wild Life",         2, "W"),
+            ("Charm Bracelet",    5, "C"),
+            ("Lover",             6, "L"),
+            ("Radiohead",         3, "R"),
+            ("Yellow",            7, "Y"),
+            ("Hounds of Love",    1, "H"),
+            ("Endtroducing…",     0, "E"),
+            ("Selected Ambient",  4, "S"),
+            ("In Rainbows",       6, "I"),
+            ("Punisher",          2, "P"),
+            ("Blue",              3, "B"),
+            ("Talkie Walkie",     5, "T"),
+            ("Currents",          7, "C"),
+            ("Untrue",            1, "U"),
+            ("Kid A",             0, "K"),
+            ("Pure Comedy",       4, "P"),
+            ("Black Messiah",     6, "B"),
+            ("Stankonia",         3, "S"),
+            ("To Pimp A Butterfly", 2, "T"),
+            ("Anniemal",          5, "A"),
+            ("Plastic Beach",     7, "P"),
+            ("Carrie & Lowell",   1, "C"),
+            ("Ys",                0, "Y"),
+            ("Music Has The Right", 4, "M"),
+            ("OK Computer",       6, "O"),
         ];
 
         view! {
@@ -467,7 +501,7 @@ mod app {
                                     background_color=BG_ROW_HOVER
                                     corner_radius=6.0
                                     align=AlignItems::Center
-                                    clip=true
+                                    overflow=Overflow::Clip
                                 >
                                     {cover_block(56.0, cover, letter)}
                                     <label
@@ -488,7 +522,7 @@ mod app {
                                     background_color=BG_ROW_HOVER
                                     corner_radius=6.0
                                     align=AlignItems::Center
-                                    clip=true
+                                    overflow=Overflow::Clip
                                 >
                                     {cover_block(56.0, cover, letter)}
                                     <label
@@ -502,7 +536,8 @@ mod app {
                         </hstack>
                     </vstack>
 
-                    // "Made For sineltor" section
+                    // "Made For sineltor" section — horizontally
+                    // scrollable strip of daily-mix cards.
                     <vstack gap=12.0>
                         <hstack
                             justify_content=JustifyContent::SpaceBetween
@@ -514,39 +549,44 @@ mod app {
                             </vstack>
                             <label text_color=TXT_SECONDARY font_size=11.0 bold=true>"Show all"</label>
                         </hstack>
-                        <hstack gap=14.0>
-                            {daily_mixes.into_iter().map(|(subtitle, cover, num, label_text)| {
-                                view! {
-                                    <vstack
-                                        flex_grow=1.0
-                                        gap=10.0
-                                        padding=12.0
-                                        background_color=BG_PANEL
-                                        corner_radius=8.0
-                                    >
+                        <scroll_view
+                            axis=ScrollAxis::Horizontal
+                            min_height=260.0
+                            autohides_scrollers=true
+                        >
+                            <hstack gap=14.0>
+                                {daily_mixes.into_iter().map(|(subtitle, cover, num, label_text)| {
+                                    view! {
                                         <vstack
-                                            width=Dim::AUTO
-                                            height=140.0
+                                            width=200.0
+                                            gap=10.0
+                                            padding=12.0
+                                            background_color=BG_PANEL
+                                            corner_radius=8.0
                                         >
                                             {cover_block(140.0, cover, num)}
+                                            <label
+                                                text_color=TXT_PRIMARY
+                                                font_size=13.0
+                                                bold=true
+                                            >{label_text}</label>
+                                            <label
+                                                text_color=TXT_SECONDARY
+                                                font_size=11.0
+                                                multiline=true
+                                            >{subtitle}</label>
                                         </vstack>
-                                        <label
-                                            text_color=TXT_PRIMARY
-                                            font_size=13.0
-                                            bold=true
-                                        >{label_text}</label>
-                                        <label
-                                            text_color=TXT_SECONDARY
-                                            font_size=11.0
-                                            multiline=true
-                                        >{subtitle}</label>
-                                    </vstack>
-                                }
-                            }).collect::<Vec<_>>()}
-                        </hstack>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </hstack>
+                        </scroll_view>
                     </vstack>
 
-                    // "Albums featuring songs you like"
+                    // "Albums featuring songs you like" — horizontally
+                    // scrollable strip. The cards inside have fixed
+                    // widths (no flex_grow) so they keep their
+                    // natural sizes inside the scroll_view's
+                    // content-sized documentView wrapper.
                     <vstack gap=12.0>
                         <hstack
                             justify_content=JustifyContent::SpaceBetween
@@ -557,26 +597,32 @@ mod app {
                             </label>
                             <label text_color=TXT_SECONDARY font_size=11.0 bold=true>"Show all"</label>
                         </hstack>
-                        <hstack gap=14.0>
-                            {albums.into_iter().map(|(name, cover, letter)| {
-                                view! {
-                                    <vstack
-                                        flex_grow=1.0
-                                        gap=10.0
-                                        padding=12.0
-                                        background_color=BG_PANEL
-                                        corner_radius=8.0
-                                    >
-                                        {cover_block(140.0, cover, letter)}
-                                        <label
-                                            text_color=TXT_PRIMARY
-                                            font_size=13.0
-                                            bold=true
-                                        >{name}</label>
-                                    </vstack>
-                                }
-                            }).collect::<Vec<_>>()}
-                        </hstack>
+                        <scroll_view
+                            axis=ScrollAxis::Horizontal
+                            min_height=210.0
+                            autohides_scrollers=true
+                        >
+                            <hstack gap=14.0>
+                                {albums.into_iter().map(|(name, cover, letter)| {
+                                    view! {
+                                        <vstack
+                                            width=200.0
+                                            gap=10.0
+                                            padding=12.0
+                                            background_color=BG_PANEL
+                                            corner_radius=8.0
+                                        >
+                                            {cover_block(140.0, cover, letter)}
+                                            <label
+                                                text_color=TXT_PRIMARY
+                                                font_size=13.0
+                                                bold=true
+                                            >{name}</label>
+                                        </vstack>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </hstack>
+                        </scroll_view>
                     </vstack>
 
                     // Pad a bit at the bottom so the player bar doesn't kiss the content

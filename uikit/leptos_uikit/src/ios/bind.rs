@@ -16,8 +16,8 @@
 #![allow(missing_docs)]
 
 use crate::ios::element::{
-    DatePicker, Label, SegmentedControl, Slider, Stepper, Switch,
-    TextField, TextView,
+    ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
+    Stepper, Switch, TextField, TextView,
 };
 use ios_dom::{BoolAttr, Element as IosElement, StringAttr};
 use reactive_graph::{
@@ -341,6 +341,61 @@ pub(crate) fn install_segmented_selection_bind(
     RenderEffect::new(move |_prev| {
         let v = getter();
         el_for_set.set_segmented_selection(v as isize);
+    })
+}
+
+// ---------------------------------------------------------------------
+// PopUpButton — bind:value=usize signal (matches Cocoa naming).
+// Outgoing-edge wiring (menu-item tap → signal setter) is handled
+// inside the PopUpButton builder's `build()` via `set_popup_items`'s
+// on_select callback. We only need to hand the setter over.
+// ---------------------------------------------------------------------
+
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for PopUpButton
+where
+    Sig: IntoSignal<usize>,
+{
+    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_selection(BoundIndex { getter, setter });
+        self
+    }
+}
+
+// ---------------------------------------------------------------------
+// ColorWell — bind:value=Color signal
+// ---------------------------------------------------------------------
+
+pub(crate) struct BoundColor {
+    pub(crate) getter: Box<dyn Fn() -> ios_dom::Color + Send + 'static>,
+    pub(crate) setter: Box<dyn FnMut(ios_dom::Color) + Send + 'static>,
+}
+
+impl<Sig> BindAttribute<crate::keys::Value, Sig> for ColorWell
+where
+    Sig: IntoSignal<ios_dom::Color>,
+{
+    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_value(BoundColor { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_color_well_value_bind(
+    el: &IosElement,
+    bound: BoundColor,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    el.on_color_change(move |c| setter(c));
+
+    let getter = bound.getter;
+    let el_for_set = el.clone();
+    RenderEffect::new(move |_prev| {
+        let v = getter();
+        el_for_set.set_color_well_value(v);
     })
 }
 

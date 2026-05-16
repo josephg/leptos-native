@@ -228,6 +228,15 @@ impl renderer::LayoutElement for crate::node::Element {
             hidden,
         );
     }
+    fn set_clip(&self, clip: bool) {
+        use gtk4::prelude::WidgetExt;
+        let widget = self.as_node().widget();
+        widget.set_overflow(if clip {
+            gtk4::Overflow::Hidden
+        } else {
+            gtk4::Overflow::Visible
+        });
+    }
 }
 impl renderer::UniversalElement for crate::node::Element {
     fn set_alpha(&self, alpha: f64) {
@@ -247,8 +256,8 @@ pub use renderer::{
     set_grid_column_start, set_grid_row_end, set_grid_row_start,
     set_grid_template_columns, set_grid_template_rows, set_height,
     set_justify_content, set_justify_items, set_margin, set_max_height,
-    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
-    set_width,
+    set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
+    set_row_gap, set_width,
 };
 
 // ---------------------------------------------------------------------

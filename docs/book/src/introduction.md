@@ -75,8 +75,14 @@ of this fork**:
 - **No server functions, `Resource`, or `Suspense`.** There is no
   client-server boundary to bridge. Async is still supported via
   `AsyncDerived` and `spawn_local`.
-- **No `<Transition>`, `<AnimatedShow>`, or `<Slots>`** yet —
-  these are on the punch-list.
+- **`<Transition>`** works for the async-render case — wraps
+  one or more `Suspend`s so they render placeholder views while
+  their futures are in flight. A coordinated cross-suspend
+  "shared loading" fallback isn't wired yet; each `Suspend` is
+  independent for now.
+- **No `<AnimatedShow>` yet** — needs platform-specific
+  animation integration (CoreAnimation on macOS / iOS, GTK
+  transitions on Linux).
 
 The [Migrating from Web Leptos](./appendix/migration.md) appendix
 covers these in more detail.

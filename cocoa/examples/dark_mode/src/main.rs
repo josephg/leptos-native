@@ -64,7 +64,7 @@ mod app {
                 <vstack
                     background_color=move || p().surface
                     corner_radius=8.0
-                    clip=true
+                    overflow=Overflow::Clip
                     padding=16.0
                     gap=8.0>
                     <label text_color=move || p().text bold=true>

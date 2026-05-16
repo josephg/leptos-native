@@ -28,15 +28,15 @@
 //!   (`pub trait IntoView: leptos::IntoView<Dom>`) so user code writes
 //!   `impl IntoView` without the `<R>` parameter.
 //! - [`children`] — typed children props (`TypedChildren<T, R>`,
-//!   `TypedChildrenFn<T, R>`, `TypedChildrenMut<T, R>`). The fork
-//!   deliberately drops upstream's untyped `Children = Box<dyn FnOnce
-//!   () -> AnyView>` shape — see "Native vs upstream" below.
+//!   `TypedChildrenFn<T, R>`, `TypedChildrenMut<T, R>`) plus the
+//!   erased `ChildrenFn<R>` (built on `AnyView<R>`) for slot-style
+//!   patterns where children vary per call-site. See "Native vs
+//!   upstream" below.
 //! - [`component`] — the `Props` / `ComponentConstructor` plumbing
 //!   the `#[component]` proc-macro emits against.
 //! - [`control_flow`] — `<Show>`, `<ShowLet>`, `<For>`. Branching
-//!   components ported against the new `Render<R>` shape. **Caveat:**
-//!   `<For>` is currently *unkeyed* (`Vec<T>: Render<R>` position-
-//!   based diff). Keyed iteration is on the punch list.
+//!   components ported against the new `Render<R>` shape. `<For>` is
+//!   keyed via the `Keyed` adapter in `common/renderer`.
 //! - [`error_boundary`] — `<ErrorBoundary>` + the `Errors` map.
 //!   Catches `Result::Err` thrown by descendant `Result<T, E>:
 //!   Render<R>` impls via the `throw_error` hook system.
@@ -83,23 +83,25 @@
 //!
 //! - **No `RenderHtml`** trait. `IntoView<R>` only requires
 //!   `Render<R> + AddAnyAttr<R> + Send`. Native has no SSR step.
-//! - **No `AnyView` / type-erased `Children`.** Each binary has
-//!   exactly one renderer; concrete view types pass through the
-//!   component graph unmolested. Components that need to accept
-//!   arbitrary children take `TypedChildren<C, R>` with a generic
-//!   `C` parameter.
+//! - **`AnyView<R>` is used sparingly.** Each binary has exactly
+//!   one renderer; concrete view types pass through the component
+//!   graph unmolested whenever possible (via `TypedChildren<C, R>`
+//!   with a generic `C` parameter). For the cases where erasure is
+//!   genuinely useful — slot children that vary per call-site,
+//!   `<Show fallback>` with mismatched branch types —
+//!   `renderer::view::AnyView<R>` and the per-port aliases
+//!   `AnyView = AnyView<Dom>` are available, plus `ChildrenFn<R>`
+//!   for erased children. See `cocoa/examples/slots`.
 //! - **No `Suspense` / `Resource` / `Action::server_action`.** No
 //!   server functions, so no async-data-bound view-rendering story.
 //!   `task::spawn` exists for fire-and-forget futures but doesn't
 //!   integrate with view rendering.
-//! - **No `<Transition>` / `<AnimatedShow>`.** The upstream versions
-//!   are tied to web `setTimeout` plumbing; native equivalents will
-//!   want to integrate with CoreAnimation (macOS/iOS) or GTK
-//!   transitions (Linux). Deferred until designed.
-//! - **No `<Slots>`.** Punch-list item.
-//! - **`<Show>` and `<ShowLet>` lost their `fallback` props.**
-//!   Upstream's used `ViewFn` (backed by `AnyView`); a typed
-//!   replacement is on the punch list.
+//! - **`<Transition>` works** for the async-render case (wrap one
+//!   or more `Suspend`s; each shows a placeholder until its future
+//!   resolves). Shared cross-Suspend "loading" coordination isn't
+//!   wired yet. **`<AnimatedShow>`** is deferred — it needs
+//!   platform animation integration (CoreAnimation on macOS / iOS,
+//!   GTK transitions on Linux).
 //!
 //! See the platform crate's docs (`leptos_cocoa`, `leptos_uikit`)
 //! for what each adds on top.
@@ -131,7 +133,8 @@ pub mod prelude {
 
     pub use crate::{
         children::*, component::*, control_flow::*, error::*, into_view::*,
-        text_prop::*, IntoAttributeValue,
+        local_resource::LocalResource, suspend::Suspend, text_prop::*,
+        IntoAttributeValue,
     };
 
     pub use leptos_macro::*;
@@ -167,14 +170,25 @@ pub mod error {
 }
 
 /// Control-flow components like `<Show>`, `<ShowLet>`, `<For>`,
-/// `<Switch>` / `<Match>`.
+/// `<Switch>` / `<Match>`, `<Transition>`.
 pub mod control_flow {
-    pub use crate::{for_loop::*, show::*, show_let::*, switch::*};
+    pub use crate::{
+        for_loop::*, show::*, show_let::*, switch::*, transition::*,
+    };
 }
 mod for_loop;
 mod show;
 mod show_let;
 mod switch;
+mod transition;
+
+/// `LocalResource<T>` — reactive async-derived value with no
+/// `Send` bound on the closure. Pair with [`suspend::Suspend`].
+pub mod local_resource;
+
+/// `Suspend<F>` — render a future as a view; placeholder until
+/// resolved, then the future's output mounted in place.
+pub mod suspend;
 
 /// Types for reactive string properties for components.
 pub mod text_prop;

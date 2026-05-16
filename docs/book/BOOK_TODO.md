@@ -277,13 +277,15 @@ phase chosen for logical grouping + low conflict.
 
 ## Phase F — Substantial new work
 
-- [ ] **R2** `<Slots>` macro. Port the upstream `#[slot]` proc
-      macro from leptos_macro. Replace the multi-`TypedChildren`
-      workaround in the slots_cocoa example.
-- [ ] **S1** Build iOS wrappers: `<pop_up_button>` via UIMenu
-      (popover) and `<color_well>` via UIColorPickerViewController
-      (modal sheet). The latter is a different UX from Cocoa's
-      inline well; document that delta.
+- [x] **R2** Slots / AnyView landed. `AnyView<R>` in
+      `common/renderer/src/view/any_view.rs`; per-port
+      `AnyView` + `ChildrenFn` aliases; `IntoAny::into_any()`
+      extension trait. The previously-broken `slots_cocoa`
+      example now builds and is back in the workspace.
+- [x] **S1** iOS `<pop_up_button>` (UIButton + UIMenu, iOS 14+)
+      and `<color_well>` (UIColorWell, iOS 14+) both wired up.
+      `bind:value` works on both with the same API as Cocoa.
+      Docs (element pages + iOS deltas) updated.
 - [x] **P3** GTK port: new `gtk_dom::Color` shim type +
       `gtk::decoration::WithDecoration` trait providing
       warn-and-discard setters for `background_color` /
@@ -299,17 +301,59 @@ phase chosen for logical grouping + low conflict.
       unbounded scroll_view parent, AddAnyAttr panic for
       branching wrappers).
 
-## Phase G — Final polish
+## Phase G — Final polish ✅
 
-- [ ] Final mdbook build + workspace check.
-- [ ] CLAUDE.md updates beyond L2 (default features for GTK,
-      removed feature-flag claims).
-- [ ] Update README/* with the new mount() name, app-id default,
-      etc.
-- [ ] Deferred (won't do this round): **P1** reactive
-      `<toolbar>` items, **P2** `<text_field>` intrinsic-width
-      opt-in.
-- [ ] **R3** `<Transition>` — deferred. Needs CoreAnimation
-      design thought. Drop the broken transition_cocoa example
-      or move it under a "future" subdirectory; the book's
-      mentions point at AsyncDerived + Effect + Switch for now.
+- [x] Final mdbook build + workspace check (top-level + inner
+      uikit workspace) all green.
+- [x] CLAUDE.md updated: GTK no longer requires explicit
+      feature flag, iOS examples now in inner workspace,
+      `uikit/tools/run_ios.sh` shared script.
+- [x] README_gtk.md / README_ios.md updated: drop `features =
+      ["gtk"]` and `--features gtk`; reflect inner iOS
+      workspace; point at the shared run_ios.sh shim.
+- [x] common/leptos/src/lib.rs module docs updated: AnyView
+      now described as "used sparingly" with concrete examples,
+      not "doesn't exist"; Slots/Show fallback notes refreshed;
+      For is keyed.
+- [x] migration appendix in book: removed "no AnyView" claim,
+      added concrete example of `into_any()`; removed stale
+      Slots line in "not yet implemented" list.
+- [x] Layout safety net mirrored to Cocoa: `cocoa_dom::layout`
+      emits a once-per-process warning when a `<scroll_view>`
+      ends up with zero-height viewport but non-empty content
+      (mirrors the iOS warning landed earlier).
+
+### Landed since the initial Phase G
+
+- **P2** `<text_field>` `intrinsic_width` enum + builder method
+  on Cocoa. Plumbs through `cocoa_dom::layout` via a
+  thread-local NSView-pointer set. Default stays `FromParent`;
+  `FromContent` opt-in restores natural NSTextField sizing.
+- **`<Transition>` + `LocalResource` + `Suspend`** — minimal
+  but working implementation. `LocalResource<T>` wraps
+  `AsyncDerived<T, LocalStorage>` with relaxed `Send` bounds.
+  `Suspend<F>` renders a future as a view (placeholder until
+  ready, mounted state after). `<Transition>` is currently a
+  passthrough; coordinated cross-suspend "shared loading"
+  fallback is a future enhancement. The previously-broken
+  `transition_cocoa` example builds and is back in the
+  workspace.
+- **P1** Reactive `<toolbar>` items via `ToolbarHandle::set_items`
+  + `current_identifiers`. Imperative declarative-shaped API
+  driven from an `Effect`. The macro-level `<For>` inside
+  `<toolbar>` is still a future enhancement, but the new
+  helpers let users get equivalent declarative behaviour via
+  `Effect::new + toolbar.set_items(...)`.
+
+### Still deferred
+
+- **`<AnimatedShow>`** — needs CoreAnimation design thought.
+- **`<For>` directly inside `<toolbar>`** — would need a
+  ToolbarMountable-shaped reactive iteration adapter. The
+  imperative `set_items` API covers the use case for now.
+- **`<Transition>` cross-suspend coordination** — share a
+  loading state across multiple `Suspend`s in a subtree so a
+  single fallback can cover the whole region.
+- **GTK widget parity** — `<scroll_view>`, `<image_view>`,
+      `<progress_indicator>`, etc. The user marked these as
+      "all eventually, low priority — do at the end."

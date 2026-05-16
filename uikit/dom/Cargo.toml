@@ -75,6 +75,7 @@ objc2-ui-kit = { version = "0.3", features = [
     "UISegmentedControl",
     "UIDatePicker",
     "UIColor",
+    "UIColorWell",
     "UIFont",
     "UIViewController",
     "UIEvent",
@@ -85,9 +86,13 @@ objc2-ui-kit = { version = "0.3", features = [
     "UIGestureRecognizer",
     "UITapGestureRecognizer",
     "UIScreen",
+    "UIAction",
+    "UIMenu",
+    "UIMenuElement",
     "NSText",
     "UITextInputTraits",
 ] }
+block2 = "0.6"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

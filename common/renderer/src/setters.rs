@@ -30,7 +30,7 @@ use crate::layout::{
 };
 use crate::attrs::{
     install, AlignSelf, DecorationAttrs, Dim, Edges, GridLine, LayoutAttrs,
-    RenderEffect, UniversalAttrs,
+    Overflow, RenderEffect, UniversalAttrs,
 };
 use crate::layout::Display;
 
@@ -356,6 +356,15 @@ pub trait LayoutElement: Clone + 'static {
     /// just the layout slot collapsed. NSView's `isHidden` /
     /// UIView's `isHidden` / GtkWidget's `set_visible(!hidden)`.
     fn set_view_hidden(&self, hidden: bool);
+
+    /// Toggle paint-time clipping of overflowing children. Used by
+    /// `apply_layout` when wiring `overflow=Hidden` so the layout
+    /// effect is paired with the corresponding visual clip — CALayer
+    /// `masksToBounds` / UIView `clipsToBounds` / GtkWidget
+    /// `set_overflow(Overflow::Hidden)`. Default is no-op for ports
+    /// that don't have a clip primitive (or haven't wired it yet);
+    /// in that case `overflow=Hidden` is layout-only on that port.
+    fn set_clip(&self, _clip: bool) {}
 }
 
 /// Element-level handles for opacity + tooltip. Tooltip has a default
@@ -376,6 +385,24 @@ pub fn set_display<N: LayoutNodeOps>(node: &N, display: Display) {
     node.schedule_relayout();
 }
 
+/// Sets Taffy `style.overflow` on both axes. The user-facing
+/// [`Overflow`] enum is whole-element (no per-axis distinction);
+/// add a per-axis API later if needed.
+///
+/// `Clip` maps to taffy's `Clip`, which keeps the node's
+/// auto-min-size content-based — same effect on the flex/grid auto-min
+/// rule as `Visible`. `Hidden` maps to taffy's `Hidden`, which forces
+/// auto-min-size to 0.
+pub fn set_overflow<N: LayoutNodeOps>(node: &N, overflow: Overflow) {
+    let v = match overflow {
+        Overflow::Visible => taffy::Overflow::Visible,
+        Overflow::Clip    => taffy::Overflow::Clip,
+        Overflow::Hidden  => taffy::Overflow::Hidden,
+    };
+    node.update_style(|s| s.overflow = taffy::Point { x: v, y: v });
+    node.schedule_relayout();
+}
+
 // ---------------------------------------------------------------------
 // Decoration (background_color, corner_radius, border_*, clip)
 // ---------------------------------------------------------------------
@@ -388,7 +415,6 @@ pub trait DecorationElement<C: 'static>: Clone + 'static {
     fn set_corner_radius(&self, radius: f32);
     fn set_border_width(&self, width: f32);
     fn set_border_color(&self, color: C);
-    fn set_clip(&self, clip: bool);
 }
 
 pub fn apply_decoration<E, C>(
@@ -416,7 +442,6 @@ where
     install_setter!(attrs.corner_radius,    set_corner_radius);
     install_setter!(attrs.border_width,     set_border_width);
     install_setter!(attrs.border_color,     set_border_color);
-    install_setter!(attrs.clip,             set_clip);
     out
 }
 
@@ -474,6 +499,21 @@ where
     install_setter!(attrs.grid_column_end, set_grid_column_end);
     install_setter!(attrs.grid_row_start, set_grid_row_start);
     install_setter!(attrs.grid_row_end, set_grid_row_end);
+
+    // `overflow=` ⇒ Taffy style.overflow (auto-min-size effect for
+    // Hidden) **and** the port-side visual clip. The mapping:
+    //   Visible → Taffy Visible, clip off
+    //   Clip    → Taffy Clip,    clip on   (paint-only clipping)
+    //   Hidden  → Taffy Hidden,  clip on   (clip + auto-min-size 0)
+    if let Some(v) = attrs.overflow {
+        let e = el.clone();
+        if let Some(eff) = install(v, move |o: Overflow| {
+            set_overflow(e.as_node(), o);
+            e.set_clip(!matches!(o, Overflow::Visible));
+        }) {
+            out.push(eff);
+        }
+    }
 
     // `hidden=true` ⇒ Taffy `Display::None` (collapses the slot).
     // `hidden=false` ⇒ restore whatever display the node was created

@@ -91,6 +91,6 @@ need to think about it.
 ## When you don't want a scroll view
 
 If you just want clipping (no scrolling), set
-`clip=true` on the parent and constrain its height. That uses CSS
-`overflow: hidden` semantics via Taffy without bringing in a
-native scroll view.
+`overflow=Overflow::Hidden` (or `Overflow::Clip` for a paint-only
+clip that doesn't change Taffy's auto-min-size) on the parent and
+constrain its height. See [Overflow](./attributes.md#overflow).

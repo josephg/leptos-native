@@ -74,7 +74,7 @@ mod app {
                 background_color=FIELD_BG
                 corner_radius=6.0
                 padding=2.0
-                clip=true
+                overflow=Overflow::Clip
             >
                 {items.into_iter().map(|(value, label)| view! {
                     <button

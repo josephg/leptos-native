@@ -73,12 +73,17 @@ uikit/leptos_uikit/src/ios/        — Bridges uikit/dom to renderer's
                                      slider(), …) and the bind:
                                      plumbing.
 uikit/leptos_uikit/src/mount.rs    — `run` entry point.
-uikit/examples/<name>/             — Each example is its own Cargo
-                                     crate (out-of-workspace; iOS
-                                     targets only) with a
-                                     `run_ios.sh` script that
-                                     builds, bundles, installs, and
-                                     launches in the simulator.
+uikit/examples/                    — Inner Cargo workspace listing
+                                     each iOS example as a member.
+                                     Defaults to the iOS-sim target
+                                     via `.cargo/config.toml`;
+                                     shares `target/` with the
+                                     parent workspace. Each example
+                                     has a `run_ios.sh` shim that
+                                     calls the shared
+                                     `uikit/tools/run_ios.sh` to
+                                     build, bundle, install, and
+                                     launch in the simulator.
 implementation_ios.md              — Design-decision journal,
                                      newest first.
 TODO_ios.md                        — Priority-ordered outstanding
@@ -159,13 +164,22 @@ fn main() {
 }
 ```
 
-Copy `uikit/examples/counter/run_ios.sh` and replace the bundle-name /
-bundle-id references. Build and launch with `./run_ios.sh`.
+Add your example to `uikit/examples/Cargo.toml`'s `members`
+list, then create a `run_ios.sh` shim:
 
-Unlike the macOS port, iOS has only one entry point — `run`. There's
-no `mount_to_window` builder because iPhone apps run as a single
-fullscreen scene, and iPad multi-window is system-initiated via
-`UISceneSession`, not declared at launch.
+```bash
+#!/bin/bash
+exec "$(dirname "$0")/../../tools/run_ios.sh" "$(dirname "$0")" "$@"
+```
+
+The shared `uikit/tools/run_ios.sh` derives the Cargo package
+name, app display name, and bundle ID from the example directory
+name. Build and launch with `./run_ios.sh`.
+
+Unlike the macOS port, iOS only exposes `run` / `mount` —
+there's no `mount_to_window` builder because iPhone apps run as
+a single fullscreen scene, and iPad multi-window is
+system-initiated via `UISceneSession`, not declared at launch.
 
 ## Available controls and attributes
 

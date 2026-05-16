@@ -39,14 +39,51 @@ use renderer::{Layout, LayoutBackend};
 
 /// `LayoutBackend` impl for AppKit. The `View` is a retained pointer
 /// to the per-node `NSView`; `NodeMeta` carries the scroll-view flag
-/// so the cocoa-side `compute_layout` knows to run a second pass on
-/// `<scroll_view>` subtrees.
+/// and the documentView-wrapper redirect used by `<scroll_view>`.
 pub struct CocoaBackend;
 
 #[derive(Clone, Default)]
 pub struct CocoaMeta {
     /// True if this node backs an `<scroll_view>` (NSScrollView).
     pub is_scroll_view: bool,
+    /// Which axis (or axes) the scroll view scrolls on. Drives the
+    /// documentView wrapper's Taffy style: Vertical lets the
+    /// wrapper grow vertically and locks its width to the viewport;
+    /// Horizontal flips the axis; Both lets it grow on both axes.
+    /// Only meaningful when `is_scroll_view`. Default Vertical.
+    pub scroll_axis: ScrollAxis,
+    /// For `<scroll_view>`: the NodeId of an intermediate Taffy node
+    /// backed by the NSScrollView's documentView. Children added to
+    /// the scroll view at the Node/AppKit layer are attached to this
+    /// wrapper at the Taffy layer instead of the scroll view itself.
+    ///
+    /// The wrapper has `flex_shrink: 0` so Taffy sizes it to its
+    /// children's natural extent (not the scroll view's viewport),
+    /// giving the documentView its scrollable content size in a
+    /// single layout pass. `apply_frames` then writes that size to
+    /// the documentView's `setFrame:` naturally — no second pass
+    /// and no post-hoc fixup needed.
+    pub child_taffy_parent: Option<NodeId>,
+}
+
+/// Which axis (or axes) a `<scroll_view>` scrolls on. Picked at
+/// `<scroll_view axis=...>` build time; not reactive (it sets the
+/// documentView wrapper's Taffy style at registration time, plus
+/// sensible scroller-visibility defaults).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ScrollAxis {
+    /// Content grows downward; viewport width locks to the scroll
+    /// view's width. Vertical wheel/trackpad input scrolls; horizontal
+    /// is a no-op. This is the default and matches the most common
+    /// macOS scroll-view pattern.
+    #[default]
+    Vertical,
+    /// Content grows rightward; viewport height locks to the scroll
+    /// view's height. Horizontal input scrolls.
+    Horizontal,
+    /// Content grows on both axes; both directions scroll. The
+    /// documentView is sized to the natural extent of its content.
+    Both,
 }
 
 impl LayoutBackend for CocoaBackend {
@@ -93,6 +130,15 @@ fn layout_debug_enabled() -> bool {
 // ---------------------------------------------------------------------
 
 /// Register `node` as a leaf in `tree` if not already registered.
+///
+/// `<scroll_view>` nodes additionally allocate a second Taffy leaf
+/// backed by the NSScrollView's documentView (the "child taffy
+/// parent"). The wrapper has `flex_shrink: 0` and `flex_direction:
+/// Column`, so it sizes to its content's natural extent and
+/// overflows the scroll view's clipped viewport — which is exactly
+/// what we want for the documentView's frame. Subsequent
+/// `attach_child` calls redirect into this wrapper, so the user's
+/// children are laid out inside it.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
     let mut layout = node.layout_slot().borrow_mut();
     if layout.handle.is_some() {
@@ -108,17 +154,110 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
             *root = Some(node_id);
         }
     }
+
+    if layout.meta.is_scroll_view {
+        if let Some(doc) = scroll_view_document(node.ns_view()) {
+            // Wrapper style picks the scroll axis. The principle:
+            // on the scroll axis, the wrapper grows to natural
+            // content size (flex_shrink:0 keeps it from being
+            // squashed to fit the viewport); on a non-scroll axis,
+            // the wrapper's size is bounded to the viewport via the
+            // default align_items: Stretch on the parent flex,
+            // which means children that would overflow that axis
+            // simply paint outside the wrapper (NSScrollView's
+            // clipView still clips them visually).
+            //
+            // For Both, neither axis stretches — the wrapper takes
+            // its natural content size on both directions.
+            // The wrapper uses `position: Absolute` rather than
+            // participating in the scroll_view's flex flow. Two
+            // reasons:
+            //
+            // 1. **Intrinsic-sizing isolation.** An absolutely-
+            //    positioned child does NOT contribute to its parent's
+            //    max-content / min-content. With a flex wrapper,
+            //    Taffy's max-content for the scroll_view would
+            //    include the wrapper's natural content size, and that
+            //    propagates UP to every ancestor's intrinsic size
+            //    computation — inflating the entire layout to fit
+            //    the scrollable content. `overflow: Hidden` on the
+            //    scroll_view stops *content_size* propagation in the
+            //    layout pass but doesn't suppress max-content
+            //    propagation, so a flex wrapper still poisons
+            //    ancestor sizing.
+            //
+            // 2. **Bounded by viewport per axis.** With
+            //    `inset.top: 0, inset.left: 0` plus `size: auto`,
+            //    the wrapper sits at the scroll_view's top-left and
+            //    sizes to its content on whichever axes scroll. For
+            //    axes that *don't* scroll, we additionally set the
+            //    opposite inset to 0 so the wrapper's cross-axis
+            //    size matches the viewport (e.g. for Vertical,
+            //    inset.right: 0 → wrapper.width = scroll_view.width).
+            //
+            // Vertical scroll → expand horizontally to viewport, grow
+            // vertically with content.
+            // Horizontal scroll → expand vertically to viewport, grow
+            // horizontally with content.
+            // Both → corner-pin only; grow on both axes.
+            use taffy::{LengthPercentageAuto, Position};
+            let zero = LengthPercentageAuto::length(0.0);
+            let mut wrapper_style = Style::default();
+            wrapper_style.position = Position::Absolute;
+            wrapper_style.inset.top = zero;
+            wrapper_style.inset.left = zero;
+            match layout.meta.scroll_axis {
+                ScrollAxis::Vertical => {
+                    wrapper_style.flex_direction = FlexDirection::Column;
+                    // Lock cross-axis (horizontal) to viewport.
+                    wrapper_style.inset.right = zero;
+                }
+                ScrollAxis::Horizontal => {
+                    wrapper_style.flex_direction = FlexDirection::Row;
+                    // Lock cross-axis (vertical) to viewport.
+                    wrapper_style.inset.bottom = zero;
+                }
+                ScrollAxis::Both => {
+                    wrapper_style.flex_direction = FlexDirection::Column;
+                    // Neither cross-axis pinned; wrapper takes
+                    // content size on both axes.
+                }
+            }
+            let wrapper_id = tree.new_leaf(
+                wrapper_style,
+                SendWrapper::new(doc),
+                CocoaMeta::default(),
+            );
+            tree.add_child(node_id, wrapper_id);
+            layout.meta.child_taffy_parent = Some(wrapper_id);
+            tree.set_meta(node_id, layout.meta.clone());
+        }
+    }
+
     layout.handle = Some(LayoutHandle {
         tree: tree.clone(),
         node_id,
     });
 }
 
+fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
+    let any: &AnyObject = view.as_ref();
+    any.downcast_ref::<objc2_app_kit::NSScrollView>()
+        .and_then(|s| s.documentView())
+}
+
 /// Drop the node and unregister it. No-op if never registered.
 pub fn drop_node(node: &Node) {
-    let handle = node.layout_slot().borrow_mut().handle.take();
+    let (handle, wrapper_id) = {
+        let mut slot = node.layout_slot().borrow_mut();
+        let wrapper = slot.meta.child_taffy_parent.take();
+        (slot.handle.take(), wrapper)
+    };
     if let Some(h) = handle {
         let parent_id = h.tree.parent(h.node_id);
+        if let Some(w) = wrapper_id {
+            h.tree.remove(w);
+        }
         h.tree.remove(h.node_id);
         if let Some(pid) = parent_id {
             h.tree.mark_dirty(pid);
@@ -186,10 +325,20 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 // Tree-edge mirroring (called from cocoa_dom::node insert/remove)
 // ---------------------------------------------------------------------
 
+/// Returns `(tree, taffy_parent_id)` for use when attaching children
+/// in the Taffy tree. For `<scroll_view>` this redirects to the
+/// documentView wrapper (`meta.child_taffy_parent`); for everything
+/// else it's the node's own Taffy id.
+fn taffy_child_parent(parent: &Node) -> Option<(TreeRef, NodeId)> {
+    let slot = parent.layout_slot().borrow();
+    let h = slot.handle.as_ref()?;
+    let id = slot.meta.child_taffy_parent.unwrap_or(h.node_id);
+    Some((h.tree.clone(), id))
+}
+
 pub fn attach_child(parent: &Node, child: &Node) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
-    register_in_tree(child, &parent_h.tree);
+    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
+    register_in_tree(child, &tree);
     let child_id = child
         .layout_slot()
         .borrow()
@@ -197,14 +346,13 @@ pub fn attach_child(parent: &Node, child: &Node) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    parent_h.tree.add_child(parent_h.node_id, child_id);
-    schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
+    tree.add_child(parent_id, child_id);
+    schedule_relayout_for_tree(&tree, parent_id);
 }
 
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
-    register_in_tree(child, &parent_h.tree);
+    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
+    register_in_tree(child, &tree);
     let child_id = child
         .layout_slot()
         .borrow()
@@ -212,19 +360,18 @@ pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
         .as_ref()
         .expect("just registered")
         .node_id;
-    parent_h.tree.insert_child_at_index(parent_h.node_id, index, child_id);
-    schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
+    tree.insert_child_at_index(parent_id, index, child_id);
+    schedule_relayout_for_tree(&tree, parent_id);
 }
 
 pub fn detach_child(parent: &Node, child: &Node) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
+    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
     let child_id = match child.layout_slot().borrow().handle.as_ref() {
         Some(h) => h.node_id,
         None => return,
     };
-    parent_h.tree.remove_child(parent_h.node_id, child_id);
-    schedule_relayout_for_tree(&parent_h.tree, parent_h.node_id);
+    tree.remove_child(parent_id, child_id);
+    schedule_relayout_for_tree(&tree, parent_id);
 }
 
 // ---------------------------------------------------------------------
@@ -302,11 +449,7 @@ fn compute_layout_inner(
     };
     handle.tree.run_layout_pass(handle.node_id, avail);
 
-    // Cocoa-specific: re-run layout on each `<scroll_view>` subtree
-    // with the viewport width pinned and height = MaxContent so the
-    // children take their natural sizes. Then restore the scroll
-    // view's own final layout to the first-pass viewport size.
-    relayout_scroll_views(&handle.tree, handle.node_id);
+    warn_zero_height_scroll_views(&handle.tree, handle.node_id);
 
     if apply_root_frame {
         apply_frames(&handle.tree, handle.node_id);
@@ -314,101 +457,59 @@ fn compute_layout_inner(
         apply_frames_descendants_only(&handle.tree, handle.node_id);
     }
 
-    // Cocoa-specific: bound each `<scroll_view>` documentView to its
-    // children's content extent so NSScrollView shows scroll bars
-    // when content overflows.
-    fixup_scroll_view_documents(&handle.tree, handle.node_id);
-
     #[cfg(feature = "debug-overlay")]
     crate::debug_overlay::mark_overlays_dirty();
 }
 
-fn is_scroll_view(tree: &TreeRef, id: NodeId) -> bool {
-    tree.meta(id).map(|m| m.is_scroll_view).unwrap_or(false)
-}
+/// Warn (once per process) when a `<scroll_view>` ends up with a
+/// zero-height viewport but has non-empty content. The most
+/// common cause is a parent that doesn't bound its main-axis
+/// size — see `docs/book/src/layout/scroll.md`.
+///
+/// Per the failure-mode hierarchy in CLAUDE.md, this is
+/// warn-and-degrade rather than panic: runtime layout state
+/// depends on transient inputs (window size, parent flex_grow,
+/// dynamic content) and a panic here could crash a user's
+/// production app for a non-showstopper. A blank scroll view is
+/// undesirable but recoverable.
+fn warn_zero_height_scroll_views(tree: &TreeRef, root: NodeId) {
+    use std::sync::Once;
+    static WARNED: Once = Once::new();
 
-/// Walk the tree from `root`. For each scroll-view, run a second
-/// layout pass with viewport width pinned and `MaxContent` height so
-/// children take their natural sizes. Restore the scroll view's own
-/// final layout to the *first*-pass viewport rect afterward (since
-/// the second pass overwrote it with content size).
-fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
-    if is_scroll_view(tree, root) {
-        let viewport = match tree.layout(root) {
-            Some(l) => l,
-            None => return,
-        };
-        let viewport_w = viewport.size.width;
-
-        let saved_style = match tree.style(root) {
-            Some(s) => s,
-            None => return,
-        };
-        let mut probe_style = saved_style.clone();
-        probe_style.size = Size {
-            width: Dimension::length(viewport_w),
-            height: Dimension::auto(),
-        };
-        tree.set_style(root, probe_style);
-        tree.mark_dirty(root);
-
-        let avail = Size {
-            width: AvailableSpace::Definite(viewport_w),
-            height: AvailableSpace::MaxContent,
-        };
-        tree.run_layout_pass(root, avail);
-
-        tree.set_style(root, saved_style);
-        tree.mark_dirty(root);
-        // Restore the scroll view's own final layout to the first-pass
-        // viewport — apply_layout reads `tree.layout(id)` and the
-        // second pass left content size in there.
-        tree.set_final_layout(root, viewport);
-        return;
-    }
-
-    // Collect before recursing — `relayout_scroll_views` may call
-    // `set_style` on the way back down, which would conflict with
-    // an outstanding `Ref` from `children`.
-    let kids = tree.children(root).to_vec();
-    for child in kids {
-        relayout_scroll_views(tree, child);
-    }
-}
-
-/// For each `<scroll_view>` in the tree, set the NSScrollView's
-/// documentView frame to enclose its children's natural extent. This
-/// is what makes NSScrollView show scroll bars when content overflows
-/// the viewport.
-fn fixup_scroll_view_documents(tree: &TreeRef, root: NodeId) {
-    if is_scroll_view(tree, root) {
-        let Some(view) = tree.view(root) else { return };
-        let nsview: &NSView = &**view;
-        let any: &AnyObject = nsview.as_ref();
-        if let Some(scroll) = any.downcast_ref::<objc2_app_kit::NSScrollView>() {
-            if let Some(doc) = scroll.documentView() {
-                let viewport = tree.layout(root).unwrap_or_default();
-                let mut max_x: f32 = 0.0;
-                let mut max_y: f32 = 0.0;
-                for &child_id in tree.children(root).iter() {
-                    let Some(cl) = tree.layout(child_id) else { continue };
-                    max_x = max_x.max(cl.location.x + cl.size.width);
-                    max_y = max_y.max(cl.location.y + cl.size.height);
+    fn visit(tree: &TreeRef, id: NodeId, warned: &Once) {
+        let is_sv = tree
+            .meta(id)
+            .map(|m| m.is_scroll_view)
+            .unwrap_or(false);
+        if is_sv {
+            if let Some(layout) = tree.layout(id) {
+                let has_children = !tree.children(id).is_empty();
+                if has_children && layout.size.height < 0.5 {
+                    warned.call_once(|| {
+                        eprintln!(
+                            "[cocoa_dom] a <scroll_view> has \
+                             zero-height viewport but non-empty \
+                             children — it will render blank. The \
+                             most common cause is the scroll_view's \
+                             parent not having a bounded main-axis \
+                             size. Fix by setting `flex_grow=1.0` \
+                             on the scroll_view (and on its parent \
+                             if that parent is itself unbounded), \
+                             or by giving it an explicit `height`. \
+                             See docs/book/src/layout/scroll.md. \
+                             (This warning prints once per \
+                             process.)"
+                        );
+                    });
                 }
-                let doc_w = (max_x as f64).max(viewport.size.width as f64);
-                let doc_h = (max_y as f64).max(viewport.size.height as f64);
-                doc.setFrame(NSRect::new(
-                    NSPoint::new(0.0, 0.0),
-                    NSSize::new(doc_w, doc_h),
-                ));
             }
         }
-        return;
+        let kids = tree.children(id).to_vec();
+        for k in kids {
+            visit(tree, k, warned);
+        }
     }
-
-    for &child in tree.children(root).iter() {
-        fixup_scroll_view_documents(tree, child);
-    }
+    visit(tree, root, &WARNED);
 }
 
 /// Walk the subtree rooted at `id`, calling `setFrame:` on each
@@ -434,6 +535,61 @@ fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
 // ---------------------------------------------------------------------
 // Cocoa-specific measure / baseline / setFrame
 // ---------------------------------------------------------------------
+
+// ---------------------------------------------------------------------
+// Per-element flag: `intrinsic_width = FromContent` on <text_field>.
+// Stored as a thread-local set of NSView pointers because (a) every
+// view lives on the main thread, and (b) we don't want to subclass
+// NSTextField or pollute NSObject associated-object storage.
+//
+// Pointer-reuse caveat: if `forget_intrinsic_width_marker` were
+// somehow skipped on view teardown, a future NSTextField allocated
+// at the same address would inherit the flag. `Node::teardown`
+// is the single drop path through the framework and calls
+// `forget_intrinsic_width_marker` unconditionally, so this can
+// only bite a caller that builds NSTextFields outside the
+// framework's Node lifecycle.
+// ---------------------------------------------------------------------
+
+thread_local! {
+    static INTRINSIC_WIDTH_FROM_CONTENT: std::cell::RefCell<
+        std::collections::HashSet<usize>
+    > = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+fn ns_view_key(view: &NSView) -> usize {
+    let p: *const NSView = view;
+    p as usize
+}
+
+/// Mark this view as "use NSTextField's natural content width."
+/// Default for editable NSTextField is width=0 in the measure pass;
+/// this flag flips that to read `intrinsicContentSize` like a label.
+pub(crate) fn mark_intrinsic_width_from_content(view: &NSView, on: bool) {
+    let k = ns_view_key(view);
+    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| {
+        let mut s = s.borrow_mut();
+        if on {
+            s.insert(k);
+        } else {
+            s.remove(&k);
+        }
+    });
+}
+
+fn is_intrinsic_width_from_content(view: &NSView) -> bool {
+    let k = ns_view_key(view);
+    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| s.borrow().contains(&k))
+}
+
+/// Drop the flag entry when a view is being torn down. Called from
+/// `Node::teardown` so the thread-local doesn't grow unbounded.
+pub(crate) fn forget_intrinsic_width_marker(view: &NSView) {
+    let k = ns_view_key(view);
+    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| {
+        s.borrow_mut().remove(&k);
+    });
+}
 
 fn measure_leaf_size(
     known: Size<Option<f32>>,
@@ -482,11 +638,15 @@ fn measure_leaf_size(
         view.intrinsicContentSize()
     };
 
-    // Editable text fields: width is NOT content-driven (otherwise
-    // the field grows with each keystroke). Force width to 0 so the
-    // parent decides via cross-axis stretch / flex_grow.
+    // Editable text fields: width is NOT content-driven by default
+    // (otherwise the field grows with each keystroke). Force width
+    // to 0 so the parent decides via cross-axis stretch / flex_grow.
+    //
+    // Opt-out: callers can mark a field as "keep content width" via
+    // `Element::set_intrinsic_width_from_content(true)`. See the
+    // `intrinsic_width` builder method on `<text_field>`.
     if let Some(field) = any.downcast_ref::<NSTextField>() {
-        if field.isEditable() {
+        if field.isEditable() && !is_intrinsic_width_from_content(view) {
             measured.width = 0.0;
         }
     }
@@ -584,6 +744,9 @@ impl renderer::LayoutElement for crate::node::Element {
             hidden,
         );
     }
+    fn set_clip(&self, clip: bool) {
+        set_clip(self.as_node(), clip);
+    }
 }
 impl renderer::UniversalElement for crate::node::Element {
     fn set_alpha(&self, alpha: f64) {
@@ -606,9 +769,6 @@ impl renderer::DecorationElement<crate::Color> for crate::node::Element {
     fn set_border_color(&self, color: crate::Color) {
         set_border_color(self.as_node(), color);
     }
-    fn set_clip(&self, clip: bool) {
-        set_clip(self.as_node(), clip);
-    }
 }
 
 pub use renderer::{
@@ -620,8 +780,8 @@ pub use renderer::{
     set_grid_column_start, set_grid_row_end, set_grid_row_start,
     set_grid_template_columns, set_grid_template_rows, set_height,
     set_justify_content, set_justify_items, set_margin, set_max_height,
-    set_max_width, set_min_height, set_min_width, set_padding, set_row_gap,
-    set_width,
+    set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
+    set_row_gap, set_width,
 };
 
 // ---------------------------------------------------------------------

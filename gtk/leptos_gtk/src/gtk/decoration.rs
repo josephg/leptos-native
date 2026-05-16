@@ -1,9 +1,9 @@
 //! GTK-local "decoration" attribute trait.
 //!
 //! Cocoa and iOS expose `background_color` / `corner_radius` /
-//! `border_*` / `clip` directly on each element builder via the
-//! shared `renderer::WithDecoration` trait — they translate to
-//! CALayer / UIView properties at install time.
+//! `border_*` directly on each element builder via the shared
+//! `renderer::WithDecoration` trait — they translate to CALayer /
+//! UIView properties at install time.
 //!
 //! GTK styling goes through `gtk::CssProvider` and per-widget CSS
 //! classes instead; setting these attributes inline doesn't
@@ -27,9 +27,9 @@ fn warn_decoration_ignored(attr: &str) {
             "[leptos_gtk] decoration attributes are not yet \
              implemented on the GTK port. The attribute '{}' (and \
              any others like background_color / corner_radius / \
-             border_* / clip on the same widget) will compile but \
-             have no visual effect. Use a `gtk::CssProvider` + \
-             per-widget CSS class for styling on GTK — see \
+             border_* on the same widget) will compile but have no \
+             visual effect. Use a `gtk::CssProvider` + per-widget \
+             CSS class for styling on GTK — see \
              docs/book/src/platform/gtk/settings.md. This warning \
              prints once per process.",
             attr,
@@ -55,10 +55,6 @@ pub trait WithDecoration: Sized {
     }
     fn border_color<V: IntoMaybeReactive<Color>>(self, _c: V) -> Self {
         warn_decoration_ignored("border_color");
-        self
-    }
-    fn clip<V: IntoMaybeReactive<bool>>(self, _c: V) -> Self {
-        warn_decoration_ignored("clip");
         self
     }
 }

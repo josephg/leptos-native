@@ -19,7 +19,7 @@ checksum = "1384d3fe1eecb464229fcf6eebb72306591c56bf27b373561489458a7c73027d"
 dependencies = [
  "futures",
  "glib 0.20.12",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
 ]
 
@@ -1431,6 +1431,7 @@ name = "ios_dom"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
+ "block2",
  "dispatch2",
  "futures",
  "objc2",
@@ -1542,7 +1543,7 @@ dependencies = [
  "rustc_version",
  "send_wrapper",
  "slotmap",
- "thiserror",
+ "thiserror 2.0.17",
  "throw_error",
  "tracing",
  "typed-builder",
@@ -2047,7 +2048,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed0423ff9973dea4d6bd075934fdda86ebb8c05bdf9d6b0507067d4a1226371d"
 dependencies = [
  "serde",
- "thiserror",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -2305,7 +2306,7 @@ dependencies = [
  "rustc-hash",
  "rustls",
  "socket2",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
  "web-time",
@@ -2326,7 +2327,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror",
+ "thiserror 2.0.17",
  "tinyvec",
  "tracing",
  "web-time",
@@ -2437,7 +2438,7 @@ dependencies = [
  "serial_test",
  "slotmap",
  "subsecond",
- "thiserror",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-test",
  "tracing",
@@ -2582,7 +2583,7 @@ dependencies = [
  "quote",
  "syn",
  "syn_derive",
- "thiserror",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -2859,6 +2860,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "slots_cocoa"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2918,7 +2926,7 @@ dependencies = [
  "memmap2",
  "serde",
  "subsecond-types",
- "thiserror",
+ "thiserror 2.0.17",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3031,11 +3039,31 @@ checksum = "4164c6c316ba9733b0ab021e7f9852c788a4b991b49c25820f1be48e1d41345b"
 
 [[package]]
 name = "thiserror"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
+dependencies = [
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
 version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 2.0.17",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -3321,6 +3349,17 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "transition_cocoa"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+ "reqwest",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

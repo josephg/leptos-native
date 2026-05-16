@@ -98,20 +98,54 @@ padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left
     corner_radius=8.0
     border_width=1.0
     border_color=Color::rgb(0.7, 0.7, 0.7)
-    clip=true
+    overflow=Overflow::Clip
 />
 ```
 
 | Attribute          | Type     | Default       | Notes                                                |
 |--------------------|----------|---------------|------------------------------------------------------|
 | `background_color` | `Color`  | transparent   | Background fill.                                     |
-| `corner_radius`    | `f32`    | `0.0`         | Rounded-corner radius. Pair with `clip=true` to actually clip children. |
+| `corner_radius`    | `f32`    | `0.0`         | Rounded-corner radius. Pair with `overflow=Overflow::Clip` (or `Hidden`) to actually clip children to the rounded shape. |
 | `border_width`     | `f32`    | `0.0`         | Border thickness.                                    |
 | `border_color`     | `Color`  | transparent   | Border colour.                                       |
-| `clip`             | `bool`   | `false`       | `overflow: hidden`.                                  |
 
 GTK styling goes through gtk4's CSS theming rather than these
 attributes — see [GTK theming](../platform/gtk/settings.md).
+
+## Overflow
+
+CSS-style overflow control. Lives on the layout side (alongside
+`width` / `height` / `padding`) because the `Hidden` variant changes
+how the element behaves as a flex/grid item.
+
+```rust
+<vstack height=200.0 overflow=Overflow::Hidden>
+    // children that overflow vertically get clipped at the frame,
+    // and this vstack can be shrunk to zero by its flex parent.
+</vstack>
+```
+
+| Value               | Visual clip | Auto-min-size (as flex/grid item) |
+|---------------------|-------------|------------------------------------|
+| `Overflow::Visible` | no          | content-based (default)            |
+| `Overflow::Clip`    | yes         | content-based                      |
+| `Overflow::Hidden`  | yes         | `0` — parent can shrink past content |
+
+- Use `Overflow::Clip` for cosmetic clipping that shouldn't change
+  layout shape — most commonly paired with `corner_radius` so the
+  children clip to the rounded shape.
+- Use `Overflow::Hidden` when the element is expected to be shrunk
+  by a flex parent — e.g. a fixed-height list whose container should
+  be allowed to collapse on small windows, hiding the rest of the
+  content.
+
+For an actual scrolling viewport with scrollbars, use
+[`<scroll_view>`](./scroll.md) — overflow doesn't model that today.
+
+Port support:
+- **Cocoa / GTK**: both clip variants take visual effect.
+- **iOS**: the layout half (Hidden's auto-min-size to 0) takes effect;
+  the visual clip is a no-op until UIView's `clipsToBounds` is wired.
 
 ## Text *(applies to elements with text)*
 

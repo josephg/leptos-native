@@ -127,13 +127,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-leptos = { package = "leptos_gtk", path = "../../leptos_gtk", features = ["gtk"] }
+leptos = { package = "leptos_gtk", path = "../../leptos_gtk" }
 ```
 
-The `leptos_gtk/gtk` feature activates GTK linkage. Each port is
-selected by aliasing `leptos = { package = "leptos_<port>" }`.
+`leptos_gtk` has `gtk` as a default feature — adding the
+dependency gives you a working build with no extra flags. Each
+port is selected by aliasing `leptos = { package = "leptos_<port>" }`.
 There's no `native-ui` umbrella feature — every binary picks one
 port directly.
+
+For the contributor-only typecheck path (verify the renderer-
+agnostic core compiles without gtk4 installed), use
+`--no-default-features`.
 
 ## How it maps to GTK
 
@@ -148,15 +153,14 @@ Tag → widget mapping (sample):
 
 | Tag                     | GTK widget                |
 |-------------------------|---------------------------|
-| `<view>` / `<vstack>` / `<hstack>` / `<grid>` | `gtk::Box`               |
+| `<stack>` / `<vstack>` / `<hstack>` / `<grid>` | `gtk::Box`               |
 | `<button>`              | `gtk::Button`             |
-| `<checkbox>`            | `gtk::CheckButton`        |
+| `<checkbox>` / `<toggle>` | `gtk::CheckButton`      |
 | `<label>`               | `gtk::Label`              |
 | `<text_field>`          | `gtk::Entry`              |
 | `<secure_text_field>`   | `gtk::PasswordEntry`      |
 | `<slider>`              | `gtk::Scale`              |
 | `<pop_up_button>`       | `gtk::DropDown`           |
-| `<stack>`               | `gtk::Box` (manual layout) |
 | `<stack_view>`          | `gtk::Box`                |
 
 Taffy owns the layout inside each container; GTK owns the
@@ -166,7 +170,7 @@ container's outer frame via its `LayoutManager` protocol.
 
 ```sh
 cargo test -p gtk_dom
-cargo test -p leptos_gtk --features gtk
+cargo test -p leptos_gtk
 ```
 
 See `tests_gtk.md` for the comprehensive test plan.

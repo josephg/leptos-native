@@ -30,7 +30,7 @@ mod app {
                             gap=4.0
                             background_color=Color::rgb(1.0, 0.94, 0.94)
                             corner_radius=8.0
-                            clip=true>
+                            overflow=Overflow::Clip>
                             <label bold=true text_color=Color::RED>"Errors:"</label>
                             <label>{move || {
                                 errors.read()

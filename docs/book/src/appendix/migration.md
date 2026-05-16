@@ -58,23 +58,36 @@ see [Forms and Inputs](../view/05_forms.md).
 
 ### Type-erased views
 
-There's no `AnyView`. Each branch of an `if`/`else`/`Switch`
-needs a concrete type. This is what enables compile-time
-checking of every renderable value but also what makes
-`<Show fallback=...>` and `<Slots>` not yet implementable.
+`AnyView<R>` exists in this fork too, but it's used sparingly.
+The default is concrete types: each branch of an `if`/`else` /
+`Switch::Match` keeps its own type, and the type-checker
+verifies every renderable value. When erasure is actually
+useful — slot children that vary per call-site, `<Show fallback>`
+with a different shape from the children — the per-port
+`AnyView` alias and `IntoAny::into_any()` are available.
+
+```rust
+let v: AnyView = view! { <vstack>...</vstack> }.into_any();
+```
+
+`ChildrenFn = Box<dyn Fn() -> AnyView + Send + Sync>` is the
+matching prop type for erased children.
 
 ## What's not yet implemented
 
 These would fit the architecture but haven't been built:
 
-- **`<Transition>`, `<AnimatedShow>`** — would need platform
-  animation integration (CoreAnimation on macOS / iOS, GTK
-  transitions).
-- **`<Slots>`** — `#[slot]` macro not yet exposed. Use multiple
-  `TypedChildren` props as a workaround. See
-  [Passing Children to Components](../view/09_component_children.md).
-- **`Suspend`** for async views in the renderer — present in
-  the reactive graph crate but not wired into the view pipeline.
+- **`<AnimatedShow>`** — needs platform animation integration
+  (CoreAnimation on macOS / iOS, GTK transitions).
+
+## What's recently added
+
+- **`AnyView` + `ChildrenFn`** for type-erased view positions.
+- **`LocalResource` + `Suspend` + `<Transition>`** — the
+  async-render trio. `LocalResource<T>` wraps a future-producing
+  closure; `Suspend::new(async { … })` renders a future as a
+  view (placeholder until ready); `<Transition>` wraps the
+  suspended region. See `cocoa/examples/transition`.
 
 ## What's added
 

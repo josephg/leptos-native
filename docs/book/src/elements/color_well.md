@@ -14,37 +14,36 @@ view! { <color_well bind:value=tint /> }
 |------|----------------------|
 | Cocoa| NSColorWell          |
 | GTK  | — (not implemented)  |
-| iOS  | — (not implemented)  |
+| iOS  | UIColorWell (iOS 14+) |
 
-iOS has no inline colour-well equivalent (UIColorPickerViewController
-is a modal sheet, not a small control). If you need colour
-picking on iOS, build a custom button that opens
-UIColorPickerViewController via NodeRef + objc2 bindings.
+On iOS, tapping the well opens the system color picker as a
+modal sheet — different visual UX from Cocoa's inline picker
+panel, but the same `bind:value` API.
 
 ## Attributes
 
-| Attribute    | Type     | Default | Cocoa | Notes                                |
-|--------------|----------|---------|:-----:|--------------------------------------|
-| `value`      | `Color`  | `WHITE` | ✓     | Current colour. Prefer `bind:value`. |
-| `enabled`    | `bool`   | `true`  | ✓     |                                      |
+| Attribute    | Type     | Default | Cocoa | iOS | Notes                                |
+|--------------|----------|---------|:-----:|:---:|--------------------------------------|
+| `value`      | `Color`  | `WHITE` (Cocoa) / `BLACK` (iOS) | ✓ | ✓ | Current colour. Prefer `bind:value`. |
+| `enabled`    | `bool`   | `true`  | ✓     |     |                                      |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event       | Cocoa | Payload |
-|-------------|:-----:|---------|
-| `on:change` | ✓     | `()`    |
+| Event       | Cocoa | iOS | Payload |
+|-------------|:-----:|:---:|---------|
+| `on:change` | ✓     | ✓   | `()`    |
 
 Fires when the user selects a colour. Read the new value from
 the bound signal.
 
 ## Bindings
 
-| Bind         | Signal type       | Cocoa |
-|--------------|-------------------|:-----:|
-| `bind:value` | `RwSignal<Color>` | ✓     |
+| Bind         | Signal type       | Cocoa | iOS |
+|--------------|-------------------|:-----:|:---:|
+| `bind:value` | `RwSignal<Color>` | ✓     | ✓   |
 
 ## Example
 
@@ -58,7 +57,7 @@ view! {
             height=120.0
             background_color=move || bg.get()
             corner_radius=8.0
-            clip=true>
+            overflow=Overflow::Clip>
             <label text_color=Color::BLACK>"Preview"</label>
         </vstack>
     </vstack>

@@ -257,6 +257,7 @@ impl Node {
                 crate::event::drop_handlers_for(&doc);
             }
         }
+        crate::layout::forget_intrinsic_width_marker(self.ns_view());
         crate::layout::drop_node(self);
         self.ns_view().removeFromSuperview();
     }
@@ -1388,6 +1389,25 @@ impl Element {
         crate::layout::schedule_relayout(&self.node);
     }
 
+    /// Toggle the `intrinsic_width = FromContent` opt-in on an
+    /// editable NSTextField. With `true`, the field's measured width
+    /// follows its content (NSTextField's natural behaviour); with
+    /// `false` (the default), the measure pass returns width=0 so
+    /// the parent decides via cross-axis stretch / flex_grow. No-op
+    /// on non-NSTextField.
+    ///
+    /// Use the `intrinsic_width` builder method on `<text_field>`
+    /// to configure this declaratively.
+    pub fn set_intrinsic_width_from_content(&self, on: bool) {
+        if downcast::<NSTextField>(self.ns_view()).is_some() {
+            crate::layout::mark_intrinsic_width_from_content(
+                self.ns_view(),
+                on,
+            );
+            crate::layout::schedule_relayout(&self.node);
+        }
+    }
+
     /// Toggle whether an NSTextField draws a border / bezel.
     /// `bordered=false` matches a label-style appearance even on
     /// editable fields. No-op on non-NSTextField.
@@ -1582,6 +1602,82 @@ impl Element {
         use objc2_app_kit::NSScrollView;
         if let Some(s) = downcast::<NSScrollView>(self.ns_view()) {
             s.setHasVerticalScroller(has);
+        }
+    }
+
+    /// Configure an `<scroll_view>`'s scroll axis. Stashes the
+    /// choice on the Node's meta (read by
+    /// `cocoa_dom::layout::register_in_tree` when allocating the
+    /// documentView wrapper) and sets sensible scroller-visibility
+    /// defaults for the chosen axis. The explicit
+    /// `set_has_*_scroller` setters can still be used to override
+    /// the defaults afterward.
+    ///
+    /// Must be called before the element joins a layout tree —
+    /// builder code calls this from `Render::build` between
+    /// `Element::create("scroll_view")` and the first mount.
+    /// No-op on non-scroll-view elements.
+    pub fn set_scroll_axis(&self, axis: crate::layout::ScrollAxis) {
+        use crate::layout::ScrollAxis;
+        use taffy::FlexDirection;
+        let mut slot = self.as_node().layout_slot().borrow_mut();
+        if !slot.meta.is_scroll_view {
+            return;
+        }
+        slot.meta.scroll_axis = axis;
+
+        // The scroll_view's own `flex_direction` determines the
+        // wrapper's main axis (the wrapper is its only Taffy child),
+        // which in turn determines what the wrapper's `flex_shrink: 0`
+        // protects from squashing. Flip Row for Horizontal so
+        // `flex_shrink: 0` keeps the wrapper horizontally rigid.
+        //
+        // We deliberately **don't** touch `flex_basis: 0` or
+        // `min_size.height: 0` here. Those defaults are what prevent
+        // the scroll_view's content from inflating ancestor flex
+        // containers via intrinsic sizing — see the comment in
+        // `Element::create_with` for "scroll_view". To size a
+        // horizontal scroll_view, use `min_height` (or `flex_grow`
+        // with a bounded parent), the same way vertical scroll_views
+        // size today. `height=N` alone won't work on a scroll_view
+        // because `flex_basis: 0` overrides `size.height` in the
+        // flex algorithm.
+        match axis {
+            ScrollAxis::Vertical => {
+                slot.style.flex_direction = FlexDirection::Column;
+            }
+            ScrollAxis::Horizontal => {
+                slot.style.flex_direction = FlexDirection::Row;
+            }
+            ScrollAxis::Both => {
+                slot.style.flex_direction = FlexDirection::Column;
+            }
+        }
+        if let Some(h) = &slot.handle {
+            h.tree.set_style(h.node_id, slot.style.clone());
+            h.tree.set_meta(h.node_id, slot.meta.clone());
+        }
+        drop(slot);
+
+        // Apply scroller-visibility defaults appropriate for the
+        // axis. The user's explicit `has_*_scroller` setters run
+        // after this in the builder pipeline and can override.
+        use objc2_app_kit::NSScrollView;
+        if let Some(s) = downcast::<NSScrollView>(self.ns_view()) {
+            match axis {
+                ScrollAxis::Vertical => {
+                    s.setHasVerticalScroller(true);
+                    s.setHasHorizontalScroller(false);
+                }
+                ScrollAxis::Horizontal => {
+                    s.setHasVerticalScroller(false);
+                    s.setHasHorizontalScroller(true);
+                }
+                ScrollAxis::Both => {
+                    s.setHasVerticalScroller(true);
+                    s.setHasHorizontalScroller(true);
+                }
+            }
         }
     }
 

@@ -20,6 +20,17 @@ pub mod renderer_cocoa;
 
 pub use renderer_cocoa::Dom;
 
+/// Cocoa-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
+/// Used by type-erased prop types (`ChildrenFn`, slot children
+/// that vary per call-site, `<Show fallback>` branches with
+/// mismatched concrete types).
+pub type AnyView = renderer::view::AnyView<Dom>;
+
+/// Cocoa-pinned alias of [`leptos::children::ChildrenFn`]. Lets
+/// slot definitions write `children: ChildrenFn` without the
+/// `<Dom>` type parameter.
+pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+
 /// Bind/attribute keys re-exported under the `leptos::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos::attr::Value`,
 /// `::leptos::attr::Checked`).
@@ -132,6 +143,15 @@ pub mod prelude {
     // Cocoa-specialized IntoView (pinned to Dom; no R param).
     pub use crate::IntoView;
 
+    // Type-erased view. `AnyView` is the Cocoa-pinned alias of
+    // the generic `renderer::view::AnyView<R>`; reach for it
+    // when a slot, fallback, or branch needs to hold views of
+    // varying concrete shapes. `IntoAny::into_any()` is the
+    // ergonomic constructor on any `Render<Dom>` value.
+    pub use crate::AnyView;
+    pub use crate::ChildrenFn;
+    pub use renderer::view::IntoAny;
+
     // Mounting
     pub use crate::mount::{mount, mount_to_split_window, mount_to_window, run};
 
@@ -213,7 +233,7 @@ pub mod prelude {
     // Grid placement attrs (added to every element via `WithLayout`).
     // Re-exported so user code can pass `GridLine::Auto` explicitly,
     // or use `span(n)` / integer literals via `Into<GridLine>`.
-    pub use renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine};
+    pub use renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine, Overflow};
 
     // Native value types + helpers commonly used by examples (timers,
     // persistent storage, colour, date, key events, text/segment/date
@@ -229,6 +249,8 @@ pub mod prelude {
         DatePickerStyle, Element, Icon, IntervalError, IntervalHandle,
         KeyEvent, LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
     };
+    pub use cocoa_dom::layout::ScrollAxis;
+    pub use crate::cocoa::element::IntrinsicWidth;
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.
     pub use cocoa_dom::app::{quit, set_quit_on_last_window_close};

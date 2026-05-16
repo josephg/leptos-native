@@ -45,12 +45,65 @@ The container. Walks up to find the NSWindow.
 
 Children are the toolbar items.
 
-```admonish note
-The item set is **static after build** in the current version —
-you can't reactively add/remove items based on a signal. Plan
-for the items you want up front; toggle their `enabled` /
-`visible` attributes instead.
+### Reactive item sets
+
+The macro-emitted child list inside `<toolbar>` is fixed at
+build time — `<For>` directly inside `<toolbar>` isn't supported
+yet. For dynamic item sets, drive the toolbar via a
+[`ToolbarHandle`](#toolbarhandle) and an `Effect`:
+
+```rust
+use leptos::prelude::*;
+
+let toolbar = ToolbarHandle::new();
+let docs = RwSignal::new(Vec::<Doc>::new());
+
+Effect::new({
+    let toolbar = toolbar.clone();
+    move |_| {
+        let desired: Vec<(String, _)> = docs.get()
+            .into_iter()
+            .map(|d| (
+                d.id.clone(),
+                toolbar_item()
+                    .label(d.title.clone())
+                    .on(event::action, move |_| open(&d.id)),
+            ))
+            .collect();
+        toolbar.set_items(desired);
+    }
+});
+
+view! {
+    <window title="Notes" ...>
+        <toolbar handle=toolbar.clone()>
+            <toolbar_toggle_sidebar />
+            // (set_items inserts/removes here on each docs change)
+            <toolbar_flexible_space />
+            <toolbar_search_item identifier="search" />
+        </toolbar>
+        ...
+    </window>
+}
 ```
+
+`ToolbarHandle::set_items(Vec<(String, ToolbarItem)>)` diffs by
+identifier:
+
+- **Additive changes** (items added/removed without reordering
+  retained ones): minimal insert/remove pass; retained items
+  stay in place.
+- **Reordering** (any retained item's relative position
+  changes): removes every item and reinserts from scratch in
+  the desired order. Simpler than a full LCS-based diff; the
+  toolbar briefly thrashes but lands at the correct state.
+
+The tuple's `String` key is the source-of-truth identifier; any
+`.identifier(…)` set on the builder is overridden.
+
+For finer-grained control, the lower-level `insert_item` /
+`remove_item` / `current_identifiers` / `contains_item` methods
+on `ToolbarHandle` give you the diff primitives directly.
 
 ## `<toolbar_item>`
 

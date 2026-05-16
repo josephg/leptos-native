@@ -181,3 +181,90 @@ where
         }
     }
 }
+
+// ---------------------------------------------------------------------
+// Type-erased children, built on top of renderer::view::AnyView<R>
+// ---------------------------------------------------------------------
+
+use renderer::view::{AnyView, IntoAny};
+
+/// A `children` prop that erases its concrete view type. Use when
+/// the slot or component needs to accept arbitrary view shapes —
+/// in particular for slot children that vary per call-site, or
+/// where dispatch in the component body produces mismatched
+/// concrete view types from different branches.
+///
+/// Trade-off vs `TypedChildrenFn`: one `Box` allocation per child
+/// instance; compile-time view-type checking is lost past the
+/// erasure point. Prefer `TypedChildrenFn` when all callers
+/// produce the same view shape.
+///
+/// Generic over the renderer `R`; per-port aliases name a
+/// concrete `Children = ChildrenFn<Dom>`.
+pub struct ChildrenFn<R: Renderer> {
+    inner: Arc<dyn Fn() -> AnyView<R> + Send + Sync>,
+}
+
+impl<R: Renderer> Clone for ChildrenFn<R> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<R: Renderer> Debug for ChildrenFn<R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ChildrenFn").finish()
+    }
+}
+
+impl<R: Renderer> ChildrenFn<R> {
+    /// Call the children closure, producing a fresh `AnyView<R>`.
+    pub fn run(&self) -> AnyView<R> {
+        (self.inner)()
+    }
+}
+
+/// Sugar so `children()` works in component bodies (matches the
+/// upstream Leptos ergonomics).
+impl<R: Renderer> std::ops::Deref for ChildrenFn<R> {
+    type Target = dyn Fn() -> AnyView<R> + Send + Sync;
+    fn deref(&self) -> &Self::Target {
+        &*self.inner
+    }
+}
+
+impl<F, V, R> ToChildren<F> for ChildrenFn<R>
+where
+    R: Renderer,
+    F: Fn() -> V + Send + Sync + 'static,
+    V: Render<R> + Send + 'static,
+    V::State: Send + 'static,
+{
+    #[inline]
+    fn to_children(f: F) -> Self {
+        ChildrenFn {
+            inner: Arc::new(move || f().into_any()),
+        }
+    }
+}
+
+/// Compiler-optimisation path: when the view macro detects a
+/// children expression that's a single Clone value (a string
+/// literal, a number, etc.), it wraps it in
+/// `ChildrenOptContainer<T>` instead of synthesising a unique
+/// closure. This impl lets that path land on `ChildrenFn`.
+impl<T, R> ToChildren<ChildrenOptContainer<T>> for ChildrenFn<R>
+where
+    R: Renderer,
+    T: Render<R> + Clone + Send + Sync + 'static,
+    T::State: Send + 'static,
+{
+    #[inline]
+    fn to_children(t: ChildrenOptContainer<T>) -> Self {
+        ChildrenFn {
+            inner: Arc::new(move || t.0.clone().into_any()),
+        }
+    }
+}
+
+use renderer::view::Render;

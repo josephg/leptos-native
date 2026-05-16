@@ -20,6 +20,12 @@ pub mod renderer_gtk;
 
 pub use renderer_gtk::Dom;
 
+/// GTK-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
+pub type AnyView = renderer::view::AnyView<Dom>;
+
+/// GTK-pinned alias of [`leptos::children::ChildrenFn`].
+pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+
 /// Bind/attribute keys re-exported under the `leptos::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos::attr::Value`,
 /// `::leptos::attr::Checked`).
@@ -102,6 +108,11 @@ pub mod prelude {
 
     pub use crate::IntoView;
 
+    // Type-erased view container — see crate-level `AnyView` alias.
+    pub use crate::AnyView;
+    pub use crate::ChildrenFn;
+    pub use renderer::view::IntoAny;
+
     // Mounting
     pub use crate::mount::{mount, mount_to_window, run};
 
@@ -141,7 +152,7 @@ pub mod prelude {
         auto, fit_content, fr, length, max_content, min_content, minmax,
         percent, repeat,
     };
-    pub use renderer::attrs::{auto_line, span, GridLine};
+    pub use renderer::attrs::{auto_line, span, GridLine, Overflow};
 
     pub use crate::Dom;
 }

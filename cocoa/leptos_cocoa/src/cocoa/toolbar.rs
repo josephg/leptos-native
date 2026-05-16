@@ -1524,6 +1524,120 @@ impl ToolbarHandle {
         let temp = ToolbarLens::new(&inner);
         temp.contains_item(identifier)
     }
+
+    /// Snapshot the current item identifiers in order.
+    /// Useful as the "old set" half of a reactive diff:
+    ///
+    /// ```ignore
+    /// let toolbar = ToolbarHandle::new();
+    /// Effect::new({
+    ///     let toolbar = toolbar.clone();
+    ///     move |_| {
+    ///         let want: Vec<(String, …)> = items.get();
+    ///         let have = toolbar.current_identifiers();
+    ///         // remove items in `have` but not in `want`
+    ///         for id in &have {
+    ///             if !want.iter().any(|(w, _)| w == id) {
+    ///                 toolbar.remove_item(id);
+    ///             }
+    ///         }
+    ///         // insert items in `want` but not in `have`
+    ///         for (idx, (id, data)) in want.iter().enumerate() {
+    ///             if !have.iter().any(|h| h == id) {
+    ///                 toolbar.insert_item(
+    ///                     toolbar_item().identifier(id.clone())
+    ///                         .label(data.label.clone()),
+    ///                     idx,
+    ///                 );
+    ///             }
+    ///         }
+    ///     }
+    /// });
+    /// view! { <toolbar handle=toolbar.clone()>...</toolbar> }
+    /// ```
+    pub fn current_identifiers(&self) -> Vec<String> {
+        use reactive_graph::traits::GetUntracked;
+        let Some(inner) = self.0.get_untracked() else { return Vec::new() };
+        let inner = inner.take();
+        let ordered = inner.delegate.ivars().ordered_identifiers.borrow();
+        ordered.iter().cloned().collect()
+    }
+
+    /// Reactive bulk update of the toolbar's items. Compares
+    /// `desired` against the current set by identifier:
+    ///
+    /// - **Additive change** (items added / removed without
+    ///   reordering the retained ones): performs a minimal
+    ///   insert/remove pass, leaving retained items in place.
+    /// - **Reordering** (any retained item's relative order
+    ///   changes): removes every current item and reinserts the
+    ///   `desired` list in order. This thrashes the toolbar's
+    ///   item objects briefly; toolbar customisation state is
+    ///   reset.
+    ///
+    /// Pair with `Effect::new(...)` to drive the toolbar's item
+    /// set from a signal. For per-item attribute reactivity
+    /// inside an item (label, icon, enabled, …), set the
+    /// attribute to a closure (`.label(move || …)`) on the item
+    /// builder — that integrates with the install-effect path
+    /// without needing `set_items`.
+    ///
+    /// The tuple's `String` key is the source-of-truth identifier
+    /// for the item; any `.identifier(…)` set on the builder is
+    /// overridden by the key.
+    pub fn set_items(&self, desired: Vec<(String, ToolbarItem)>) {
+        let have = self.current_identifiers();
+
+        // Detect whether the retained-items' relative order is
+        // preserved between `have` and `desired`. If it is, we
+        // can do an additive insert/remove pass; if not, we
+        // thrash everything (simplest correct strategy for
+        // reordering).
+        let retained_in_order = {
+            let mut have_iter = have
+                .iter()
+                .filter(|h| desired.iter().any(|(d, _)| d == *h));
+            let mut want_iter = desired
+                .iter()
+                .map(|(id, _)| id)
+                .filter(|d| have.iter().any(|h| h == *d));
+            loop {
+                match (have_iter.next(), want_iter.next()) {
+                    (Some(a), Some(b)) if a == b => continue,
+                    (None, None) => break true,
+                    _ => break false,
+                }
+            }
+        };
+
+        if !retained_in_order {
+            // Thrash all and reinsert from scratch.
+            for id in &have {
+                self.remove_item(id);
+            }
+            for (idx, (id, item)) in desired.into_iter().enumerate() {
+                let item = item.identifier(id);
+                self.insert_item(item, idx);
+            }
+            return;
+        }
+
+        // Additive pass: remove items absent from `desired`,
+        // then insert new ones at their target positions.
+        let want_ids: Vec<&String> =
+            desired.iter().map(|(id, _)| id).collect();
+        for id in &have {
+            if !want_ids.iter().any(|w| *w == id) {
+                self.remove_item(id);
+            }
+        }
+        for (idx, (id, item)) in desired.into_iter().enumerate() {
+            if !self.contains_item(&id) {
+                let item = item.identifier(id);
+                self.insert_item(item, idx);
+            }
+        }
+    }
 }
 
 impl Default for ToolbarHandle {

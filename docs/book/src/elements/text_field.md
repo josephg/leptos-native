@@ -27,6 +27,7 @@ view! { <text_field bind:value=name placeholder="Your name" /> }
 | `text_color`  | `Color`        | system label  | ✓     |     | ✓   |                                                      |
 | `font_size`   | `f32`          | system size   | ✓     |     | ✓   |                                                      |
 | `alignment`   | text alignment | natural       | ✓     |     | ✓   |                                                      |
+| `intrinsic_width` | `IntrinsicWidth` | `FromParent` | ✓ |     |     | Override the default width=0 measure. Set to `FromContent` to let the field grow with its text. |
 
 Plus all [shared layout attributes](../layout/attributes.md).
 
@@ -82,10 +83,20 @@ If you need to filter or transform one direction, pass a
 
 `<text_field>` reports its **natural** intrinsic width based on
 its current content, which would otherwise cause the field to
-grow with every keystroke. The cocoa port overrides this in the
-measure callback to force width=0 — the parent decides the
-field's width. Set `width=...` or `flex_grow=1.0` explicitly to
-size it.
+grow with every keystroke. The Cocoa port overrides this in the
+measure callback to force width=0 by default — the parent
+decides the field's width. Set `width=...` or `flex_grow=1.0`
+explicitly to size it.
+
+If you actually *want* the content-tracking behaviour (a
+read-only field used as a label, an editable field that grows
+with its text), opt in via `intrinsic_width`:
+
+```rust
+<text_field
+    value=move || username.get()
+    intrinsic_width=IntrinsicWidth::FromContent />
+```
 
 ## Combined example
 

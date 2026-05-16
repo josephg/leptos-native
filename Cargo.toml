@@ -41,10 +41,12 @@ members = [
   "cocoa/examples/settings",
   "cocoa/examples/show_fallback",
   "cocoa/examples/showcase",
+  "cocoa/examples/slots",
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
   "cocoa/examples/timer",
   "cocoa/examples/toolbar_demo",
+  "cocoa/examples/transition",
   "cocoa/examples/two_windows",
 
   # Network-dependent async examples — listed in `members` so they
@@ -114,10 +116,12 @@ default-members = [
   "cocoa/examples/settings",
   "cocoa/examples/show_fallback",
   "cocoa/examples/showcase",
+  "cocoa/examples/slots",
   "cocoa/examples/spotify",
   "cocoa/examples/stores",
   "cocoa/examples/timer",
   "cocoa/examples/toolbar_demo",
+  "cocoa/examples/transition",
   "cocoa/examples/two_windows",
 
   # GTK examples — listed in `members` above so `cargo build --workspace`
@@ -137,12 +141,10 @@ exclude = [
   "uikit/examples",
 
   # Cocoa examples that don't build today — they hit features
-  # still on the deferred punch list (Slots, Resource, AnyView,
-  # Transition). Kept in the source tree as documentation.
+  # still on the deferred punch list (HTTP/JSON deps in `fetch`,
+  # full TodoMVC). Kept in the source tree as documentation.
   "cocoa/examples/fetch",
-  "cocoa/examples/slots",
   "cocoa/examples/todomvc",
-  "cocoa/examples/transition",
 ]
 
 [workspace.package]

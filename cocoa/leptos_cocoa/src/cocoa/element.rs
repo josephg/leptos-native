@@ -80,8 +80,10 @@ pub trait WithDecoration: Sized {
         self
     }
 
-    /// Round the corners. Pair with [`Self::clip`]`(true)` to also
-    /// clip children to the rounded shape.
+    /// Round the corners. Pair with `overflow=Overflow::Clip` (or
+    /// `Hidden`) on the same element to also clip children to the
+    /// rounded shape — `corner_radius` alone rounds the fill, not
+    /// the children.
     fn corner_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
         self.decoration_mut().corner_radius = Some(r.into_maybe_reactive());
         self
@@ -97,14 +99,6 @@ pub trait WithDecoration: Sized {
     /// Border color. Only visible when `border_width > 0`.
     fn border_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
         self.decoration_mut().border_color = Some(c.into_maybe_reactive());
-        self
-    }
-
-    /// CSS `overflow: hidden`. Children that extend past this
-    /// element's bounds are clipped at draw time. Layout still
-    /// positions them at their natural sizes.
-    fn clip<V: IntoMaybeReactive<bool>>(mut self, c: V) -> Self {
-        self.decoration_mut().clip = Some(c.into_maybe_reactive());
         self
     }
 }
@@ -2029,6 +2023,44 @@ pub struct TextField {
     text: CocoaText,
     bordered: Option<MaybeReactive<bool>>,
     bezeled: Option<MaybeReactive<bool>>,
+    intrinsic_width: Option<MaybeReactive<IntrinsicWidth>>,
+}
+
+/// Controls the field's behaviour during the measure pass.
+///
+/// AppKit's NSTextField has a content-driven intrinsic width — it
+/// reports a size that fits its current text. For editable fields,
+/// this means the field grows with every keystroke unless something
+/// pins its width. The default in this fork is to override the
+/// measure callback to return width=0 so the parent (a vstack with
+/// flex_grow, a fixed-width container, etc.) decides the width.
+///
+/// Set to `FromContent` if you want the natural AppKit behaviour —
+/// useful for read-only fields used as labels that should grow with
+/// their text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IntrinsicWidth {
+    /// Width=0 in the measure pass; parent decides. The 95% case.
+    /// Default.
+    #[default]
+    FromParent,
+    /// Read NSTextField's natural content width. Field grows with
+    /// its text.
+    FromContent,
+}
+
+impl IntoMaybeReactive<IntrinsicWidth> for IntrinsicWidth {
+    fn into_maybe_reactive(self) -> MaybeReactive<IntrinsicWidth> {
+        MaybeReactive::Static(self)
+    }
+}
+impl<F> IntoMaybeReactive<IntrinsicWidth> for F
+where
+    F: Fn() -> IntrinsicWidth + Send + 'static,
+{
+    fn into_maybe_reactive(self) -> MaybeReactive<IntrinsicWidth> {
+        MaybeReactive::Reactive(Box::new(self))
+    }
 }
 
 pub fn text_field() -> TextField {
@@ -2047,6 +2079,7 @@ pub fn text_field() -> TextField {
         text: CocoaText::default(),
         bordered: None,
         bezeled: None,
+        intrinsic_width: None,
     }
 }
 
@@ -2069,6 +2102,7 @@ pub fn secure_text_field() -> TextField {
         text: CocoaText::default(),
         bordered: None,
         bezeled: None,
+        intrinsic_width: None,
     }
 }
 
@@ -2205,6 +2239,18 @@ impl TextField {
         self.bezeled = Some(b.into_maybe_reactive());
         self
     }
+    /// Choose how the field's intrinsic width is computed during
+    /// the measure pass. Default: [`IntrinsicWidth::FromParent`]
+    /// (the parent decides via flex_grow / fixed width). Set to
+    /// [`IntrinsicWidth::FromContent`] to let the field grow with
+    /// its text — useful for read-only fields used as labels.
+    pub fn intrinsic_width<V>(mut self, w: V) -> Self
+    where
+        V: IntoMaybeReactive<IntrinsicWidth>,
+    {
+        self.intrinsic_width = Some(w.into_maybe_reactive());
+        self
+    }
 }
 
 
@@ -2272,6 +2318,16 @@ where
             let el_for = el.clone();
             if let Some(eff) = install(b, move |v| {
                 el_for.set_text_field_bezeled(v)
+            }) {
+                effects.push(eff);
+            }
+        }
+        if let Some(iw) = self.intrinsic_width {
+            let el_for = el.clone();
+            if let Some(eff) = install(iw, move |w| {
+                el_for.set_intrinsic_width_from_content(
+                    matches!(w, IntrinsicWidth::FromContent),
+                );
             }) {
                 effects.push(eff);
             }
@@ -3277,6 +3333,7 @@ pub struct ScrollView<Children> {
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
+    axis: cocoa_dom::layout::ScrollAxis,
     autohides_scrollers: Option<MaybeReactive<bool>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
@@ -3288,6 +3345,7 @@ pub fn scroll_view() -> ScrollView<()> {
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
         decoration: CocoaDecoration::default(),
+        axis: cocoa_dom::layout::ScrollAxis::Vertical,
         autohides_scrollers: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
@@ -3295,6 +3353,20 @@ pub fn scroll_view() -> ScrollView<()> {
 }
 
 impl<Ch> ScrollView<Ch> {
+    /// Set which axis (or axes) the scroll view scrolls along.
+    /// Default is `Vertical`. Picks the documentView wrapper's
+    /// Taffy style (so content overflows on the chosen axis and is
+    /// bounded on the other) and adjusts the scroller-visibility
+    /// defaults to match. Explicit `has_*_scroller` setters can
+    /// still override the scroller visibility afterward.
+    ///
+    /// Not reactive — the wrapper's style is picked at registration
+    /// time and not swapped later.
+    pub fn axis(mut self, axis: cocoa_dom::layout::ScrollAxis) -> Self {
+        self.axis = axis;
+        self
+    }
+
     /// Auto-hide the scrollers when not in use (the default
     /// macOS overlay-scroller behavior).
     pub fn autohides_scrollers<V>(mut self, b: V) -> Self
@@ -3333,6 +3405,7 @@ impl<Ch> ScrollView<Ch> {
             universal: self.universal,
             layout: self.layout,
             decoration: self.decoration,
+            axis: self.axis,
             autohides_scrollers: self.autohides_scrollers,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
@@ -3360,6 +3433,12 @@ where
     fn build(self) -> Self::State {
         let el = CocoaElement::create("scroll_view");
         let mut effects = Vec::new();
+
+        // Apply axis FIRST — it sets the documentView wrapper's
+        // Taffy style and the scroller-visibility defaults. The
+        // explicit `has_*_scroller` setters below run after and
+        // can override.
+        el.set_scroll_axis(self.axis);
 
         if let Some(b) = self.autohides_scrollers {
             let el_for = el.clone();

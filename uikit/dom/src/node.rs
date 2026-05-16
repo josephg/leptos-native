@@ -351,6 +351,40 @@ impl Element {
                 s.flex_shrink = 0.0;
                 (v, s)
             }
+            "pop_up_button" => {
+                // UIButton in system style. UIMenu is attached at
+                // install time via `set_popup_items`. Pull-down
+                // semantics come from
+                // `setShowsMenuAsPrimaryAction(true)` and the
+                // `changesSelectionAsPrimaryAction` toggle.
+                let b = UIButton::buttonWithType(
+                    objc2_ui_kit::UIButtonType::System,
+                    mtm,
+                );
+                b.setShowsMenuAsPrimaryAction(true);
+                b.setChangesSelectionAsPrimaryAction(true);
+                let v: Retained<UIView> =
+                    unsafe { Retained::cast_unchecked(b) };
+                let mut s = Style::default();
+                s.flex_shrink = 0.0;
+                (v, s)
+            }
+            "color_well" => {
+                // UIColorWell is the inline iOS color-picker control
+                // (iOS 14+). It manages its own
+                // UIColorPickerViewController presentation when
+                // tapped, so we don't have to thread VC lookup.
+                use objc2_ui_kit::UIColorWell;
+                let cw = UIColorWell::initWithFrame(
+                    UIColorWell::alloc(mtm),
+                    frame,
+                );
+                let v: Retained<UIView> =
+                    unsafe { Retained::cast_unchecked(cw) };
+                let mut s = Style::default();
+                s.flex_shrink = 0.0;
+                (v, s)
+            }
             "segmented_control" => {
                 use objc2_ui_kit::UISegmentedControl;
                 let sc = UISegmentedControl::initWithFrame(
@@ -828,6 +862,153 @@ impl Element {
                 sc.setSelectedSegmentIndex(idx);
             }
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Pop-up button (UIButton + UIMenu)
+    // -----------------------------------------------------------------
+
+    /// Build a UIMenu from `items` and attach it to the underlying
+    /// UIButton. Each menu entry's tap fires `on_select` with its
+    /// index. The current selection (if `selected_idx < items.len()`)
+    /// is marked with a checkmark. No-op if the element isn't a
+    /// `<pop_up_button>`.
+    pub fn set_popup_items(
+        &self,
+        items: &[String],
+        selected_idx: usize,
+        on_select: impl FnMut(usize) + 'static,
+    ) {
+        use objc2_ui_kit::{UIAction, UIMenu, UIMenuElement, UIMenuElementState};
+        let Some(button) = downcast::<UIButton>(self.ui_view()) else {
+            return;
+        };
+        let mtm = MainThreadMarker::new()
+            .expect("set_popup_items must run on the main thread");
+
+        // The handler shared across UIActions. We need a single
+        // closure that takes the chosen action and figures out which
+        // index it represented; we encode the index in the action's
+        // title and look it up at fire time. Simpler: clone a
+        // per-index closure for each action.
+        // SendWrapper because UIAction holds the closure with no
+        // Send bound but it only fires on the main thread anyway.
+        let shared = Rc::new(RefCell::new(on_select));
+
+        let actions: Vec<Retained<UIMenuElement>> = items
+            .iter()
+            .enumerate()
+            .map(|(i, title)| {
+                let title_ns = NSString::from_str(title);
+                let cb = shared.clone();
+                let action_handler = block2::RcBlock::new(
+                    move |_: std::ptr::NonNull<UIAction>| {
+                        cb.borrow_mut()(i);
+                    },
+                );
+                let handler_ptr: *mut block2::Block<dyn Fn(std::ptr::NonNull<UIAction>) + 'static> =
+                    &*action_handler as *const _ as *mut _;
+                let action = unsafe {
+                    UIAction::actionWithTitle_image_identifier_handler(
+                        &title_ns,
+                        None,
+                        None,
+                        handler_ptr,
+                        mtm,
+                    )
+                };
+                if i == selected_idx {
+                    action.setState(UIMenuElementState::On);
+                }
+                let element: Retained<UIMenuElement> =
+                    unsafe { Retained::cast_unchecked(action) };
+                element
+            })
+            .collect();
+
+        let ns_array = objc2_foundation::NSArray::from_retained_slice(&actions);
+        let menu = UIMenu::menuWithChildren(&ns_array, mtm);
+        button.setMenu(Some(&menu));
+
+        // Update the button's title to reflect the current selection
+        // (UIButton with showsMenuAsPrimaryAction doesn't change its
+        // own title automatically when an action fires; we'd need to
+        // re-set it via the change callback. For first display we set
+        // it here.)
+        if let Some(t) = items.get(selected_idx) {
+            let ns = NSString::from_str(t);
+            button.setTitle_forState(
+                Some(&ns),
+                objc2_ui_kit::UIControlState::Normal,
+            );
+            crate::layout::schedule_relayout(&self.node);
+        }
+    }
+
+    /// Programmatically set the popup's displayed selection. Updates
+    /// the button's title to `items[idx]` if known via the menu's
+    /// children.
+    pub fn set_popup_selection(&self, items: &[String], idx: usize) {
+        let Some(button) = downcast::<UIButton>(self.ui_view()) else {
+            return;
+        };
+        if let Some(t) = items.get(idx) {
+            let ns = NSString::from_str(t);
+            let current = button
+                .titleForState(objc2_ui_kit::UIControlState::Normal)
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if current.as_str() != t {
+                button.setTitle_forState(
+                    Some(&ns),
+                    objc2_ui_kit::UIControlState::Normal,
+                );
+                crate::layout::schedule_relayout(&self.node);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Color well (UIColorWell, iOS 14+)
+    // -----------------------------------------------------------------
+
+    /// Set the well's selected color.
+    pub fn set_color_well_value(&self, color: crate::Color) {
+        use objc2_ui_kit::UIColorWell;
+        let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
+            return;
+        };
+        cw.setSelectedColor(Some(&color.to_uicolor()));
+    }
+
+    /// Read the well's currently-selected color, if any.
+    pub fn color_well_value(&self) -> Option<crate::Color> {
+        use objc2_ui_kit::UIColorWell;
+        let cw = downcast::<UIColorWell>(self.ui_view())?;
+        let c = cw.selectedColor()?;
+        crate::Color::from_uicolor(&c)
+    }
+
+    /// Wire a callback to fire whenever the user picks a new color.
+    /// Uses UIControl's `valueChanged` event (UIColorWell is a
+    /// UIControl subclass).
+    pub fn on_color_change(
+        &self,
+        mut cb: impl FnMut(crate::Color) + 'static,
+    ) {
+        use objc2_ui_kit::UIColorWell;
+        let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
+            return;
+        };
+        let cw_owned: Retained<UIColorWell> = cw.retain();
+        let cw_for_cb = cw_owned.clone();
+        crate::event::on_control_action(&*cw_owned, move || {
+            if let Some(c) = cw_for_cb.selectedColor() {
+                if let Some(color) = crate::Color::from_uicolor(&c) {
+                    cb(color);
+                }
+            }
+        });
     }
 
     // -----------------------------------------------------------------

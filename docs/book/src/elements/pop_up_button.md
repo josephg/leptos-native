@@ -17,38 +17,39 @@ view! {
 |------|-----------------------|
 | Cocoa| NSPopUpButton         |
 | GTK  | gtk::DropDown         |
-| iOS  | — (not implemented)   |
+| iOS  | UIButton + UIMenu (iOS 14+) |
 
-iOS has no inline popup equivalent — UIMenu and UIPickerView
-are both different shapes. Use `<segmented_control>` for small
-choice sets, or build a custom modal sheet.
+On iOS the popup is implemented as a UIButton whose `menu`
+property holds a UIMenu. The button shows its current title; a
+tap reveals the menu; selecting an item updates both the button's
+title and the bound signal.
 
 ## Attributes
 
-| Attribute    | Type           | Default | Cocoa | GTK | Notes                                                |
-|--------------|----------------|---------|:-----:|:---:|------------------------------------------------------|
-| `items`      | `Vec<String>`  | `[]`    | ✓     | ✓   | Choice titles. Static (set once at build).           |
-| `selection`  | `usize`        | `0`     | ✓     | ✓   | Selected index. Prefer `bind:value`.                 |
-| `enabled`    | `bool`         | `true`  | ✓     | ✓   |                                                      |
-| `pulls_down` | `bool`         | `false` | ✓     |     | Cocoa: pull-down menu style instead of pop-up.       |
+| Attribute    | Type           | Default | Cocoa | GTK | iOS | Notes                                                |
+|--------------|----------------|---------|:-----:|:---:|:---:|------------------------------------------------------|
+| `items`      | `Vec<String>`  | `[]`    | ✓     | ✓   | ✓   | Choice titles. Static (set once at build).           |
+| `selection`  | `usize`        | `0`     | ✓     | ✓   | ✓   | Selected index. Prefer `bind:value`.                 |
+| `enabled`    | `bool`         | `true`  | ✓     | ✓   | ✓   |                                                      |
+| `pulls_down` | `bool`         | `false` | ✓     |     |     | Cocoa: pull-down menu style instead of pop-up.       |
 
 Plus all [shared layout
 attributes](../layout/attributes.md).
 
 ## Events
 
-| Event       | Cocoa | GTK | Payload |
-|-------------|:-----:|:---:|---------|
-| `on:change` | ✓     | ✓   | `()`    |
+| Event       | Cocoa | GTK | iOS | Payload |
+|-------------|:-----:|:---:|:---:|---------|
+| `on:change` | ✓     | ✓   | ✓   | `()`    |
 
 Fires when the selection changes. Read the bound signal for the
 new index.
 
 ## Bindings
 
-| Bind             | Signal type        | Cocoa | GTK |
-|------------------|--------------------|:-----:|:---:|
-| `bind:value`     | `RwSignal<usize>`  | ✓     | ✓   |
+| Bind             | Signal type        | Cocoa | GTK | iOS |
+|------------------|--------------------|:-----:|:---:|:---:|
+| `bind:value`     | `RwSignal<usize>`  | ✓     | ✓   | ✓   |
 
 The bound value is the **selected index**, not the string.
 
