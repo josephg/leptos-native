@@ -147,6 +147,14 @@ impl Renderer {
     }
 
     pub fn remove(node: &Node) {
+        // Mirror `Node::teardown`: drop the Taffy node first so the
+        // tree's node count returns to baseline, then detach the
+        // NSView from its superview. The previous version only did
+        // the second step, leaking one Taffy node per
+        // `UnitState::unmount` (and any other Renderer::remove
+        // caller). Caught by `cocoa_fuzzer`'s post-seed tree-node
+        // count check.
+        crate::layout::drop_node(node);
         node.ns_view().removeFromSuperview();
     }
 

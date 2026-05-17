@@ -298,6 +298,13 @@ impl<B: LayoutBackend> LayoutTree<B> {
         });
     }
 
+    /// Total number of nodes (including any orphans not currently
+    /// reachable from the root). Used by leak detectors to verify
+    /// teardown returned the tree to its expected size.
+    pub fn node_count(&self) -> usize {
+        self.state.borrow().nodes.len()
+    }
+
     // -- mutation -----------------------------------------------------
 
     /// Insert a fresh leaf, returning its `NodeId`.

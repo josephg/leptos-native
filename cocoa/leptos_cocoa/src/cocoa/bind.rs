@@ -218,10 +218,18 @@ pub(crate) fn install_stepper_value_bind(
     el: &CocoaElement,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
+    use objc2_app_kit::NSStepper;
     let mut setter = bound.setter;
-    let el_for_action = el.clone();
+    // Capture Retained<NSView> rather than CocoaElement — capturing
+    // the Element would form an Rc cycle: closure → Element →
+    // NodeHandlersBundle → ActionTarget → ivars → closure.
+    // See `cocoa_dom::event` module doc for the lifecycle story.
+    let view_for_action = el.ns_view_retained();
     el.on_action(move || {
-        setter(el_for_action.stepper_value());
+        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
+        if let Some(s) = any.downcast_ref::<NSStepper>() {
+            setter(s.doubleValue());
+        }
     });
     let getter = bound.getter;
     let el_for_set = el.clone();
@@ -260,10 +268,17 @@ pub(crate) fn install_date_picker_bind(
     el: &CocoaElement,
     bound: BoundDate,
 ) -> RenderEffect<()> {
+    use objc2_app_kit::NSDatePicker;
     let mut setter = bound.setter;
-    let el_for_action = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`
+    // for why we don't capture `el`.
+    let view_for_action = el.ns_view_retained();
     el.on_action(move || {
-        setter(el_for_action.date_picker_value());
+        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
+        if let Some(p) = any.downcast_ref::<NSDatePicker>() {
+            let d = p.dateValue();
+            setter(cocoa_dom::Date::from_nsdate(&d));
+        }
     });
     let getter = bound.getter;
     let el_for_set = el.clone();
@@ -283,10 +298,16 @@ pub(crate) fn install_slider_value_bind(
     // (NSButton-based) — NSSlider extends NSControl directly, not
     // NSButton, so the NSButton downcast in on_click would silently
     // drop the wiring.
+    use objc2_app_kit::NSControl;
     let mut setter = bound.setter;
-    let el_for_action = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`
+    // for why we don't capture `el`.
+    let view_for_action = el.ns_view_retained();
     el.on_action(move || {
-        setter(el_for_action.double_value());
+        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
+        if let Some(c) = any.downcast_ref::<NSControl>() {
+            setter(c.doubleValue());
+        }
     });
 
     // Incoming: signal change → set slider value. set_double_value
@@ -345,12 +366,17 @@ pub(crate) fn install_popup_selection_bind(
     // Outgoing: NSPopUpButton fires target/action when the user picks
     // an item. on_click hooks into the same target/action wiring we
     // use for buttons (NSPopUpButton IS-A NSButton).
+    use objc2_app_kit::NSPopUpButton;
     let mut setter = bound.setter;
-    let el_for_click = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`.
+    let view_for_click = el.ns_view_retained();
     el.on_click(move || {
-        let idx = el_for_click.popup_selection();
-        if idx >= 0 {
-            setter(idx as usize);
+        let any: &objc2::runtime::AnyObject = (&*view_for_click).as_ref();
+        if let Some(p) = any.downcast_ref::<NSPopUpButton>() {
+            let idx = p.indexOfSelectedItem();
+            if idx >= 0 {
+                setter(idx as usize);
+            }
         }
     });
 
@@ -393,10 +419,18 @@ pub(crate) fn install_color_well_bind(
     el: &CocoaElement,
     bound: BoundColor,
 ) -> RenderEffect<()> {
+    use objc2_app_kit::NSColorWell;
     let mut setter = bound.setter;
-    let el_for_action = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`.
+    let view_for_action = el.ns_view_retained();
     el.on_action(move || {
-        setter(el_for_action.color_well_value());
+        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
+        if let Some(w) = any.downcast_ref::<NSColorWell>() {
+            let c = w.color();
+            if let Some(parsed) = cocoa_dom::Color::from_nscolor(&c) {
+                setter(parsed);
+            }
+        }
     });
 
     let getter = bound.getter;
@@ -414,12 +448,17 @@ pub(crate) fn install_segmented_selection_bind(
     // Outgoing: NSSegmentedControl fires target/action on click.
     // on_action goes through the NSControl path (segmented control
     // isn't an NSButton, so on_click would no-op).
+    use objc2_app_kit::NSSegmentedControl;
     let mut setter = bound.setter;
-    let el_for_action = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`.
+    let view_for_action = el.ns_view_retained();
     el.on_action(move || {
-        let idx = el_for_action.segmented_selection();
-        if idx >= 0 {
-            setter(idx as usize);
+        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
+        if let Some(s) = any.downcast_ref::<NSSegmentedControl>() {
+            let idx = s.selectedSegment();
+            if idx >= 0 {
+                setter(idx as usize);
+            }
         }
     });
 
@@ -468,10 +507,15 @@ pub(crate) fn install_checkbox_checked_bind(
     // NSButton's action target/action fires AFTER the state has been
     // updated by AppKit's click handling, so `el.checked()` returns
     // the new state.
+    use objc2_app_kit::{NSButton, NSControlStateValueOn};
     let mut setter = bound.setter;
-    let el_for_click = el.clone();
+    // Retained<NSView> capture; see `install_stepper_value_bind`.
+    let view_for_click = el.ns_view_retained();
     el.on_click(move || {
-        setter(el_for_click.checked());
+        let any: &objc2::runtime::AnyObject = (&*view_for_click).as_ref();
+        if let Some(b) = any.downcast_ref::<NSButton>() {
+            setter(b.state() == NSControlStateValueOn);
+        }
     });
 
     // Incoming: signal change → set button state.

@@ -86,6 +86,9 @@ pub enum NodeKind {
 pub struct Node {
     view: SendWrapper<Retained<UIView>>,
     layout: SendWrapper<Rc<RefCell<NodeLayout>>>,
+    /// Per-Node handler/delegate retains. See `ios_dom::event` for
+    /// the lifecycle rationale (mirror of the cocoa design).
+    handlers: SendWrapper<Rc<crate::event::IosNodeHandlersBundle>>,
     kind: NodeKind,
 }
 
@@ -128,11 +131,13 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
+        let handlers = crate::event::IosNodeHandlersBundle::new_shared(view.clone());
         Node {
             view: SendWrapper::new(view),
             layout: SendWrapper::new(Rc::new(RefCell::new(NodeLayout::new(
                 default_style,
             )))),
+            handlers: SendWrapper::new(handlers),
             kind,
         }
     }
@@ -148,15 +153,25 @@ impl Node {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
         let mut layout = NodeLayout::new(Style::default());
         layout.handle = Some(handle);
+        let handlers = crate::event::IosNodeHandlersBundle::new_shared(view.clone());
         Node {
             view: SendWrapper::new(view),
             layout: SendWrapper::new(Rc::new(RefCell::new(layout))),
+            handlers: SendWrapper::new(handlers),
             kind,
         }
     }
 
     pub fn ui_view(&self) -> &UIView {
         &self.view
+    }
+
+    pub fn ui_view_retained(&self) -> Retained<UIView> {
+        (*self.view).clone()
+    }
+
+    pub fn handlers(&self) -> &RefCell<crate::event::IosNodeHandlers> {
+        self.handlers.handlers()
     }
 
     pub fn into_ui_view(self) -> Retained<UIView> {
@@ -178,18 +193,12 @@ impl Node {
     }
 
     pub fn teardown(&self) {
-        crate::event::drop_handlers_for(self.ui_view());
-        // For UIScrollView-backed `<scroll_view>`, the content UIView
-        // holds its own handler store entries. Walk one level deeper
-        // so they don't leak.
-        let view = self.ui_view();
-        if let Some(scroll) = downcast::<objc2_ui_kit::UIScrollView>(view) {
-            let subs = scroll.subviews();
-            if subs.count() > 0 {
-                let first = subs.objectAtIndex(0);
-                crate::event::drop_handlers_for(&first);
-            }
-        }
+        // Event handlers / delegates live on this Node's
+        // `IosNodeHandlersBundle`; they drop when the last clone of
+        // this Node drops (the bundle's Drop nils out setDelegate /
+        // removeAllTargets first to disconnect any AppKit retain).
+        // teardown itself just unlinks the layout tree and detaches
+        // the view from its superview.
         crate::layout::drop_node(self);
         self.ui_view().removeFromSuperview();
     }
@@ -502,6 +511,14 @@ impl Element {
         self.node.ui_view()
     }
 
+    /// Get a new `Retained<UIView>` (retain). See
+    /// [`Node::ui_view_retained`] — use this in callback captures
+    /// instead of `self.clone()` to avoid forming a Node ↔
+    /// handlers cycle.
+    pub fn ui_view_retained(&self) -> Retained<UIView> {
+        self.node.ui_view_retained()
+    }
+
     /// The UIView that *actually* parents this element's children.
     /// For `<scroll_view>` this is the content UIView (first subview
     /// of the UIScrollView). For everything else it's self.
@@ -706,19 +723,17 @@ impl Element {
     /// `UITapGestureRecognizer` so plain views can be tapped too.
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
         let view = self.ui_view();
-        if let Some(c) = downcast::<UIControl>(view) {
-            crate::event::on_control_action(c, cb);
+        if downcast::<UIControl>(view).is_some() {
+            crate::event::on_control_action(&self.node, cb);
         } else {
-            crate::event::on_tap_gesture(view, cb);
+            crate::event::on_tap_gesture(&self.node, cb);
         }
     }
 
     /// Wire a callback for UIControl value changes (sliders, switches,
     /// segmented controls, date pickers, steppers).
     pub fn on_action(&self, cb: impl FnMut() + 'static) {
-        if let Some(c) = downcast::<UIControl>(self.ui_view()) {
-            crate::event::on_control_action(c, cb);
-        }
+        crate::event::on_control_action(&self.node, cb);
     }
 
     /// Unit-payload "value changed" hook. Text fields fan to
@@ -726,44 +741,34 @@ impl Element {
     /// UIStepper / UISegmentedControl / UIDatePicker fan to
     /// ValueChanged. Other views are no-op.
     pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
-        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
-            crate::event::on_text_field_change(field, move |_| cb());
+        if downcast::<UITextField>(self.ui_view()).is_some() {
+            crate::event::on_text_field_change(&self.node, move |_| cb());
             return;
         }
-        if let Some(c) = downcast::<UIControl>(self.ui_view()) {
-            crate::event::on_control_action(c, cb);
-        }
+        crate::event::on_control_action(&self.node, cb);
     }
 
     /// Wire a callback that fires on every text change (keystroke /
     /// paste / clear). Uses `editingChanged` UIControl event on
     /// UITextField. No-op on non-UITextField.
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
-        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
-            crate::event::on_text_field_change(field, cb);
-        }
+        crate::event::on_text_field_change(&self.node, cb);
     }
 
     /// Wire a callback that fires when editing ends (Return key,
     /// focus loss). Uses `editingDidEnd` UIControl event.
     pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
-        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
-            crate::event::on_text_field_end_editing(field, cb);
-        }
+        crate::event::on_text_field_end_editing(&self.node, cb);
     }
 
     /// Wire a callback that fires when the text field gains focus.
     pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
-        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
-            crate::event::on_text_field_focus(field, cb);
-        }
+        crate::event::on_text_field_focus(&self.node, cb);
     }
 
     /// Wire a callback that fires when the text field loses focus.
     pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
-        if let Some(field) = downcast::<UITextField>(self.ui_view()) {
-            crate::event::on_text_field_blur(field, cb);
-        }
+        crate::event::on_text_field_blur(&self.node, cb);
     }
 
     /// Wire a key event observer on a text field (hardware keyboard).
@@ -1000,9 +1005,11 @@ impl Element {
         let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
             return;
         };
-        let cw_owned: Retained<UIColorWell> = cw.retain();
-        let cw_for_cb = cw_owned.clone();
-        crate::event::on_control_action(&*cw_owned, move || {
+        // Capture Retained<UIColorWell> in the closure (not the
+        // Element) to avoid forming a Node ↔ handlers cycle —
+        // see ios_dom::event module docs.
+        let cw_for_cb: Retained<UIColorWell> = cw.retain();
+        crate::event::on_control_action(&self.node, move || {
             if let Some(c) = cw_for_cb.selectedColor() {
                 if let Some(color) = crate::Color::from_uicolor(&c) {
                     cb(color);
@@ -1333,12 +1340,7 @@ impl Element {
         &self,
         cb: impl FnMut(String) + 'static,
     ) {
-        let view = self.ui_view();
-        if let Some(tv) =
-            downcast::<objc2_ui_kit::UITextView>(view)
-        {
-            crate::event::on_text_view_change(tv, cb);
-        }
+        crate::event::on_text_view_change(&self.node, cb);
     }
 
     /// Set editability of a UITextView.
@@ -1630,7 +1632,7 @@ impl Placeholder {
 // ---------------------------------------------------------------------
 
 /// Best-effort downcast of an `&UIView` to a more specific subclass.
-fn downcast<T>(view: &UIView) -> Option<&T>
+pub(crate) fn downcast<T>(view: &UIView) -> Option<&T>
 where
     T: DowncastTarget,
 {

@@ -222,32 +222,30 @@ fn drop_releases_action_target() {
     let _mtm = common::test_mtm();
     let before = event::handler_store_size_for_test();
     with_reactive_scope(|| {
-        // Wrap the build+drop in an autoreleasepool so the
-        // NSToolbarItem AppKit autoreleased during construction
-        // deallocates by pool drain — that's what triggers our
-        // associated ActionTarget's release.
-        objc2::rc::autoreleasepool(|_| {
-            let view = toolbar().child(
-                toolbar_item()
-                    .identifier("drop")
-                    .label("Drop me")
-                    .on(leptos_cocoa::event_macos::action, |_| {}),
-            );
-            let state = <_ as Render<Dom>>::build(view);
+        let view = toolbar().child(
+            toolbar_item()
+                .identifier("drop")
+                .label("Drop me")
+                .on(leptos_cocoa::event_macos::action, |_| {}),
+        );
+        let state = <_ as Render<Dom>>::build(view);
 
-            let item = state.test_item_at(0);
-            assert!(
-                event::has_action_target_for_test(&*item),
-                "action handler should be attached to the toolbar item before drop",
-            );
-            drop(item);
-            drop(state);
-        });
+        // While the state is alive, the handler count should have
+        // grown — the toolbar item registration owns one
+        // Retained<ActionTarget>.
+        let during = event::handler_store_size_for_test();
+        assert!(
+            during > before,
+            "expected ActionTarget count to grow after build; \
+             before={before} during={during}",
+        );
+        drop(state);
 
         let after = event::handler_store_size_for_test();
         assert_eq!(
             after, before,
-            "action handler should be released after the Toolbar is dropped",
+            "action handler should be released after the Toolbar is dropped \
+             (before={before} after={after})",
         );
     });
 }

@@ -34,9 +34,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::event::{
-    action_fired_sel, attach_action_target, ActionTarget,
-};
+use crate::event::{action_fired_sel, ActionTarget};
 use objc2::{
     define_class, msg_send,
     rc::Retained,
@@ -60,19 +58,43 @@ use crate::Element;
 // ---------------------------------------------------------------------
 
 /// Bookkeeping kept per custom toolbar item: the NSToolbarItem
-/// itself, plus an optional Element wrapping an embedded
-/// `NSSearchField` for `NSSearchToolbarItem`s. Action targets and
-/// search-field delegates live as ObjC associated objects on the
-/// NSToolbarItem and the NSSearchField respectively — they're
-/// released by the ObjC runtime when those views deallocate, so
-/// no explicit `Drop` plumbing is needed.
+/// itself, an optional `Retained<ActionTarget>` for the item's
+/// click handler, and an optional Element wrapping an embedded
+/// `NSSearchField` for `NSSearchToolbarItem`s. Action targets are
+/// owned directly here (NSToolbarItem holds its target weakly);
+/// search-field delegates live on the search Element's Node's
+/// `NodeHandlers` (released when that Element drops).
 pub struct ToolbarItemRegistration {
     pub ns_item: Retained<NSToolbarItem>,
+    /// The action target wired into [`NSToolbarItem::setTarget`].
+    /// NSToolbarItem holds its target weakly, so we keep this
+    /// `Retained` here to extend the closure's lifetime to the
+    /// item's. When the toolbar's delegate drops this registration
+    /// (via `Toolbar::remove_item` or whole-toolbar teardown), the
+    /// `Retained<ActionTarget>` drops, the closure is released —
+    /// no ObjC associated objects or sidetables involved.
+    pub action_target: Option<Retained<crate::event::ActionTarget>>,
     /// For `NSSearchToolbarItem`-backed items: an [`Element`]
     /// wrapping the embedded `NSSearchField`. Held to keep the
     /// element (and through it, the search field) reachable for
     /// the toolbar's lifetime.
     pub search_element: Option<Element>,
+}
+
+impl Drop for ToolbarItemRegistration {
+    fn drop(&mut self) {
+        // Disconnect the toolbar item from our target before the
+        // `Retained<ActionTarget>` drops. NSToolbarItem may be
+        // lingering in an autorelease pool or AppKit's
+        // customization sheet history; without this nil, a
+        // subsequent action dispatch would hit a freed pointer.
+        if self.action_target.is_some() {
+            unsafe {
+                self.ns_item.setTarget(None);
+                self.ns_item.setAction(None);
+            }
+        }
+    }
 }
 
 /// Per-toolbar registry of identifier → item registration, looked
@@ -618,12 +640,17 @@ impl ToolbarItem {
         self.ns_item.setNavigational(navigational);
     }
 
-    /// Wire a Rust closure as the item's action handler.
+    /// Wire a Rust closure as the item's action handler. Returns
+    /// the `Retained<ActionTarget>` — the caller MUST keep it
+    /// alive for the item's lifetime (typically by storing it in
+    /// `ToolbarItemRegistration::action_target`). NSToolbarItem
+    /// holds its target weakly, so dropping the returned Retained
+    /// would let the target deallocate and the next dispatch hit
+    /// freed memory.
+    ///
     /// Single-handler contract — a second call panics, matching
-    /// `MenuItem::set_action`. The handler is attached as an ObjC
-    /// associated object on the NSToolbarItem; lifetime matches
-    /// the item's own.
-    pub fn set_action<F>(&self, cb: F, mtm: MainThreadMarker)
+    /// `MenuItem::set_action`.
+    pub fn set_action<F>(&self, cb: F, mtm: MainThreadMarker) -> Retained<ActionTarget>
     where
         F: FnMut() + 'static,
     {
@@ -641,7 +668,10 @@ impl ToolbarItem {
             self.ns_item.setTarget(Some(target_obj));
             self.ns_item.setAction(Some(action_fired_sel()));
         }
-        attach_action_target(&*self.ns_item, target);
+        // Caller stores the Retained in
+        // `ToolbarItemRegistration::action_target` to keep it
+        // alive for the item's lifetime.
+        target
     }
 }
 

@@ -20,7 +20,7 @@ use cocoa_dom::event::{
 };
 use leptos::prelude::*;
 use leptos_cocoa::cocoa::bind::BindAttribute;
-use leptos_cocoa::cocoa::element::{button, hstack, label, text_field, vstack};
+use leptos_cocoa::cocoa::element::{button, hstack, label, text_field, text_view, vstack};
 use leptos_cocoa::event_macos::{click, on};
 use reactive_graph::owner::Owner;
 use renderer::view::{AddAnyAttr, Mountable, Render};
@@ -508,8 +508,594 @@ fn for_diff_shuffle_then_clear_clears_handlers() {
     );
 }
 
+// ---------------------------------------------------------------------
+// text_view variants — isolating the residual leak the fuzzer reports.
+// ---------------------------------------------------------------------
+
+/// text_view with NO bind, no event handler — bare creation/drop.
+fn drop_bare_text_view_clears_delegate() {
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let state = text_view().build();
+        drop(state);
+        common::pump_run_loop(0.1);
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "bare text_view drop must not leak; before={:?} after={:?}",
+        before, after,
+    );
+}
+
+/// text_view with bind:value — explicit unmount path.
+fn explicit_unmount_clears_text_view_delegate() {
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let value = RwSignal::new(String::new());
+        let view = text_view().bind(leptos_cocoa::attr::Value, value);
+        let mut state = view.build();
+        let installed = snapshot();
+        assert!(
+            installed.2 > before.2,
+            "expected TEXT_VIEW counter to grow after build; \
+             before={:?} installed={:?}",
+            before, installed,
+        );
+        state.unmount();
+        common::pump_run_loop(0.1);
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "explicit text_view unmount must clear delegate; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
+/// Reactive child returning a text_view that's never toggled off.
+/// Builds the dynamic-child code path the fuzzer uses for Show
+/// without exercising any flip.
+fn drop_reactive_child_text_view_no_toggle() {
+    use leptos_cocoa::Dom;
+    use renderer::view::{AnyView, IntoAny};
+    use leptos_cocoa::cocoa::element::vstack;
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || -> AnyView<Dom> {
+            text_view().bind(leptos_cocoa::attr::Value, value).into_any()
+        });
+        let mut state = view.build();
+        state.unmount();
+        common::pump_run_loop(0.1);
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "reactive-child text_view with no toggle must not leak; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
+/// Isolation: text_view inside Either with NO bind, just plain
+/// creation. If THIS leaks, it's nothing to do with bind.
+fn show_off_bare_text_view_clears_delegate() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(text_view()),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(false);
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        assert_eq!(
+            after_off.2, before.2,
+            "toggling off bare text_view must drop delegate; \
+             before={:?} after_off={:?}",
+            before, after_off,
+        );
+        state.unmount();
+    });
+}
+
+/// Mirrors the fuzzer's full-teardown leak check. Build a tree
+/// with a text_view+bind:value, do NOTHING with it (no toggle),
+/// then explicit unmount + drop the Owner + pump extensively.
+/// If the bundle still leaks after that, this matches the fuzzer
+/// repro and rules out timing.
+fn full_teardown_text_view_persistent_leak() {
+    use leptos_cocoa::cocoa::element::vstack;
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(
+            text_view().bind(leptos_cocoa::attr::Value, value),
+        );
+        let mut state = view.build();
+        state.unmount();
+        for _ in 0..20 {
+            common::pump_run_loop(0.02);
+        }
+    });
+    objc2::rc::autoreleasepool(|_| {
+        for _ in 0..20 {
+            common::pump_run_loop(0.02);
+        }
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "full teardown (owner-drop + pump) must clear the bundle; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
+/// Like show_off_text_view_clears_delegate but with no signal
+/// in the bind — just on:input registered on the text_view to
+/// create the delegate, then toggle off. If THIS leaks, the
+/// problem is in the unmount/drop path of the text_view delegate
+/// regardless of the RenderEffect cycle.
+fn show_off_text_view_with_oninput_clears_delegate() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    use leptos_cocoa::event_macos::{input, on};
+    use renderer::view::AddAnyAttr;
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view()
+                    .add_any_attr((on(input, |_v: String| {}),)),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(false);
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        assert_eq!(
+            after_off.2, before.2,
+            "toggling off text_view+on:input must drop delegate; \
+             before={:?} after_off={:?}",
+            before, after_off,
+        );
+        state.unmount();
+    });
+}
+
+/// Control case: text_field bind:value inside Either, toggled off.
+/// If text_field also leaks here, the bug is in Either/RenderEffect
+/// disposal, not text_view-specific.
+fn show_off_text_field_clears_delegate() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_field().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(false);
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        assert_eq!(
+            after_off.1, before.1,
+            "toggling off must drop text_field delegate; \
+             before={:?} after_off={:?}",
+            before, after_off,
+        );
+        state.unmount();
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "show-off then unmount must match baseline; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
+#[cfg(any())]
+fn diagnose_text_view_bind_extra_clones() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    use leptos_cocoa::cocoa::NodeRef;
+    let _mtm = common::test_mtm();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let nref = NodeRef::new();
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view()
+                    .node_ref(nref)
+                    .bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+
+        let el_before = nref.get().expect("text_view registered");
+        let count_before = el_before.as_node().handlers_rc_count_for_test();
+        let tv_alive_before = el_before
+            .as_node()
+            .handlers()
+            .borrow()
+            .text_view_delegate
+            .is_some();
+        eprintln!("TV before flip: count={count_before} delegate_in_bundle={tv_alive_before}");
+        drop(el_before);
+
+        flag.set(false);
+        common::pump_run_loop(0.1);
+
+        let el_after = nref.get();
+        match el_after {
+            Some(el) => {
+                let c = el.as_node().handlers_rc_count_for_test();
+                let tv_alive = el
+                    .as_node()
+                    .handlers()
+                    .borrow()
+                    .text_view_delegate
+                    .is_some();
+                eprintln!("TV after flip:  count={c} delegate_in_bundle={tv_alive}");
+            }
+            None => eprintln!("TV after flip: NodeRef cleared"),
+        }
+        state.unmount();
+    });
+}
+
+/// Wrap the INITIAL BUILD in its own autoreleasepool. If TV1's
+/// delegate is being held by an autoreleased object created
+/// during build, draining the build pool BEFORE toggling should
+/// release it.
+#[cfg(any())]
+fn build_in_pool_then_show_off() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    let _ = cocoa_dom::spawner::init();
+    objc2::rc::autoreleasepool(|_| {
+        let owner = reactive_graph::owner::Owner::new();
+        let _result: () = owner.with(|| {
+            let flag = RwSignal::new(true);
+            let value = RwSignal::new(String::new());
+            let view = vstack().child(move || match flag.get() {
+                true => Either::Left(
+                    text_view().bind(leptos_cocoa::attr::Value, value),
+                ),
+                false => Either::Right(label().text("off")),
+            });
+            let mut state = view.build();
+            // Drain the build pool by entering and exiting an inner one.
+            // Anything autoreleased during build releases here.
+            objc2::rc::autoreleasepool(|_| {
+                common::pump_run_loop(0.05);
+            });
+            let mid = snapshot();
+            eprintln!("after build+drain: tv={}", mid.2 - before.2);
+            flag.set(false);
+            common::pump_run_loop(0.2);
+            let after_off = snapshot();
+            eprintln!("after flip-off:    tv={}", after_off.2 - before.2);
+            state.unmount();
+        });
+        drop(owner);
+        common::pump_run_loop(0.05);
+    });
+}
+
+/// Start with flag=false so initial build doesn't create the
+/// text_view. Then toggle on (create), then toggle off (drop).
+/// If the leak only fires for "first text_view at build time",
+/// this shouldn't leak. If it fires for "first text_view created
+/// inside this reactive child," it WILL leak.
+#[cfg(any())]
+fn start_off_then_on_off() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(false);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(true);
+        common::pump_run_loop(0.1);
+        let after_on = snapshot();
+        eprintln!("start-off then on:  tv now = {}", after_on.2 - before.2);
+        flag.set(false);
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        eprintln!("start-off then off: tv leak = {}", after_off.2 - before.2);
+        state.unmount();
+    });
+}
+
+/// Warm up by creating + immediately dropping a text_view+bind
+/// before the leak test. If the leak is "first text_view in
+/// process initialises some shared lazy state that holds the
+/// instance," warmup should consume that and the actual test
+/// should pass.
+#[cfg(any())]
+fn warmup_then_show_off_text_view() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    // Warmup: a separate scope first.
+    with_scope(|| {
+        let v = RwSignal::new(String::new());
+        let mut s = text_view()
+            .bind(leptos_cocoa::attr::Value, v)
+            .build();
+        s.unmount();
+        common::pump_run_loop(0.1);
+    });
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(false);
+        common::pump_run_loop(0.2);
+        let after_off = snapshot();
+        eprintln!("post-warmup show-off: tv leak = {}", after_off.2 - before.2);
+        state.unmount();
+    });
+}
+
+/// Wrap the toggle in an inner autoreleasepool. If the leaked
+/// holder is an autoreleased AppKit object, draining the inner
+/// pool should release it before our assertion. If the test
+/// still leaks, the holder is Rust-side.
+#[cfg(any())]
+fn show_off_text_view_inner_autoreleasepool() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        objc2::rc::autoreleasepool(|_| {
+            flag.set(false);
+            common::pump_run_loop(0.2);
+        });
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        eprintln!("inner-pool show-off: tv leak = {}", after_off.2 - before.2);
+        state.unmount();
+    });
+}
+
+/// Toggle Either on/off many times. If the leak is per-iteration,
+/// count grows linearly. If it's "last one survives", count stays
+/// at 1.
+#[cfg(any())]
+fn diagnose_text_view_repeated_toggles() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        eprintln!("DIAG: just after build, tv_count={}", snapshot().2 - before.2);
+        for i in 0..10 {
+            flag.update(|v| *v = !*v);
+            common::pump_run_loop(0.05);
+            let s = snapshot();
+            eprintln!("after toggle {i}: tv_count={}", s.2 - before.2);
+        }
+        state.unmount();
+    });
+}
+
+/// Same diagnostic for text_field, as a control. If text_field
+/// shows the same "+1 extra holder after flip" then the leak
+/// shape is identical and the issue is just timing/order; if
+/// text_field clears to 1 cleanly, the extra holder is specific
+/// to the text_view path.
+#[cfg(any())]
+fn diagnose_text_field_bind_extra_clones() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    use leptos_cocoa::cocoa::NodeRef;
+    let _mtm = common::test_mtm();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let nref = NodeRef::new();
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_field()
+                    .node_ref(nref)
+                    .bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+
+        let el_before = nref.get().expect("text_field registered");
+        let count_before = el_before.as_node().handlers_rc_count_for_test();
+        let tf_alive_before = el_before
+            .as_node()
+            .handlers()
+            .borrow()
+            .text_field_delegate
+            .is_some();
+        eprintln!("TF before flip: count={count_before} delegate_in_bundle={tf_alive_before}");
+        drop(el_before);
+
+        flag.set(false);
+        common::pump_run_loop(0.1);
+
+        match nref.get() {
+            Some(el) => {
+                let c = el.as_node().handlers_rc_count_for_test();
+                let tf_alive = el
+                    .as_node()
+                    .handlers()
+                    .borrow()
+                    .text_field_delegate
+                    .is_some();
+                eprintln!("TF after flip:  count={c} delegate_in_bundle={tf_alive}");
+            }
+            None => eprintln!("TF after flip: NodeRef cleared"),
+        }
+        state.unmount();
+    });
+}
+
+/// text_view inside an Either branch + bind:value. Toggle off,
+/// the previous branch's state must drop fully (including the
+/// TextViewDelegate). This was the original P1 repro and was
+/// known-failing until the `NSText.setDelegate:`
+/// autorelease-pool fix in `ensure_text_view_entry`.
+fn show_off_text_view_clears_delegate() {
+    use either_of::Either;
+    use leptos_cocoa::cocoa::element::{label, vstack};
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let flag = RwSignal::new(true);
+        let value = RwSignal::new(String::new());
+        let view = vstack().child(move || match flag.get() {
+            true => Either::Left(
+                text_view().bind(leptos_cocoa::attr::Value, value),
+            ),
+            false => Either::Right(label().text("off")),
+        });
+        let mut state = view.build();
+        flag.set(false);
+        common::pump_run_loop(0.1);
+        let after_off = snapshot();
+        assert_eq!(
+            after_off.2, before.2,
+            "toggling off must drop text_view delegate; \
+             before={:?} after_off={:?}",
+            before, after_off,
+        );
+        state.unmount();
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "show-off then unmount must match baseline; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
+/// text_view with bind:value — drop without explicit unmount.
+fn drop_without_unmount_clears_text_view_delegate() {
+    let _mtm = common::test_mtm();
+    let before = snapshot();
+    with_scope(|| {
+        let value = RwSignal::new(String::new());
+        let view = text_view().bind(leptos_cocoa::attr::Value, value);
+        let state = view.build();
+        drop(state);
+        common::pump_run_loop(0.1);
+    });
+    let after = snapshot();
+    assert_eq!(
+        after, before,
+        "dropping text_view with bind:value must not leak delegate; \
+         before={:?} after={:?}",
+        before, after,
+    );
+}
+
 fn main() {
     common::run_tests(&[
+        (
+            "drop_bare_text_view_clears_delegate",
+            drop_bare_text_view_clears_delegate,
+        ),
+        (
+            "explicit_unmount_clears_text_view_delegate",
+            explicit_unmount_clears_text_view_delegate,
+        ),
+        (
+            "drop_without_unmount_clears_text_view_delegate",
+            drop_without_unmount_clears_text_view_delegate,
+        ),
+        (
+            "drop_reactive_child_text_view_no_toggle",
+            drop_reactive_child_text_view_no_toggle,
+        ),
+        (
+            "show_off_text_view_clears_delegate",
+            show_off_text_view_clears_delegate,
+        ),
+        (
+            "show_off_text_field_clears_delegate",
+            show_off_text_field_clears_delegate,
+        ),
+        (
+            "show_off_bare_text_view_clears_delegate",
+            show_off_bare_text_view_clears_delegate,
+        ),
+        (
+            "show_off_text_view_with_oninput_clears_delegate",
+            show_off_text_view_with_oninput_clears_delegate,
+        ),
+        (
+            "full_teardown_text_view_persistent_leak",
+            full_teardown_text_view_persistent_leak,
+        ),
         (
             "explicit_unmount_clears_button_handler",
             explicit_unmount_clears_button_handler,

@@ -238,7 +238,7 @@ where
     R: Renderer,
     F: Fn() -> V + Send + Sync + 'static,
     V: Render<R> + Send + 'static,
-    V::State: Send + 'static,
+    V::State: Send + Sync + 'static,
 {
     #[inline]
     fn to_children(f: F) -> Self {
@@ -257,7 +257,7 @@ impl<T, R> ToChildren<ChildrenOptContainer<T>> for ChildrenFn<R>
 where
     R: Renderer,
     T: Render<R> + Clone + Send + Sync + 'static,
-    T::State: Send + 'static,
+    T::State: Send + Sync + 'static,
 {
     #[inline]
     fn to_children(t: ChildrenOptContainer<T>) -> Self {

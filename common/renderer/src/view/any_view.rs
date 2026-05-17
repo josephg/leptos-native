@@ -40,8 +40,19 @@ pub struct AnyView<R: Renderer> {
 
 /// Per-instance state held by a mounted `AnyView`. Boxed so the
 /// concrete `State` type stays hidden behind the erasure.
+///
+/// The inner trait object is `Send + Sync` (not just `Send`) so an
+/// `AnyViewState` can flow through the reactive bridge: a
+/// `RenderEffect<T>` wraps its value in `Arc<RwLock<Option<T>>>`,
+/// and `Arc<RwLock<X>>` is only `Send` when `X: Send + Sync`. The
+/// closure-returning-`AnyView` pattern used by `<Show>`-style
+/// reactive children flows the state through that bridge.
+///
+/// All native ports keep their per-element state behind
+/// `SendWrapper`s — `Send + Sync` for any `Send` payload — so the
+/// stricter bound is satisfied in practice.
 pub struct AnyViewState<R: Renderer> {
-    inner: Box<dyn ErasedMountable<R> + Send>,
+    inner: Box<dyn ErasedMountable<R> + Send + Sync>,
 }
 
 impl<R: Renderer> AnyView<R> {
@@ -49,7 +60,7 @@ impl<R: Renderer> AnyView<R> {
     pub fn new<V>(view: V) -> Self
     where
         V: Render<R> + Send + 'static,
-        V::State: Send + 'static,
+        V::State: Send + Sync + 'static,
     {
         Self {
             inner: Box::new(ErasedRenderImpl(Some(view))),
@@ -69,7 +80,7 @@ impl<R, V> IntoAny<R> for V
 where
     R: Renderer,
     V: Render<R> + Send + 'static,
-    V::State: Send + 'static,
+    V::State: Send + Sync + 'static,
 {
     fn into_any(self) -> AnyView<R> {
         AnyView::new(self)
@@ -123,18 +134,23 @@ trait ErasedRender<R: Renderer> {
     /// out of `Option` (Rust can't move out of a `Box<dyn …>` by
     /// reference, so the implementation stashes the value in an
     /// `Option<V>` and `.take()`s it).
-    fn build_erased(self: Box<Self>) -> Box<dyn ErasedMountable<R> + Send>;
+    fn build_erased(
+        self: Box<Self>,
+    ) -> Box<dyn ErasedMountable<R> + Send + Sync>;
 }
 
-/// Marker trait combining `Mountable<R> + Send`. Used as the
-/// boxed-state type inside `AnyViewState`. Blanket-impl'd for
-/// any concrete `M` that satisfies both bounds.
-trait ErasedMountable<R: Renderer>: Mountable<R> + Send {}
+/// Marker trait combining `Mountable<R> + Send + Sync`. Used as
+/// the boxed-state type inside `AnyViewState`. Sync is required
+/// so that `RenderEffect<AnyViewState<R>>` (which wraps the value
+/// in `Arc<RwLock<Option<T>>>`) can satisfy its `Send` bound — see
+/// the docstring on `AnyViewState`. Blanket-impl'd for any
+/// concrete `M` that satisfies the bounds.
+trait ErasedMountable<R: Renderer>: Mountable<R> + Send + Sync {}
 
 impl<R, M> ErasedMountable<R> for M
 where
     R: Renderer,
-    M: Mountable<R> + Send + 'static,
+    M: Mountable<R> + Send + Sync + 'static,
 {
 }
 
@@ -148,9 +164,11 @@ impl<R, V> ErasedRender<R> for ErasedRenderImpl<V>
 where
     R: Renderer,
     V: Render<R> + Send + 'static,
-    V::State: Send + 'static,
+    V::State: Send + Sync + 'static,
 {
-    fn build_erased(mut self: Box<Self>) -> Box<dyn ErasedMountable<R> + Send> {
+    fn build_erased(
+        mut self: Box<Self>,
+    ) -> Box<dyn ErasedMountable<R> + Send + Sync> {
         let view = self
             .0
             .take()

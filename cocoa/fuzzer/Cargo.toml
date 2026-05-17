@@ -14,7 +14,6 @@ leptos = { package = "leptos_cocoa", path = "../leptos_cocoa" }
 cocoa_dom = { path = "../dom" }
 renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
-send_wrapper = { workspace = true }
 either_of = { workspace = true }
 rand = "0.8"
 rand_chacha = "0.3"

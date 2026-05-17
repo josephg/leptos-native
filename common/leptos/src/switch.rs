@@ -39,30 +39,37 @@ use renderer::{
 // Empty sentinel — the "no arm matched" branch
 // ---------------------------------------------------------------------
 
-/// Sentinel type used by [`Switch`] for the no-arm-matched case.
-/// Its `Render` impl builds a real platform `Placeholder` (via
-/// `UnitState<R>`) so the rendered tree has a stable mount anchor
-/// for transitioning between "matched" and "not matched".
+/// Sentinel for an empty branch in control-flow components
+/// (`<Switch>`'s no-arm-matched case, `<Show>`'s no-fallback +
+/// `when == false` case). Its `Render` impl builds a real
+/// platform `Placeholder` (via `UnitState<R>`) so the rendered
+/// tree has a stable mount anchor for transitioning between
+/// "empty" and "populated".
 ///
 /// We can't use the bare `()` type here: `() : Render<R>` is a
-/// no-op (no platform node), which means there's no anchor to
-/// `insert_before` when going from no-match → match. The
-/// `()`/no-op design is necessary for container builders to seed
-/// empty child lists without producing a placeholder per empty
-/// list; `Switch` is the niche where we *want* the placeholder.
+/// no-op (no platform node), which means the rebuild path has
+/// no anchor to splice content in front of when flipping
+/// `empty → populated` — `Either::rebuild` calls
+/// `old.insert_before_this(&mut new)` and `()` returns `false`
+/// without mounting, so the new state is silently abandoned.
+///
+/// The `()`/no-op design is necessary for container builders to
+/// seed empty child lists without producing a placeholder per
+/// empty list; control-flow primitives are the niche where we
+/// *want* the placeholder.
 #[derive(Clone, Copy)]
-pub struct SwitchEmpty;
+pub struct EmptyBranch;
 
-impl<R: Renderer> Render<R> for SwitchEmpty {
+impl<R: Renderer> Render<R> for EmptyBranch {
     type State = UnitState<R>;
     fn build(self) -> Self::State { UnitState::new() }
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-impl<R: Renderer> AddAnyAttr<R> for SwitchEmpty {
+impl<R: Renderer> AddAnyAttr<R> for EmptyBranch {
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
-        // SwitchEmpty is never emitted to user code; this impl
-        // exists only so it satisfies `IntoView`'s bound chain.
+        // Never emitted to user code; this impl exists only so the
+        // type satisfies `IntoView`'s bound chain.
         self
     }
 }
@@ -358,7 +365,7 @@ where
         // single signal reads + a `==`).
         match branches.select_index() {
             Some(i) => Either::Left(branches.render(i)),
-            None => Either::Right(SwitchEmpty),
+            None => Either::Right(EmptyBranch),
         }
     }
 }

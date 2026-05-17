@@ -442,9 +442,16 @@ fn run_one(
     // captured closures; without draining, TeardownGuards stay
     // alive past `state.unmount()`).
     drop(owner);
-    for _ in 0..6 {
-        pump_run_loop(0.05);
-    }
+    // Drain extensively so dispatch-queue async tasks (e.g.
+    // bind:value's RenderEffect runner) drop their captured
+    // Element clones — those holds keep NodeHandlersBundles
+    // alive past Owner drop. Without enough pumping the leak
+    // counters show false positives.
+    objc2::rc::autoreleasepool(|_| {
+        for _ in 0..20 {
+            pump_run_loop(0.02);
+        }
+    });
 
     let stats = stats?;
     if args.check_leaks {

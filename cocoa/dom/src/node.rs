@@ -118,6 +118,15 @@ pub enum NodeKind {
 pub struct Node {
     view: SendWrapper<Retained<NSView>>,
     layout: SendWrapper<Rc<RefCell<NodeLayout>>>,
+    /// Per-Node handler/delegate retains, plus a back-reference to
+    /// the view for the Drop-time disconnect. Shared across clones
+    /// via `Rc` so installing a handler on one clone is visible to
+    /// every clone. When the last clone drops, the
+    /// `NodeHandlersBundle` drops; its `Drop` impl nils out
+    /// `setTarget` / `setDelegate` on the view first, then the
+    /// retained `ActionTarget` / delegate ObjC objects deallocate.
+    /// See `cocoa_dom::event` for the rationale.
+    handlers: SendWrapper<Rc<crate::event::NodeHandlersBundle>>,
     kind: NodeKind,
 }
 
@@ -165,11 +174,13 @@ impl Node {
         // Up-cast to the NSView base; the original subclass identity is
         // preserved through ObjC's dynamic dispatch.
         let view: Retained<NSView> = unsafe { Retained::cast_unchecked(view) };
+        let handlers = crate::event::NodeHandlersBundle::new_shared(view.clone());
         Node {
             view: SendWrapper::new(view),
             layout: SendWrapper::new(Rc::new(RefCell::new(NodeLayout::new(
                 default_style,
             )))),
+            handlers: SendWrapper::new(handlers),
             kind,
         }
     }
@@ -192,16 +203,36 @@ impl Node {
         let view: Retained<NSView> = unsafe { Retained::cast_unchecked(view) };
         let mut layout = NodeLayout::new(Style::default());
         layout.handle = Some(handle);
+        let handlers = crate::event::NodeHandlersBundle::new_shared(view.clone());
         Node {
             view: SendWrapper::new(view),
             layout: SendWrapper::new(Rc::new(RefCell::new(layout))),
+            handlers: SendWrapper::new(handlers),
             kind,
         }
     }
 
+    /// Borrow the per-Node handler/delegate retain set. Cocoa
+    /// `event::on_*` install functions push into this RefCell.
+    pub fn handlers(&self) -> &RefCell<crate::event::NodeHandlers> {
+        self.handlers.handlers()
+    }
+
+
     /// Borrow the underlying NSView. Main-thread only.
     pub fn ns_view(&self) -> &NSView {
         &self.view
+    }
+
+    /// Get a new `Retained<NSView>` (sends `retain`) without
+    /// cloning the whole Node. Use this in callback captures
+    /// where you need to message the view later but don't want to
+    /// pull the Rust `Node` clones into the capture — capturing
+    /// `Element` / `Node` inside a closure stored on this same
+    /// Node's handlers would form a cycle (closure → Element →
+    /// Node → handlers → closure).
+    pub fn ns_view_retained(&self) -> Retained<NSView> {
+        (*self.view).clone()
     }
 
     /// Take the wrapped Retained<NSView>. Main-thread only.
@@ -228,10 +259,10 @@ impl Node {
 
     /// Drop the resources owned by this node:
     ///   - any registered Taffy node (via [`crate::layout::drop_node`])
-    ///   - any retained event-handler targets / delegates, which
-    ///     are attached as ObjC associated objects on the NSView
-    ///     itself and released by the runtime when the NSView
-    ///     deallocates — nothing to do explicitly here.
+    ///   - retained event-handler targets / delegates, which live
+    ///     on this Node's `NodeHandlersBundle` and drop when the
+    ///     last Node clone drops — `teardown` doesn't release
+    ///     them explicitly.
     ///
     /// Then remove the underlying NSView from its superview.
     ///
@@ -244,10 +275,10 @@ impl Node {
     /// chain, where each parent's `unmount` recursively unmounts its
     /// children before tearing down itself.
     pub fn teardown(&self) {
-        // Event handlers / delegates are attached to the NSView (and
-        // its documentView for NSScrollView-backed elements) as ObjC
-        // associated objects — the runtime releases them when the
-        // view deallocates. No explicit cleanup needed here.
+        // Event handlers / delegates live on this Node's
+        // `NodeHandlersBundle`; they drop when the last clone of
+        // this Node drops (the bundle's Drop nils out setTarget /
+        // setDelegate first to disconnect any AppKit retain).
         // intrinsic_width_from_content lives on CocoaMeta and goes
         // away with the tree's Node entry.
         crate::layout::drop_node(self);
@@ -669,6 +700,13 @@ impl Element {
         self.node.ns_view()
     }
 
+    /// Get a new `Retained<NSView>` (retain). See
+    /// [`Node::ns_view_retained`] — use this in callback captures
+    /// to avoid forming a Node ↔ handlers cycle.
+    pub fn ns_view_retained(&self) -> Retained<NSView> {
+        self.node.ns_view_retained()
+    }
+
     /// The NSView that *actually* parents this element's children.
     /// For most tags this is just `self.ns_view()`. For
     /// `<scroll_view>` it's the NSScrollView's documentView — a
@@ -933,9 +971,9 @@ impl Element {
     /// (Multiple-listener support will need a fan-out target that
     /// holds a Vec<Box<dyn FnMut>>.)
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
-        if let Some(button) = downcast::<NSButton>(self.ns_view()) {
-            crate::event::on_control_action(button.as_ref(), cb);
-        }
+        // NSButton is an NSControl, so on_control_action covers it;
+        // the inner fn no-ops on non-NSControl nodes.
+        crate::event::on_control_action(&self.node, cb);
     }
 
     /// Wire a callback that fires when an NSControl's value changes
@@ -945,9 +983,7 @@ impl Element {
     /// This is the generic version of [`on_click`]; use it for
     /// slider/popup-style controls where "click" is misleading.
     pub fn on_action(&self, cb: impl FnMut() + 'static) {
-        if let Some(c) = downcast::<NSControl>(self.ns_view()) {
-            crate::event::on_control_action(c, cb);
-        }
+        crate::event::on_control_action(&self.node, cb);
     }
 
     /// Wire a unit-payload callback that fires whenever a control's
@@ -958,13 +994,11 @@ impl Element {
     pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
         // Text fields go through the delegate fan-out so we can
         // stack multiple handlers (matches on_text_change's pattern).
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_change(field, move |_| cb());
+        if downcast::<NSTextField>(self.ns_view()).is_some() {
+            crate::event::on_text_field_change(&self.node, move |_| cb());
             return;
         }
-        if let Some(c) = downcast::<NSControl>(self.ns_view()) {
-            crate::event::on_control_action(c, cb);
-        }
+        crate::event::on_control_action(&self.node, cb);
     }
 
     /// Wire a callback that fires whenever the text content of a
@@ -973,9 +1007,7 @@ impl Element {
     /// supported — each call appends to the field's fan-out
     /// delegate.
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_change(field, cb);
-        }
+        crate::event::on_text_field_change(&self.node, cb);
     }
 
     /// Wire a callback that fires when the user commits an edit
@@ -1855,17 +1887,13 @@ impl Element {
     /// (Return key or focus loss — `controlTextDidEndEditing:`).
     /// Receives the field's current value. No-op on non-NSTextField.
     pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_end_editing(field, cb);
-        }
+        crate::event::on_text_field_end_editing(&self.node, cb);
     }
 
     /// Wire a callback that fires when the text field gains focus
     /// (`controlTextDidBeginEditing:`). No-op on non-NSTextField.
     pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_focus(field, cb);
-        }
+        crate::event::on_text_field_focus(&self.node, cb);
     }
 
     /// Wire a callback that fires when the text field loses focus
@@ -1873,9 +1901,7 @@ impl Element {
     /// `on_text_end_editing` but with no value payload). No-op
     /// on non-NSTextField.
     pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_blur(field, cb);
-        }
+        crate::event::on_text_field_blur(&self.node, cb);
     }
 
     /// Wire a keydown observer on a text field. Fires on
@@ -1886,9 +1912,7 @@ impl Element {
         &self,
         cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_keydown(field, cb);
-        }
+        crate::event::on_text_field_keydown(&self.node, cb);
     }
 
     /// Wire a keyup observer on a text field. AppKit's field-
@@ -1899,9 +1923,7 @@ impl Element {
         &self,
         cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
-        if let Some(field) = downcast::<NSTextField>(self.ns_view()) {
-            crate::event::on_text_field_keyup(field, cb);
-        }
+        crate::event::on_text_field_keyup(&self.node, cb);
     }
 
     /// Load an image into an `<image_view>` from a file path on
@@ -1996,19 +2018,12 @@ impl Element {
         &self,
         cb: impl FnMut(String) + 'static,
     ) {
-        let view = self.ns_view();
-        let Some(scroll) =
-            downcast::<objc2_app_kit::NSScrollView>(view)
-        else {
-            return;
-        };
-        let Some(doc) = scroll.documentView() else { return };
-        let any_doc: &AnyObject = &doc;
-        if let Some(tv) =
-            any_doc.downcast_ref::<objc2_app_kit::NSTextView>()
-        {
-            crate::event::on_text_view_change(tv, cb);
-        }
+        // The Node's ns_view is the NSScrollView; the install fn
+        // pulls out the inner NSTextView and stashes the delegate
+        // on this Node's handlers so its lifecycle tracks the
+        // scroll-view Node (not the documentView, which has no
+        // Rust wrapper).
+        crate::event::on_text_view_change(&self.node, cb);
     }
 
     /// Set the editability of the NSTextView inside a `<text_view>`
@@ -2266,7 +2281,7 @@ impl Placeholder {
 
 /// Best-effort downcast of an `&NSView` to a more specific subclass.
 /// Returns `None` if the runtime class isn't a subclass of `T`.
-fn downcast<T>(view: &NSView) -> Option<&T>
+pub(crate) fn downcast<T>(view: &NSView) -> Option<&T>
 where
     T: DowncastTarget,
 {

@@ -43,8 +43,13 @@ fn show_without_fallback_mounts_on_flip_false_to_true() {
         let when = RwSignal::new(false);
         // ShowProps without `fallback` — the Show component returns
         // `Either::Right(())` for the empty branch.
-        let view = leptos::control_flow::Show(
-            leptos::control_flow::ShowProps::builder()
+        // The Fb generic on ShowProps is normally inferred from
+        // the fallback argument; with no fallback, pin it
+        // explicitly with the same shape ShowEmpty would expose
+        // (`Label` is a concrete IntoView).
+        type Fb = leptos_cocoa::cocoa::element::Label;
+        let view = leptos::control_flow::Show::<_, _, Fb, Dom>(
+            leptos::control_flow::ShowProps::<_, _, Fb, Dom>::builder()
                 .when(move || when.get())
                 .children(ToChildren::to_children(|| label().text("hello")))
                 .build(),

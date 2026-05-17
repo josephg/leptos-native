@@ -832,9 +832,9 @@ impl ToolbarMountable for ToolbarItem {
         // documented validation policy). Properties set before
         // `setAction:` can get reset; properties set after are
         // authoritative.
-        if let Some(mut cb) = self.on_action {
-            item.set_action(move || cb(), mtm);
-        }
+        let action_target = self
+            .on_action
+            .map(|mut cb| item.set_action(move || cb(), mtm));
 
         // Enabled — installed AFTER action so the explicit value
         // isn't immediately overridden by AppKit's
@@ -876,12 +876,13 @@ impl ToolbarMountable for ToolbarItem {
             state
         });
 
-        // Move the item into the toolbar build state. The ObjC
-        // runtime owns the action target via the associated object
-        // we attached in `set_action`; releasing the NSToolbarItem
-        // releases the handler too.
+        // Move the item into the toolbar build state. The
+        // `action_target` Retained lives on the registration so
+        // it's released when the registration drops (i.e. when the
+        // toolbar drops or `Toolbar::remove_item` evicts the item).
         let registration = ToolbarItemRegistration {
             ns_item: item.into_ns_item(),
+            action_target,
             search_element: None,
         };
         build.insert_custom(identifier, registration);
@@ -1249,9 +1250,11 @@ impl ToolbarMountable for ToolbarSearchItem {
 
         // Build the registration (carries the search element so its
         // NSSearchField stays reachable for the toolbar's lifetime;
-        // delegates are released by ObjC when the field deallocates).
+        // the field's text-handler delegate lives on the Node's
+        // NodeHandlers inside the Element).
         let registration = ToolbarItemRegistration {
             ns_item,
+            action_target: None,
             search_element: Some(el),
         };
         build.insert_custom(identifier, registration);

@@ -1,6 +1,7 @@
 use crate::{
     children::TypedChildrenFn,
     into_view::{IntoView, View},
+    switch::EmptyBranch,
 };
 use either_of::Either;
 use leptos_macro::component;
@@ -75,7 +76,11 @@ where
         true => Either::Left(Either::Left(children())),
         false => match &fallback {
             Some(f) => Either::Left(Either::Right(f.run())),
-            None => Either::Right(()),
+            // `EmptyBranch` builds a real `UnitState` placeholder
+            // so the flip back to `true` has an anchor to splice
+            // children in front of. Using `()` here silently
+            // dropped the new state — see `EmptyBranch`'s docs.
+            None => Either::Right(EmptyBranch),
         },
     }
 }

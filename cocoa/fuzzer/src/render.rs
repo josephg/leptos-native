@@ -351,7 +351,16 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
                 } else {
                     match &off_spec {
                         Some(off) => build(off, store),
-                        None => ().into_any(),
+                        // `EmptyBranch` builds a real UnitState
+                        // placeholder; using `()` here returns a
+                        // no-op mountable with no anchor, and
+                        // AnyView::rebuild silently drops the new
+                        // state when the empty branch flips back
+                        // to populated. (Same bug class the
+                        // framework `<Show>` had for its
+                        // no-fallback case.)
+                        None => leptos::core::control_flow::EmptyBranch
+                            .into_any(),
                     }
                 }
             };

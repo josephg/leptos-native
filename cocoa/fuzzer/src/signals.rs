@@ -11,7 +11,6 @@ use crate::spec::SignalId;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{GetUntracked, Set};
-use send_wrapper::SendWrapper;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -38,7 +37,7 @@ pub struct SignalStore {
     /// scoped to the Show branch's child Owner — which would
     /// dispose them as soon as the branch flipped off, leaving
     /// the snapshot `get_untracked()` panicking on a dead signal.
-    owner: SendWrapper<Owner>,
+    owner: Owner,
 }
 
 impl SignalStore {
@@ -49,10 +48,8 @@ impl SignalStore {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(Inner::default())),
-            owner: SendWrapper::new(
-                Owner::current()
-                    .expect("SignalStore::new must run inside an Owner"),
-            ),
+            owner: Owner::current()
+                .expect("SignalStore::new must run inside an Owner"),
         }
     }
 

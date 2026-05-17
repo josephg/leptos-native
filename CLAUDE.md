@@ -45,6 +45,12 @@ Read these before diving in:
 - `API_REVIEW.md` — critique + prioritised cleanup recommendations
   for the public API. Lives between the implementation logs (history)
   and the per-port TODOs (forward work).
+- `MEMORY_POLICY.md` — **prescriptive** policy for how state is owned
+  and released across Rust, ObjC retains, autorelease pools, and
+  reactive_graph. Mandatory reading before touching `event.rs`,
+  `bind.rs`, `NodeHandlers`, or anything that installs an ObjC
+  delegate / target-action. Every memory bug we've fixed has a
+  corresponding entry in its anti-pattern catalogue.
 
 ### System documentation
 
@@ -592,18 +598,37 @@ another that had already been torn down — see
 Default to the following alternatives, roughly in order of
 preference for the use case:
 
-- **Per-NSObject sideband state → ObjC associated objects.** If you
-  need to attach a Rust-owning handle to an NSView / NSControl /
-  NSMenuItem / NSToolbarItem (a delegate, an action target, a
-  bookkeeping struct), use
-  [`objc2::ffi::objc_setAssociatedObject`] with
-  `OBJC_ASSOCIATION_RETAIN_NONATOMIC`. The runtime releases the
-  associated object when the host deallocates — Rust ownership and
-  ObjC ownership become congruent, and there's no sidetable to
-  drift or teardown order to worry about. See
-  `cocoa_dom::event::attach_action_target` for the canonical
-  pattern. (UIKit equivalent: `objc_setAssociatedObject` on
-  UIView / UIControl — same FFI.)
+- **Per-NSObject sideband state for a Node-backed view → field on
+  `NodeHandlers`** (cocoa: `cocoa_dom::event::NodeHandlers`, iOS:
+  `ios_dom::event::IosNodeHandlers`). Each `Node` carries a
+  `Rc<NodeHandlersBundle>` field; install functions push
+  `Retained<ActionTarget>` / delegate references into that
+  RefCell. Lifecycle = Rust Node lifecycle — when the last clone
+  of the Node drops, the bundle drops, the handler ObjC objects
+  deallocate, and the Rust closures release.
+
+  **Don't use ObjC associated objects** for this. We tried — they
+  tie handler lifetime to the NSView/UIView's ObjC reference
+  count, and AppKit/UIKit retains views in places outside our
+  control (autorelease pools, undo manager, focus chain, gesture
+  recognizer lists). Those retains caused a slow but persistent
+  handler leak. Rust-owned storage decouples from that and gives
+  deterministic disconnect on drop.
+
+  **Avoid capturing `Element` clones in callback closures stored
+  on the same Node's handlers** — that forms an Rc cycle (closure
+  → captured Element → Rc<NodeHandlersBundle> → Retained<handler>
+  → ivars → closure). Capture `Retained<NSView>` /
+  `Retained<NSControl>` (or the equivalent subclass type)
+  instead — those don't pull the Rust Node into the cycle. See
+  `Node::ns_view_retained()` / `Element::ns_view_retained()`.
+
+- **Per-NSObject state for non-Node wrappers** (NSMenuItem,
+  NSToolbarItem): give the Rust wrapper struct a field for the
+  Retained handler. `MenuItem::action_target`,
+  `ToolbarItemRegistration::action_target` are the existing
+  examples. Add a `Drop` impl that nils out `setTarget` /
+  `setAction` first.
 
 - **Per-tree state → field on `LayoutTree<B>`.** Each window/scene
   has its own `LayoutTree`; data that's logically "about this tree"

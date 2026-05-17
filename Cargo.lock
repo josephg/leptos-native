@@ -377,7 +377,6 @@ dependencies = [
  "rand_chacha 0.3.1",
  "reactive_graph",
  "renderer",
- "send_wrapper",
 ]
 
 [[package]]

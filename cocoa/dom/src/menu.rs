@@ -12,10 +12,7 @@
 //! drive everything from `MainThreadOnly` contexts (the runtime
 //! `MainThreadMarker` is passed in to construction functions).
 
-use crate::event::{
-    action_fired_sel, attach_action_target,
-    ActionTarget,
-};
+use crate::event::{action_fired_sel, ActionTarget};
 use objc2::{rc::Retained, runtime::NSObject, AllocAnyThread, MainThreadMarker};
 use objc2_app_kit::{
     NSApplication, NSControlStateValueOff, NSControlStateValueOn,
@@ -182,12 +179,38 @@ pub struct MenuItem {
     /// the same icon and for variant transitions (SF Symbol →
     /// file path).
     last_icon: std::rc::Rc<std::cell::RefCell<Option<crate::Icon>>>,
+    /// `Retained<ActionTarget>` installed via [`Self::set_action`].
+    /// NSMenuItem holds its target weakly, so we keep the retain
+    /// here to extend the closure's lifetime to the menu item's.
+    /// Shared across clones so installing on one clone is visible
+    /// to all. Dropped when the last clone drops.
+    action_target: std::rc::Rc<
+        std::cell::RefCell<Option<Retained<ActionTarget>>>,
+    >,
 }
 
 fn new_menu_item(ns_item: Retained<NSMenuItem>) -> MenuItem {
     MenuItem {
         ns_item,
+        action_target: std::rc::Rc::new(std::cell::RefCell::new(None)),
         last_icon: std::rc::Rc::new(std::cell::RefCell::new(None)),
+    }
+}
+
+impl Drop for MenuItem {
+    fn drop(&mut self) {
+        // Last clone? Then `action_target` is about to drop too.
+        // Disconnect the NSMenuItem's target slot first so any
+        // lingering AppKit retain (e.g. main-menu rebuild
+        // animation) can't dispatch into the freed ActionTarget.
+        if std::rc::Rc::strong_count(&self.action_target) == 1
+            && self.action_target.borrow().is_some()
+        {
+            unsafe {
+                self.ns_item.setTarget(None);
+                self.ns_item.setAction(None);
+            }
+        }
     }
 }
 
@@ -306,9 +329,10 @@ impl MenuItem {
     /// Wire a Rust closure as the item's action handler.
     ///
     /// Re-uses [`crate::event::ActionTarget`] (the same ObjC class
-    /// NSButton's target/action wiring uses). The retain is kept
-    /// alive as an ObjC associated object on the NSMenuItem itself —
-    /// the runtime releases it when the menu item deallocates.
+    /// NSButton's target/action wiring uses). The retain lives on
+    /// the `MenuItem` itself (`action_target` field); when the last
+    /// clone of the `MenuItem` drops, the retain releases and the
+    /// closure is dropped — no ObjC associated objects involved.
     ///
     /// Single-handler contract: a second `set_action` call on the
     /// same item panics rather than silently overwriting. Combine
@@ -332,7 +356,7 @@ impl MenuItem {
             self.ns_item.setTarget(Some(target_obj));
             self.ns_item.setAction(Some(action_fired_sel()));
         }
-        attach_action_target(&*self.ns_item, target);
+        *self.action_target.borrow_mut() = Some(target);
     }
 }
 
