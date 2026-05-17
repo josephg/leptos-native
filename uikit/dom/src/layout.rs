@@ -16,7 +16,7 @@ use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_ui_kit::{UIControl, UIScrollView, UITextField, UIView};
 use send_wrapper::SendWrapper;
-use std::{cell::RefCell, rc::Rc, sync::OnceLock};
+use std::{rc::Rc, sync::OnceLock};
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -48,6 +48,7 @@ impl LayoutBackend for IosBackend {
 
     fn measure_leaf(
         view: &Self::View,
+        _meta: &Self::NodeMeta,
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
@@ -120,11 +121,6 @@ pub fn drop_node(node: &Node) {
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
 // ---------------------------------------------------------------------
 
-thread_local! {
-    static PENDING: RefCell<std::collections::HashSet<usize>> =
-        RefCell::new(std::collections::HashSet::new());
-}
-
 pub fn schedule_relayout(node: &Node) {
     let handle = node.layout_slot().borrow().handle.clone();
     if let Some(h) = handle {
@@ -134,9 +130,10 @@ pub fn schedule_relayout(node: &Node) {
 }
 
 fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
-    let key = Rc::as_ptr(tree) as usize;
-    let just_inserted = PENDING.with_borrow_mut(|p| p.insert(key));
-    if !just_inserted {
+    // Dedup is per-tree via `LayoutTree::relayout_queued`; see the
+    // cocoa equivalent for the rationale (avoids a global TLS
+    // HashSet and the shutdown-order vulnerability).
+    if tree.relayout_queued.replace(true) {
         return;
     }
     let tree_weak = SendWrapper::new(Rc::downgrade(tree));
@@ -144,9 +141,7 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
         let weak = tree_weak.take();
         let Some(tree) = weak.upgrade() else { return };
 
-        PENDING.with_borrow_mut(|p| {
-            p.remove(&(Rc::as_ptr(&tree) as usize));
-        });
+        tree.relayout_queued.set(false);
 
         let Some(root_id) = *tree.root.borrow() else { return };
         let root_view: Retained<UIView> = {

@@ -475,13 +475,10 @@ pub struct MenuItemState {
     _effects: Vec<RenderEffect<()>>,
 }
 
-impl Drop for MenuItemState {
-    fn drop(&mut self) {
-        // Release any retained ActionTarget for this item so its
-        // closure can be dropped when the menu bar is torn down.
-        self._item.drop_handlers();
-    }
-}
+// No `Drop` impl: the ActionTarget is attached as an associated
+// object on the NSMenuItem, so the ObjC runtime releases it when
+// the menu item itself deallocates. Releasing happens whenever the
+// menu bar (or sub-menu containing this item) drops its retain.
 
 impl MenuMountable for MenuItem {
     type State = MenuItemState;

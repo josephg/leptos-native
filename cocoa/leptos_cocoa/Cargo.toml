@@ -81,3 +81,18 @@ harness = false
 name = "toolbar"
 path = "tests/toolbar.rs"
 harness = false
+
+[[test]]
+name = "leak_lifecycle"
+path = "tests/leak_lifecycle.rs"
+harness = false
+
+[[test]]
+name = "suspend"
+path = "tests/suspend.rs"
+harness = false
+
+[[test]]
+name = "show"
+path = "tests/show.rs"
+harness = false

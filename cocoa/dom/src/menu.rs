@@ -13,7 +13,7 @@
 //! `MainThreadMarker` is passed in to construction functions).
 
 use crate::event::{
-    action_fired_sel, drop_action_target_for_key, keep_target_alive_for_key,
+    action_fired_sel, attach_action_target,
     ActionTarget,
 };
 use objc2::{rc::Retained, runtime::NSObject, AllocAnyThread, MainThreadMarker};
@@ -307,9 +307,8 @@ impl MenuItem {
     ///
     /// Re-uses [`crate::event::ActionTarget`] (the same ObjC class
     /// NSButton's target/action wiring uses). The retain is kept
-    /// alive in the per-control thread-local handler store keyed
-    /// by the NSMenuItem pointer; see
-    /// [`crate::event::keep_target_alive`] / [`drop_handlers`].
+    /// alive as an ObjC associated object on the NSMenuItem itself —
+    /// the runtime releases it when the menu item deallocates.
     ///
     /// Single-handler contract: a second `set_action` call on the
     /// same item panics rather than silently overwriting. Combine
@@ -333,30 +332,7 @@ impl MenuItem {
             self.ns_item.setTarget(Some(target_obj));
             self.ns_item.setAction(Some(action_fired_sel()));
         }
-        // Share the HANDLER_STORE keyspace with NSControl-backed
-        // handlers, keyed on the NSMenuItem's pointer-as-usize.
-        // The store is purely a retain-keeper; the key never gets
-        // dereferenced, so it doesn't matter that NSMenuItem isn't
-        // an NSView. (Earlier we fabricated a `&NSView` from the
-        // NSMenuItem pointer — that was UB.)
-        keep_target_alive_for_key(self.handler_key(), target);
-    }
-
-    /// Drop any retained action handler attached to this item.
-    /// Mirrors [`crate::event::drop_handlers_for`] but only touches
-    /// the action-target store — NSMenuItems don't participate in
-    /// `TEXT_FIELD_STORE` / `TEXT_VIEW_STORE`.
-    pub fn drop_handlers(&self) {
-        drop_action_target_for_key(self.handler_key());
-    }
-
-    /// Pointer-as-`usize` key used for the HANDLER_STORE entry.
-    /// Pulled into a single method so both `set_action` and
-    /// `drop_handlers` see the same value, and no other call site
-    /// can pick a different key.
-    fn handler_key(&self) -> usize {
-        let ptr: *const NSMenuItem = &*self.ns_item;
-        ptr as usize
+        attach_action_target(&*self.ns_item, target);
     }
 }
 

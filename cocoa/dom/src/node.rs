@@ -228,8 +228,10 @@ impl Node {
 
     /// Drop the resources owned by this node:
     ///   - any registered Taffy node (via [`crate::layout::drop_node`])
-    ///   - any retained event-handler targets
-    ///     (via [`crate::event::drop_handlers_for`])
+    ///   - any retained event-handler targets / delegates, which
+    ///     are attached as ObjC associated objects on the NSView
+    ///     itself and released by the runtime when the NSView
+    ///     deallocates — nothing to do explicitly here.
     ///
     /// Then remove the underlying NSView from its superview.
     ///
@@ -242,22 +244,12 @@ impl Node {
     /// chain, where each parent's `unmount` recursively unmounts its
     /// children before tearing down itself.
     pub fn teardown(&self) {
-        crate::event::drop_handlers_for(self.ns_view());
-        // For NSScrollView-backed elements (`<text_view>` and
-        // `<scroll_view>`), the documentView holds its own handler
-        // store entries (e.g. NSTextView's bind:value delegate).
-        // Walk one level deeper so they don't leak.
-        let view = self.ns_view();
-        if let Some(scroll) = {
-            use objc2_app_kit::NSScrollView;
-            let any: &objc2::runtime::AnyObject = view.as_ref();
-            any.downcast_ref::<NSScrollView>()
-        } {
-            if let Some(doc) = scroll.documentView() {
-                crate::event::drop_handlers_for(&doc);
-            }
-        }
-        crate::layout::forget_intrinsic_width_marker(self.ns_view());
+        // Event handlers / delegates are attached to the NSView (and
+        // its documentView for NSScrollView-backed elements) as ObjC
+        // associated objects — the runtime releases them when the
+        // view deallocates. No explicit cleanup needed here.
+        // intrinsic_width_from_content lives on CocoaMeta and goes
+        // away with the tree's Node entry.
         crate::layout::drop_node(self);
         self.ns_view().removeFromSuperview();
     }
@@ -1401,7 +1393,7 @@ impl Element {
     pub fn set_intrinsic_width_from_content(&self, on: bool) {
         if downcast::<NSTextField>(self.ns_view()).is_some() {
             crate::layout::mark_intrinsic_width_from_content(
-                self.ns_view(),
+                &self.node,
                 on,
             );
             crate::layout::schedule_relayout(&self.node);

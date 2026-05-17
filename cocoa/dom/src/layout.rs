@@ -23,7 +23,7 @@ use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use send_wrapper::SendWrapper;
-use std::{cell::RefCell, rc::Rc, sync::OnceLock};
+use std::{rc::Rc, sync::OnceLock};
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -64,6 +64,13 @@ pub struct CocoaMeta {
     /// the documentView's `setFrame:` naturally — no second pass
     /// and no post-hoc fixup needed.
     pub child_taffy_parent: Option<NodeId>,
+    /// `<text_field intrinsic_width=FromContent>` opt-in: read the
+    /// NSTextField's natural content width instead of forcing
+    /// width=0 in the measure pass. Without this the editable text
+    /// field grows with each keystroke as `intrinsicContentSize`
+    /// tracks the live string. Lives on meta (not a sidetable)
+    /// because Taffy hands it to `measure_leaf` alongside the view.
+    pub intrinsic_width_from_content: bool,
 }
 
 /// Which axis (or axes) a `<scroll_view>` scrolls on. Picked at
@@ -92,10 +99,11 @@ impl LayoutBackend for CocoaBackend {
 
     fn measure_leaf(
         view: &Self::View,
+        meta: &Self::NodeMeta,
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32> {
-        measure_leaf_size(known, available, view)
+        measure_leaf_size(known, available, view, meta)
     }
 
     fn first_baseline(view: &Self::View) -> Option<f32> {
@@ -270,11 +278,6 @@ pub fn drop_node(node: &Node) {
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
 // ---------------------------------------------------------------------
 
-thread_local! {
-    static PENDING: RefCell<std::collections::HashSet<usize>> =
-        RefCell::new(std::collections::HashSet::new());
-}
-
 /// Schedule a re-layout of the tree this node belongs to. Marks the
 /// node dirty (required for content changes on leaf controls so the
 /// measure callback re-runs).
@@ -287,9 +290,9 @@ pub fn schedule_relayout(node: &Node) {
 }
 
 fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
-    let key = Rc::as_ptr(tree) as usize;
-    let just_inserted = PENDING.with_borrow_mut(|p| p.insert(key));
-    if !just_inserted {
+    // Dedup: each tree carries its own "is a pass queued?" flag.
+    // Cheap, no global state, no shutdown-order issue.
+    if tree.relayout_queued.replace(true) {
         return;
     }
     let tree_weak = SendWrapper::new(Rc::downgrade(tree));
@@ -297,9 +300,7 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
         let weak = tree_weak.take();
         let Some(tree) = weak.upgrade() else { return };
 
-        PENDING.with_borrow_mut(|p| {
-            p.remove(&(Rc::as_ptr(&tree) as usize));
-        });
+        tree.relayout_queued.set(false);
 
         let Some(root_id) = *tree.root.borrow() else { return };
         let root_view: Retained<NSView> = {
@@ -538,63 +539,27 @@ fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
 
 // ---------------------------------------------------------------------
 // Per-element flag: `intrinsic_width = FromContent` on <text_field>.
-// Stored as a thread-local set of NSView pointers because (a) every
-// view lives on the main thread, and (b) we don't want to subclass
-// NSTextField or pollute NSObject associated-object storage.
-//
-// Pointer-reuse caveat: if `forget_intrinsic_width_marker` were
-// somehow skipped on view teardown, a future NSTextField allocated
-// at the same address would inherit the flag. `Node::teardown`
-// is the single drop path through the framework and calls
-// `forget_intrinsic_width_marker` unconditionally, so this can
-// only bite a caller that builds NSTextFields outside the
-// framework's Node lifecycle.
+// Lives on the node's `CocoaMeta` and is passed to `measure_leaf`
+// alongside the view — no sidetable, no teardown plumbing.
 // ---------------------------------------------------------------------
 
-thread_local! {
-    static INTRINSIC_WIDTH_FROM_CONTENT: std::cell::RefCell<
-        std::collections::HashSet<usize>
-    > = std::cell::RefCell::new(std::collections::HashSet::new());
-}
-
-fn ns_view_key(view: &NSView) -> usize {
-    let p: *const NSView = view;
-    p as usize
-}
-
-/// Mark this view as "use NSTextField's natural content width."
+/// Mark this node's NSTextField as "use natural content width."
 /// Default for editable NSTextField is width=0 in the measure pass;
 /// this flag flips that to read `intrinsicContentSize` like a label.
-pub(crate) fn mark_intrinsic_width_from_content(view: &NSView, on: bool) {
-    let k = ns_view_key(view);
-    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| {
-        let mut s = s.borrow_mut();
-        if on {
-            s.insert(k);
-        } else {
-            s.remove(&k);
-        }
-    });
-}
-
-fn is_intrinsic_width_from_content(view: &NSView) -> bool {
-    let k = ns_view_key(view);
-    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| s.borrow().contains(&k))
-}
-
-/// Drop the flag entry when a view is being torn down. Called from
-/// `Node::teardown` so the thread-local doesn't grow unbounded.
-pub(crate) fn forget_intrinsic_width_marker(view: &NSView) {
-    let k = ns_view_key(view);
-    INTRINSIC_WIDTH_FROM_CONTENT.with(|s| {
-        s.borrow_mut().remove(&k);
-    });
+pub(crate) fn mark_intrinsic_width_from_content(node: &Node, on: bool) {
+    let mut slot = node.layout_slot().borrow_mut();
+    slot.meta.intrinsic_width_from_content = on;
+    if let Some(h) = &slot.handle {
+        h.tree.set_meta(h.node_id, slot.meta.clone());
+        h.tree.mark_dirty(h.node_id);
+    }
 }
 
 fn measure_leaf_size(
     known: Size<Option<f32>>,
     avail: Size<AvailableSpace>,
     view: &NSView,
+    meta: &CocoaMeta,
 ) -> Size<f32> {
     if let (Some(w), Some(h)) = (known.width, known.height) {
         return Size { width: w, height: h };
@@ -646,7 +611,7 @@ fn measure_leaf_size(
     // `Element::set_intrinsic_width_from_content(true)`. See the
     // `intrinsic_width` builder method on `<text_field>`.
     if let Some(field) = any.downcast_ref::<NSTextField>() {
-        if field.isEditable() && !is_intrinsic_width_from_content(view) {
+        if field.isEditable() && !meta.intrinsic_width_from_content {
             measured.width = 0.0;
         }
     }

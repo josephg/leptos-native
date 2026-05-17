@@ -580,6 +580,62 @@ Concrete examples:
   place — the shared `LayoutAttrs` struct + the relevant `set_*` in
   `renderer::setters`.
 
+### Avoid `thread_local!` for new state — use the alternatives
+
+Thread-locals are tempting on cocoa/iOS ("everything's on the main
+thread anyway") but they make reasoning about state hard, complicate
+testing, and tear down in unspecified order at process exit (which
+caused a real shutdown-panic bug when one TLS slot's `Drop` accessed
+another that had already been torn down — see
+`briefing_scroll_overflow.md` history if you want the story).
+
+Default to the following alternatives, roughly in order of
+preference for the use case:
+
+- **Per-NSObject sideband state → ObjC associated objects.** If you
+  need to attach a Rust-owning handle to an NSView / NSControl /
+  NSMenuItem / NSToolbarItem (a delegate, an action target, a
+  bookkeeping struct), use
+  [`objc2::ffi::objc_setAssociatedObject`] with
+  `OBJC_ASSOCIATION_RETAIN_NONATOMIC`. The runtime releases the
+  associated object when the host deallocates — Rust ownership and
+  ObjC ownership become congruent, and there's no sidetable to
+  drift or teardown order to worry about. See
+  `cocoa_dom::event::attach_action_target` for the canonical
+  pattern. (UIKit equivalent: `objc_setAssociatedObject` on
+  UIView / UIControl — same FFI.)
+
+- **Per-tree state → field on `LayoutTree<B>`.** Each window/scene
+  has its own `LayoutTree`; data that's logically "about this tree"
+  (scheduler flags, dirty sets, debug overlays) goes on the
+  struct, not in a global keyed by tree pointer. Example: the
+  relayout-dedup `Cell<bool>` on `LayoutTree::relayout_queued`.
+
+- **Per-Node state → field on the port's `NodeMeta`.** Anything
+  needed during layout (sizing flags, scroll-axis selection,
+  intrinsic-width opt-in) goes on `CocoaMeta` / `IosMeta` and is
+  copied into the tree on registration. The layout pass receives
+  it alongside the view in `measure_leaf`. Example:
+  `CocoaMeta::intrinsic_width_from_content`.
+
+- **Process-wide counters / IDs → `static AtomicU64`.** No reason
+  to make them per-thread; the IDs are globally unique anyway.
+  Example: `NEXT_AUTO_IDENTIFIER` for auto-generated toolbar
+  identifiers.
+
+- **App-scoped pinning (Owners, root states) → `Box::leak`** if you
+  truly never need to free them, or **keep TLS but harden every
+  `Drop` path** that touches it via `try_with` — the shutdown-order
+  ordering issue is real and `with_borrow_mut` will panic at
+  process exit. `cocoa/leptos_cocoa/src/mount.rs`'s `APP_ROOTS` is
+  the one remaining TLS in our framework code; it's worth knowing
+  about but not currently broken.
+
+TLS is acceptable for vendored reactive_graph internals (Owner,
+current effect, current subscriber) — those are the right shape
+for "current reactive scope on this thread" and shouldn't be
+refactored.
+
 ### macOS / Cocoa specifics
 
 - **`<text_field>` forces width=0 in its measure callback** so the

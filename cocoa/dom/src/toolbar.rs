@@ -35,8 +35,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::event::{
-    action_fired_sel, drop_action_target_for_key, keep_target_alive_for_key,
-    ActionTarget,
+    action_fired_sel, attach_action_target, ActionTarget,
 };
 use objc2::{
     define_class, msg_send,
@@ -61,39 +60,19 @@ use crate::Element;
 // ---------------------------------------------------------------------
 
 /// Bookkeeping kept per custom toolbar item: the NSToolbarItem
-/// itself plus any HANDLER_STORE key for its action target. The
-/// `Drop` impl releases the action target retain when the
-/// registration is dropped — either at toolbar teardown (the
-/// whole ivar HashMap drops) or when a single item is removed
-/// dynamically via [`Toolbar::remove_item`].
+/// itself, plus an optional Element wrapping an embedded
+/// `NSSearchField` for `NSSearchToolbarItem`s. Action targets and
+/// search-field delegates live as ObjC associated objects on the
+/// NSToolbarItem and the NSSearchField respectively — they're
+/// released by the ObjC runtime when those views deallocate, so
+/// no explicit `Drop` plumbing is needed.
 pub struct ToolbarItemRegistration {
     pub ns_item: Retained<NSToolbarItem>,
-    /// HANDLER_STORE key for the action target. `None` for items
-    /// with no `on:action` handler.
-    pub handler_key: Option<usize>,
     /// For `NSSearchToolbarItem`-backed items: an [`Element`]
-    /// wrapping the embedded `NSSearchField`. Held so the
-    /// text-field handler-store entries
-    /// (`on_text_change` etc.) get released on drop via
-    /// [`crate::event::drop_handlers_for`]. `None` for regular
-    /// [`NSToolbarItem`] entries.
+    /// wrapping the embedded `NSSearchField`. Held to keep the
+    /// element (and through it, the search field) reachable for
+    /// the toolbar's lifetime.
     pub search_element: Option<Element>,
-}
-
-impl Drop for ToolbarItemRegistration {
-    fn drop(&mut self) {
-        if let Some(key) = self.handler_key {
-            drop_action_target_for_key(key);
-        }
-        if let Some(el) = self.search_element.take() {
-            // The element isn't in any Taffy tree (NSSearchField is
-            // owned by the NSSearchToolbarItem, not mounted as a
-            // child of anything), so just clean up the handler
-            // store. The NSView itself is released via the
-            // NSToolbarItem above.
-            crate::event::drop_handlers_for(el.ns_view());
-        }
-    }
 }
 
 /// Per-toolbar registry of identifier → item registration, looked
@@ -414,16 +393,16 @@ impl Toolbar {
         self.delegate.ivars().items.borrow().contains_key(identifier)
     }
 
-    /// Test-only: read back the HANDLER_STORE key of the n-th
-    /// registered item with an action handler (in insertion order).
-    /// Used by `drop_releases_action_target` to verify cleanup.
+    /// Test-only: get the NSToolbarItem of the n-th registered item
+    /// (in insertion order). Tests use this to query
+    /// `event::has_action_target_for_test` on it.
     #[doc(hidden)]
-    pub fn test_handler_key_at(&self, n: usize) -> Option<usize> {
+    pub fn test_item_at(&self, n: usize) -> Option<Retained<NSToolbarItem>> {
         let ordered = self.delegate.ivars().ordered_identifiers.borrow();
         let items = self.delegate.ivars().items.borrow();
         ordered
             .iter()
-            .filter_map(|id| items.get(id).and_then(|r| r.handler_key))
+            .filter_map(|id| items.get(id).map(|r| r.ns_item.clone()))
             .nth(n)
     }
 }
@@ -641,8 +620,10 @@ impl ToolbarItem {
 
     /// Wire a Rust closure as the item's action handler.
     /// Single-handler contract — a second call panics, matching
-    /// `MenuItem::set_action`.
-    pub fn set_action<F>(&self, cb: F, mtm: MainThreadMarker) -> usize
+    /// `MenuItem::set_action`. The handler is attached as an ObjC
+    /// associated object on the NSToolbarItem; lifetime matches
+    /// the item's own.
+    pub fn set_action<F>(&self, cb: F, mtm: MainThreadMarker)
     where
         F: FnMut() + 'static,
     {
@@ -660,17 +641,7 @@ impl ToolbarItem {
             self.ns_item.setTarget(Some(target_obj));
             self.ns_item.setAction(Some(action_fired_sel()));
         }
-        let key = self.handler_key();
-        keep_target_alive_for_key(key, target);
-        key
-    }
-
-    /// Pointer-as-usize key used to retain the action handler in
-    /// the shared `HANDLER_STORE`. Returned by `set_action` so the
-    /// caller can pass it to `Toolbar::drop_handlers` on teardown.
-    pub fn handler_key(&self) -> usize {
-        let ptr: *const NSToolbarItem = &*self.ns_item;
-        ptr as usize
+        attach_action_target(&*self.ns_item, target);
     }
 }
 

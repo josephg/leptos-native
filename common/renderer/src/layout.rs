@@ -38,7 +38,7 @@
 
 use slotmap::{DefaultKey, SlotMap};
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Cell, Ref, RefCell},
     rc::Rc,
 };
 
@@ -120,6 +120,7 @@ pub trait LayoutBackend: 'static + Sized {
     /// laying out for the width Taffy will give them).
     fn measure_leaf(
         view: &Self::View,
+        meta: &Self::NodeMeta,
         known: Size<Option<f32>>,
         available: Size<AvailableSpace>,
     ) -> Size<f32>;
@@ -158,6 +159,12 @@ pub struct LayoutTree<B: LayoutBackend> {
     /// `parent(id)` would panic if any intermediate id has been
     /// removed and reused.
     pub root: RefCell<Option<NodeId>>,
+    /// Dedup flag for the port's relayout scheduler: `true` while a
+    /// relayout pass is queued for the next main-loop tick, back to
+    /// `false` once the pass runs. Per-tree state replaces what used
+    /// to be a global thread-local HashSet — same dedup semantics,
+    /// no shutdown-order vulnerability.
+    pub relayout_queued: Cell<bool>,
 }
 
 pub type TreeRef<B> = Rc<LayoutTree<B>>;
@@ -268,6 +275,7 @@ impl<B: LayoutBackend> LayoutTree<B> {
         Rc::new(LayoutTree {
             state: RefCell::new(LayoutState::default()),
             root: RefCell::new(None),
+            relayout_queued: Cell::new(false),
         })
     }
 
@@ -659,7 +667,7 @@ impl<B: LayoutBackend> LayoutPartialTree for LayoutState<B> {
                         inputs,
                         &node.style,
                         |_, _| 0.0,
-                        |known, avail| B::measure_leaf(&node.view, known, avail),
+                        |known, avail| B::measure_leaf(&node.view, &node.meta, known, avail),
                     );
                     out.first_baselines.y = B::first_baseline(&node.view);
                     out

@@ -154,22 +154,18 @@ pub use cocoa_dom::toolbar::{ToolbarDisplayMode, WindowToolbarStyle};
 // AppKit's NSToolbar architecture requires every item to have a
 // stable identifier. Most users don't care about identifiers —
 // they're a delegate-protocol artifact. Auto-generate one from a
-// thread-local counter when the user doesn't supply an explicit
-// one. Users who want a stable identifier (for
-// `ToolbarHandle::remove_item` lookup, or for future
-// customisation-autosave) set `identifier="…"` explicitly.
+// monotonic counter when the user doesn't supply an explicit one.
+// Users who want a stable identifier (for `ToolbarHandle::remove_item`
+// lookup, or for future customisation-autosave) set
+// `identifier="…"` explicitly.
 
-thread_local! {
-    static NEXT_AUTO_IDENTIFIER: std::cell::Cell<u64> =
-        const { std::cell::Cell::new(0) };
-}
+static NEXT_AUTO_IDENTIFIER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 fn auto_identifier() -> String {
-    NEXT_AUTO_IDENTIFIER.with(|c| {
-        let n = c.get();
-        c.set(n.wrapping_add(1));
-        format!("leptos_cocoa.auto.{n}")
-    })
+    let n = NEXT_AUTO_IDENTIFIER
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("leptos_cocoa.auto.{n}")
 }
 use std::any::Any;
 use objc2::DefinedClass;
@@ -348,12 +344,19 @@ pub struct Toolbar<Children> {
     children: Children,
 }
 
-/// Start configuring a `<toolbar>`. Defaults to an empty identifier
-/// (callers can override via `.identifier("...")` once we expose
-/// customisation; not surfaced in v1 since customisation is off).
+/// Start configuring a `<toolbar>`. Default identifier is unique
+/// per instance — NSToolbar deduplicates `NSToolbarItem` insertions
+/// by `(toolbar_identifier, item_identifier)`, so two toolbars
+/// sharing an identifier can't both insert the same item id
+/// (raises `NSInternalInconsistencyException` at runtime). Override
+/// via `.identifier("...")` only if you actually want shared
+/// customisation state across toolbars.
 pub fn toolbar() -> Toolbar<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
     Toolbar {
-        identifier: "leptos_cocoa.toolbar".to_string(),
+        identifier: format!("leptos_cocoa.toolbar.{n}"),
         display_mode: None,
         visible: None,
         handle: None,
@@ -413,14 +416,17 @@ pub struct ToolbarState<CS> {
 }
 
 impl<CS> ToolbarState<CS> {
-    /// Test-only: read back the `HANDLER_STORE` key for the
-    /// `n`-th `<toolbar_item>` with an installed action handler,
-    /// in declaration order.
+    /// Test-only: read back the NSToolbarItem at index `n` (in
+    /// declaration order). Tests use this to query
+    /// `event::has_action_target_for_test` on it.
     #[doc(hidden)]
-    pub fn handler_key_for_test(&self, n: usize) -> usize {
+    pub fn test_item_at(
+        &self,
+        n: usize,
+    ) -> objc2::rc::Retained<objc2_app_kit::NSToolbarItem> {
         self.toolbar
-            .test_handler_key_at(n)
-            .expect("no item with an installed action handler at index")
+            .test_item_at(n)
+            .expect("no item at index")
     }
 }
 
@@ -826,9 +832,9 @@ impl ToolbarMountable for ToolbarItem {
         // documented validation policy). Properties set before
         // `setAction:` can get reset; properties set after are
         // authoritative.
-        let handler_key = self
-            .on_action
-            .map(|mut cb| item.set_action(move || cb(), mtm));
+        if let Some(mut cb) = self.on_action {
+            item.set_action(move || cb(), mtm);
+        }
 
         // Enabled — installed AFTER action so the explicit value
         // isn't immediately overridden by AppKit's
@@ -870,12 +876,12 @@ impl ToolbarMountable for ToolbarItem {
             state
         });
 
-        // Move the item into the toolbar build state. From here on
-        // the delegate owns the item (and its handler_key cleanup)
-        // via its ivar HashMap of registrations.
+        // Move the item into the toolbar build state. The ObjC
+        // runtime owns the action target via the associated object
+        // we attached in `set_action`; releasing the NSToolbarItem
+        // releases the handler too.
         let registration = ToolbarItemRegistration {
             ns_item: item.into_ns_item(),
-            handler_key,
             search_element: None,
         };
         build.insert_custom(identifier, registration);
@@ -1242,10 +1248,10 @@ impl ToolbarMountable for ToolbarSearchItem {
         }
 
         // Build the registration (carries the search element so its
-        // handler-store entries get released on Drop).
+        // NSSearchField stays reachable for the toolbar's lifetime;
+        // delegates are released by ObjC when the field deallocates).
         let registration = ToolbarItemRegistration {
             ns_item,
-            handler_key: None,
             search_element: Some(el),
         };
         build.insert_custom(identifier, registration);

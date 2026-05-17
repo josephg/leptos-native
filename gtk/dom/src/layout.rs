@@ -42,6 +42,7 @@ impl LayoutBackend for GtkBackend {
 
     fn measure_leaf(
         widget: &Self::View,
+        _meta: &Self::NodeMeta,
         known: Size<Option<f32>>,
         avail: Size<AvailableSpace>,
     ) -> Size<f32> {

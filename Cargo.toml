@@ -49,6 +49,9 @@ members = [
   "cocoa/examples/transition",
   "cocoa/examples/two_windows",
 
+  # Cocoa correctness/leak fuzzer (binary).
+  "cocoa/fuzzer",
+
   # Network-dependent async examples — listed in `members` so they
   # build with `cargo build --workspace`, but kept OUT of
   # `default-members` so they're skipped by `cargo build` with no

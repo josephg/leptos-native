@@ -220,29 +220,34 @@ fn flexible_space_renders_between_items() {
 fn drop_releases_action_target() {
     use cocoa_dom::event;
     let _mtm = common::test_mtm();
+    let before = event::handler_store_size_for_test();
     with_reactive_scope(|| {
-        let view = toolbar().child(
-            toolbar_item()
-                .identifier("drop")
-                .label("Drop me")
-                .on(leptos_cocoa::event_macos::action, |_| {}),
-        );
-        let state = <_ as Render<Dom>>::build(view);
+        // Wrap the build+drop in an autoreleasepool so the
+        // NSToolbarItem AppKit autoreleased during construction
+        // deallocates by pool drain — that's what triggers our
+        // associated ActionTarget's release.
+        objc2::rc::autoreleasepool(|_| {
+            let view = toolbar().child(
+                toolbar_item()
+                    .identifier("drop")
+                    .label("Drop me")
+                    .on(leptos_cocoa::event_macos::action, |_| {}),
+            );
+            let state = <_ as Render<Dom>>::build(view);
 
-        // Find the handler-store key by scanning the inner
-        // Toolbar's handler_keys. The state's Toolbar holds it.
-        let key = state.handler_key_for_test(0);
-        assert!(
-            event::handler_count_for_test_key(key) > 0,
-            "action handler should be retained before drop"
-        );
+            let item = state.test_item_at(0);
+            assert!(
+                event::has_action_target_for_test(&*item),
+                "action handler should be attached to the toolbar item before drop",
+            );
+            drop(item);
+            drop(state);
+        });
 
-        drop(state);
-
+        let after = event::handler_store_size_for_test();
         assert_eq!(
-            event::handler_count_for_test_key(key),
-            0,
-            "action handler should be released after Toolbar is dropped"
+            after, before,
+            "action handler should be released after the Toolbar is dropped",
         );
     });
 }
@@ -340,6 +345,275 @@ fn toolbar_handle_insert_and_remove() {
 
         std::mem::forget(state);
         std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8b. set_items — additive insertion of a single new item.
+// ---------------------------------------------------------------------
+//
+// Known limitation: NSToolbar's dynamic-mutation path aborts with
+// an Obj-C exception when an `insertItemAtIndex:` call is followed
+// by another `insertItemAtIndex:` and then `removeItemAtIndex:`
+// (two-or-more inserts before any remove). That blocks broader
+// coverage here (mid-list inserts, multi-add scenarios). The tests
+// below are deliberately scoped to flows the existing
+// `toolbar_handle_insert_and_remove` test already proves safe:
+// a single insert at a time, and the no-op / removal paths.
+
+fn toolbar_set_items_adds_one_item() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let opened = open_window("set-items-add-one", (640.0, 480.0), mtm);
+        let handle = ToolbarHandle::new();
+
+        let view = toolbar()
+            .handle(handle)
+            .child(toolbar_item().identifier("a").label("A"));
+        let mut state = <_ as Render<Dom>>::build(view);
+        state.mount(&opened.content_root, None);
+
+        // [a] → [a, b]. Retained-in-order check passes ('a' alone
+        // stays first); loop1 removes nothing; loop2 inserts 'b'
+        // at index 1. Single insert: safe under the underlying
+        // NSToolbar bug.
+        handle.set_items(vec![
+            ("a".to_string(), toolbar_item().label("A")),
+            ("b".to_string(), toolbar_item().label("B")),
+        ]);
+        assert_eq!(
+            handle.current_identifiers(),
+            vec!["a", "b"],
+            "additive set_items must insert the new identifier at \
+             its target position"
+        );
+
+        std::mem::forget(state);
+        std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8c. set_items — no-op when desired == current.
+// ---------------------------------------------------------------------
+
+fn toolbar_set_items_noop_on_unchanged() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let opened = open_window("set-items-noop", (640.0, 480.0), mtm);
+        let handle = ToolbarHandle::new();
+
+        let view = toolbar()
+            .handle(handle)
+            .child(toolbar_item().identifier("a").label("A"))
+            .child(toolbar_item().identifier("b").label("B"));
+        let mut state = <_ as Render<Dom>>::build(view);
+        state.mount(&opened.content_root, None);
+
+        assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
+
+        // Same identifiers in the same order: retained-in-order
+        // passes, loop1 removes nothing, loop2 finds every id
+        // already present (contains_item check) and inserts
+        // nothing. Pure no-op — must not crash, must not perturb
+        // the ordering.
+        handle.set_items(vec![
+            ("a".to_string(), toolbar_item().label("A")),
+            ("b".to_string(), toolbar_item().label("B")),
+        ]);
+        assert_eq!(
+            handle.current_identifiers(),
+            vec!["a", "b"],
+            "no-op set_items must leave the toolbar untouched"
+        );
+
+        std::mem::forget(state);
+        std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8d. set_items — removes identifiers absent from desired.
+// ---------------------------------------------------------------------
+
+fn toolbar_set_items_removes_absent_identifier() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let opened = open_window("set-items-remove", (640.0, 480.0), mtm);
+        let handle = ToolbarHandle::new();
+
+        let view = toolbar()
+            .handle(handle)
+            .child(toolbar_item().identifier("a").label("A"))
+            .child(toolbar_item().identifier("b").label("B"));
+        let mut state = <_ as Render<Dom>>::build(view);
+        state.mount(&opened.content_root, None);
+
+        assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
+
+        handle.set_items(vec![
+            ("a".to_string(), toolbar_item().label("A")),
+        ]);
+        assert_eq!(
+            handle.current_identifiers(),
+            vec!["a"],
+            "set_items must drop identifiers absent from desired"
+        );
+
+        std::mem::forget(state);
+        std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8e. set_items — handles reorder via thrash-and-reinsert.
+// ---------------------------------------------------------------------
+
+fn toolbar_set_items_handles_reorder() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let opened = open_window("set-items-reorder", (640.0, 480.0), mtm);
+        let handle = ToolbarHandle::new();
+
+        let view = toolbar()
+            .handle(handle)
+            .child(toolbar_item().identifier("a").label("A"))
+            .child(toolbar_item().identifier("b").label("B"))
+            .child(toolbar_item().identifier("c").label("C"));
+        let mut state = <_ as Render<Dom>>::build(view);
+        state.mount(&opened.content_root, None);
+
+        assert_eq!(handle.current_identifiers(), vec!["a", "b", "c"]);
+
+        // Reorder [c, a, b]: the retained-in-order check fails,
+        // forcing the thrash-and-reinsert branch.
+        handle.set_items(vec![
+            ("c".to_string(), toolbar_item().label("C2")),
+            ("a".to_string(), toolbar_item().label("A2")),
+            ("b".to_string(), toolbar_item().label("B2")),
+        ]);
+        assert_eq!(
+            handle.current_identifiers(),
+            vec!["c", "a", "b"],
+            "set_items must produce the desired order even when it \
+             differs from the existing one"
+        );
+
+        // Reorder + drop + add: [d, a, c].
+        handle.set_items(vec![
+            ("d".to_string(), toolbar_item().label("D")),
+            ("a".to_string(), toolbar_item().label("A")),
+            ("c".to_string(), toolbar_item().label("C")),
+        ]);
+        assert_eq!(handle.current_identifiers(), vec!["d", "a", "c"]);
+
+        std::mem::forget(state);
+        std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8f. set_items — middle insertion (additive path preserves order).
+// ---------------------------------------------------------------------
+
+fn toolbar_set_items_inserts_between_retained() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        let opened = open_window("set-items-middle", (640.0, 480.0), mtm);
+        let handle = ToolbarHandle::new();
+
+        let view = toolbar()
+            .handle(handle)
+            .child(toolbar_item().identifier("a").label("A"))
+            .child(toolbar_item().identifier("c").label("C"));
+        let mut state = <_ as Render<Dom>>::build(view);
+        state.mount(&opened.content_root, None);
+
+        assert_eq!(handle.current_identifiers(), vec!["a", "c"]);
+
+        handle.set_items(vec![
+            ("a".to_string(), toolbar_item().label("A")),
+            ("b".to_string(), toolbar_item().label("B")),
+            ("c".to_string(), toolbar_item().label("C")),
+        ]);
+        assert_eq!(handle.current_identifiers(), vec!["a", "b", "c"]);
+
+        std::mem::forget(state);
+        std::mem::forget(opened);
+    });
+}
+
+// ---------------------------------------------------------------------
+// 8g. Two independent toolbars with overlapping item identifiers.
+// ---------------------------------------------------------------------
+//
+// Regression: NSToolbar deduplicates `NSToolbarItem` by
+// `(toolbar_identifier, item_identifier)`. The old default
+// toolbar identifier was a fixed string ("leptos_cocoa.toolbar"),
+// so two toolbars in the same process couldn't both carry an
+// item with the same identifier — the second `insertItem` raised
+// `NSInternalInconsistencyException` and aborted via the
+// foreign-exception path. The default identifier now includes a
+// per-instance sequence number so two `toolbar()` builders are
+// always independent.
+
+fn two_toolbars_can_share_item_identifiers() {
+    use cocoa_dom::window::open_window;
+    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
+    let mtm = common::test_mtm();
+    with_reactive_scope(|| {
+        // First toolbar: defaults, cascade [a, b].
+        let opened1 = open_window("share-ids-1", (640.0, 480.0), mtm);
+        let view1 = toolbar()
+            .child(toolbar_item().identifier("a").label("A1"))
+            .child(toolbar_item().identifier("b").label("B1"));
+        let mut state1 = <_ as Render<Dom>>::build(view1);
+        state1.mount(&opened1.content_root, None);
+
+        // Second toolbar: defaults, cascade [a, b] — same item ids.
+        let opened2 = open_window("share-ids-2", (640.0, 480.0), mtm);
+        let handle2 = ToolbarHandle::new();
+        let view2 = toolbar()
+            .handle(handle2)
+            .child(toolbar_item().identifier("a").label("A2"))
+            .child(toolbar_item().identifier("b").label("B2"));
+        let mut state2 = <_ as Render<Dom>>::build(view2);
+        state2.mount(&opened2.content_root, None);
+
+        // Dynamically add 'c' to the second toolbar — this insert
+        // is what tripped the abort under the old shared default
+        // identifier.
+        handle2.insert_item(
+            toolbar_item().identifier("c").label("C2"),
+            2,
+        );
+        assert_eq!(
+            handle2.current_identifiers(),
+            vec!["a", "b", "c"],
+            "second toolbar must accept its own items independently \
+             of the first toolbar's identifier space"
+        );
+
+        std::mem::forget(state1);
+        std::mem::forget(opened1);
+        std::mem::forget(state2);
+        std::mem::forget(opened2);
     });
 }
 
@@ -534,6 +808,30 @@ fn main() {
         (
             "toolbar_handle_insert_and_remove",
             toolbar_handle_insert_and_remove,
+        ),
+        (
+            "toolbar_set_items_adds_one_item",
+            toolbar_set_items_adds_one_item,
+        ),
+        (
+            "toolbar_set_items_noop_on_unchanged",
+            toolbar_set_items_noop_on_unchanged,
+        ),
+        (
+            "toolbar_set_items_removes_absent_identifier",
+            toolbar_set_items_removes_absent_identifier,
+        ),
+        (
+            "toolbar_set_items_handles_reorder",
+            toolbar_set_items_handles_reorder,
+        ),
+        (
+            "toolbar_set_items_inserts_between_retained",
+            toolbar_set_items_inserts_between_retained,
+        ),
+        (
+            "two_toolbars_can_share_item_identifiers",
+            two_toolbars_can_share_item_identifiers,
         ),
         (
             "search_item_bind_value_round_trips",

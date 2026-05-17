@@ -1,38 +1,121 @@
 //! Event handlers — bridging AppKit's target/action and delegate
 //! patterns into Rust closures.
 //!
-//! Design: a small `ActionTarget` ObjC class holds a Rust closure as an
-//! ivar and exposes one selector (`actionFired:`) that invokes it. We
-//! create one of these per registered handler, set the AppKit control's
-//! target/action to point at it, and stash the `Retained<ActionTarget>`
-//! in a thread-local registry keyed by the NSView's pointer so it
-//! outlives the registration.
+//! Design: a small `ActionTarget` ObjC class holds a Rust closure as
+//! an ivar and exposes one selector (`actionFired:`) that invokes it.
+//! We create one per registered handler, wire the AppKit control's
+//! `target` / `action` to point at it, then attach it as an
+//! **associated object** on the host (via
+//! [`objc2::ffi::objc_setAssociatedObject`]) so the ObjC runtime
+//! releases it automatically when the host is deallocated.
 //!
-//! When the element is removed from the tree, [`drop_handlers_for`]
-//! is called from [`crate::node::Node::teardown`] to clean up the
-//! registry entry. Teardown is driven by the `Mountable::unmount`
-//! cascade — for top-level windows that means
-//! `WindowDelegate::windowWillClose:` runs the cleanup closure
-//! that unmounts the window's children.
+//! Same pattern for `TextFieldDelegate` and `TextViewDelegate`.
+//!
+//! There is **no global storage** and no `drop_handlers_for`
+//! plumbing — the lifecycle is driven by ObjC reference counting on
+//! the host view. When `unmount` releases the last Retained on the
+//! view, the view's `dealloc` runs, the runtime releases its
+//! associated objects, our delegates' dealloc runs, and the Rust
+//! ivars (closures, handler Vecs) drop in turn.
 
 use crate::KeyEvent;
 use objc2::{
     define_class, msg_send,
     rc::Retained,
-    runtime::{Bool, NSObject, ProtocolObject, Sel},
+    runtime::{AnyObject, Bool, NSObject, ProtocolObject, Sel},
     sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_app_kit::{
     NSControl, NSControlTextEditingDelegate, NSTextDelegate, NSTextField,
-    NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSView,
+    NSTextFieldDelegate, NSTextView, NSTextViewDelegate,
 };
 use objc2_foundation::{NSNotification, NSObjectProtocol};
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    ffi::c_void,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+
+// ---------------------------------------------------------------------
+// Live counts for leak tests.
+//
+// Every ActionTarget / TextFieldDelegate / TextViewDelegate bumps its
+// counter in `new()` and decrements in `Drop`. Tests can read these
+// to verify that mount/unmount cycles don't leave retained handlers
+// behind. Production code never reads them.
+// ---------------------------------------------------------------------
+
+static LIVE_ACTION_TARGETS: AtomicUsize = AtomicUsize::new(0);
+static LIVE_TEXT_FIELD_DELEGATES: AtomicUsize = AtomicUsize::new(0);
+static LIVE_TEXT_VIEW_DELEGATES: AtomicUsize = AtomicUsize::new(0);
+
+/// Sentinel embedded in each handler's ivars. Drop runs as part of
+/// the ObjC `dealloc` synthesised by `define_class!`, decrementing
+/// the matching counter.
+struct LiveTracker(&'static AtomicUsize);
+
+impl LiveTracker {
+    fn new(counter: &'static AtomicUsize) -> Self {
+        counter.fetch_add(1, Ordering::Relaxed);
+        Self(counter)
+    }
+}
+
+impl Drop for LiveTracker {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+// ---------------------------------------------------------------------
+// Associated-object helper
+// ---------------------------------------------------------------------
+
+/// Attach `value` to `host` as an ObjC associated object under
+/// `key` with `OBJC_ASSOCIATION_RETAIN_NONATOMIC` policy. The
+/// runtime retains `value` for the lifetime of `host`, releasing
+/// it when `host` is deallocated. Repeated calls with the same
+/// key replace the previous association.
+fn associate(host: &AnyObject, key: *const c_void, value: Option<&AnyObject>) {
+    use objc2::ffi::{objc_setAssociatedObject, OBJC_ASSOCIATION_RETAIN_NONATOMIC};
+    let host_ptr = host as *const AnyObject as *mut AnyObject;
+    let val_ptr = value
+        .map(|v| v as *const AnyObject as *mut AnyObject)
+        .unwrap_or(std::ptr::null_mut());
+    unsafe {
+        objc_setAssociatedObject(
+            host_ptr,
+            key,
+            val_ptr,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC,
+        );
+    }
+}
+
+// Unique keys (each static's address serves as a key). The byte
+// value is irrelevant — `objc_setAssociatedObject` keys by pointer
+// identity, not by content.
+static ACTION_TARGET_KEY: u8 = 0;
+static TEXT_FIELD_DELEGATE_KEY: u8 = 0;
+static TEXT_VIEW_DELEGATE_KEY: u8 = 0;
+
+/// Lift a `&'static u8` key marker to the `*const c_void` that
+/// `objc_setAssociatedObject` / `objc_getAssociatedObject` expect.
+fn key_of(marker: &'static u8) -> *const c_void {
+    marker as *const u8 as *const c_void
+}
 
 /// The closure carried by [`ActionTarget`]. One per NSControl —
 /// see `on_control_action`'s docstring for why we panic on
 /// duplicate installs rather than fan out.
 type Callback = RefCell<Box<dyn FnMut() + 'static>>;
+
+/// Bundle of ivars stored on each ActionTarget: the closure plus a
+/// LiveTracker for leak tests.
+pub struct ActionIvars {
+    callback: Callback,
+    _live: LiveTracker,
+}
 
 define_class!(
     /// ObjC class that holds one Rust closure and exposes one
@@ -40,13 +123,13 @@ define_class!(
     /// target of NSControl target/action wiring.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[ivars = Callback]
+    #[ivars = ActionIvars]
     pub struct ActionTarget;
 
     impl ActionTarget {
         #[unsafe(method(actionFired:))]
         fn action_fired(&self, _sender: *mut NSObject) {
-            let mut cb = match self.ivars().try_borrow_mut() {
+            let mut cb = match self.ivars().callback.try_borrow_mut() {
                 Ok(cb) => cb,
                 Err(_) => {
                     // Re-entrance: a click handler synchronously
@@ -72,7 +155,10 @@ impl ActionTarget {
         mtm: objc2::MainThreadMarker,
     ) -> Retained<Self> {
         let alloc = Self::alloc(mtm);
-        let this = alloc.set_ivars(RefCell::new(Box::new(cb)));
+        let this = alloc.set_ivars(ActionIvars {
+            callback: RefCell::new(Box::new(cb)),
+            _live: LiveTracker::new(&LIVE_ACTION_TARGETS),
+        });
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -84,80 +170,57 @@ pub fn action_fired_sel() -> Sel {
 }
 
 // ---------------------------------------------------------------------
-// Storage: keep ActionTargets alive as long as the views they're
-// attached to. Stage-3 implementation is a thread-local hashmap;
-// entries leak on view drop. See module docs.
+// Public install helpers — attach the handler to its host as an
+// associated object so the ObjC runtime owns the lifecycle.
 // ---------------------------------------------------------------------
 
-thread_local! {
-    static HANDLER_STORE: RefCell<
-        HashMap<usize, Vec<Retained<ActionTarget>>>
-    > = RefCell::new(HashMap::new());
+/// Attach `target` to `host`. The ObjC runtime keeps `target`
+/// alive as long as `host` is alive; when `host` deallocates, the
+/// runtime releases `target` and its Rust ivars (the closure)
+/// drop. Replaces any prior ActionTarget on the same host.
+///
+/// `host` is any NSObject: NSControl (button, slider, checkbox, …),
+/// NSMenuItem, NSToolbarItem — anything in the target/action pattern.
+pub fn attach_action_target<H>(host: &H, target: Retained<ActionTarget>)
+where
+    H: AsRef<AnyObject>,
+{
+    let target_obj: &AnyObject = (&*target).as_ref();
+    associate(host.as_ref(), key_of(&ACTION_TARGET_KEY), Some(target_obj));
 }
 
-fn view_key(view: &NSView) -> usize {
-    let ptr: *const NSView = view;
-    ptr as usize
-}
-
-/// Retain `target` for the lifetime of `view`. Stage-3 implementation
-/// just stashes it in a thread-local map; entries leak on view drop.
-pub fn keep_target_alive(view: &NSView, target: Retained<ActionTarget>) {
-    keep_target_alive_for_key(view_key(view), target);
-}
-
-/// Pointer-key variant — used by code that owns a different ObjC
-/// kind (e.g. `NSMenuItem`) and wants to share the NSControl handler
-/// store. The key is whatever the caller's matching `drop_handlers`
-/// passes; pointer-as-`usize` is fine. Note that the menu and view
-/// keyspaces share a HashMap, so collisions are technically possible
-/// but vanishingly unlikely — ObjC objects are aligned and live in
-/// distinct zones.
-pub fn keep_target_alive_for_key(key: usize, target: Retained<ActionTarget>) {
-    HANDLER_STORE.with_borrow_mut(|store| {
-        store.entry(key).or_default().push(target);
-    });
-}
-
-/// Drop all retained handlers attached to `view`. Called from
-/// [`crate::node::Node::teardown`], which is invoked via the
-/// `Mountable::unmount` chain (e.g. on `windowWillClose:` for a
-/// window's content tree).
-pub fn drop_handlers_for(view: &NSView) {
-    let key = view_key(view);
-    drop_handlers_for_view_key(key);
-}
-
-/// Drop only the HANDLER_STORE entry for `key` (no TEXT_FIELD_STORE
-/// / TEXT_VIEW_STORE touch). Used by non-NSView consumers like
-/// `cocoa_dom::menu::MenuItem` where the key is an NSMenuItem
-/// pointer that has no overlap with text-field-only storage.
-pub fn drop_action_target_for_key(key: usize) {
-    HANDLER_STORE.with_borrow_mut(|store| {
-        store.remove(&key);
-    });
-}
-
-/// Test-only: count the retained `ActionTarget`s currently held
-/// for `key` in the shared `HANDLER_STORE`. Returns 0 when the
-/// entry has been removed (e.g. after a `drop_action_target_for_key`).
+/// Test-only: live ActionTargets (created minus dropped). Returns
+/// to zero after every host has been deallocated.
 #[doc(hidden)]
-pub fn handler_count_for_test_key(key: usize) -> usize {
-    HANDLER_STORE.with_borrow(|store| {
-        store.get(&key).map(|v| v.len()).unwrap_or(0)
-    })
+pub fn handler_store_size_for_test() -> usize {
+    LIVE_ACTION_TARGETS.load(Ordering::Relaxed)
 }
 
-fn drop_handlers_for_view_key(key: usize) {
-    HANDLER_STORE.with_borrow_mut(|store| {
-        store.remove(&key);
-    });
-    TEXT_FIELD_STORE.with_borrow_mut(|store| {
-        store.remove(&key);
-    });
-    TEXT_VIEW_STORE.with_borrow_mut(|store| {
-        store.remove(&key);
-    });
+/// Test-only: live TextFieldDelegates.
+#[doc(hidden)]
+pub fn text_field_store_size_for_test() -> usize {
+    LIVE_TEXT_FIELD_DELEGATES.load(Ordering::Relaxed)
+}
+
+/// Test-only: live TextViewDelegates.
+#[doc(hidden)]
+pub fn text_view_store_size_for_test() -> usize {
+    LIVE_TEXT_VIEW_DELEGATES.load(Ordering::Relaxed)
+}
+
+/// Test-only: is there an ActionTarget currently associated with
+/// `host`? Returns true after a successful install, false after the
+/// host is released. Replaces the old `handler_count_for_test_key`.
+#[doc(hidden)]
+pub fn has_action_target_for_test<H>(host: &H) -> bool
+where
+    H: AsRef<AnyObject>,
+{
+    use objc2::ffi::objc_getAssociatedObject;
+    let host_ref = host.as_ref();
+    let host_ptr = host_ref as *const AnyObject as *mut AnyObject;
+    !unsafe { objc_getAssociatedObject(host_ptr, key_of(&ACTION_TARGET_KEY)) }
+        .is_null()
 }
 
 // ---------------------------------------------------------------------
@@ -208,13 +271,20 @@ pub struct TextFieldHandlers {
 
 type SharedHandlers = std::rc::Rc<RefCell<TextFieldHandlers>>;
 
+/// Bundle of ivars on each TextFieldDelegate: the shared handler
+/// state plus a LiveTracker for leak tests.
+pub struct TextFieldIvars {
+    handlers: SharedHandlers,
+    _live: LiveTracker,
+}
+
 define_class!(
     /// ObjC class that observes text-field input (`controlTextDidChange:`)
     /// and commit (`controlTextDidEndEditing:`), fanning each event out
     /// to all installed callbacks for the field.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[ivars = SharedHandlers]
+    #[ivars = TextFieldIvars]
     pub struct TextFieldDelegate;
 
     unsafe impl NSObjectProtocol for TextFieldDelegate {}
@@ -225,7 +295,7 @@ define_class!(
             &self,
             _notification: &NSNotification,
         ) {
-            let mut handlers = match self.ivars().try_borrow_mut() {
+            let mut handlers = match self.ivars().handlers.try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
                     #[cfg(debug_assertions)]
@@ -252,7 +322,7 @@ define_class!(
             // RefCell guard: a callback that synchronously triggers
             // another text change on this same field would re-enter
             // here; skip rather than panic.
-            let mut handlers = match self.ivars().try_borrow_mut() {
+            let mut handlers = match self.ivars().handlers.try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
                     #[cfg(debug_assertions)]
@@ -292,7 +362,7 @@ define_class!(
             else {
                 return Bool::NO;
             };
-            let mut handlers = match self.ivars().try_borrow_mut() {
+            let mut handlers = match self.ivars().handlers.try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
                     #[cfg(debug_assertions)]
@@ -323,7 +393,7 @@ define_class!(
                 return;
             };
             let value: String = field.stringValue().to_string();
-            let mut handlers = match self.ivars().try_borrow_mut() {
+            let mut handlers = match self.ivars().handlers.try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
                     #[cfg(debug_assertions)]
@@ -349,73 +419,48 @@ define_class!(
 impl TextFieldDelegate {
     fn new(handlers: SharedHandlers, mtm: MainThreadMarker) -> Retained<Self> {
         let alloc = Self::alloc(mtm);
-        let this = alloc.set_ivars(handlers);
+        let this = alloc.set_ivars(TextFieldIvars {
+            handlers,
+            _live: LiveTracker::new(&LIVE_TEXT_FIELD_DELEGATES),
+        });
         unsafe { msg_send![super(this), init] }
     }
 }
 
-// Per-field state lives in TEXT_FIELD_STORE. The first install on a
-// field constructs the delegate (and sets it on the field); subsequent
-// installs locate the existing entry by view_key and append to its
-// shared handlers.
-struct TextFieldEntry {
-    handlers: SharedHandlers,
-    // Held to keep the delegate alive (NSTextField stores delegate
-    // weakly).
-    _delegate: Retained<TextFieldDelegate>,
-}
-
-thread_local! {
-    static TEXT_FIELD_STORE: RefCell<HashMap<usize, TextFieldEntry>> =
-        RefCell::new(HashMap::new());
-}
-
-/// Look up (or lazily create) the per-field handler state, ensuring
-/// the field has our `TextFieldDelegate` installed. Returns the
-/// shared handler Vec the caller can append to.
-///
-/// Cache validity: AppKit can recycle NSTextField memory addresses
-/// across allocations. A stale entry would silently misroute
-/// events to a dead field's handlers. Before reusing an entry we
-/// verify the field's current delegate is the one we stored; if
-/// not (recycled address, or someone else swapped the delegate),
-/// we evict and rebuild.
+/// Look up (or lazily create) the per-field handler state. The
+/// delegate is held alive by an associated object on the
+/// NSTextField (`TEXT_FIELD_DELEGATE_KEY`), so its lifetime matches
+/// the field's. Repeated installs reuse the same delegate's
+/// `SharedHandlers`, so callbacks accumulate in install order.
 fn ensure_text_field_entry(field: &NSTextField) -> SharedHandlers {
+    use objc2::ffi::objc_getAssociatedObject;
+
     let mtm = MainThreadMarker::new()
         .expect("text-field event installs must run on the main thread");
-    let key = view_key(field.as_ref());
-    TEXT_FIELD_STORE.with_borrow_mut(|store| {
-        if let Some(entry) = store.get(&key) {
-            let stored_ptr: *const TextFieldDelegate = &*entry._delegate;
-            let current = field.delegate();
-            let still_ours = match current {
-                Some(d) => {
-                    let d_ptr: *const _ = &*d;
-                    let d_addr = d_ptr as usize;
-                    let stored_addr = stored_ptr as usize;
-                    d_addr == stored_addr
-                }
-                None => false,
-            };
-            if still_ours {
-                return entry.handlers.clone();
-            }
-            store.remove(&key);
+    let key = key_of(&TEXT_FIELD_DELEGATE_KEY);
+    let host: &AnyObject = field.as_ref();
+
+    // Reuse the existing delegate if we've installed one on this
+    // field. objc_getAssociatedObject returns nil otherwise.
+    let host_ptr = host as *const AnyObject as *mut AnyObject;
+    let existing_ptr = unsafe { objc_getAssociatedObject(host_ptr, key) };
+    if !existing_ptr.is_null() {
+        let existing: &AnyObject = unsafe { &*existing_ptr };
+        if let Some(delegate) = existing.downcast_ref::<TextFieldDelegate>() {
+            return delegate.ivars().handlers.clone();
         }
-        let handlers: SharedHandlers = Default::default();
-        let delegate = TextFieldDelegate::new(handlers.clone(), mtm);
-        let proto: &ProtocolObject<dyn NSTextFieldDelegate> =
-            ProtocolObject::from_ref(&*delegate);
-        unsafe { field.setDelegate(Some(proto)) };
-        store.insert(
-            key,
-            TextFieldEntry {
-                handlers: handlers.clone(),
-                _delegate: delegate,
-            },
-        );
-        handlers
-    })
+    }
+
+    let handlers: SharedHandlers = Default::default();
+    let delegate = TextFieldDelegate::new(handlers.clone(), mtm);
+    let proto: &ProtocolObject<dyn NSTextFieldDelegate> =
+        ProtocolObject::from_ref(&*delegate);
+    unsafe { field.setDelegate(Some(proto)) };
+    // Associated object retains the delegate; auto-released when
+    // the NSTextField is deallocated.
+    let delegate_obj: &AnyObject = (&*delegate).as_ref();
+    associate(host, key, Some(delegate_obj));
+    handlers
 }
 
 /// Append an input observer (fires on every keystroke / paste).
@@ -504,6 +549,13 @@ pub struct TextViewHandlers {
 
 type SharedTextViewHandlers = std::rc::Rc<RefCell<TextViewHandlers>>;
 
+/// Bundle of ivars on each TextViewDelegate: the shared handler
+/// state plus a LiveTracker for leak tests.
+pub struct TextViewIvars {
+    handlers: SharedTextViewHandlers,
+    _live: LiveTracker,
+}
+
 define_class!(
     /// NSTextView delegate that fans `textDidChange:` notifications
     /// out to all installed callbacks. NSTextView's documented
@@ -511,7 +563,7 @@ define_class!(
     /// `NSTextDelegate` — `textDidChange:` is on the latter.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[ivars = SharedTextViewHandlers]
+    #[ivars = TextViewIvars]
     pub struct TextViewDelegate;
 
     unsafe impl NSObjectProtocol for TextViewDelegate {}
@@ -526,7 +578,7 @@ define_class!(
                 return;
             };
             let value: String = tv.string().to_string();
-            let mut handlers = match self.ivars().try_borrow_mut() {
+            let mut handlers = match self.ivars().handlers.try_borrow_mut() {
                 Ok(h) => h,
                 Err(_) => {
                     #[cfg(debug_assertions)]
@@ -551,62 +603,43 @@ impl TextViewDelegate {
         mtm: MainThreadMarker,
     ) -> Retained<Self> {
         let alloc = Self::alloc(mtm);
-        let this = alloc.set_ivars(handlers);
+        let this = alloc.set_ivars(TextViewIvars {
+            handlers,
+            _live: LiveTracker::new(&LIVE_TEXT_VIEW_DELEGATES),
+        });
         unsafe { msg_send![super(this), init] }
     }
 }
 
-struct TextViewEntry {
-    handlers: SharedTextViewHandlers,
-    _delegate: Retained<TextViewDelegate>,
-}
-
-thread_local! {
-    static TEXT_VIEW_STORE: RefCell<HashMap<usize, TextViewEntry>> =
-        RefCell::new(HashMap::new());
-}
-
-/// Look up (or lazily create) the per-text-view handler state,
-/// ensuring the NSTextView has our `TextViewDelegate` installed.
-/// Same recycled-pointer cache-validity check as
-/// `ensure_text_field_entry` — verify the field's current delegate
-/// matches the one we stored before reusing the cache.
+/// Look up (or lazily create) the per-text-view handler state.
+/// Same associated-object pattern as [`ensure_text_field_entry`].
 fn ensure_text_view_entry(
     tv: &NSTextView,
 ) -> SharedTextViewHandlers {
+    use objc2::ffi::objc_getAssociatedObject;
+
     let mtm = MainThreadMarker::new()
         .expect("text-view event installs must run on the main thread");
-    let key = view_key(tv.as_ref());
-    TEXT_VIEW_STORE.with_borrow_mut(|store| {
-        if let Some(entry) = store.get(&key) {
-            let stored_ptr: *const TextViewDelegate = &*entry._delegate;
-            let current = tv.delegate();
-            let still_ours = match current {
-                Some(d) => {
-                    let d_ptr: *const _ = &*d;
-                    d_ptr as usize == stored_ptr as usize
-                }
-                None => false,
-            };
-            if still_ours {
-                return entry.handlers.clone();
-            }
-            store.remove(&key);
+    let key = key_of(&TEXT_VIEW_DELEGATE_KEY);
+    let host: &AnyObject = tv.as_ref();
+
+    let host_ptr = host as *const AnyObject as *mut AnyObject;
+    let existing_ptr = unsafe { objc_getAssociatedObject(host_ptr, key) };
+    if !existing_ptr.is_null() {
+        let existing: &AnyObject = unsafe { &*existing_ptr };
+        if let Some(delegate) = existing.downcast_ref::<TextViewDelegate>() {
+            return delegate.ivars().handlers.clone();
         }
-        let handlers: SharedTextViewHandlers = Default::default();
-        let delegate = TextViewDelegate::new(handlers.clone(), mtm);
-        let proto: &ProtocolObject<dyn NSTextViewDelegate> =
-            ProtocolObject::from_ref(&*delegate);
-        tv.setDelegate(Some(proto));
-        store.insert(
-            key,
-            TextViewEntry {
-                handlers: handlers.clone(),
-                _delegate: delegate,
-            },
-        );
-        handlers
-    })
+    }
+
+    let handlers: SharedTextViewHandlers = Default::default();
+    let delegate = TextViewDelegate::new(handlers.clone(), mtm);
+    let proto: &ProtocolObject<dyn NSTextViewDelegate> =
+        ProtocolObject::from_ref(&*delegate);
+    tv.setDelegate(Some(proto));
+    let delegate_obj: &AnyObject = (&*delegate).as_ref();
+    associate(host, key, Some(delegate_obj));
+    handlers
 }
 
 /// Append a change observer on an NSTextView — fires on every
@@ -654,12 +687,9 @@ pub fn on_control_action(
     // wiring means someone already installed a handler on this
     // control — panic rather than silently overwriting.
     //
-    // We look at the control's CURRENT target rather than at
-    // HANDLER_STORE because HANDLER_STORE entries can be stale
-    // across recycled NSView pointers (the previous owner was torn
-    // down, drop_handlers_for cleared the entry, but if drop was
-    // somehow missed and the pointer got reused, we don't want to
-    // panic here). The control's own target reflects ground truth.
+    // The control's own `target` is ground truth for "is a handler
+    // already installed here?" — it survives even if our internal
+    // accounting drifts across recycled NSControl pointers.
     if let Some(existing) = control.target() {
         panic!(
             "on_control_action called twice on the same NSControl \
@@ -679,6 +709,6 @@ pub fn on_control_action(
         control.setAction(Some(action_fired_sel()));
     }
 
-    keep_target_alive(control.as_ref(), target);
+    attach_action_target(control, target);
 }
 
