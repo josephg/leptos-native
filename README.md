@@ -1,4 +1,4 @@
-# leptos-mac
+# leptos-native
 
 A native-only fork of [Leptos](https://leptos.dev) targeting macOS
 (AppKit), iOS (UIKit), and Linux (GTK4). The same `view!{}` macro,
