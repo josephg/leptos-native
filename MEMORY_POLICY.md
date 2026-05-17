@@ -365,7 +365,43 @@ Suppose we add `<rating>` — a 5-star NSControl analog with
 If you find yourself wanting to capture `el` in the Effect because
 "I need to call multiple methods on it" — store a `Retained<RatingControl>`
 once and call methods on that. If you need *several* AppKit subviews,
-capture each typed `Retained` you need. Never reach for `el.clone()`.
+capture each typed `Retained` you need.
+
+### Exception: side-effecting setters
+
+The typed-`Retained` capture works when the only thing the Effect
+closure does is invoke an AppKit method (and read back for the
+diff guard). If the setter must *also* trigger Rust-side
+bookkeeping — typically a `schedule_relayout` call after a content
+change that affects `intrinsicContentSize` — route through the
+`Element` layer (`el_for_set.set_string_attribute(...)` /
+`el_for_set.set_intrinsic_*(...)`) so that bookkeeping runs.
+
+Examples that require the `Element` route today:
+- `<text_field>` / `<text_view>` `bind:value=` incoming write —
+  `Element::set_string_attribute` re-runs `schedule_relayout` so
+  intrinsic-width-from-content settles after each change.
+- Anything else that adjusts a Taffy measure-dependent property
+  (font size on a label, image dimensions on an image_view).
+
+The `el.clone()` capture in those cases is still cycle-safe under
+§3 — the closure lives on `ElementState::_effects`, *not* in the
+Node's handler bundle. The cycle rule only applies to closures
+stored in handler ivars (delegates, target/action). Closures owned
+by a `RenderEffect` that drops with the element state can safely
+hold an `Element` clone.
+
+Empirically: bypassing `schedule_relayout` for a string setter
+during chaos shows up as a delegate-store leak in the fuzzer
+(Taffy ends up with stale measure cache; the affected node's
+state isn't unmounted cleanly on teardown). Don't try to be clever
+here — when in doubt, prefer the `Element` route and inline
+typed-`Retained` capture only for pure numeric / boolean setters.
+
+Never reach for `el.clone()` to *avoid* understanding the lifecycle.
+Use it deliberately when (a) the closure isn't in a handler bundle
+and (b) you need an Element-layer side effect that has no typed
+analogue.
 
 ---
 

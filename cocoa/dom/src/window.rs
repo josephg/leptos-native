@@ -183,17 +183,39 @@ pub fn open_window(
         crate::debug_overlay::install(flipped, &tree, mtm);
     }
 
-    // Resize / close delegate.
+    // Resize / close delegate. Pool-wrap the setDelegate call —
+    // see `MEMORY_POLICY.md` §4. NSWindow's delegate is documented
+    // `weak`; this is a belt-and-braces measure for consistency
+    // with the text-system delegate fix.
     let delegate = WindowDelegate::new(content_root.as_node().clone(), mtm);
-    let delegate_proto: &ProtocolObject<dyn NSWindowDelegate> =
-        ProtocolObject::from_ref(&*delegate);
-    nswindow.setDelegate(Some(delegate_proto));
+    objc2::rc::autoreleasepool(|_| {
+        let delegate_proto: &ProtocolObject<dyn NSWindowDelegate> =
+            ProtocolObject::from_ref(&*delegate);
+        nswindow.setDelegate(Some(delegate_proto));
+    });
 
     OpenedWindow {
         nswindow,
         content_root,
         tree,
         delegate,
+    }
+}
+
+impl Drop for OpenedWindow {
+    fn drop(&mut self) {
+        // Nil the window's delegate slot before our
+        // `Retained<WindowDelegate>` releases. NSWindow holds the
+        // delegate weakly, so this is mostly belt-and-braces — but
+        // matches the policy pattern used by
+        // `NodeHandlersBundle::Drop` /
+        // `ToolbarItemRegistration::Drop` / `MenuItem::Drop`.
+        // Note: this only fires if we're on the main thread.
+        // Off-main drop is a programmer error; the `Retained`s
+        // will release without nil-ing first.
+        if MainThreadMarker::new().is_some() {
+            self.nswindow.setDelegate(None);
+        }
     }
 }
 

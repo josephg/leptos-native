@@ -46,6 +46,12 @@ use std::cell::{Cell, RefCell};
 /// content root after creating them.
 type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element)>;
 
+// TLS allowed under `MEMORY_POLICY.md` §2 "app-scoped pinning"
+// carve-out: this is a single-value slot used to hand the view
+// builder closure across the `UIApplicationMain` boundary
+// (`mount::run` stores it; `SceneDelegate::scene:willConnectToSession:`
+// takes it once). After consumption the slot is empty for the
+// process lifetime.
 thread_local! {
     static BUILDER: RefCell<Option<ViewBuilder>> = RefCell::new(None);
 }

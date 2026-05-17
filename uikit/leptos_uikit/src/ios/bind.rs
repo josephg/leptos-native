@@ -19,12 +19,31 @@ use crate::ios::element::{
     ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
     Stepper, Switch, TextField, TextView,
 };
-use ios_dom::{BoolAttr, Element as IosElement, StringAttr};
+use ios_dom::Element as IosElement;
+use objc2::rc::Retained;
 use reactive_graph::{
     effect::RenderEffect,
     signal::RwSignal,
     traits::{Get, Set},
 };
+
+/// Downcast the element's UIView to a specific subclass at install
+/// time. Same shape and rationale as the cocoa port's helper —
+/// see `cocoa::bind::typed_view` and `MEMORY_POLICY.md` §3 + §7.
+fn typed_view<T>(el: &IosElement, ctx: &'static str) -> Retained<T>
+where
+    T: objc2::Message + objc2::DowncastTarget,
+{
+    el.as_node()
+        .ui_view_retained()
+        .downcast::<T>()
+        .unwrap_or_else(|_| {
+            panic!(
+                "{ctx}: UIView is not a {}",
+                std::any::type_name::<T>(),
+            )
+        })
+}
 
 /// Conversion trait: turn whatever the user passed to `bind:` into a
 /// `(getter, setter)` pair we can wire up.
@@ -124,13 +143,17 @@ pub(crate) fn install_text_field_value_bind(
     el: &IosElement,
     bound: BoundValue,
 ) -> RenderEffect<()> {
+    use ios_dom::StringAttr;
     // Outgoing: editingChanged (every keystroke / paste / clear).
     let mut setter = bound.setter;
     el.on_text_change(move |new_value| setter(new_value));
 
-    // Incoming: signal change → set field text. set_string_attribute
-    // diffs internally so a no-op write doesn't trigger
-    // controlTextDidChange ping-pong with the outgoing leg.
+    // Incoming: signal change → set field text. Routed through
+    // `Element::set_string_attribute` (same rationale as the
+    // cocoa port — see that file). Cycle-safe per
+    // `MEMORY_POLICY.md` §3 because the closure lives on the
+    // RenderEffect attached to `ElementState::_effects`, not in
+    // the Node's handler bundle.
     let getter = bound.getter;
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
@@ -163,32 +186,25 @@ pub(crate) fn install_switch_checked_bind(
     el: &IosElement,
     bound: BoundChecked,
 ) -> RenderEffect<()> {
-    // Outgoing: user toggles → read switch state → push to signal.
-    // UIControlEventValueChanged fires AFTER UISwitch.isOn updates,
-    // so `el.checked()` returns the new state.
     use objc2_ui_kit::UISwitch;
-    let mut setter = bound.setter;
-    // Capture Retained<UIView> rather than IosElement — capturing
-    // the Element here would form an Rc cycle: closure →
-    // IosElement → IosNodeHandlersBundle → ActionTarget → ivars
-    // → closure. See `ios_dom::event` module doc.
-    let view_for_action = el.ui_view_retained();
-    el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<UISwitch>() {
-            setter(s.isOn());
-        }
-    });
+    let switch = typed_view::<UISwitch>(el, "install_switch_checked_bind");
 
-    // Incoming: signal → setOn:animated:. set_bool_attribute diffs
-    // internally to avoid pinging back through the outgoing leg
-    // when the Effect re-fires after setting the value the switch
-    // already shows.
+    // Outgoing: user toggles → read switch state → push to signal.
+    let mut setter = bound.setter;
+    let switch_out = switch.clone();
+    el.on_click(move || setter(switch_out.isOn()));
+
+    // Incoming: signal → setOn. Diff to avoid bouncing back
+    // through the outgoing leg when the Effect re-fires after a
+    // self-write.
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_bool_attribute(BoolAttr::Checked, v);
+        if switch.isOn() != v {
+            // Match `ios_dom::Element::set_bool_attribute`'s
+            // animation behaviour (animated: true).
+            switch.setOn_animated(v, true);
+        }
     })
 }
 
@@ -216,24 +232,19 @@ pub(crate) fn install_slider_value_bind(
     el: &IosElement,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
-    // Outgoing: UISlider fires UIControlEventValueChanged on every
-    // drag step (continuous = true at create time).
     use objc2_ui_kit::UISlider;
+    let slider = typed_view::<UISlider>(el, "install_slider_value_bind");
+
     let mut setter = bound.setter;
-    // Retained<UIView> capture; see `install_switch_checked_bind`.
-    let view_for_action = el.ui_view_retained();
-    el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<UISlider>() {
-            setter(s.value() as f64);
-        }
-    });
+    let slider_out = slider.clone();
+    el.on_click(move || setter(slider_out.value() as f64));
 
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
-        let v = getter();
-        el_for_set.set_double_value(v);
+        let v = getter() as f32;
+        if (slider.value() - v).abs() > f32::EPSILON {
+            slider.setValue(v);
+        }
     })
 }
 
@@ -262,20 +273,18 @@ pub(crate) fn install_stepper_value_bind(
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UIStepper;
+    let stepper = typed_view::<UIStepper>(el, "install_stepper_value_bind");
+
     let mut setter = bound.setter;
-    // Retained<UIView> capture; see `install_switch_checked_bind`.
-    let view_for_action = el.ui_view_retained();
-    el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<UIStepper>() {
-            setter(s.value());
-        }
-    });
+    let stepper_out = stepper.clone();
+    el.on_click(move || setter(stepper_out.value()));
+
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_stepper_value(v);
+        if (stepper.value() - v).abs() > f64::EPSILON {
+            stepper.setValue(v);
+        }
     })
 }
 
@@ -304,21 +313,22 @@ pub(crate) fn install_date_picker_bind(
     bound: BoundDate,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UIDatePicker;
+    let picker = typed_view::<UIDatePicker>(el, "install_date_picker_bind");
+
     let mut setter = bound.setter;
-    // Retained<UIView> capture; see `install_switch_checked_bind`.
-    let view_for_action = el.ui_view_retained();
+    let picker_out = picker.clone();
     el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(p) = any.downcast_ref::<UIDatePicker>() {
-            let d = p.date();
-            setter(ios_dom::Date::from_nsdate(&d));
-        }
+        let d = picker_out.date();
+        setter(ios_dom::Date::from_nsdate(&d));
     });
+
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let d = getter();
-        el_for_set.set_date_picker_value(d);
+        let nsd = d.to_nsdate();
+        if !picker.date().isEqualToDate(&nsd) {
+            picker.setDate(&nsd);
+        }
     })
 }
 
@@ -353,23 +363,26 @@ pub(crate) fn install_segmented_selection_bind(
     bound: BoundIndex,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UISegmentedControl;
+    let seg = typed_view::<UISegmentedControl>(
+        el,
+        "install_segmented_selection_bind",
+    );
+
     let mut setter = bound.setter;
-    // Retained<UIView> capture; see `install_switch_checked_bind`.
-    let view_for_action = el.ui_view_retained();
+    let seg_out = seg.clone();
     el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<UISegmentedControl>() {
-            let idx = s.selectedSegmentIndex();
-            if idx >= 0 {
-                setter(idx as usize);
-            }
+        let idx = seg_out.selectedSegmentIndex();
+        if idx >= 0 {
+            setter(idx as usize);
         }
     });
+
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
-        let v = getter();
-        el_for_set.set_segmented_selection(v as isize);
+        let v = getter() as isize;
+        if seg.selectedSegmentIndex() != v {
+            seg.setSelectedSegmentIndex(v);
+        }
     })
 }
 
@@ -417,14 +430,29 @@ pub(crate) fn install_color_well_value_bind(
     el: &IosElement,
     bound: BoundColor,
 ) -> RenderEffect<()> {
+    use objc2_foundation::NSObjectProtocol;
+    use objc2_ui_kit::UIColorWell;
+    // Outgoing: the on_color_change callback captures only the
+    // user setter; no Element capture.
     let mut setter = bound.setter;
     el.on_color_change(move |c| setter(c));
 
+    // Incoming: typed UIColorWell capture per `MEMORY_POLICY.md`
+    // §3 / §7.
+    let well =
+        typed_view::<UIColorWell>(el, "install_color_well_value_bind");
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_color_well_value(v);
+        let uicolor = v.to_uicolor();
+        // Diff via UIColor equality (handles colorspace conversion).
+        let needs_set = match well.selectedColor() {
+            Some(current) => !current.isEqual(Some(&uicolor)),
+            None => true,
+        };
+        if needs_set {
+            well.setSelectedColor(Some(&uicolor));
+        }
     })
 }
 
@@ -456,9 +484,13 @@ pub(crate) fn install_text_view_value_bind(
     el: &IosElement,
     bound: BoundValue,
 ) -> RenderEffect<()> {
+    use ios_dom::StringAttr;
     let mut setter = bound.setter;
     el.on_text_view_change(move |new_value| setter(new_value));
 
+    // Routed through `Element::set_string_attribute` for parity
+    // with the cocoa port — see `cocoa/.../bind.rs` for the
+    // schedule_relayout rationale.
     let getter = bound.getter;
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {

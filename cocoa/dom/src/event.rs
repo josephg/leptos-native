@@ -506,10 +506,23 @@ fn ensure_text_field_entry(node: &crate::Node) -> SharedHandlers {
         return d.ivars().handlers.clone();
     }
     let handlers: SharedHandlers = Default::default();
-    let delegate = TextFieldDelegate::new(handlers.clone(), mtm);
-    let proto: &ProtocolObject<dyn NSTextFieldDelegate> =
-        ProtocolObject::from_ref(&*delegate);
-    unsafe { field.setDelegate(Some(proto)) };
+    // Wrap delegate creation + setDelegate in a tight
+    // autoreleasepool — same rationale as
+    // `ensure_text_view_entry` (see `MEMORY_POLICY.md` §4). The
+    // documented `NSTextField.delegate` is `weak`, but AppKit's
+    // text-system lazy initialisation has been observed to leave
+    // a transient autorelease on the first delegate registered
+    // per pool scope. Pool-wrapping here pre-empts the same shape
+    // of leak we hit on NSTextView, even though text_field
+    // hasn't shown one in the fuzzer. Cost: one runtime push+pop
+    // per text_field creation.
+    let delegate = objc2::rc::autoreleasepool(|_| {
+        let d = TextFieldDelegate::new(handlers.clone(), mtm);
+        let proto: &ProtocolObject<dyn NSTextFieldDelegate> =
+            ProtocolObject::from_ref(&*d);
+        unsafe { field.setDelegate(Some(proto)) };
+        d
+    });
     slot.text_field_delegate = Some(delegate);
     handlers
 }

@@ -17,12 +17,40 @@ use crate::cocoa::element::{
     Checkbox, ColorWell, DatePicker, PopUpButton, SegmentedControl,
     Slider, Stepper, TextField, TextView,
 };
-use cocoa_dom::{BoolAttr, Element as CocoaElement, StringAttr};
+use cocoa_dom::Element as CocoaElement;
+use objc2::rc::Retained;
 use reactive_graph::{
     effect::RenderEffect,
     signal::RwSignal,
     traits::{Get, Set},
 };
+
+/// Downcast the element's NSView to a specific subclass at install
+/// time. Returns `Retained<T>` so the install closures can hold a
+/// typed handle without re-downcasting on every Effect / action
+/// invocation. Per `MEMORY_POLICY.md` §3 and §7, install closures
+/// must capture a typed `Retained<NSSubclass>` rather than a
+/// `CocoaElement` clone — that keeps the closure outside the
+/// `Node → bundle → handler` Rc graph.
+///
+/// Panics if the underlying view isn't a `T` — this only happens
+/// when an `install_*` function is called on the wrong element
+/// type, which is a programming error at the framework level (the
+/// builders are typed and route to the right install).
+fn typed_view<T>(el: &CocoaElement, ctx: &'static str) -> Retained<T>
+where
+    T: objc2::Message + objc2::DowncastTarget,
+{
+    el.as_node()
+        .ns_view_retained()
+        .downcast::<T>()
+        .unwrap_or_else(|_| {
+            panic!(
+                "{ctx}: NSView is not a {}",
+                std::any::type_name::<T>(),
+            )
+        })
+}
 
 /// Conversion trait: turn whatever the user passed to `bind:` into a
 /// `(getter, setter)` pair we can wire up.
@@ -120,12 +148,26 @@ pub(crate) fn install_text_field_value_bind(
         setter(new_value);
     });
 
-    // Incoming: signal change → set field's stringValue.
+    // Incoming: signal change → set field's stringValue. Routed
+    // through `Element::set_string_attribute` (rather than a typed
+    // `Retained<NSTextField>` capture) for two reasons:
+    //   1. `set_string_attribute` also calls `schedule_relayout`
+    //      on content change — NSTextField with
+    //      intrinsic-width-from-content needs a layout pass after
+    //      the new text width settles.
+    //   2. The closure stays cycle-safe per `MEMORY_POLICY.md` §3
+    //      because this `RenderEffect` lives on
+    //      `ElementState::_effects` (drops with the state) — it
+    //      isn't installed into the Node's handler bundle, so
+    //      capturing `CocoaElement` here doesn't form an Rc cycle.
     let getter = bound.getter;
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_string_attribute(StringAttr::Value, &v);
+        el_for_set.set_string_attribute(
+            cocoa_dom::StringAttr::Value,
+            &v,
+        );
     })
 }
 
@@ -181,9 +223,20 @@ pub(crate) fn install_text_view_value_bind(
     let mut setter = bound.setter;
     el.on_text_view_change(move |new_value| setter(new_value));
 
-    // Incoming: signal change → set NSTextView's string. Routes
-    // through StringAttr::Value, which on a `<text_view>` finds
-    // the inner NSTextView (via documentView) and calls setString.
+    // Incoming: signal change → set NSTextView's string. Routed
+    // through `Element::set_string_attribute` rather than a
+    // typed `Retained<NSTextView>` capture so the incoming write
+    // ALSO calls `schedule_relayout` (NSTextView's
+    // `intrinsicContentSize` changes with content; without a
+    // relayout pass, the Taffy frame can drift). Capturing the
+    // bare `Retained<NSTextView>` inline would skip that —
+    // observed empirically as a leak / hang in the fuzzer.
+    //
+    // The closure stays cycle-safe per `MEMORY_POLICY.md` §3
+    // because this `RenderEffect` lives on
+    // `ElementState::_effects` (drops with the state) — it isn't
+    // installed into the Node's handler bundle, so capturing
+    // `CocoaElement` here doesn't form an Rc cycle.
     let getter = bound.getter;
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
@@ -219,23 +272,20 @@ pub(crate) fn install_stepper_value_bind(
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSStepper;
+    let stepper = typed_view::<NSStepper>(el, "install_stepper_value_bind");
+
+    // Outgoing: AppKit fires target/action; read doubleValue → push.
     let mut setter = bound.setter;
-    // Capture Retained<NSView> rather than CocoaElement — capturing
-    // the Element would form an Rc cycle: closure → Element →
-    // NodeHandlersBundle → ActionTarget → ivars → closure.
-    // See `cocoa_dom::event` module doc for the lifecycle story.
-    let view_for_action = el.ns_view_retained();
-    el.on_action(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<NSStepper>() {
-            setter(s.doubleValue());
-        }
-    });
+    let stepper_out = stepper.clone();
+    el.on_action(move || setter(stepper_out.doubleValue()));
+
+    // Incoming: signal → setDoubleValue, with diff guard.
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_stepper_value(v);
+        if (stepper.doubleValue() - v).abs() > f64::EPSILON {
+            stepper.setDoubleValue(v);
+        }
     })
 }
 
@@ -269,22 +319,28 @@ pub(crate) fn install_date_picker_bind(
     bound: BoundDate,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSDatePicker;
+    let picker =
+        typed_view::<NSDatePicker>(el, "install_date_picker_bind");
+
+    // Outgoing.
     let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`
-    // for why we don't capture `el`.
-    let view_for_action = el.ns_view_retained();
+    let picker_out = picker.clone();
     el.on_action(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(p) = any.downcast_ref::<NSDatePicker>() {
-            let d = p.dateValue();
-            setter(cocoa_dom::Date::from_nsdate(&d));
-        }
+        let d = picker_out.dateValue();
+        setter(cocoa_dom::Date::from_nsdate(&d));
     });
+
+    // Incoming: signal → setDateValue. Construct an NSDate from
+    // our cocoa_dom::Date and compare via NSDate equality before
+    // mutating.
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let d = getter();
-        el_for_set.set_date_picker_value(d);
+        let nsd = d.to_nsdate();
+        let current = picker.dateValue();
+        if !current.isEqualToDate(&nsd) {
+            picker.setDateValue(&nsd);
+        }
     })
 }
 
@@ -292,31 +348,23 @@ pub(crate) fn install_slider_value_bind(
     el: &CocoaElement,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
-    // Outgoing: AppKit fires target/action on every drag step
-    // (setContinuous(true) at create time). Read doubleValue → push.
-    // Use `on_action` (NSControl-based) rather than `on_click`
-    // (NSButton-based) — NSSlider extends NSControl directly, not
-    // NSButton, so the NSButton downcast in on_click would silently
-    // drop the wiring.
-    use objc2_app_kit::NSControl;
-    let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`
-    // for why we don't capture `el`.
-    let view_for_action = el.ns_view_retained();
-    el.on_action(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(c) = any.downcast_ref::<NSControl>() {
-            setter(c.doubleValue());
-        }
-    });
+    // NSSlider extends NSControl directly; capture the typed
+    // Retained<NSSlider> for both outgoing (target/action fires on
+    // every drag step thanks to setContinuous(true) at create
+    // time) and incoming (setDoubleValue).
+    use objc2_app_kit::NSSlider;
+    let slider = typed_view::<NSSlider>(el, "install_slider_value_bind");
 
-    // Incoming: signal change → set slider value. set_double_value
-    // diffs internally so a no-op write doesn't redraw.
+    let mut setter = bound.setter;
+    let slider_out = slider.clone();
+    el.on_action(move || setter(slider_out.doubleValue()));
+
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_double_value(v);
+        if (slider.doubleValue() - v).abs() > f64::EPSILON {
+            slider.setDoubleValue(v);
+        }
     })
 }
 
@@ -363,30 +411,27 @@ pub(crate) fn install_popup_selection_bind(
     el: &CocoaElement,
     bound: BoundIndex,
 ) -> RenderEffect<()> {
-    // Outgoing: NSPopUpButton fires target/action when the user picks
-    // an item. on_click hooks into the same target/action wiring we
-    // use for buttons (NSPopUpButton IS-A NSButton).
     use objc2_app_kit::NSPopUpButton;
+    // NSPopUpButton IS-A NSButton, so on_click hooks the same
+    // target/action wiring as a button.
+    let popup =
+        typed_view::<NSPopUpButton>(el, "install_popup_selection_bind");
+
     let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`.
-    let view_for_click = el.ns_view_retained();
+    let popup_out = popup.clone();
     el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_click).as_ref();
-        if let Some(p) = any.downcast_ref::<NSPopUpButton>() {
-            let idx = p.indexOfSelectedItem();
-            if idx >= 0 {
-                setter(idx as usize);
-            }
+        let idx = popup_out.indexOfSelectedItem();
+        if idx >= 0 {
+            setter(idx as usize);
         }
     });
 
-    // Incoming: signal → selectItemAtIndex: (with a diff guard inside
-    // set_popup_selection).
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
-        let v = getter();
-        el_for_set.set_popup_selection(v as isize);
+        let v = getter() as isize;
+        if popup.indexOfSelectedItem() != v {
+            popup.selectItemAtIndex(v);
+        }
     })
 }
 
@@ -420,24 +465,27 @@ pub(crate) fn install_color_well_bind(
     bound: BoundColor,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSColorWell;
+    use objc2_foundation::NSObjectProtocol;
+    let well = typed_view::<NSColorWell>(el, "install_color_well_bind");
+
     let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`.
-    let view_for_action = el.ns_view_retained();
+    let well_out = well.clone();
     el.on_action(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(w) = any.downcast_ref::<NSColorWell>() {
-            let c = w.color();
-            if let Some(parsed) = cocoa_dom::Color::from_nscolor(&c) {
-                setter(parsed);
-            }
+        let c = well_out.color();
+        if let Some(parsed) = cocoa_dom::Color::from_nscolor(&c) {
+            setter(parsed);
         }
     });
 
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let c = getter();
-        el_for_set.set_color_well_value(c);
+        let nscolor = c.to_nscolor();
+        // NSColor equality via isEqual (handles colorspace
+        // conversion); diff to skip redundant writes.
+        if !well.color().isEqual(Some(&nscolor)) {
+            well.setColor(&nscolor);
+        }
     })
 }
 
@@ -445,28 +493,27 @@ pub(crate) fn install_segmented_selection_bind(
     el: &CocoaElement,
     bound: BoundIndex,
 ) -> RenderEffect<()> {
-    // Outgoing: NSSegmentedControl fires target/action on click.
-    // on_action goes through the NSControl path (segmented control
-    // isn't an NSButton, so on_click would no-op).
     use objc2_app_kit::NSSegmentedControl;
+    let seg = typed_view::<NSSegmentedControl>(
+        el,
+        "install_segmented_selection_bind",
+    );
+
     let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`.
-    let view_for_action = el.ns_view_retained();
+    let seg_out = seg.clone();
     el.on_action(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_action).as_ref();
-        if let Some(s) = any.downcast_ref::<NSSegmentedControl>() {
-            let idx = s.selectedSegment();
-            if idx >= 0 {
-                setter(idx as usize);
-            }
+        let idx = seg_out.selectedSegment();
+        if idx >= 0 {
+            setter(idx as usize);
         }
     });
 
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
-        let v = getter();
-        el_for_set.set_segmented_selection(v as isize);
+        let v = getter() as isize;
+        if seg.selectedSegment() != v {
+            seg.setSelectedSegment(v);
+        }
     })
 }
 
@@ -503,30 +550,37 @@ pub(crate) fn install_checkbox_checked_bind(
     el: &CocoaElement,
     bound: BoundChecked,
 ) -> RenderEffect<()> {
+    use objc2_app_kit::{
+        NSButton, NSControlStateValueOff, NSControlStateValueOn,
+    };
+    // Checkboxes are NSButtons configured with .switch type.
+    let button = typed_view::<NSButton>(el, "install_checkbox_checked_bind");
+
     // Outgoing: user clicks → read button state → push to signal.
-    // NSButton's action target/action fires AFTER the state has been
-    // updated by AppKit's click handling, so `el.checked()` returns
-    // the new state.
-    use objc2_app_kit::{NSButton, NSControlStateValueOn};
+    // NSButton's target/action fires AFTER the state has been
+    // updated by AppKit's click handling, so `state()` returns the
+    // new value.
     let mut setter = bound.setter;
-    // Retained<NSView> capture; see `install_stepper_value_bind`.
-    let view_for_click = el.ns_view_retained();
+    let button_out = button.clone();
     el.on_click(move || {
-        let any: &objc2::runtime::AnyObject = (&*view_for_click).as_ref();
-        if let Some(b) = any.downcast_ref::<NSButton>() {
-            setter(b.state() == NSControlStateValueOn);
-        }
+        setter(button_out.state() == NSControlStateValueOn);
     });
 
-    // Incoming: signal change → set button state.
-    // set_bool_attribute diffs internally so a no-op write (e.g. the
-    // Effect re-running after the click → setter cycle wrote back the
-    // value the button already shows) doesn't cause a redraw.
+    // Incoming: signal change → set button state. Diff before
+    // writing — the Effect can re-run after the click → setter
+    // cycle wrote back the same value, and a redundant
+    // setState() would trigger an unwanted redraw.
     let getter = bound.getter;
-    let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_bool_attribute(BoolAttr::Checked, v);
+        let new_state = if v {
+            NSControlStateValueOn
+        } else {
+            NSControlStateValueOff
+        };
+        if button.state() != new_state {
+            button.setState(new_state);
+        }
     })
 }
 

@@ -46,6 +46,11 @@ pub const OVERLAY_TAG: isize = -0x1eaf_debe; // arbitrary sentinel
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 static MONITOR_INSTALLED: AtomicBool = AtomicBool::new(false);
 
+// TLS allowed under `MEMORY_POLICY.md` §2 "app-scoped pinning"
+// carve-out: this is a debug-only feature, the overlays live for
+// the app's lifetime, the map never grows beyond one entry per
+// active window, and all access paths use `with_borrow`/`try_with`
+// so shutdown-order drops are safe.
 thread_local! {
     static OVERLAYS: RefCell<Vec<Retained<DebugOverlayView>>> =
         const { RefCell::new(Vec::new()) };

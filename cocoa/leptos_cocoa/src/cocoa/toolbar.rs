@@ -1418,13 +1418,29 @@ pub struct ToolbarHandle(
 
 /// Inner state of a [`ToolbarHandle`] — strong references to the
 /// NSToolbar and its delegate so `insert_item` / `remove_item`
-/// have everything they need to mutate.
+/// have everything they need to mutate. Plus a shared map of
+/// per-item dynamic effects (see [`MEMORY_POLICY.md`] §2 — this
+/// state lives on the wrapper, not in a thread-local sidetable).
 #[derive(Clone)]
 pub(crate) struct ToolbarHandleInner {
     pub(crate) ns_toolbar: objc2::rc::Retained<objc2_app_kit::NSToolbar>,
     pub(crate) delegate:
         objc2::rc::Retained<cocoa_dom::toolbar::ToolbarDelegate>,
     pub(crate) mtm: MainThreadMarker,
+    /// Identifier → effects driving that dynamically-inserted
+    /// item's reactive attrs. Shared across all clones of this
+    /// `Inner` (Rc'd); dies when the last clone dies (i.e. when
+    /// the owning `ToolbarHandle`'s signal slot is disposed by
+    /// its parent Owner).
+    ///
+    /// Per-item entries are populated by `insert_item` and
+    /// removed by `remove_item`; dropping an entry's
+    /// `Vec<RenderEffect<()>>` unsubscribes the per-item effects.
+    pub(crate) dynamic_effects: std::rc::Rc<
+        std::cell::RefCell<
+            std::collections::HashMap<String, Vec<RenderEffect<()>>>,
+        >,
+    >,
 }
 
 impl ToolbarHandle {
@@ -1443,6 +1459,11 @@ impl ToolbarHandle {
                 ns_toolbar: toolbar.ns_toolbar_retained(),
                 delegate: toolbar.delegate_retained(),
                 mtm: toolbar.mtm(),
+                dynamic_effects: std::rc::Rc::new(
+                    std::cell::RefCell::new(
+                        std::collections::HashMap::new(),
+                    ),
+                ),
             },
         )));
     }
@@ -1482,28 +1503,28 @@ impl ToolbarHandle {
             None => return false,
         };
 
-        // Stash the effects so they survive until remove_item
-        // drops them (or until the whole toolbar tears down).
-        DYNAMIC_EFFECTS.with_borrow_mut(|map| {
-            let key = handle_effects_key(&inner.delegate, &identifier);
-            map.insert(key, build.effects);
-        });
-
         // Build a temporary dom::Toolbar wrapper just to call
         // insert_item — it shares the same NSToolbar + delegate
         // retains.
         let temp = ToolbarLens::new(&inner);
-        match temp.insert_item(identifier, registration, index) {
+        // Stash the effects on the handle's shared map BEFORE
+        // calling insert_item, so a successful insert sees them
+        // already in place. On duplicate-identifier failure, roll
+        // back to avoid leaking the entry. (Pre-stashing is also
+        // what guarantees per-item reactive attrs are subscribed
+        // before any reactive read fires.)
+        inner.dynamic_effects.borrow_mut().insert(
+            identifier.clone(),
+            build.effects,
+        );
+        match temp.insert_item(identifier.clone(), registration, index) {
             Ok(()) => true,
             Err(_returned) => {
-                // Roll back the effects entry we just stashed
-                // — the toolbar already had this identifier.
-                DYNAMIC_EFFECTS.with_borrow_mut(|map| {
-                    // We don't have the identifier here anymore;
-                    // skip cleanup. This path means the user passed
-                    // a duplicate identifier — caller error.
-                    let _ = map;
-                });
+                // Roll back the effects entry — the toolbar
+                // already had this identifier; the registration
+                // was rejected, so the effects we just stashed
+                // would never see a remove_item.
+                inner.dynamic_effects.borrow_mut().remove(&identifier);
                 false
             }
         }
@@ -1518,9 +1539,7 @@ impl ToolbarHandle {
             Some(w) => w.take(),
             None => return false,
         };
-        DYNAMIC_EFFECTS.with_borrow_mut(|map| {
-            map.remove(&handle_effects_key(&inner.delegate, identifier));
-        });
+        inner.dynamic_effects.borrow_mut().remove(identifier);
         let temp = ToolbarLens::new(&inner);
         temp.remove_item(identifier)
     }
@@ -1736,24 +1755,15 @@ impl<'a> ToolbarLens<'a> {
 //
 // Effects on dynamically-inserted items can't ride along on
 // `ToolbarState._effects` (that Vec only collects build-time
-// effects). Instead, we stash them in a thread-local map keyed by
-// (delegate-pointer, identifier) — same shape as the menu / event
-// HANDLER_STORE pattern. `remove_item` drops the entry, which
-// unsubscribes the effects.
-
-thread_local! {
-    static DYNAMIC_EFFECTS: std::cell::RefCell<
-        std::collections::HashMap<DynamicEffectKey, Vec<RenderEffect<()>>>
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-type DynamicEffectKey = (usize, String);
-
-fn handle_effects_key(
-    delegate: &objc2::rc::Retained<cocoa_dom::toolbar::ToolbarDelegate>,
-    identifier: &str,
-) -> DynamicEffectKey {
-    let ptr: *const cocoa_dom::toolbar::ToolbarDelegate = &**delegate;
-    (ptr as usize, identifier.to_string())
-}
+// effects). They live instead on
+// `ToolbarHandleInner::dynamic_effects` — a shared
+// `Rc<RefCell<HashMap<String, Vec<RenderEffect<()>>>>>` keyed by
+// identifier. `remove_item` drops the entry; the whole map dies
+// when the `ToolbarHandle`'s signal slot is disposed (i.e. when
+// the surrounding Owner drops).
+//
+// See [`MEMORY_POLICY.md`] §2 — this was previously a thread-local
+// sidetable keyed by ObjC pointer, which violates both the
+// "no new `thread_local!`" rule and the "no sidetables keyed by
+// NSObject pointer" rule.
 

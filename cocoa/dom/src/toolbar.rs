@@ -275,14 +275,32 @@ pub fn toolbar(
     ns_toolbar.setAutosavesConfiguration(false);
 
     let delegate = ToolbarDelegate::new(items, ordered_identifiers, mtm);
-    let proto: &ProtocolObject<dyn NSToolbarDelegate> =
-        ProtocolObject::from_ref(&*delegate);
-    ns_toolbar.setDelegate(Some(proto));
+    // Pool-wrap setDelegate per `MEMORY_POLICY.md` §4 — same
+    // belt-and-braces measure as `NSWindow.setDelegate` and the
+    // text-system fix.
+    objc2::rc::autoreleasepool(|_| {
+        let proto: &ProtocolObject<dyn NSToolbarDelegate> =
+            ProtocolObject::from_ref(&*delegate);
+        ns_toolbar.setDelegate(Some(proto));
+    });
 
     Toolbar {
         ns_toolbar,
         delegate,
         mtm,
+    }
+}
+
+impl Drop for Toolbar {
+    fn drop(&mut self) {
+        // Nil the toolbar's delegate slot before our
+        // `Retained<ToolbarDelegate>` releases — same pattern as
+        // `OpenedWindow::Drop`. NSToolbar holds its delegate
+        // weakly, so this is mostly belt-and-braces, but matches
+        // the policy.
+        if MainThreadMarker::new().is_some() {
+            self.ns_toolbar.setDelegate(None);
+        }
     }
 }
 
