@@ -57,13 +57,13 @@ mod app {
     fn library() -> Vec<LibraryItem> {
         vec![
             LibraryItem { id: 1,  title: "Liked Songs",       subtitle: "Playlist · 511 songs",          cover_idx: 0, opens_to: Page::Playlist },
-            LibraryItem { id: 2,  title: "Discover Weekly",   subtitle: "Playlist · Made for sineltor",  cover_idx: 1, opens_to: Page::Home },
+            LibraryItem { id: 2,  title: "Discover Weekly",   subtitle: "Playlist · Made for you",  cover_idx: 1, opens_to: Page::Home },
             LibraryItem { id: 3,  title: "SEA SHANTIES THAT DROP MY PANTIES", subtitle: "Playlist · Luna Terra", cover_idx: 2, opens_to: Page::Home },
             LibraryItem { id: 4,  title: "Chilled Jazz",      subtitle: "Album · Ramin Djawadi",         cover_idx: 3, opens_to: Page::Home },
             LibraryItem { id: 5,  title: "Westworld: Season 1 (Music from the HBO S…", subtitle: "Album · Ramin Djawadi", cover_idx: 4, opens_to: Page::Home },
             LibraryItem { id: 6,  title: "The Köln Concert",  subtitle: "Album · Keith Jarrett",         cover_idx: 5, opens_to: Page::Home },
             LibraryItem { id: 7,  title: "Between Wind And Water", subtitle: "Album · Steve Tibbetts",  cover_idx: 6, opens_to: Page::Home },
-            LibraryItem { id: 8,  title: "Árstíðir – Árstíðir", subtitle: "Playlist · sineltor",        cover_idx: 7, opens_to: Page::Home },
+            LibraryItem { id: 8,  title: "Árstíðir – Árstíðir", subtitle: "Playlist · Cool dude",        cover_idx: 7, opens_to: Page::Home },
             LibraryItem { id: 9,  title: "Flow",              subtitle: "Playlist · The Longest Johns", cover_idx: 0, opens_to: Page::Home },
             LibraryItem { id: 10, title: "sea shanties you could fight god to", subtitle: "Playlist · 5", cover_idx: 1, opens_to: Page::Home },
             LibraryItem { id: 11, title: "Black Holes and Revelations", subtitle: "Album · Muse",       cover_idx: 5, opens_to: Page::Home },
@@ -536,7 +536,7 @@ mod app {
                         </hstack>
                     </vstack>
 
-                    // "Made For sineltor" section — horizontally
+                    // "Made For you" section — horizontally
                     // scrollable strip of daily-mix cards.
                     <vstack gap=12.0>
                         <hstack
@@ -545,7 +545,7 @@ mod app {
                         >
                             <vstack gap=2.0>
                                 <label text_color=TXT_SECONDARY font_size=11.0>"Made For"</label>
-                                <label text_color=TXT_PRIMARY font_size=22.0 bold=true>"sineltor"</label>
+                                <label text_color=TXT_PRIMARY font_size=22.0 bold=true>"you"</label>
                             </vstack>
                             <label text_color=TXT_SECONDARY font_size=11.0 bold=true>"Show all"</label>
                         </hstack>
@@ -707,7 +707,7 @@ mod app {
                                 multiline=true
                             >"Liked Songs"</label>
                             <hstack gap=6.0 align=AlignItems::Center>
-                                <label text_color=TXT_PRIMARY font_size=12.0 bold=true>"sineltor"</label>
+                                <label text_color=TXT_PRIMARY font_size=12.0 bold=true>"you"</label>
                                 <label text_color=TXT_PRIMARY font_size=12.0>"\u{00B7} 511 songs, 31 hr 33 min"</label>
                             </hstack>
                         </vstack>
