@@ -21,7 +21,7 @@ bespoke retain logic for a new control, the rules below are wrong
 | Rust scalar | borrow checker | scope end / explicit drop |
 | `Rc` / `Arc` | reference count | last clone drops |
 | ObjC `Retained<T>` | `[obj retain]` / `[obj release]` | refcount → 0 → `dealloc` |
-| Autorelease pool | `[obj autorelease]` adds a pool retain | pool drains |
+| Autorelease pool | `[obj autorelease]` adds a deferred `release` to the pool | pool drains (which sends `release` to each pooled object) |
 | reactive_graph arena / Owner | `Owner` parent/child tree | `Owner::drop` removes its arena entries |
 
 Each system thinks it owns the value. The job of this codebase is to
@@ -34,7 +34,10 @@ For our purposes:
   bundles, Effects — these die when their last Rust handle drops.
 - **ObjC retains are scaffolding.** They keep AppKit/UIKit happy
   while Rust holds the master reference. When the Rust master drops,
-  ObjC must also release.
+  ObjC must also release. `objc2::rc::Retained<T>` represents a `+1`
+  owned reference (per the standard ObjC ownership rules — methods
+  named `alloc`/`new`/`copy`/`mutableCopy` return owned, others
+  return autoreleased). Dropping a `Retained` calls `release` once.
 - **Autorelease pools are noise we have to actively suppress.** They
   prolong lifetimes opaquely. Wherever they matter, drain them
   explicitly.
@@ -62,13 +65,31 @@ this doc.
 
 - **`thread_local!` for new state.** TLS shutdown order is unspecified
   and we've already been bitten by the resulting `Drop` panics. The
-  only TLS that's allowed is what vendored reactive_graph internals
-  already use (`Owner::current`, the active subscriber). The
-  framework should not add more.
+  only TLS that's allowed is:
+  - what vendored reactive_graph internals already use
+    (`Owner::current`, the active subscriber), and
+  - the app-scoped pinning carve-out described later — a single
+    value or fixed-size set that lives until process exit
+    (e.g. `cocoa_dom::debug_overlay::OVERLAYS`,
+    `ios_dom::app::BUILDER`).
+
+  A TLS that grows during program execution (a map keyed by ObjC
+  pointers, a list of per-element handlers, anything resembling a
+  registry) is **never** OK. Such state belongs on a real Rust
+  owner — the appropriate `NodeHandlers` / `LayoutTree` /
+  per-wrapper field per the table above. If your case doesn't fit
+  one of those slots, the slot is missing; add it. Don't reach for
+  TLS as the escape hatch.
 - **ObjC associated objects (`objc_setAssociatedObject`).** We tried;
-  they tie handler lifetime to the NSView ObjC refcount, which AppKit
-  bumps in places we don't control (autorelease pools, undo manager,
-  focus chain, gesture-recognizer lists). The resulting leaks are
+  they tie handler lifetime to the NSView's ObjC `dealloc`. AppKit
+  routinely returns NSViews autoreleased from internal getters
+  (`subviews`, `documentView`, hit-testing, drawing-rect queries),
+  which delays NSView `dealloc` until the active autorelease pool
+  drains — sometimes never within a single test run. Associated
+  objects then survive past their logical owner. Documented Apple
+  policies (e.g. `firstResponder` is `weak`, gesture recognizers
+  hold their view weakly) don't save you here; the autorelease-pool
+  delay alone is enough to produce the bug. The resulting leaks are
   invisible until a fuzzer or instrument catches them.
 - **Sidetables keyed by ObjC pointer.** Same failure mode plus the
   pointer can be reused after dealloc.
@@ -140,35 +161,50 @@ in a delegate closure is fine and necessary.
 
 This is the rule that fixed P1.
 
-> Any call that registers our Rust-owned `Retained` with an AppKit or
-> UIKit subsystem must be wrapped in a tight
-> `objc2::rc::autoreleasepool`.
+> Wrap calls to `NSText.setDelegate:` / `NSTextView.setDelegate:`
+> / `UITextView.setDelegate:` (and any other setup call where you
+> register a Rust-owned `Retained` and can't verify the resulting
+> refcount math) in a tight `objc2::rc::autoreleasepool`.
 
-The specific calls that need this:
+### What Apple documents
 
-- `NSText.setDelegate:` / `UITextView.setDelegate:` (and other text
-  delegate calls — `NSTextView`, `NSTextStorage`).
-- Any `NSNotificationCenter.addObserver:` or its UIKit equivalent.
-- Any setup call documented as "the receiver creates the text
-  system" or "first call initialises shared state" — AppKit
-  routinely autoreleases extra retains during these lazy setups.
+These delegate properties are weak. Per the Apple docs:
 
-### Why
+- `NSText.delegate` — `unowned(unsafe)` (legacy non-zeroing weak).
+- `NSTextView.delegate` — `weak` (zeroing).
+- `NSTextField.delegate` — `weak`.
+- `UITextView.delegate` — `weak`.
+- `NSControl.target`, `NSMenuItem.target`, `NSToolbarItem.target` —
+  `weak`.
+- `UIControl.addTarget:action:forControlEvents:` — explicitly "does
+  not retain the object in the `target` parameter."
 
-AppKit's `setDelegate:` (and several related calls) does not just
-store our pointer as a weak ref. The first time per pool scope, it
-also walks an internal setup path that briefly retains+autoreleases
-the delegate. The autoreleased retain sits in the *outer* pool until
-that pool drains. Our `Retained<TextViewDelegate>` is no longer the
-only strong reference — there's an invisible second one.
+By Apple's documented semantics, none of these registration calls
+should retain the delegate / target. Nothing in the docs predicts
+the bug below.
 
-When we later drop our `Retained`, the ObjC refcount goes from 2 to
-1, not to 0. `dealloc` doesn't fire. The delegate stays alive (and
-keeps holding its captured handler `SharedTextViewHandlers`) until
-the outer pool drains — which may be never in a test or a fuzzer.
+### What we actually observe
 
-This shows up as a "leak" in delegate live-counters even though every
-Rust reference has been dropped on time.
+For `NSTextView.setDelegate:` specifically: the FIRST call within an
+autoreleasepool scope leaves the delegate with `retainCount == 2`
+immediately after `setDelegate` returns. Subsequent calls in the same
+pool scope show `retainCount == 1` (matching the documented `weak`
+behavior). Verified empirically with `[delegate retainCount]`
+instrumentation; see commit history for the P1 investigation.
+
+The most likely cause is AppKit's text-system lazy initialisation —
+the first NSTextView in a given pool scope triggers setup that
+briefly retains and autoreleases the delegate. Subsequent text views
+reuse the already-initialised shared state and don't trip the path.
+This is undocumented; treat as an implementation quirk.
+
+The effect: when we later drop our `Retained<TextViewDelegate>`, the
+ObjC refcount goes from 2 to 1, not to 0. `dealloc` doesn't fire.
+The delegate stays alive (and keeps holding its captured handler
+`SharedTextViewHandlers`) until the *outer* autorelease pool drains
+— which may be far in the future (test end, process exit). It shows
+up as a "leak" in delegate live-counters even though every Rust
+reference has been dropped on time.
 
 ### How
 
@@ -185,15 +221,29 @@ let delegate = objc2::rc::autoreleasepool(|_| {
 slot.text_view_delegate = Some(delegate);
 ```
 
-Returning `d` out of the pool is correct: the `Retained<…>` we hold
-is a real refcount-1 retain, separate from the autoreleased copy.
-The pool drains the autoreleased copy as the closure exits.
+Returning `d` out of the pool is correct ObjC semantics: our
+`Retained<…>` is a real `+1` owned reference, separate from any
+autoreleased entry. When the inner pool drains on closure exit, it
+sends `release` to its autoreleased entries — bringing the
+transient extra retain to 0 — but our `Retained` is still alive at
+refcount 1. The pool boundary doesn't deallocate the owned object.
 
-`NSControl` / `NSButton`'s `setTarget:` does **not** need this — it's
-a pure pointer-store with no internal text-system lazy-init. The
-fuzzer confirms button handlers don't leak. But if in doubt, wrap it
-anyway. The cost of a redundant `autoreleasepool` is one runtime
-push+pop; the cost of forgetting one is a hours-long bug hunt.
+### When to apply this rule beyond the known case
+
+- `NSControl` / `NSButton.setTarget:` does **not** need it. We
+  verified with the fuzzer that button handlers don't leak. It's a
+  pure pointer-store with no text-system lazy-init.
+- `NSNotificationCenter.addObserver:` doesn't appear to need it
+  either. On iOS 9 / macOS 10.11 and later, observers are held
+  weakly and auto-cleaned on dealloc (per Apple docs); we haven't
+  observed a leak there. Not pool-wrapped today.
+- For any new AppKit/UIKit registration call where you store the
+  returned `Retained` long-term, run a small leak test before
+  trusting it. If `retainCount` immediately after the call is more
+  than you can explain, wrap in a tight pool.
+
+The cost of a redundant `autoreleasepool` is one runtime push+pop;
+the cost of forgetting one is hours of bug hunting.
 
 ---
 
@@ -352,11 +402,12 @@ thread_local! { static HANDLERS: RefCell<HashMap<*mut NSView, …>> = … }
 node.handlers().borrow_mut().my_field = Some(…)
 ```
 
-### c) Forgotten autoreleasepool around setDelegate
+### c) Forgotten autoreleasepool around `NSTextView.setDelegate`
 
 ```rust
-// BAD: AppKit autoreleases an extra retain on the delegate;
-// it survives our Retained::drop
+// BAD: empirically, the first setDelegate per pool scope leaves an
+// extra retain on the delegate. It survives our Retained::drop and
+// the delegate stays alive until the outer pool drains.
 tv.setDelegate(Some(proto));
 slot.text_view_delegate = Some(delegate);
 ```
@@ -369,6 +420,8 @@ let delegate = objc2::rc::autoreleasepool(|_| {
 });
 slot.text_view_delegate = Some(delegate);
 ```
+
+See §4 for the empirical-vs-documented distinction.
 
 ### d) New thread_local for framework state
 
