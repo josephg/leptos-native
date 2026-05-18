@@ -22,10 +22,7 @@ fn fresh_tree() -> TreeRef {
 fn dirty_for(tree: &TreeRef, el: &Element) -> bool {
     let lh = el
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("element has no LayoutHandle — wasn't registered");
     tree.dirty(lh.node_id)
 }
@@ -136,10 +133,7 @@ fn set_style_width_marks_node_dirty() {
 fn child_count(tree: &TreeRef, parent: &Element) -> usize {
     let lh = parent
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("element has no LayoutHandle");
     tree.children(lh.node_id).len()
 }
@@ -184,9 +178,9 @@ fn insert_child_at_is_idempotent() {
     );
 
     // Order should be [b, a] now.
-    let lh = root.as_node().layout_slot().borrow().handle.clone().unwrap();
-    let a_id = a.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
-    let b_id = b.as_node().layout_slot().borrow().handle.clone().unwrap().node_id;
+    let lh = root.as_node().mounted_handle().unwrap();
+    let a_id = a.as_node().tree_id().unwrap().1;
+    let b_id = b.as_node().tree_id().unwrap().1;
     assert_eq!(
         *tree.children(lh.node_id),
         [b_id, a_id],

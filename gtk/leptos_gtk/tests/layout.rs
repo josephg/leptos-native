@@ -58,10 +58,7 @@ where
 {
     let lh = root
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("root not registered");
     let tree = lh.tree.clone();
     let mut out = Vec::new();
@@ -160,13 +157,7 @@ fn vstack_label_plus_hstack_has_full_height() {
                     .child(button().title("+1")),
             );
         with_mounted_view(view, (320.0, 200.0), |root| {
-            let lh = root
-                .as_node()
-                .layout_slot()
-                .borrow()
-                .handle
-                .clone()
-                .unwrap();
+            let lh = root.as_node().mounted_handle().unwrap();
             // First child of the content_root is the outer vstack.
             let kids = lh.tree.tree.borrow().children(lh.node_id).unwrap();
             assert!(!kids.is_empty(), "content_root has no children");

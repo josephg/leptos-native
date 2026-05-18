@@ -128,16 +128,15 @@ fn synthesise_parent_element(
 ) -> Element {
     use ios_dom::layout::LayoutHandle;
 
-    let parent_handle: Option<LayoutHandle> = {
-        let layout = before.layout_slot().borrow();
-        layout.handle.as_ref().and_then(|h| {
+    let parent_handle: Option<LayoutHandle> = before
+        .mounted_handle()
+        .and_then(|h| {
             let parent_id = h.tree.parent(h.node_id)?;
             Some(LayoutHandle {
                 tree: h.tree.clone(),
                 node_id: parent_id,
             })
-        })
-    };
+        });
 
     let parent_node = match parent_handle {
         Some(handle) => Node::from_view_with_handle(

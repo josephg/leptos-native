@@ -36,7 +36,7 @@ fn fresh_tree(root: &Element) -> layout::TreeRef {
 }
 
 fn style_of(el: &Element) -> renderer::Style {
-    el.as_node().layout_slot().borrow().style.clone()
+    el.as_node().with_style(|s| s.clone())
 }
 
 /// Wrap the test body in a fresh reactive `Owner`. `RenderEffect`s
@@ -245,8 +245,17 @@ fn reactive_width_drives_size_width() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
+        // Use a parent root so `el` is a non-root child. compute_layout
+        // overwrites the ROOT's `style.size` to fill the available
+        // space (see cocoa/dom/src/layout.rs `compute_layout_inner`).
+        // A non-root child keeps its user-set width through the
+        // pumped relayout pass — which is what we're actually trying
+        // to test here (the reactive setter wires correctly).
+        let root = Element::create("vstack");
+        let tree = layout::new_tree();
+        layout::register_in_tree(root.as_node(), &tree);
         let el = Element::create("view");
-        let _tree = fresh_tree(&el);
+        layout::attach_child(root.as_node(), el.as_node());
 
         let w = RwSignal::new(Dim::Px(50.0));
         let mut attrs = LayoutAttrs::default();

@@ -1,16 +1,18 @@
 //! Node, Element, Text, Placeholder — the DOM-shaped wrappers over
 //! `gtk::Widget`.
 //!
-//! Each Node holds a SendWrapped `gtk::Widget` plus a shared layout
-//! slot ([`NodeLayout`], stored in `Rc<RefCell<...>>` shared across
-//! Node clones). The slot has two pieces:
+//! Each `Node` is a single `Rc<NodeInner>` carrying:
+//!   * the `gtk::Widget` (always present from creation),
+//!   * a `RefCell<NodeState>` describing whether the node's style
+//!     lives locally (`Unmounted`) or in the arena's `NodeData`
+//!     (`Mounted` / `MountedBorrowed`).
 //!
-//!  - the node's *current* style (Taffy [`Style`]), mutated by setters
-//!    and used as the seed when the node is registered in a tree;
-//!  - an `Option<LayoutHandle>` — `Some` once the node has been
-//!    registered into a [`TaffyTree`] (i.e. mounted somewhere under a
-//!    [`Window`](crate::window)). While `None`, style mutations stay
-//!    local; once `Some`, they're also pushed into the tree.
+//! Style mutations made before mount are buffered on the `Unmounted`
+//! variant; on `mount_into_tree` they migrate into the arena. After
+//! mount, accessors (`with_style`, `tree_id`) read/write through the
+//! arena via the `(tree, id)` key. Mirrors the cocoa port's
+//! ownership story — see `cocoa/dom/src/node.rs` for the longer
+//! rationale.
 //!
 //! Trees themselves are owned by their [`Window`]; each LayoutHandle
 //! keeps an Rc to its tree.
@@ -22,7 +24,7 @@
 //! flow through tachys/reactive_graph's generic plumbing, with a
 //! runtime panic if accessed off-main.
 
-use crate::layout::{LayoutHandle, NodeLayout, Style};
+use crate::layout::{LayoutHandle, NodeId, Style, TreeRef};
 use crate::taffy_layout::TaffyLayout;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -92,19 +94,59 @@ pub enum NodeKind {
 }
 
 /// The core node wrapper.
+///
+/// `Node` is `Clone` (cheap Rc bump) and `Send + 'static` (via
+/// [`SendWrapper`]). Touched only from the main thread; off-main
+/// access panics from the SendWrapper runtime check.
 #[derive(Clone)]
 pub struct Node {
-    widget: SendWrapper<gtk4::Widget>,
-    layout: SendWrapper<Rc<RefCell<NodeLayout>>>,
+    inner: SendWrapper<Rc<NodeInner>>,
+}
+
+pub(crate) struct NodeInner {
+    /// Top-level widget. Always present from creation; arena entry
+    /// (when mounted) holds its own clone (gtk4::Widget is gobject
+    /// refcount-shared, so cloning is cheap).
+    widget: gtk4::Widget,
     kind: NodeKind,
+    state: RefCell<NodeState>,
+}
+
+pub(crate) enum NodeState {
+    /// Style owned locally; not in any tree.
+    Unmounted { style: Style },
+    /// State lives in `tree.nodes[id]`; this Node carries the key.
+    Mounted { tree: TreeRef, id: NodeId },
+    /// Wraps an existing arena entry but does NOT own it — Drop is
+    /// a no-op. Used by `Node::from_widget_with_handle` to
+    /// synthesise a parent / root wrapper for a widget whose Node is
+    /// already in the tree under a different owner.
+    MountedBorrowed { tree: TreeRef, id: NodeId },
+}
+
+impl Drop for NodeInner {
+    fn drop(&mut self) {
+        let state = std::mem::replace(
+            &mut *self.state.borrow_mut(),
+            NodeState::Unmounted { style: Style::default() },
+        );
+        if let NodeState::Mounted { tree, id } = state {
+            tree.remove(id);
+        }
+        // MountedBorrowed and Unmounted: nothing to do.
+    }
 }
 
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let registered = matches!(
+            &*self.inner.state.borrow(),
+            NodeState::Mounted { .. } | NodeState::MountedBorrowed { .. }
+        );
         f.debug_struct("Node")
-            .field("kind", &self.kind)
-            .field("type", &self.widget.type_().name())
-            .field("registered", &self.layout.borrow().handle.is_some())
+            .field("kind", &self.inner.kind)
+            .field("type", &self.inner.widget.type_().name())
+            .field("registered", &registered)
             .finish()
     }
 }
@@ -138,20 +180,19 @@ impl Node {
     where
         W: IsA<gtk4::Widget>,
     {
-        Node {
-            widget: SendWrapper::new(widget.upcast()),
-            layout: SendWrapper::new(Rc::new(RefCell::new(
-                NodeLayout::new(default_style),
-            ))),
+        let inner = NodeInner {
+            widget: widget.upcast(),
             kind,
-        }
+            state: RefCell::new(NodeState::Unmounted { style: default_style }),
+        };
+        Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
     /// Build a Node wrapping `widget` with a pre-existing
     /// [`LayoutHandle`] — used by `mount_before` in
     /// `leptos_gtk::Dom` to synthesise a parent Element wrapper for
-    /// a widget whose Node we don't have, by borrowing the parent's
-    /// LayoutHandle from a sibling node we do have.
+    /// a widget whose Node we don't have. The resulting Node is
+    /// **borrowed**: its `Drop` does NOT remove the arena entry.
     pub fn from_widget_with_handle<W>(
         widget: W,
         kind: NodeKind,
@@ -160,45 +201,131 @@ impl Node {
     where
         W: IsA<gtk4::Widget>,
     {
-        let mut layout = NodeLayout::new(Style::default());
-        layout.handle = Some(handle);
-        Node {
-            widget: SendWrapper::new(widget.upcast()),
-            layout: SendWrapper::new(Rc::new(RefCell::new(layout))),
+        let inner = NodeInner {
+            widget: widget.upcast(),
             kind,
-        }
+            state: RefCell::new(NodeState::MountedBorrowed {
+                tree: handle.tree,
+                id: handle.node_id,
+            }),
+        };
+        Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
     /// Borrow the underlying `gtk::Widget`. Main-thread only.
     pub fn widget(&self) -> &gtk4::Widget {
-        &self.widget
+        &self.inner.widget
     }
 
-    /// Take the wrapped `gtk::Widget`. Main-thread only.
+    /// Get a fresh `gtk4::Widget` clone (cheap — gobject refcount).
+    /// Provided as an alias for the legacy `into_widget` consumer
+    /// API; `NodeInner` has a `Drop` impl, so we can't actually move
+    /// out of it. Callers that need ownership of a widget reference
+    /// should just clone.
     pub fn into_widget(self) -> gtk4::Widget {
-        self.widget.take()
+        self.inner.widget.clone()
     }
 
     pub fn kind(&self) -> NodeKind {
-        self.kind
+        self.inner.kind
     }
 
-    /// Borrow the (interior-mutable) layout slot.
-    pub fn layout_slot(&self) -> &RefCell<NodeLayout> {
-        &**self.layout
+    // ---- New accessor surface --------------------------------------
+
+    /// Borrow the node's [`Style`] for read.
+    pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
+        match &*self.inner.state.borrow() {
+            NodeState::Unmounted { style } => f(style),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let style = tree.style(*id).unwrap_or_default();
+                f(&style)
+            }
+        }
+    }
+
+    /// Mutate the node's [`Style`]. When mounted, the change is
+    /// pushed straight into the tree (which marks the node dirty).
+    pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
+        let mut state = self.inner.state.borrow_mut();
+        match &mut *state {
+            NodeState::Unmounted { style } => f(style),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let mut style = tree.style(*id).unwrap_or_default();
+                let r = f(&mut style);
+                tree.set_style(*id, style);
+                r
+            }
+        }
+    }
+
+    /// Returns the `(TreeRef, NodeId)` pair if this Node has been
+    /// registered in a layout tree, otherwise `None`.
+    pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
+        match &*self.inner.state.borrow() {
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                Some((tree.clone(), *id))
+            }
+            NodeState::Unmounted { .. } => None,
+        }
+    }
+
+    /// Cheap accessor for the LayoutHandle (re-exposed for tests).
+    pub fn mounted_handle(&self) -> Option<LayoutHandle> {
+        self.tree_id().map(|(tree, node_id)| LayoutHandle { tree, node_id })
+    }
+
+    /// Mount the node into `tree`: moves its locally-held style into
+    /// a fresh arena entry. Transitions the Node from
+    /// [`NodeState::Unmounted`] to [`NodeState::Mounted`]. No-op if
+    /// already mounted.
+    pub(crate) fn mount_into_tree(&self, tree: &TreeRef) -> NodeId {
+        let mut state = self.inner.state.borrow_mut();
+        match &*state {
+            NodeState::Mounted { id, .. } => return *id,
+            NodeState::MountedBorrowed { id, .. } => return *id,
+            NodeState::Unmounted { .. } => {}
+        }
+        let prev = std::mem::replace(
+            &mut *state,
+            NodeState::Unmounted { style: Style::default() },
+        );
+        let style = match prev {
+            NodeState::Unmounted { style } => style,
+            _ => unreachable!(),
+        };
+        let id = tree.new_leaf(style, self.inner.widget.clone(), (), ());
+        *state = NodeState::Mounted { tree: tree.clone(), id };
+        id
+    }
+
+    /// Internal: drop this node out of its tree (if mounted). Used
+    /// by [`Node::teardown`] for explicit early removal.
+    pub(crate) fn unmount_from_tree(&self) {
+        let mut state = self.inner.state.borrow_mut();
+        let prev = std::mem::replace(
+            &mut *state,
+            NodeState::Unmounted { style: Style::default() },
+        );
+        if let NodeState::Mounted { tree, id } = prev {
+            tree.remove(id);
+        }
+        // MountedBorrowed and Unmounted: no-op.
     }
 
     /// Pointer-equality check (same underlying gobject).
     pub fn ptr_eq(&self, other: &Node) -> bool {
-        self.widget.as_ptr() == other.widget.as_ptr()
+        self.inner.widget.as_ptr() == other.inner.widget.as_ptr()
     }
 
     /// Drop the resources owned by this node. Detaches Taffy entry
     /// and unparents the widget. Safe to call repeatedly.
     pub fn teardown(&self) {
         crate::layout::drop_node(self);
-        if self.widget.parent().is_some() {
-            self.widget.unparent();
+        if self.inner.widget.parent().is_some() {
+            self.inner.widget.unparent();
         }
     }
 }

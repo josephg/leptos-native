@@ -600,12 +600,16 @@ preference for the use case:
 
 - **Per-NSObject sideband state for a Node-backed view → field on
   `NodeHandlers`** (cocoa: `cocoa_dom::event::NodeHandlers`, iOS:
-  `ios_dom::event::IosNodeHandlers`). Each `Node` carries a
-  `Rc<NodeHandlersBundle>` field; install functions push
-  `Retained<ActionTarget>` / delegate references into that
-  RefCell. Lifecycle = Rust Node lifecycle — when the last clone
-  of the Node drops, the bundle drops, the handler ObjC objects
-  deallocate, and the Rust closures release.
+  `ios_dom::event::IosNodeHandlers`). Each `Node` is a
+  `Rc<NodeInner>` whose `NodeState` carries the handlers locally
+  while `Unmounted`; on mount, the handlers migrate into the
+  arena's `NodeData::handlers` slot. Install functions go through
+  `node.with_handlers_mut(|h| ...)` which routes to whichever
+  storage is current. Lifecycle = arena entry lifecycle: when the
+  last Node clone drops, `NodeInner::Drop` calls `tree.remove(id)`,
+  which drops `NodeData::handlers`, fires `NodeHandlers::Drop`
+  (which nils target/delegate on the still-live view), then
+  releases the handler retains.
 
   **Don't use ObjC associated objects** for this. We tried — they
   tie handler lifetime to the NSView/UIView's ObjC reference
@@ -617,11 +621,23 @@ preference for the use case:
 
   **Avoid capturing `Element` clones in callback closures stored
   on the same Node's handlers** — that forms an Rc cycle (closure
-  → captured Element → Rc<NodeHandlersBundle> → Retained<handler>
-  → ivars → closure). Capture `Retained<NSView>` /
-  `Retained<NSControl>` (or the equivalent subclass type)
+  → captured Element → Rc<NodeInner> → arena entry → handlers →
+  Retained<handler> → ivars → closure). Capture `Retained<NSView>`
+  / `Retained<NSControl>` (or the equivalent subclass type)
   instead — those don't pull the Rust Node into the cycle. See
   `Node::ns_view_retained()` / `Element::ns_view_retained()`.
+
+  **Text-field/text-view delegate drop ordering**: the cocoa and
+  iOS `NodeHandlers::Drop` impls explicitly release the
+  text-field / text-view delegate `Retained`s BEFORE calling
+  `disconnect_view_handlers` (which sends `setDelegate(None)`).
+  AppKit/UIKit's text-system pins an extra retain on the delegate
+  the moment that setter clears the property; releasing our
+  Retained afterwards leaves the delegate stuck at retainCount=1.
+  Drop order is load-bearing — see the comments in
+  `cocoa/dom/src/event.rs::NodeHandlers::drop`. Action targets /
+  hover trackers don't have this issue; only the text delegates
+  do.
 
 - **Per-NSObject state for non-Node wrappers** (NSMenuItem,
   NSToolbarItem): give the Rust wrapper struct a field for the

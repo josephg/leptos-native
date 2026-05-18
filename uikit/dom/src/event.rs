@@ -1,13 +1,18 @@
 //! Event handlers — bridging UIKit's target/action and delegate
 //! patterns into Rust closures.
 //!
-//! Design (mirror of `cocoa_dom::event`): each `Node` carries an
-//! `IosNodeHandlers` field that holds Retained references to every
-//! `ActionTarget` / `TextViewDelegate` installed on its view.
-//! Lifecycle is pure Rust: when the last clone of the Node drops,
-//! the bundle drops; its Drop nils out `setDelegate` /
-//! `removeAllTargets` on the view first so any lingering AppKit
-//! retain can't dispatch into freed closures.
+//! Design (mirror of `cocoa_dom::event`): each `Node` either holds
+//! `IosNodeHandlers` locally (in `NodeState::Unmounted`) or moves
+//! it into the arena's `NodeData::handlers` slot on mount. Either
+//! way there's exactly one `IosNodeHandlers` per node — no Rc
+//! sharing between Node clones; Node itself is a `Rc<NodeInner>`
+//! and the inner owns the state. When the last Node clone drops,
+//! `NodeInner::Drop` calls `tree.remove(id)` if mounted (which
+//! drops the arena's `NodeHandlers` and triggers
+//! `IosNodeHandlers::Drop`) or drops the local handlers directly.
+//! Drop nils out `setDelegate` / `removeAllTargets` on the view
+//! BEFORE releasing the delegate / target retains, so any lingering
+//! UIKit retain can't dispatch into freed memory.
 //!
 //! - `ActionTarget` ObjC class holds a Rust closure as an ivar and
 //!   exposes one selector (`actionFired:`) that invokes it. UIControl
@@ -34,7 +39,6 @@ use objc2_foundation::NSObjectProtocol;
 use send_wrapper::SendWrapper;
 use std::{
     cell::RefCell,
-    rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -71,51 +75,62 @@ impl Drop for LiveTracker {
 // NodeHandlers — Rust-side retain for everything installed on a Node
 // ---------------------------------------------------------------------
 
-/// Per-Node handler/delegate storage. Held as
-/// `SendWrapper<Rc<IosNodeHandlersBundle>>` on [`crate::Node`] so
-/// every clone of a Node sees the same handler set, and the
-/// retains release when the last clone drops.
+/// Per-Node handler/delegate storage. Lives in
+/// [`crate::node::NodeState::Unmounted`] while the node is
+/// free-floating; on mount it migrates into the arena's
+/// `NodeData::handlers` slot.
 ///
 /// UIControl supports multiple target/action pairs per event mask,
 /// so `action_targets` is a `Vec` rather than a single slot.
+///
+/// The `view` field is a back-reference to the UIView whose target
+/// / delegate slots the handlers populated. Set via
+/// [`Self::attach_view`]; if `None` the Drop impl is a no-op.
 #[derive(Default)]
 pub struct IosNodeHandlers {
+    view: Option<SendWrapper<Retained<UIView>>>,
     pub(crate) action_targets: Vec<Retained<ActionTarget>>,
+    /// **Released explicitly in `Drop` BEFORE `disconnect_view_handlers`
+    /// runs** — same workaround as cocoa's text-view delegate; see
+    /// the Drop impl for the rationale.
     pub(crate) text_view_delegate: Option<Retained<TextViewDelegate>>,
     /// Gesture-recognizer targets installed by `on_tap_gesture`.
     pub(crate) gesture_targets: Vec<Retained<ActionTarget>>,
 }
 
-/// Wraps [`IosNodeHandlers`] together with a `Retained<UIView>`
-/// back-reference. Drop runs when the last clone of the owning
-/// Node drops — it nils out `setDelegate` / `removeAllTargets` on
-/// the view BEFORE the handler retains release, so any AppKit
-/// retain that outlives the Node (autorelease pool, gesture
-/// recognizer list, etc.) can't dispatch into freed memory.
-pub struct IosNodeHandlersBundle {
-    view: SendWrapper<Retained<UIView>>,
-    handlers: RefCell<IosNodeHandlers>,
-}
-
-impl IosNodeHandlersBundle {
-    pub fn new_shared(view: Retained<UIView>) -> Rc<IosNodeHandlersBundle> {
-        Rc::new(IosNodeHandlersBundle {
-            view: SendWrapper::new(view),
-            handlers: RefCell::new(IosNodeHandlers::default()),
-        })
-    }
-
-    pub fn handlers(&self) -> &RefCell<IosNodeHandlers> {
-        &self.handlers
+impl IosNodeHandlers {
+    /// Register the UIView whose target/delegate slots this struct
+    /// populated. Drop will nil those slots before releasing the
+    /// retain fields. Idempotent: a second call is a no-op.
+    pub fn attach_view(&mut self, view: Retained<UIView>) {
+        if self.view.is_none() {
+            self.view = Some(SendWrapper::new(view));
+        }
     }
 }
 
-impl Drop for IosNodeHandlersBundle {
+impl Drop for IosNodeHandlers {
     fn drop(&mut self) {
-        if !self.view.valid() {
+        // Drop the UITextView delegate explicitly BEFORE
+        // disconnect_view_handlers calls setDelegate(None). See the
+        // cocoa equivalent (cocoa/dom/src/event.rs NodeHandlers::drop)
+        // for the long-form rationale — empirically the delegate
+        // ends up at retainCount=1 if released after the disconnect
+        // call clears the view's slot.
+        let _tv = self.text_view_delegate.take();
+        drop(_tv);
+
+        let Some(view) = self.view.as_ref() else {
+            return;
+        };
+        if !view.valid() {
+            // Off-main drop — can't touch UIKit. Leak rather than
+            // abort.
             return;
         }
-        disconnect_view_handlers(&self.view);
+        disconnect_view_handlers(view);
+        // Field-drop order then releases the remaining ActionTarget
+        // / gesture-target retains.
     }
 }
 
@@ -249,7 +264,11 @@ fn on_control_action_with_events(
             events,
         );
     }
-    node.handlers().borrow_mut().action_targets.push(target);
+    let view_retained = node.ui_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.action_targets.push(target);
+    });
 }
 
 /// Wire the given closure to fire when a UIControl's primary action
@@ -329,7 +348,11 @@ pub fn on_tap_gesture(node: &crate::Node, cb: impl FnMut() + 'static) {
     // ActionTarget alive via the node's handler storage. Drop of
     // the node's bundle clears these via field drop order; the
     // recognizer itself dies with the view shortly after.
-    node.handlers().borrow_mut().gesture_targets.push(target);
+    let view_retained = node.ui_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.gesture_targets.push(target);
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -492,9 +515,13 @@ fn ensure_text_view_entry(
     let mtm = MainThreadMarker::new()
         .expect("text-view event installs must run on the main thread");
 
-    let mut slot = node.handlers().borrow_mut();
-    if let Some(d) = slot.text_view_delegate.as_ref() {
-        return d.ivars().handlers.clone();
+    // Fast path: reuse existing delegate if installed.
+    if let Some(existing) = node.with_handlers_mut(|h| {
+        h.text_view_delegate
+            .as_ref()
+            .map(|d| d.ivars().handlers.clone())
+    }) {
+        return existing;
     }
     let handlers: SharedTextViewHandlers = Default::default();
     // Wrap delegate creation + setDelegate in a tight
@@ -503,7 +530,7 @@ fn ensure_text_view_entry(
     // extra retain on the delegate the first time it sets up the
     // text-system shared state for a process scope. Without an
     // immediate drain, the first-ever text_view's delegate stays
-    // alive past `NodeHandlersBundle::Drop` for the lifetime of
+    // alive past `IosNodeHandlers::Drop` for the lifetime of
     // the outer autoreleasepool — surfacing as a deferred leak in
     // unit tests / fuzzers even though every Rust-side reference
     // has been dropped. See the matching block in
@@ -516,7 +543,11 @@ fn ensure_text_view_entry(
         unsafe { tv.setDelegate(Some(proto)) };
         d
     });
-    slot.text_view_delegate = Some(delegate);
+    let view_retained = node.ui_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.text_view_delegate = Some(delegate);
+    });
     handlers
 }
 

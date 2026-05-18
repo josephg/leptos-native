@@ -31,7 +31,7 @@ fn fresh_tree(root: &Element) -> layout::TreeRef {
 }
 
 fn style_of(el: &Element) -> renderer::Style {
-    el.as_node().layout_slot().borrow().style.clone()
+    el.as_node().with_style(|s| s.clone())
 }
 
 fn padding_static_lands_in_padding_field() {

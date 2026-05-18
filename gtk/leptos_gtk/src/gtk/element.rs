@@ -64,8 +64,7 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
         // If this element is a container, install our TaffyLayout
         // now that it's registered.
         let node = self.el.as_node();
-        let handle = node.layout_slot().borrow().handle.clone();
-        if let Some(h) = handle {
+        if let Some(h) = node.mounted_handle() {
             if gtk_dom::node::is_container_widget(self.el.widget()) {
                 gtk_dom::node::install_taffy_layout_for_container(
                     self.el.widget(),

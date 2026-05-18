@@ -5,6 +5,72 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-18 — Node ownership refactor: collapse to `Rc<NodeInner>` + arena
+
+Per the plan at `~/.claude/plans/if-its-that-big-whimsical-kazoo.md`,
+folded the three separate per-Node `Rc`s
+(`Retained<NSView>`, `Rc<RefCell<NodeLayout>>`,
+`Rc<NodeHandlersBundle>`) into a single `Rc<NodeInner>` plus a
+state enum:
+
+```rust
+pub struct Node { inner: SendWrapper<Rc<NodeInner>> }
+struct NodeInner {
+    view: Retained<NSView>,
+    kind: NodeKind,
+    state: RefCell<NodeState>,
+}
+enum NodeState {
+    Unmounted { style, meta, handlers },          // owned locally
+    Mounted { tree, id },                          // owned by arena
+    MountedBorrowed { tree, id },                  // borrow-only
+}
+```
+
+Mirrored to GTK and iOS. The arena (`renderer::LayoutTree<B>`)
+gained a `B::Handlers` associated type and a per-entry
+`RefCell<B::Handlers>` field. On `mount_into_tree`, the local
+style/meta/handlers migrate into the arena entry; on
+`NodeInner::Drop` (or explicit `unmount_from_tree`) the arena
+entry is removed, dropping handlers (and triggering
+`disconnect_view_handlers`) before the view retain.
+
+**Why**: every leak the fuzzer has caught was a variant of an Rc
+cycle through the handler bundle. Collapsing to one Rc + putting
+mounted-state in the arena makes the cycle shape simpler and the
+Drop path explicit. As a side effect, the per-Node clone cost
+drops from 3 refcount bumps to 1, and the `Rc<RefCell<NodeLayout>>`
+pre-mount style buffer becomes a normal struct field on the
+`Unmounted` variant — no inner refcell.
+
+**One non-obvious workaround** lives in `NodeHandlers::Drop`:
+text-field / text-view delegate `Retained`s must be released
+**explicitly inside the Drop body, before `disconnect_view_handlers`
+runs**. Empirically (fuzzer leak check), AppKit's text-system
+pins an extra retain on the delegate the moment
+`setDelegate(None)` clears the property; releasing our Retained
+afterwards leaves the delegate stuck at retainCount=1. Action
+targets / hover trackers don't have this issue. See the comment
+in `cocoa/dom/src/event.rs::NodeHandlers::drop`.
+
+**API impact**: `node.layout_slot()` is gone; replaced by
+`node.with_style()`, `with_style_mut()`, `with_meta()`,
+`with_meta_mut()`, `with_handlers_mut()`, `tree_id()`,
+`mounted_handle()`. `node.handlers()` is gone; replaced by
+`with_handlers_mut`. Existing public builder API
+(`.padding()` / `.on_click()` / etc.) unchanged.
+
+**Verification**: 250 cocoa_dom tests + 99 leptos_cocoa tests
+pass; 10-seed fuzzer reports 0 leaks. GTK port mirrored
+(`counter_gtk` builds; pre-existing test cfg-gating issues
+unrelated to this refactor). iOS port mirrored (all 9 examples
+build for `aarch64-apple-ios-sim`).
+
+Cross-linked in `gtk_implementation_log.md` and
+`implementation_ios.md`.
+
+---
+
 ## 2026-05-18 — Hover events + `bind:mouse_hover` + spotify demo
 
 Continued the animation pipeline by adding the missing

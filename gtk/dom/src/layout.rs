@@ -4,7 +4,8 @@
 //! this file plugs GTK-specific types into it via [`GtkBackend`].
 //! The shape mirrors `cocoa_dom::layout`: per-element wrappers
 //! ([`register_in_tree`], [`attach_child`], the `set_*` setters)
-//! read the [`NodeLayout`] slot off a [`Node`] and dispatch into
+//! route through the new [`Node`] accessors (`with_style`,
+//! `tree_id`, `mount_into_tree`) and dispatch into
 //! the shared tree.
 //!
 //! Where cocoa drives layout via an explicit `compute_layout` call
@@ -39,6 +40,7 @@ pub struct GtkBackend;
 impl LayoutBackend for GtkBackend {
     type View = gtk4::Widget;
     type NodeMeta = ();
+    type Handlers = ();
 
     fn measure_leaf(
         widget: &Self::View,
@@ -66,7 +68,6 @@ impl LayoutBackend for GtkBackend {
 pub type LayoutTree = renderer::LayoutTree<GtkBackend>;
 pub type TreeRef = renderer::TreeRef<GtkBackend>;
 pub type LayoutHandle = renderer::LayoutHandle<GtkBackend>;
-pub type NodeLayout = renderer::NodeLayout<GtkBackend>;
 pub type NodeContext = renderer::NodeContext<GtkBackend>;
 
 pub fn new_tree() -> TreeRef {
@@ -74,39 +75,33 @@ pub fn new_tree() -> TreeRef {
 }
 
 // ---------------------------------------------------------------------
-// Per-Node helpers (read the `NodeLayout` slot off a `Node`)
+// Per-Node helpers — read/write Node state via its accessors.
 // ---------------------------------------------------------------------
 
 /// Register `node` as a leaf in `tree` if not already registered.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
-    let mut layout = node.layout_slot().borrow_mut();
-    if layout.handle.is_some() {
+    if node.tree_id().is_some() {
         return;
     }
-    let widget = node.widget().clone();
-    let node_id = tree.new_leaf(layout.style.clone(), widget, ());
-    {
-        let mut root = tree.root.borrow_mut();
-        if root.is_none() {
-            *root = Some(node_id);
-        }
+    let node_id = node.mount_into_tree(tree);
+    let mut root = tree.root.borrow_mut();
+    if root.is_none() {
+        *root = Some(node_id);
     }
-    layout.handle = Some(LayoutHandle {
-        tree: tree.clone(),
-        node_id,
-    });
 }
 
 /// Drop the node and unregister it. No-op if never registered.
+///
+/// Most cleanup now lives in `Node::unmount_from_tree`; we
+/// additionally mark the (former) parent dirty + queue a resize.
 pub fn drop_node(node: &Node) {
-    let handle = node.layout_slot().borrow_mut().handle.take();
-    if let Some(h) = handle {
-        let parent_id = h.tree.parent(h.node_id);
-        h.tree.remove(h.node_id);
-        if let Some(pid) = parent_id {
-            h.tree.mark_dirty(pid);
-            queue_root_resize(&h.tree);
-        }
+    let parent = node
+        .tree_id()
+        .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
+    node.unmount_from_tree();
+    if let Some((tree, pid)) = parent {
+        tree.mark_dirty(pid);
+        queue_root_resize(&tree);
     }
 }
 
@@ -115,46 +110,26 @@ pub fn drop_node(node: &Node) {
 // ---------------------------------------------------------------------
 
 pub fn attach_child(parent: &Node, child: &Node) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
-    register_in_tree(child, &parent_h.tree);
-    let child_id = child
-        .layout_slot()
-        .borrow()
-        .handle
-        .as_ref()
-        .expect("just registered")
-        .node_id;
-    parent_h.tree.add_child(parent_h.node_id, child_id);
-    queue_root_resize(&parent_h.tree);
+    let Some((tree, parent_id)) = parent.tree_id() else { return };
+    register_in_tree(child, &tree);
+    let child_id = child.tree_id().expect("just registered").1;
+    tree.add_child(parent_id, child_id);
+    queue_root_resize(&tree);
 }
 
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
-    register_in_tree(child, &parent_h.tree);
-    let child_id = child
-        .layout_slot()
-        .borrow()
-        .handle
-        .as_ref()
-        .expect("just registered")
-        .node_id;
-    parent_h
-        .tree
-        .insert_child_at_index(parent_h.node_id, index, child_id);
-    queue_root_resize(&parent_h.tree);
+    let Some((tree, parent_id)) = parent.tree_id() else { return };
+    register_in_tree(child, &tree);
+    let child_id = child.tree_id().expect("just registered").1;
+    tree.insert_child_at_index(parent_id, index, child_id);
+    queue_root_resize(&tree);
 }
 
 pub fn detach_child(parent: &Node, child: &Node) {
-    let parent_handle = parent.layout_slot().borrow().handle.clone();
-    let Some(parent_h) = parent_handle else { return };
-    let child_id = match child.layout_slot().borrow().handle.as_ref() {
-        Some(h) => h.node_id,
-        None => return,
-    };
-    parent_h.tree.remove_child(parent_h.node_id, child_id);
-    queue_root_resize(&parent_h.tree);
+    let Some((tree, parent_id)) = parent.tree_id() else { return };
+    let Some((_, child_id)) = child.tree_id() else { return };
+    tree.remove_child(parent_id, child_id);
+    queue_root_resize(&tree);
 }
 
 /// Ask GTK to re-run measure+allocate on the tree's root widget.
@@ -175,11 +150,11 @@ pub fn queue_root_resize(tree: &TreeRef) {
 // ---------------------------------------------------------------------
 
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    let mut layout = node.layout_slot().borrow_mut();
-    f(&mut layout.style);
-    if let Some(h) = &layout.handle {
-        h.tree.set_style(h.node_id, layout.style.clone());
-    }
+    // `Node::with_style_mut` already routes between the local
+    // (Unmounted) and arena-resident (Mounted) cases and pushes
+    // tree.set_style internally for the latter — which marks the
+    // node dirty for the next Taffy pass.
+    node.with_style_mut(f);
 }
 
 pub fn set_style(node: &Node, style: Style) {
@@ -192,10 +167,9 @@ pub fn set_style(node: &Node, style: Style) {
 /// changing the corresponding widget property — but we still need
 /// to mark the cached measurement invalid.
 pub fn schedule_relayout(node: &Node) {
-    let handle = node.layout_slot().borrow().handle.clone();
-    if let Some(h) = handle {
-        h.tree.mark_dirty(h.node_id);
-        queue_root_resize(&h.tree);
+    if let Some((tree, id)) = node.tree_id() {
+        tree.mark_dirty(id);
+        queue_root_resize(&tree);
     }
 }
 
@@ -212,8 +186,7 @@ impl renderer::LayoutNodeOps for Node {
         schedule_relayout(self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        let slot = self.layout_slot().borrow();
-        f(&slot.style)
+        Node::with_style(self, f)
     }
 }
 
@@ -271,8 +244,7 @@ pub use renderer::{
 // loop; this helper mirrors `cocoa_dom::layout::compute_layout`.
 
 pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
-    let handle = root.layout_slot().borrow().handle.clone();
-    let Some(handle) = handle else { return };
+    let Some(handle) = root.mounted_handle() else { return };
     let (w, h) = available_size;
 
     let mut style = handle.tree.style(handle.node_id).unwrap_or_default();

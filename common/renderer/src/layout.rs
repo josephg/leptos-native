@@ -22,10 +22,11 @@
 //!   (style/cache/layout/parent/children/view/meta) for one window
 //!   or scene.
 //! - [`LayoutBackend`] — the trait each port implements.
-//! - [`NodeLayout<B>`] — the per-node "layout slot" each port's
-//!   element wrapper embeds. Holds the node's style and an
-//!   `Option<LayoutHandle<B>>` (set once the node has been
-//!   registered into a tree).
+//! - per-node state (style, meta, handlers, view) lives inside
+//!   `NodeData<B>` in the arena slotmap. Each port's `Node` is a
+//!   thin `Rc<NodeInner>` whose `NodeState` is either
+//!   `Unmounted{style,meta,handlers}` (state owned locally) or
+//!   `Mounted{tree,id}` (state owned by the arena).
 //! - [`LayoutHandle<B>`] — `(TreeRef<B>, NodeId)` pair the port
 //!   carries on each registered element.
 //! - [`NodeContext<B>`] — read-only snapshot of a node's view +
@@ -108,6 +109,19 @@ pub trait LayoutBackend: 'static + Sized {
     /// Per-node port-specific metadata. Set to `()` if unused.
     type NodeMeta: Clone + Default;
 
+    /// Per-node port-specific handler storage. Owns retained
+    /// references to ObjC delegates / target objects whose lifetime
+    /// must track the node's lifetime in the tree. Set to `()` for
+    /// ports that store handlers elsewhere (or have none).
+    ///
+    /// **Drop ordering**: when the tree drops a node, the handlers
+    /// field is dropped BEFORE the view field on `NodeData<B>`. This
+    /// gives port-specific `Drop` impls on `Handlers` a chance to
+    /// nil out `setTarget` / `setDelegate` on the still-live view
+    /// (preventing AppKit/UIKit dispatch into freed memory between
+    /// handler drop and view drop).
+    type Handlers: Default + 'static;
+
     /// Measure the intrinsic size of a leaf node's content.
     ///
     /// `known` carries any axis already pinned by styles
@@ -169,34 +183,6 @@ pub struct LayoutTree<B: LayoutBackend> {
 
 pub type TreeRef<B> = Rc<LayoutTree<B>>;
 
-/// What an element's layout slot stores.
-///
-/// Embedded by each port's element wrapper. While `handle` is
-/// `None`, style mutations stay local; once `handle` is `Some`,
-/// they're also pushed into the tree.
-///
-/// `meta` is the per-node backend metadata that gets copied into
-/// the tree on registration. Set it before `register_in_tree`; once
-/// the node has joined a tree, the slot's copy and the tree's copy
-/// can drift if you mutate the slot directly. Use
-/// [`LayoutTree::set_meta`] to update a registered node's metadata.
-#[derive(Debug)]
-pub struct NodeLayout<B: LayoutBackend> {
-    pub style: Style,
-    pub handle: Option<LayoutHandle<B>>,
-    pub meta: B::NodeMeta,
-}
-
-impl<B: LayoutBackend> NodeLayout<B> {
-    pub fn new(style: Style) -> Self {
-        NodeLayout {
-            style,
-            handle: None,
-            meta: Default::default(),
-        }
-    }
-}
-
 /// Where a node lives once it's joined a tree.
 pub struct LayoutHandle<B: LayoutBackend> {
     pub tree: TreeRef<B>,
@@ -241,12 +227,19 @@ struct NodeData<B: LayoutBackend> {
     final_layout: Layout,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
+    // IMPORTANT: `handlers` MUST come before `view` here so it
+    // drops first. Port-specific Handlers Drop impls (cocoa's
+    // NodeHandlers) rely on the view still being alive so they
+    // can nil setTarget/setDelegate, severing the path AppKit/
+    // UIKit might use to dispatch into freed memory between the
+    // handler drop and the eventual view dealloc.
+    handlers: RefCell<B::Handlers>,
     view: B::View,
     meta: B::NodeMeta,
 }
 
 impl<B: LayoutBackend> NodeData<B> {
-    fn new(style: Style, view: B::View, meta: B::NodeMeta) -> Self {
+    fn new(style: Style, view: B::View, meta: B::NodeMeta, handlers: B::Handlers) -> Self {
         NodeData {
             style,
             cache: Cache::new(),
@@ -254,6 +247,7 @@ impl<B: LayoutBackend> NodeData<B> {
             final_layout: Layout::new(),
             parent: None,
             children: Vec::new(),
+            handlers: RefCell::new(handlers),
             view,
             meta,
         }
@@ -308,10 +302,57 @@ impl<B: LayoutBackend> LayoutTree<B> {
     // -- mutation -----------------------------------------------------
 
     /// Insert a fresh leaf, returning its `NodeId`.
-    pub fn new_leaf(&self, style: Style, view: B::View, meta: B::NodeMeta) -> NodeId {
-        NodeId::from(
-            self.with_state_mut(|s| s.nodes.insert(NodeData::new(style, view, meta))),
-        )
+    pub fn new_leaf(
+        &self,
+        style: Style,
+        view: B::View,
+        meta: B::NodeMeta,
+        handlers: B::Handlers,
+    ) -> NodeId {
+        NodeId::from(self.with_state_mut(|s| {
+            s.nodes.insert(NodeData::new(style, view, meta, handlers))
+        }))
+    }
+
+    /// Run a closure with a shared borrow of a node's handler
+    /// storage. Returns `None` if the node isn't in the tree.
+    pub fn with_handlers<R>(
+        &self,
+        id: NodeId,
+        f: impl FnOnce(&B::Handlers) -> R,
+    ) -> Option<R> {
+        let state = self.state.borrow();
+        let node = state.nodes.get(key(id))?;
+        // Bind the Ref to a local so it drops in reverse declaration
+        // order (before `state`). Without the binding, the implicit
+        // temporary lives until end-of-function and would be dropped
+        // AFTER state — UAF on the RefCell's borrow counter.
+        let handlers = node.handlers.borrow();
+        Some(f(&*handlers))
+    }
+
+    /// Run a closure with an exclusive borrow of a node's handler
+    /// storage. Returns `None` if the node isn't in the tree.
+    pub fn with_handlers_mut<R>(
+        &self,
+        id: NodeId,
+        f: impl FnOnce(&mut B::Handlers) -> R,
+    ) -> Option<R> {
+        let state = self.state.borrow();
+        let node = state.nodes.get(key(id))?;
+        let mut handlers = node.handlers.borrow_mut();
+        Some(f(&mut *handlers))
+    }
+
+    /// Take the handlers out of a node, leaving `B::Handlers::default()`
+    /// in its place. Used by the port's `unmount → unmounted-state`
+    /// transition if it ever needs to recover the original handlers
+    /// (no current callers; provided for symmetry with `take_view`).
+    pub fn take_handlers(&self, id: NodeId) -> Option<B::Handlers> {
+        let state = self.state.borrow();
+        let node = state.nodes.get(key(id))?;
+        let mut handlers = node.handlers.borrow_mut();
+        Some(std::mem::take(&mut *handlers))
     }
 
     /// Remove a node from the tree. Detaches it from any parent it

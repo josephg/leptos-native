@@ -42,15 +42,14 @@ fn make_root_with_size(width: f64, height: f64) -> Element {
     let _mtm = common::test_mtm();
 
     let root = Element::create("vstack");
-    {
-        // Pin the root's size in its style so layout has something to
-        // distribute against.
-        let mut layout = root.as_node().layout_slot().borrow_mut();
-        layout.style.size = ios_dom::layout::Size {
+    // Pin the root's size in its style so layout has something to
+    // distribute against.
+    root.as_node().with_style_mut(|s| {
+        s.size = ios_dom::layout::Size {
             width: ios_dom::layout::Dimension::length(width as f32),
             height: ios_dom::layout::Dimension::length(height as f32),
         };
-    }
+    });
 
     let tree = new_tree();
     register_in_tree(root.as_node(), &tree);

@@ -32,10 +32,7 @@ fn frame_eq(
 ) {
     let lh = el
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("element not registered in tree");
     let layout = tree
         .layout(lh.node_id)
@@ -358,10 +355,7 @@ fn label_text_change_reflowed_on_relayout() {
     layout::compute_layout(root.as_node(), (300.0, 50.0));
     let lh = label
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("label registered");
     let w_zero = _tree.layout(lh.node_id).expect("layout computed").size.width;
     let raw_zero = label

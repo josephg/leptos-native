@@ -208,7 +208,7 @@ impl Drop for OpenedWindow {
         // `Retained<WindowDelegate>` releases. NSWindow holds the
         // delegate weakly, so this is mostly belt-and-braces — but
         // matches the policy pattern used by
-        // `NodeHandlersBundle::Drop` /
+        // `NodeHandlers::Drop` /
         // `ToolbarItemRegistration::Drop` / `MenuItem::Drop`.
         // Note: this only fires if we're on the main thread.
         // Off-main drop is a programmer error; the `Retained`s

@@ -1,16 +1,22 @@
 //! Node, Element, Text, Placeholder — the DOM-shaped wrappers over
 //! `Retained<UIView>`.
 //!
-//! Each Node carries a *shared* layout slot (Rc'd among clones)
-//! holding its current Taffy [`Style`] plus an `Option<LayoutHandle>`.
-//! The handle is `None` until the node is mounted into a tree (a
-//! [`Window`](crate::window)'s `TaffyTree`); style mutations made before
-//! that point are buffered locally and pushed to the tree at
-//! registration time. See `crate::layout` for the registration helpers.
+//! Each `Node` is a single `Rc<NodeInner>` carrying:
+//!   * the `Retained<UIView>` (always present from creation),
+//!   * a `RefCell<NodeState>` describing whether the node's
+//!     style / meta / handlers live locally (`Unmounted`) or in
+//!     the arena's `NodeData` (`Mounted` / `MountedBorrowed`).
+//!
+//! Style / meta mutations made before mount are buffered on the
+//! `Unmounted` variant; on `mount_into_tree` they migrate into the
+//! arena. After mount, accessors (`with_style`, `with_meta`,
+//! `with_handlers_mut`) read/write through the arena via the
+//! `(tree, id)` key. Mirrors the cocoa port's ownership story —
+//! see `cocoa/dom/src/node.rs` for the longer rationale.
 //!
 //! See the crate-level docs for the threading contract.
 
-use crate::layout::{Dimension, LayoutHandle, NodeLayout, Style};
+use crate::layout::{Dimension, IosMeta, LayoutHandle, NodeId, Style, TreeRef};
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
     MainThreadOnly, Message,
@@ -84,21 +90,63 @@ pub enum NodeKind {
 
 #[derive(Clone)]
 pub struct Node {
-    view: SendWrapper<Retained<UIView>>,
-    layout: SendWrapper<Rc<RefCell<NodeLayout>>>,
-    /// Per-Node handler/delegate retains. See `ios_dom::event` for
-    /// the lifecycle rationale (mirror of the cocoa design).
-    handlers: SendWrapper<Rc<crate::event::IosNodeHandlersBundle>>,
+    inner: SendWrapper<Rc<NodeInner>>,
+}
+
+pub(crate) struct NodeInner {
+    /// Top-level retained view. Always present; the arena entry
+    /// holds its own separate `Retained<UIView>` clone when mounted.
+    view: Retained<UIView>,
     kind: NodeKind,
+    state: RefCell<NodeState>,
+}
+
+pub(crate) enum NodeState {
+    /// Style / meta / handlers owned locally; not in any tree.
+    Unmounted {
+        style: Style,
+        meta: IosMeta,
+        handlers: crate::event::IosNodeHandlers,
+    },
+    /// State lives in `tree.nodes[id]`; this Node carries the key.
+    Mounted { tree: TreeRef, id: NodeId },
+    /// Wraps an existing arena entry but does NOT own it — Drop is
+    /// a no-op. Used by `Node::from_view_with_handle` to synthesise
+    /// a parent / root-reflow wrapper for a UIView whose Node is
+    /// already in the tree under a different owner.
+    MountedBorrowed { tree: TreeRef, id: NodeId },
+}
+
+impl Drop for NodeInner {
+    fn drop(&mut self) {
+        let state = std::mem::replace(
+            &mut *self.state.borrow_mut(),
+            NodeState::Unmounted {
+                style: Style::default(),
+                meta: IosMeta::default(),
+                handlers: crate::event::IosNodeHandlers::default(),
+            },
+        );
+        if let NodeState::Mounted { tree, id } = state {
+            tree.remove(id);
+        }
+        // Unmounted: local handlers drop here (via field-drop of the
+        // replaced default value, which has empty handlers).
+        // MountedBorrowed: someone else owns the arena entry.
+    }
 }
 
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptr: *const UIView = &**self.view;
+        let ptr: *const UIView = &*self.inner.view;
+        let registered = matches!(
+            &*self.inner.state.borrow(),
+            NodeState::Mounted { .. } | NodeState::MountedBorrowed { .. }
+        );
         f.debug_struct("Node")
-            .field("kind", &self.kind)
+            .field("kind", &self.inner.kind)
             .field("ptr", &ptr)
-            .field("registered", &self.layout.borrow().handle.is_some())
+            .field("registered", &registered)
             .finish()
     }
 }
@@ -131,15 +179,16 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let handlers = crate::event::IosNodeHandlersBundle::new_shared(view.clone());
-        Node {
-            view: SendWrapper::new(view),
-            layout: SendWrapper::new(Rc::new(RefCell::new(NodeLayout::new(
-                default_style,
-            )))),
-            handlers: SendWrapper::new(handlers),
+        let inner = NodeInner {
+            view,
             kind,
-        }
+            state: RefCell::new(NodeState::Unmounted {
+                style: default_style,
+                meta: IosMeta::default(),
+                handlers: crate::event::IosNodeHandlers::default(),
+            }),
+        };
+        Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
     pub fn from_view_with_handle<V>(
@@ -151,54 +200,191 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let mut layout = NodeLayout::new(Style::default());
-        layout.handle = Some(handle);
-        let handlers = crate::event::IosNodeHandlersBundle::new_shared(view.clone());
-        Node {
-            view: SendWrapper::new(view),
-            layout: SendWrapper::new(Rc::new(RefCell::new(layout))),
-            handlers: SendWrapper::new(handlers),
+        let inner = NodeInner {
+            view,
             kind,
-        }
+            state: RefCell::new(NodeState::MountedBorrowed {
+                tree: handle.tree,
+                id: handle.node_id,
+            }),
+        };
+        Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
     pub fn ui_view(&self) -> &UIView {
-        &self.view
+        &self.inner.view
     }
 
     pub fn ui_view_retained(&self) -> Retained<UIView> {
-        (*self.view).clone()
+        self.inner.view.clone()
     }
 
-    pub fn handlers(&self) -> &RefCell<crate::event::IosNodeHandlers> {
-        self.handlers.handlers()
-    }
-
+    /// Get a fresh `Retained<UIView>` clone. The previous
+    /// `into_ui_view(self) -> Retained<UIView>` was misleading
+    /// because `NodeInner` has a `Drop` impl. This method is now
+    /// just a rename of `ui_view_retained`.
     pub fn into_ui_view(self) -> Retained<UIView> {
-        self.view.take()
+        self.inner.view.clone()
     }
 
     pub fn kind(&self) -> NodeKind {
-        self.kind
+        self.inner.kind
     }
 
-    pub fn layout_slot(&self) -> &RefCell<NodeLayout> {
-        &**self.layout
+    // ---- New accessor surface --------------------------------------
+
+    /// Borrow the node's [`Style`] for read.
+    pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
+        match &*self.inner.state.borrow() {
+            NodeState::Unmounted { style, .. } => f(style),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let style = tree.style(*id).unwrap_or_default();
+                f(&style)
+            }
+        }
+    }
+
+    /// Mutate the node's [`Style`]. When mounted, the change is
+    /// pushed straight into the tree (which marks the node dirty).
+    pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
+        let mut state = self.inner.state.borrow_mut();
+        match &mut *state {
+            NodeState::Unmounted { style, .. } => f(style),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let mut style = tree.style(*id).unwrap_or_default();
+                let r = f(&mut style);
+                tree.set_style(*id, style);
+                r
+            }
+        }
+    }
+
+    /// Borrow the node's [`IosMeta`] for read.
+    pub fn with_meta<R>(&self, f: impl FnOnce(&IosMeta) -> R) -> R {
+        match &*self.inner.state.borrow() {
+            NodeState::Unmounted { meta, .. } => f(meta),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let meta = tree.meta(*id).unwrap_or_default();
+                f(&meta)
+            }
+        }
+    }
+
+    /// Mutate the node's [`IosMeta`]. When mounted, the change is
+    /// pushed back into the tree.
+    pub fn with_meta_mut<R>(&self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
+        let mut state = self.inner.state.borrow_mut();
+        match &mut *state {
+            NodeState::Unmounted { meta, .. } => f(meta),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                let mut meta = tree.meta(*id).unwrap_or_default();
+                let r = f(&mut meta);
+                tree.set_meta(*id, meta);
+                r
+            }
+        }
+    }
+
+    /// Mutate this node's per-node handler set. Works in both the
+    /// Unmounted (local) and Mounted (arena-resident) states.
+    pub fn with_handlers_mut<R>(
+        &self,
+        f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
+    ) -> R {
+        let mut state = self.inner.state.borrow_mut();
+        match &mut *state {
+            NodeState::Unmounted { handlers, .. } => f(handlers),
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => tree
+                .with_handlers_mut(*id, f)
+                .expect("Mounted Node id must exist in tree"),
+        }
+    }
+
+    /// Returns the `(TreeRef, NodeId)` pair if this Node has been
+    /// registered in a layout tree, otherwise `None`.
+    pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
+        match &*self.inner.state.borrow() {
+            NodeState::Mounted { tree, id }
+            | NodeState::MountedBorrowed { tree, id } => {
+                Some((tree.clone(), *id))
+            }
+            NodeState::Unmounted { .. } => None,
+        }
+    }
+
+    /// Cheap accessor for the LayoutHandle (re-exposed for tests).
+    pub fn mounted_handle(&self) -> Option<LayoutHandle> {
+        self.tree_id().map(|(tree, node_id)| LayoutHandle { tree, node_id })
+    }
+
+    /// Mount the node into `tree`: moves its locally-held state into
+    /// a fresh arena entry. Transitions to [`NodeState::Mounted`].
+    /// No-op if already mounted.
+    pub(crate) fn mount_into_tree(&self, tree: &TreeRef) -> NodeId {
+        let mut state = self.inner.state.borrow_mut();
+        match &*state {
+            NodeState::Mounted { id, .. } => return *id,
+            NodeState::MountedBorrowed { id, .. } => return *id,
+            NodeState::Unmounted { .. } => {}
+        }
+        let prev = std::mem::replace(
+            &mut *state,
+            NodeState::Unmounted {
+                style: Style::default(),
+                meta: IosMeta::default(),
+                handlers: crate::event::IosNodeHandlers::default(),
+            },
+        );
+        let (style, meta, handlers) = match prev {
+            NodeState::Unmounted { style, meta, handlers } => {
+                (style, meta, handlers)
+            }
+            _ => unreachable!(),
+        };
+        let view_wrapped = SendWrapper::new(self.inner.view.clone());
+        let id = tree.new_leaf(style, view_wrapped, meta, handlers);
+        // Wire the handlers' view back-ref so its Drop can nil
+        // setDelegate / removeAllTargets against a still-live view.
+        tree.with_handlers_mut(id, |h| {
+            h.attach_view(self.inner.view.clone())
+        });
+        *state = NodeState::Mounted { tree: tree.clone(), id };
+        id
+    }
+
+    /// Internal: drop this node out of its tree (if mounted).
+    pub(crate) fn unmount_from_tree(&self) {
+        let mut state = self.inner.state.borrow_mut();
+        let prev = std::mem::replace(
+            &mut *state,
+            NodeState::Unmounted {
+                style: Style::default(),
+                meta: IosMeta::default(),
+                handlers: crate::event::IosNodeHandlers::default(),
+            },
+        );
+        if let NodeState::Mounted { tree, id } = prev {
+            tree.remove(id);
+        }
     }
 
     pub fn ptr_eq(&self, other: &Node) -> bool {
-        let a: *const UIView = &**self.view;
-        let b: *const UIView = &**other.view;
+        let a: *const UIView = &*self.inner.view;
+        let b: *const UIView = &*other.inner.view;
         a == b
     }
 
     pub fn teardown(&self) {
-        // Event handlers / delegates live on this Node's
-        // `IosNodeHandlersBundle`; they drop when the last clone of
-        // this Node drops (the bundle's Drop nils out setDelegate /
-        // removeAllTargets first to disconnect any AppKit retain).
-        // teardown itself just unlinks the layout tree and detaches
-        // the view from its superview.
+        // Event handlers / delegates live in the arena's
+        // `IosNodeHandlers` when mounted (or locally in the
+        // `Unmounted` state); they drop when the last Node clone
+        // drops or `tree.remove` runs. `teardown` triggers the
+        // arena removal eagerly and unparents the UIView.
         crate::layout::drop_node(self);
         self.ui_view().removeFromSuperview();
     }
@@ -493,7 +679,7 @@ impl Element {
 
         let node = Node::from_view(view, NodeKind::Element, default_style);
         if tag == "scroll_view" {
-            node.layout_slot().borrow_mut().meta.is_scroll_view = true;
+            node.with_meta_mut(|m| m.is_scroll_view = true);
         }
 
         Element { node }
@@ -524,8 +710,7 @@ impl Element {
     /// of the UIScrollView). For everything else it's self.
     pub fn subview_parent(&self) -> Retained<UIView> {
         let direct = self.ui_view();
-        let routes_to_doc =
-            self.node.layout_slot().borrow().meta.is_scroll_view;
+        let routes_to_doc = self.node.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
             if let Some(scroll) =
                 downcast::<objc2_ui_kit::UIScrollView>(direct)

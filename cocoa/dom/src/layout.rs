@@ -3,9 +3,9 @@
 //! The actual tree storage and Taffy integration live in
 //! [`renderer`]; this file plugs cocoa-specific types into it
 //! via [`CocoaBackend`]. The wrappers below — `register_in_tree`,
-//! `attach_child`, `compute_layout`, the `set_*` setters — read the
-//! per-element [`NodeLayout`] slot off a [`Node`] and dispatch into
-//! the shared tree.
+//! `attach_child`, `compute_layout`, the `set_*` setters — route
+//! through the new [`Node`] accessors (`with_style`, `with_meta`,
+//! `tree_id`, `mount_into_tree`) and dispatch into the shared tree.
 //!
 //! What stays cocoa-specific:
 //!
@@ -96,6 +96,7 @@ pub enum ScrollAxis {
 impl LayoutBackend for CocoaBackend {
     type View = SendWrapper<Retained<NSView>>;
     type NodeMeta = CocoaMeta;
+    type Handlers = crate::event::NodeHandlers;
 
     fn measure_leaf(
         view: &Self::View,
@@ -115,7 +116,6 @@ impl LayoutBackend for CocoaBackend {
 pub type LayoutTree = renderer::LayoutTree<CocoaBackend>;
 pub type TreeRef = renderer::TreeRef<CocoaBackend>;
 pub type LayoutHandle = renderer::LayoutHandle<CocoaBackend>;
-pub type NodeLayout = renderer::NodeLayout<CocoaBackend>;
 pub type NodeContext = renderer::NodeContext<CocoaBackend>;
 
 pub fn new_tree() -> TreeRef {
@@ -134,7 +134,7 @@ fn layout_debug_enabled() -> bool {
 }
 
 // ---------------------------------------------------------------------
-// Per-Node helpers (read the `NodeLayout` slot off a `Node`)
+// Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
 
 /// Register `node` as a leaf in `tree` if not already registered.
@@ -148,14 +148,15 @@ fn layout_debug_enabled() -> bool {
 /// `attach_child` calls redirect into this wrapper, so the user's
 /// children are laid out inside it.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
-    let mut layout = node.layout_slot().borrow_mut();
-    if layout.handle.is_some() {
+    if node.tree_id().is_some() {
         return;
     }
-    let view: Retained<NSView> = node.ns_view().into();
-    let view_wrapped = SendWrapper::new(view);
-    let node_id =
-        tree.new_leaf(layout.style.clone(), view_wrapped, layout.meta.clone());
+    // Migrate the node's local style/meta/handlers into the arena
+    // and transition the Node's state to Mounted. Returns the
+    // newly-allocated NodeId. View retain is bumped once (arena
+    // gets its own copy alongside NodeInner's).
+    let node_id = node.mount_into_tree(tree);
+
     {
         let mut root = tree.root.borrow_mut();
         if root.is_none() {
@@ -163,7 +164,9 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
         }
     }
 
-    if layout.meta.is_scroll_view {
+    // Read meta once for the scroll-view branch decision.
+    let meta_snapshot = node.with_meta(|m| m.clone());
+    if meta_snapshot.is_scroll_view {
         if let Some(doc) = scroll_view_document(node.ns_view()) {
             // Wrapper style picks the scroll axis. The principle:
             // on the scroll axis, the wrapper grows to natural
@@ -214,7 +217,7 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
             wrapper_style.position = Position::Absolute;
             wrapper_style.inset.top = zero;
             wrapper_style.inset.left = zero;
-            match layout.meta.scroll_axis {
+            match meta_snapshot.scroll_axis {
                 ScrollAxis::Vertical => {
                     wrapper_style.flex_direction = FlexDirection::Column;
                     // Lock cross-axis (horizontal) to viewport.
@@ -235,17 +238,16 @@ pub fn register_in_tree(node: &Node, tree: &TreeRef) {
                 wrapper_style,
                 SendWrapper::new(doc),
                 CocoaMeta::default(),
+                crate::event::NodeHandlers::default(),
             );
             tree.add_child(node_id, wrapper_id);
-            layout.meta.child_taffy_parent = Some(wrapper_id);
-            tree.set_meta(node_id, layout.meta.clone());
+            // Record the wrapper id on the scroll_view's meta so
+            // `attach_child` can redirect into it, and
+            // `Node::unmount_from_tree` / `drop_node` know to drop
+            // it alongside the scroll_view.
+            node.with_meta_mut(|m| m.child_taffy_parent = Some(wrapper_id));
         }
     }
-
-    layout.handle = Some(LayoutHandle {
-        tree: tree.clone(),
-        node_id,
-    });
 }
 
 fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
@@ -255,22 +257,22 @@ fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
 }
 
 /// Drop the node and unregister it. No-op if never registered.
+///
+/// Most cleanup now lives in `Node::unmount_from_tree` (handles the
+/// scroll-view wrapper, transitions state, removes the arena entry).
+/// We additionally mark the (former) parent dirty + schedule a
+/// relayout so the parent's flex cache doesn't keep a stale child
+/// box around.
 pub fn drop_node(node: &Node) {
-    let (handle, wrapper_id) = {
-        let mut slot = node.layout_slot().borrow_mut();
-        let wrapper = slot.meta.child_taffy_parent.take();
-        (slot.handle.take(), wrapper)
-    };
-    if let Some(h) = handle {
-        let parent_id = h.tree.parent(h.node_id);
-        if let Some(w) = wrapper_id {
-            h.tree.remove(w);
-        }
-        h.tree.remove(h.node_id);
-        if let Some(pid) = parent_id {
-            h.tree.mark_dirty(pid);
-            schedule_relayout_for_tree(&h.tree, pid);
-        }
+    // Snapshot parent BEFORE unmount; afterward the node has no
+    // tree_id and we can't ask the arena for its parent anymore.
+    let parent = node
+        .tree_id()
+        .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
+    node.unmount_from_tree();
+    if let Some((tree, pid)) = parent {
+        tree.mark_dirty(pid);
+        schedule_relayout_for_tree(&tree, pid);
     }
 }
 
@@ -282,10 +284,9 @@ pub fn drop_node(node: &Node) {
 /// node dirty (required for content changes on leaf controls so the
 /// measure callback re-runs).
 pub fn schedule_relayout(node: &Node) {
-    let handle = node.layout_slot().borrow().handle.clone();
-    if let Some(h) = handle {
-        h.tree.mark_dirty(h.node_id);
-        schedule_relayout_for_tree(&h.tree, h.node_id);
+    if let Some((tree, id)) = node.tree_id() {
+        tree.mark_dirty(id);
+        schedule_relayout_for_tree(&tree, id);
     }
 }
 
@@ -340,22 +341,17 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 /// documentView wrapper (`meta.child_taffy_parent`); for everything
 /// else it's the node's own Taffy id.
 fn taffy_child_parent(parent: &Node) -> Option<(TreeRef, NodeId)> {
-    let slot = parent.layout_slot().borrow();
-    let h = slot.handle.as_ref()?;
-    let id = slot.meta.child_taffy_parent.unwrap_or(h.node_id);
-    Some((h.tree.clone(), id))
+    let (tree, node_id) = parent.tree_id()?;
+    let id = parent
+        .with_meta(|m| m.child_taffy_parent)
+        .unwrap_or(node_id);
+    Some((tree, id))
 }
 
 pub fn attach_child(parent: &Node, child: &Node) {
     let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
     register_in_tree(child, &tree);
-    let child_id = child
-        .layout_slot()
-        .borrow()
-        .handle
-        .as_ref()
-        .expect("just registered")
-        .node_id;
+    let child_id = child.tree_id().expect("just registered").1;
     tree.add_child(parent_id, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
@@ -363,23 +359,14 @@ pub fn attach_child(parent: &Node, child: &Node) {
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
     register_in_tree(child, &tree);
-    let child_id = child
-        .layout_slot()
-        .borrow()
-        .handle
-        .as_ref()
-        .expect("just registered")
-        .node_id;
+    let child_id = child.tree_id().expect("just registered").1;
     tree.insert_child_at_index(parent_id, index, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
 
 pub fn detach_child(parent: &Node, child: &Node) {
     let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    let child_id = match child.layout_slot().borrow().handle.as_ref() {
-        Some(h) => h.node_id,
-        None => return,
-    };
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.remove_child(parent_id, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
@@ -389,11 +376,11 @@ pub fn detach_child(parent: &Node, child: &Node) {
 // ---------------------------------------------------------------------
 
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    let mut layout = node.layout_slot().borrow_mut();
-    f(&mut layout.style);
-    if let Some(h) = &layout.handle {
-        h.tree.set_style(h.node_id, layout.style.clone());
-    }
+    // `Node::with_style_mut` already routes between the local
+    // (Unmounted) and arena-resident (Mounted) cases and pushes
+    // tree.set_style internally for the latter — which marks the
+    // node dirty for the next Taffy pass.
+    node.with_style_mut(f);
 }
 
 pub fn set_style(node: &Node, style: Style) {
@@ -437,8 +424,7 @@ fn compute_layout_inner(
             available_size.width, available_size.height
         );
     }
-    let handle = root.layout_slot().borrow().handle.clone();
-    let Some(handle) = handle else { return };
+    let Some(handle) = root.mounted_handle() else { return };
 
     let w = available_size.width as f32;
     let h = available_size.height as f32;
@@ -564,11 +550,12 @@ fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
 /// Default for editable NSTextField is width=0 in the measure pass;
 /// this flag flips that to read `intrinsicContentSize` like a label.
 pub(crate) fn mark_intrinsic_width_from_content(node: &Node, on: bool) {
-    let mut slot = node.layout_slot().borrow_mut();
-    slot.meta.intrinsic_width_from_content = on;
-    if let Some(h) = &slot.handle {
-        h.tree.set_meta(h.node_id, slot.meta.clone());
-        h.tree.mark_dirty(h.node_id);
+    node.with_meta_mut(|m| m.intrinsic_width_from_content = on);
+    // with_meta_mut pushes back into the tree for Mounted nodes,
+    // but doesn't mark dirty — the next measure pass needs to see
+    // the new flag, so kick the tree.
+    if let Some((tree, id)) = node.tree_id() {
+        tree.mark_dirty(id);
     }
 }
 
@@ -762,8 +749,7 @@ impl renderer::LayoutNodeOps for Node {
         schedule_relayout(self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        let slot = self.layout_slot().borrow();
-        f(&slot.style)
+        Node::with_style(self, f)
     }
 }
 

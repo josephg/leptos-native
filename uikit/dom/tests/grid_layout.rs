@@ -38,10 +38,7 @@ fn frame_eq(
 ) {
     let lh = el
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .clone()
+        .mounted_handle()
         .expect("element not registered in tree");
     let l = tree.layout(lh.node_id).expect("no layout computed");
     let tol = 0.5;
@@ -73,7 +70,7 @@ fn create_grid_sets_display_grid() {
     let _mtm = common::test_mtm();
     let g = Element::create("grid");
     let tree = fresh_tree(&g);
-    let id = g.as_node().layout_slot().borrow().handle.as_ref().unwrap().node_id;
+    let id = g.as_node().tree_id().unwrap().1;
     let style = tree.style(id).expect("registered node has a style");
     assert_eq!(style.display, renderer::Display::Grid);
 }

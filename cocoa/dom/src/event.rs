@@ -6,19 +6,22 @@
 //! invokes it. We create one per registered handler, wire the
 //! AppKit control's `target` / `action` to point at it, and store
 //! the `Retained<ActionTarget>` in **`NodeHandlers`** — a small
-//! Rust struct that lives as a shared field on every [`Node`]
-//! ([`Node::handlers`]).
+//! Rust struct held in `NodeState::Unmounted` while the node is
+//! free-floating, and moved into the arena's `NodeData::handlers`
+//! slot when the node mounts.
 //!
 //! Same pattern for `TextFieldDelegate` and `TextViewDelegate`.
 //!
 //! There is **no global storage** and no ObjC associated-object
 //! sidetable: handler lifetime tracks Rust ownership. When the
-//! last clone of the `Node` drops, `NodeHandlers` drops, every
-//! retained `ActionTarget` / delegate dealloc runs, and the Rust
-//! closures release. The `Node::Drop` impl additionally nils out
-//! `setTarget` / `setDelegate` on the view before the handlers
-//! release, so any lingering AppKit retain can't dispatch into
-//! freed memory.
+//! last `Node` clone drops, the owning `NodeInner` drops; if the
+//! node was mounted, `NodeInner::Drop` calls `tree.remove(id)`,
+//! which drops `NodeData::handlers` (and thus `NodeHandlers`)
+//! before the arena's view retain. If still unmounted, the local
+//! `NodeHandlers` drops with the state. Either way `NodeHandlers::Drop`
+//! nils `setTarget` / `setDelegate` on the view before the handler
+//! retains release, so any lingering AppKit retain can't dispatch
+//! into freed memory.
 //!
 //! Why this matters: AppKit retains views in ways outside our
 //! control (autorelease pools, undo manager, focus chain, …). If
@@ -46,7 +49,6 @@ use objc2_foundation::{NSNotification, NSObjectProtocol};
 use send_wrapper::SendWrapper;
 use std::{
     cell::RefCell,
-    rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -85,26 +87,46 @@ impl Drop for LiveTracker {
 // NodeHandlers — Rust-side retain for everything installed on a Node
 // ---------------------------------------------------------------------
 
-/// Per-Node handler/delegate storage. Held as
-/// `SendWrapper<Rc<RefCell<NodeHandlers>>>` on [`crate::Node`] so
-/// every clone of a Node sees the same handler set, and the
-/// retains release when the last clone drops.
+/// Per-Node handler/delegate storage.
+///
+/// Lives in [`crate::node::NodeState::Unmounted`] while the node is
+/// free-floating; on mount it migrates into the arena's
+/// `NodeData::handlers` slot (see `common/renderer/src/layout.rs`).
+/// Either way there's exactly one `NodeHandlers` per node — there
+/// is no `Rc`/`RefCell` sharing between Node clones, because Node
+/// itself is a `Rc<NodeInner>` and the inner owns the state.
 ///
 /// Each `Retained<...>` here keeps its ObjC object alive while
 /// `NodeHandlers` is alive. The view's `setTarget` / `setDelegate`
-/// slots point at these objects; `Node::Drop` clears those slots
-/// (via [`disconnect_view_handlers`]) before this struct drops, so
-/// any lingering AppKit retain on the view can't dispatch into
-/// freed memory.
+/// slots point at these objects; [`NodeHandlers::Drop`] nils those
+/// slots (via [`disconnect_view_handlers`]) before the retain
+/// fields release, so any lingering AppKit retain on the view
+/// can't dispatch into freed memory.
+///
+/// The `view` field is a back-reference to the NSView whose target
+/// / delegate slots the handlers populated. It's `None` until
+/// [`Self::attach_view`] is called — that happens in
+/// `Node::mount_into_tree` for the mounted case, and we call it
+/// explicitly in the unmounted-creation paths too so that handlers
+/// installed pre-mount also get the disconnect-on-drop guarantee.
 #[derive(Default)]
 pub struct NodeHandlers {
+    /// Back-reference to the NSView whose target/delegate slots
+    /// were populated by handlers in this struct. Set via
+    /// [`Self::attach_view`]; if `None` the Drop impl is a no-op
+    /// (nothing to disconnect).
+    view: Option<SendWrapper<Retained<NSView>>>,
     /// At most one ActionTarget — NSControl has a single
     /// target/action slot. Set by [`on_control_action`].
     pub(crate) action_target: Option<Retained<ActionTarget>>,
     /// At most one TextFieldDelegate per text-field-backed node.
     /// Created lazily on the first `on_text_field_*` install.
+    /// **Released explicitly in `Drop` BEFORE `disconnect_view_handlers`
+    /// runs** — see the Drop impl for the rationale.
     pub(crate) text_field_delegate: Option<Retained<TextFieldDelegate>>,
     /// At most one TextViewDelegate per text-view-backed node.
+    /// Released explicitly in `Drop` (same reason as
+    /// `text_field_delegate`).
     pub(crate) text_view_delegate: Option<Retained<TextViewDelegate>>,
     /// At most one HoverTracker per node — receives
     /// `mouseEntered:`/`mouseExited:` from an NSTrackingArea
@@ -119,38 +141,53 @@ pub struct NodeHandlers {
     // the iOS `IosNodeHandlers` shape.
 }
 
-/// Wraps [`NodeHandlers`] together with a `Retained<NSView>`
-/// back-reference. The Drop impl runs when the last clone of the
-/// owning Node drops — it nils out `setTarget` / `setDelegate` on
-/// the view BEFORE the handler retains release, so a lingering
-/// AppKit retain on the NSView (autorelease pool, undo manager,
-/// focus chain, etc.) can't dispatch into freed ActionTarget memory
-/// between the field-drop and the eventual NSView dealloc.
-///
-/// Holding a `Retained<NSView>` here adds one extra refcount bump
-/// per logical NSView — negligible — and ensures the view is still
-/// alive at the moment we send `setTarget(None)`.
-pub struct NodeHandlersBundle {
-    view: SendWrapper<Retained<NSView>>,
-    handlers: RefCell<NodeHandlers>,
-}
-
-impl NodeHandlersBundle {
-    pub fn new_shared(view: Retained<NSView>) -> Rc<NodeHandlersBundle> {
-        Rc::new(NodeHandlersBundle {
-            view: SendWrapper::new(view),
-            handlers: RefCell::new(NodeHandlers::default()),
-        })
-    }
-
-    pub fn handlers(&self) -> &RefCell<NodeHandlers> {
-        &self.handlers
+impl NodeHandlers {
+    /// Register the NSView whose target/delegate slots this struct
+    /// populated. Drop will nil those slots before releasing the
+    /// retain fields. Idempotent: a second call is a no-op (we
+    /// assume every install on the same Node targets the same
+    /// view, which is enforced by `Node` itself owning a single
+    /// `Retained<NSView>`).
+    pub fn attach_view(&mut self, view: Retained<NSView>) {
+        if self.view.is_none() {
+            self.view = Some(SendWrapper::new(view));
+        }
     }
 }
 
-impl Drop for NodeHandlersBundle {
+impl Drop for NodeHandlers {
     fn drop(&mut self) {
-        if !self.view.valid() {
+        // We can't rely on Rust's field-drop order to release the
+        // text-field / text-view delegates before AppKit's
+        // bookkeeping for the (about-to-be-cleared) `delegate`
+        // property runs. Empirically, with the view back-ref still
+        // live in `self.view`, calling `setDelegate(None)` on the
+        // NSTextField path leaves the delegate's ObjC object at
+        // retainCount=1 even after our `Retained<Delegate>` drops
+        // — and that ref is never released by any subsequent pool
+        // drain (verified via the cocoa fuzzer's leak check). The
+        // workaround: drop the delegate retains explicitly here,
+        // BEFORE the disconnect call clears the view's delegate
+        // slot. NSText's `delegate` is `weak`, so once the
+        // delegate's ObjC object deallocates, the field's pointer
+        // is auto-zeroed and the subsequent `setDelegate(None)` is
+        // a no-op. (NB: this isn't the case for `ActionTarget` —
+        // NSControl's target is also weak but doesn't exhibit the
+        // same residual retain. Action targets release fine through
+        // ordinary field-drop.)
+        let _tf = self.text_field_delegate.take();
+        drop(_tf);
+        let _tv = self.text_view_delegate.take();
+        drop(_tv);
+
+        let Some(view) = self.view.as_ref() else {
+            // No view ever attached — nothing was wired up, so
+            // nothing to disconnect. Field-drop releases the
+            // remaining handler retains (which are themselves
+            // no-ops if None).
+            return;
+        };
+        if !view.valid() {
             // Off-main drop — can't touch AppKit. Leak the handlers
             // rather than abort.
             return;
@@ -159,18 +196,14 @@ impl Drop for NodeHandlersBundle {
         // HoverTracker — NSView retains the area, which retains the
         // owner; the area must be detached so the owner is the only
         // strong ref still standing, releasing on the field drop.
-        {
-            let h = self.handlers.borrow();
-            if let Some(area) = h.hover_tracking_area.as_deref() {
-                self.view.removeTrackingArea(area);
-            }
+        if let Some(area) = self.hover_tracking_area.as_deref() {
+            view.removeTrackingArea(area);
         }
-        disconnect_view_handlers(&self.view);
-        // The handlers RefCell drops next (field-drop order),
-        // releasing every Retained<ActionTarget> / delegate. The
-        // view's target / delegate slots are nil now, so no
-        // dispatch can hit the freed closures even if AppKit holds
-        // the NSView past this point.
+        disconnect_view_handlers(view);
+        // Field-drop order then releases the remaining ActionTarget
+        // / HoverTracker retains. The view's target / delegate slots
+        // are nil now, so no dispatch can hit the freed closures
+        // even if AppKit holds the NSView past this point.
     }
 }
 
@@ -519,9 +552,13 @@ fn ensure_text_field_entry(node: &crate::Node) -> SharedHandlers {
     let mtm = MainThreadMarker::new()
         .expect("text-field event installs must run on the main thread");
 
-    let mut slot = node.handlers().borrow_mut();
-    if let Some(d) = slot.text_field_delegate.as_ref() {
-        return d.ivars().handlers.clone();
+    // Fast path: reuse existing delegate if installed.
+    if let Some(existing) = node.with_handlers_mut(|h| {
+        h.text_field_delegate
+            .as_ref()
+            .map(|d| d.ivars().handlers.clone())
+    }) {
+        return existing;
     }
     let handlers: SharedHandlers = Default::default();
     // Wrap delegate creation + setDelegate in a tight
@@ -541,7 +578,11 @@ fn ensure_text_field_entry(node: &crate::Node) -> SharedHandlers {
         unsafe { field.setDelegate(Some(proto)) };
         d
     });
-    slot.text_field_delegate = Some(delegate);
+    let view_retained = node.ns_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.text_field_delegate = Some(delegate);
+    });
     handlers
 }
 
@@ -742,9 +783,13 @@ fn ensure_text_view_entry(
     let mtm = MainThreadMarker::new()
         .expect("text-view event installs must run on the main thread");
 
-    let mut slot = node.handlers().borrow_mut();
-    if let Some(d) = slot.text_view_delegate.as_ref() {
-        return Some(d.ivars().handlers.clone());
+    // Fast path: reuse existing delegate if installed.
+    if let Some(existing) = node.with_handlers_mut(|h| {
+        h.text_view_delegate
+            .as_ref()
+            .map(|d| d.ivars().handlers.clone())
+    }) {
+        return Some(existing);
     }
     let handlers: SharedTextViewHandlers = Default::default();
     // Wrap delegate creation + setDelegate in a tight
@@ -755,7 +800,7 @@ fn ensure_text_view_entry(
     // the same scope show retainCount=1 because the autorelease pool
     // has already been drained between them). Without the tight
     // pool, the FIRST text_view's delegate stays alive past
-    // `NodeHandlersBundle::Drop` for as long as the *outer*
+    // `NodeHandlers::Drop` for as long as the *outer*
     // autoreleasepool lives — which surfaces as a deferred
     // delegate-store leak in unit tests and the fuzzer, even though
     // every Rust-side reference has been dropped. Wrapping setDelegate
@@ -769,7 +814,11 @@ fn ensure_text_view_entry(
         tv.setDelegate(Some(proto));
         d
     });
-    slot.text_view_delegate = Some(delegate);
+    let view_retained = node.ns_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.text_view_delegate = Some(delegate);
+    });
     Some(handlers)
 }
 
@@ -842,7 +891,11 @@ pub fn on_control_action(
         control.setAction(Some(action_fired_sel()));
     }
 
-    node.handlers().borrow_mut().action_target = Some(target);
+    let view_retained = node.ns_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.action_target = Some(target);
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -931,16 +984,13 @@ pub fn on_hover(
     let mtm = MainThreadMarker::new()
         .expect("on_hover must run on the main thread");
 
-    {
-        let handlers = node.handlers();
-        if handlers.borrow().hover_tracker.is_some() {
-            panic!(
-                "on_hover called twice on the same Node ({:p}). \
-                 Combine into a single closure if you need to \
-                 fan out.",
-                &*view
-            );
-        }
+    if node.with_handlers_mut(|h| h.hover_tracker.is_some()) {
+        panic!(
+            "on_hover called twice on the same Node ({:p}). \
+             Combine into a single closure if you need to \
+             fan out.",
+            &*view
+        );
     }
 
     let tracker = HoverTracker::new(cb, mtm);
@@ -963,8 +1013,11 @@ pub fn on_hover(
     };
     view.addTrackingArea(&area);
 
-    let mut h = node.handlers().borrow_mut();
-    h.hover_tracker = Some(tracker);
-    h.hover_tracking_area = Some(area);
+    let view_retained = node.ns_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.hover_tracker = Some(tracker);
+        h.hover_tracking_area = Some(area);
+    });
 }
 

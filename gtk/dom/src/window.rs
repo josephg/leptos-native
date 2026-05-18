@@ -53,12 +53,9 @@ pub fn open_window(
     layout::register_in_tree(content_root.as_node(), &tree);
     let root_id = content_root
         .as_node()
-        .layout_slot()
-        .borrow()
-        .handle
-        .as_ref()
+        .tree_id()
         .expect("just registered")
-        .node_id;
+        .1;
     install_taffy_layout_for_container(
         content_root.widget(),
         &tree,

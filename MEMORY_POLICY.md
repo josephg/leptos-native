@@ -110,26 +110,29 @@ this:
 > only capture **typed `Retained<NSSpecificSubclass>`** handles to
 > AppKit/UIKit objects, plus plain owned data (signals, setters,
 > primitive payloads). It must not capture `Node`, `CocoaElement`,
-> `Element`, or any wrapper that holds an `Rc<NodeHandlersBundle>`.
+> `Element`, or any wrapper that holds an `Rc<NodeInner>`.
 
 ### Why
 
-`Node` holds `Rc<NodeHandlersBundle>`. The bundle holds
+`Node` is `Rc<NodeInner>`. When mounted, the inner's `NodeState::Mounted`
+key points at an arena entry; that entry holds the
 `Retained<ActionTarget>` (or delegate Retained). The ObjC handler's
 ivars hold the closure. If the closure captures `Element` (which is
 `Node`), the strong-ref chain closes:
 
 ```
-Closure → Element → Rc<bundle> → Retained<handler> → ivars → Closure
+Closure → Element → Rc<NodeInner> → (tree, id) → arena entry →
+  Retained<handler> → ivars → Closure
 ```
 
-This is an unbreakable cycle. The bundle's `Drop` (which nils
-`setTarget` and `setDelegate`) never runs because the Rc never drops.
+This is an unbreakable cycle. `NodeInner::Drop` (which would call
+`tree.remove(id)` to fire `NodeHandlers::Drop` and nil setTarget/
+setDelegate) never runs because the Rc never drops.
 
 Capturing a `Retained<NSButton>` instead of an `Element` breaks the
-cycle — `Retained<NSButton>` doesn't transitively reach the Rust
-`Rc<bundle>`. ObjC's NSButton has no concept of the bundle; it just
-holds a `target` weak pointer at our `ActionTarget`.
+cycle — `Retained<NSButton>` doesn't transitively reach
+`Rc<NodeInner>`. ObjC's NSButton has no concept of the arena; it
+just holds a `target` weak pointer at our `ActionTarget`.
 
 ### How
 
@@ -249,25 +252,40 @@ the cost of forgetting one is hours of bug hunting.
 
 ## 5. Drop discipline
 
-### Node and bundle
+### Node, arena, and handlers
 
-`Node` is `#[derive(Clone)]`. Every clone bumps the `Rc<NodeHandlersBundle>`
-strong count. The bundle drops when the last clone drops. The bundle's
-`Drop` impl:
+`Node` is `#[derive(Clone)]`. Every clone bumps the `Rc<NodeInner>`
+strong count. When the last clone drops:
 
-1. Calls `disconnect_view_handlers(&self.view)`, which nils the view's
-   `target`/`action` and `delegate` slots. This severs the path AppKit
-   might have used to dispatch into a freed closure.
-2. Drops the `RefCell<NodeHandlers>` field, releasing each
-   `Retained<ActionTarget>` / `Retained<TextViewDelegate>`. Those
-   `dealloc` and run their `LiveTracker` decrement.
+1. `NodeInner::Drop` inspects the `NodeState`. If `Mounted`, it calls
+   `tree.remove(id)` — which removes the `NodeData` entry from the
+   arena's slotmap, dropping its `RefCell<NodeHandlers>` field.
+2. `NodeHandlers::Drop` fires. Order matters:
+   - **Drop text-field / text-view delegate `Retained`s first**
+     (explicitly inside the Drop body). AppKit/UIKit pins an extra
+     retain on those delegates the moment `setDelegate(None)` runs;
+     releasing our Retained afterwards leaves them stuck at
+     retainCount=1. The fuzzer caught this regression — see
+     `cocoa/dom/src/event.rs::NodeHandlers::drop`.
+   - Then `removeTrackingArea` to detach the hover area from the
+     view (NSView retains the area; the area retains its owner).
+   - Then `disconnect_view_handlers(view)`, which nils
+     `setTarget`/`setAction` and `setDelegate` slots.
+   - Then field-drop releases the remaining `Retained<ActionTarget>`
+     / `Retained<HoverTracker>` — their `dealloc` runs and the
+     `LiveTracker` decrements.
+3. After handlers drop, `NodeData::view` drops, releasing the
+   arena's NSView/UIView retain. (`NodeInner` also holds its own
+   retain, which drops at the end of `NodeInner` field-drop.)
+4. For `Unmounted` state at drop time: the local `NodeHandlers`
+   drops directly via state field-drop; same sequence.
 
-For this to be deterministic, **the bundle must drop on the main
-thread**. The `SendWrapper<Retained<NSView>>` in the bundle enforces
-this with a runtime check — if the bundle is somehow dropped on
-another thread, the `SendWrapper::valid()` check returns false and we
-skip `disconnect_view_handlers` to avoid an abort. The handlers leak
-in that case; it's the lesser of two evils.
+For this to be deterministic, **the Node must drop on the main
+thread**. `SendWrapper<Retained<NSView>>` in `NodeHandlers::view`
+enforces this with a runtime check — if the handlers are somehow
+dropped on another thread, the `SendWrapper::valid()` check returns
+false and we skip `disconnect_view_handlers` to avoid an abort.
+The handlers leak in that case; it's the lesser of two evils.
 
 ### Off-main drop
 
@@ -326,8 +344,8 @@ Suppose we add `<rating>` — a 5-star NSControl analog with
 1. **Create the view in `node.rs`**: `Element::create_with("rating", mtm)`
    matches a new tag, allocates `RatingControl` (subclass of
    `NSControl`), wraps in `Retained<NSView>`, builds a `Node` via
-   `Node::from_view`. The new Node's `NodeHandlersBundle` is created
-   fresh.
+   `Node::from_view`. The new Node starts in `NodeState::Unmounted`
+   with default (empty) handlers.
 
 2. **Wire the target/action in `event.rs`**: `on_rating_change`
    takes `&Node` and `cb: impl FnMut(u8)`. Internally:
@@ -413,7 +431,7 @@ review.
 ### a) Element-cycle bind
 
 ```rust
-// BAD: cycle through Rc<bundle>
+// BAD: cycle through Rc<NodeInner> → arena → handlers
 let el_for_set = el.clone();
 RenderEffect::new(move |_| el_for_set.set_…())
 ```
@@ -434,8 +452,8 @@ thread_local! { static HANDLERS: RefCell<HashMap<*mut NSView, …>> = … }
 ```
 
 ```rust
-// GOOD: state lives on Node's NodeHandlersBundle
-node.handlers().borrow_mut().my_field = Some(…)
+// GOOD: state lives on Node's NodeHandlers (local or arena)
+node.with_handlers_mut(|h| h.my_field = Some(…));
 ```
 
 ### c) Forgotten autoreleasepool around `NSTextView.setDelegate`

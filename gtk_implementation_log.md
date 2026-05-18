@@ -6,6 +6,25 @@ top.
 
 ---
 
+## 2026-05-18 — Node ownership refactor (port mirror)
+
+Mirrored the cocoa Node refactor; see `implementation_log.md` for
+the full rationale. GTK specifics:
+
+- `GtkBackend::Handlers = ()` — GTK signal handlers are owned by
+  the widget's signal connection, not by our Node. So the
+  port-side `NodeHandlers` is just unit; the arena's
+  `RefCell<()>` field is a zero-cost slot.
+- `NodeState::Unmounted` only carries `style` (meta is `()` too)
+  — effectively a `(Style)` payload.
+- No `NodeHandlers::Drop` workaround needed (no ObjC quirks).
+
+Same Node accessor surface as cocoa: `with_style`, `with_style_mut`,
+`tree_id`, `mounted_handle`, `mount_into_tree`,
+`unmount_from_tree`. `layout_slot()` is gone.
+
+---
+
 ## 2026-05-15 — Async runtime integration (port mirror)
 
 GTK side of the tokio-integration work (see top entry in

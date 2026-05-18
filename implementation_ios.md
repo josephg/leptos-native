@@ -6,6 +6,27 @@ top.
 
 ---
 
+## 2026-05-18 — Node ownership refactor (port mirror)
+
+Mirrored the cocoa Node refactor; see `implementation_log.md` for
+the full rationale. iOS specifics:
+
+- `IosBackend::Handlers = IosNodeHandlers` (was `()`). The
+  `IosNodeHandlers` struct holds the same shape as cocoa's
+  (`action_targets: Vec`, `text_view_delegate: Option`,
+  `gesture_targets: Vec`, plus the new `view: Option<…>`
+  back-ref).
+- Same `NodeHandlers::Drop` text-view-delegate workaround as
+  cocoa: the UITextView delegate `Retained` must drop explicitly
+  before `disconnect_view_handlers` runs `setDelegate(None)`.
+  UIKit's text-system pins an extra retain otherwise. See
+  `uikit/dom/src/event.rs::IosNodeHandlers::drop`.
+- `IosNodeHandlersBundle` deleted; `with_handlers_mut(|h| ...)`
+  replaces `handlers().borrow_mut()`.
+- Same Node accessor surface as cocoa.
+
+---
+
 ## 2026-05-15 — Async runtime integration (port mirror)
 
 Mirrors the cocoa-side async work (see top entry in

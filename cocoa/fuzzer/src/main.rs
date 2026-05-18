@@ -598,9 +598,10 @@ fn run_one(
     drop(owner);
     // Drain extensively so dispatch-queue async tasks (e.g.
     // bind:value's RenderEffect runner) drop their captured
-    // Element clones — those holds keep NodeHandlersBundles
-    // alive past Owner drop. Without enough pumping the leak
-    // counters show false positives.
+    // Element clones — those holds keep NodeInner Rc counts
+    // (and therefore arena handler entries) alive past Owner
+    // drop. Without enough pumping the leak counters show false
+    // positives.
     objc2::rc::autoreleasepool(|_| {
         for _ in 0..20 {
             pump_run_loop(0.02);
