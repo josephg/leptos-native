@@ -648,18 +648,31 @@ preference for the use case:
   Example: `NEXT_AUTO_IDENTIFIER` for auto-generated toolbar
   identifiers.
 
-- **App-scoped pinning (Owners, root states) → `Box::leak`** if you
-  truly never need to free them, or **keep TLS but harden every
-  `Drop` path** that touches it via `try_with` — the shutdown-order
-  ordering issue is real and `with_borrow_mut` will panic at
-  process exit. `cocoa/leptos_cocoa/src/mount.rs`'s `APP_ROOTS` is
-  the one remaining TLS in our framework code; it's worth knowing
-  about but not currently broken.
+- **App-scoped pinning (Owners + root State) → return an
+  `AppHandle` from the mount entry point.** The user's `main`
+  binds the handle and calls `.run()` to enter the AppKit run
+  loop. When the run loop returns, the handle's `Drop` fires in
+  field-declared order (root `State` → reactive `Owner` →
+  `Retained<NSApplication>` → `Retained<AppDelegate>`), so
+  reactive cleanup happens before the process exits. See
+  `cocoa/leptos_cocoa/src/mount.rs::AppHandle`. **Do not** put
+  this state in `thread_local!`, and **do not** use
+  `std::mem::forget` to skip teardown — both are
+  short-cuts that hide ownership and silently bypass cleanup.
 
-TLS is acceptable for vendored reactive_graph internals (Owner,
-current effect, current subscriber) — those are the right shape
-for "current reactive scope on this thread" and shouldn't be
-refactored.
+The remaining `thread_local!`s in framework code are
+`cocoa/dom/src/debug_overlay.rs` (debug-overlay state, behind
+feature flag) and `uikit/dom/src/app.rs::BUILDER` (single-shot
+view-builder slot consumed by `scene:willConnectToSession:`) —
+both fall under `MEMORY_POLICY.md` §2's app-scoped carve-out
+because each is a single value / fixed-size collection that
+lives until process exit. See `MEMORY_POLICY.md` for the full
+rules.
+
+TLS is also acceptable for vendored reactive_graph internals
+(Owner, current effect, current subscriber) — those are the
+right shape for "current reactive scope on this thread" and
+shouldn't be refactored.
 
 ### macOS / Cocoa specifics
 

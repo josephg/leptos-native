@@ -798,7 +798,8 @@ mod app {
                     </split_pane>
                 </split_view>
             }
-        });
+        })
+        .run();
     }
 }
 

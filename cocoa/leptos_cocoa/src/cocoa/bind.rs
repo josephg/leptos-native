@@ -15,7 +15,7 @@
 
 use crate::cocoa::element::{
     Checkbox, ColorWell, DatePicker, PopUpButton, SegmentedControl,
-    Slider, Stepper, TextField, TextView,
+    Slider, Stack, Stepper, TextField, TextView,
 };
 use cocoa_dom::Element as CocoaElement;
 use objc2::rc::Retained;
@@ -148,6 +148,18 @@ pub(crate) fn install_text_field_value_bind(
         setter(new_value);
     });
 
+    // Incoming: signal change → set field's stringValue. Routed
+    // through `Element::set_string_attribute` (rather than a typed
+    // `Retained<NSTextField>` capture) for two reasons:
+    //   1. `set_string_attribute` also calls `schedule_relayout`
+    //      on content change — NSTextField with
+    //      intrinsic-width-from-content needs a layout pass after
+    //      the new text width settles.
+    //   2. The closure stays cycle-safe per `MEMORY_POLICY.md` §3
+    //      because this `RenderEffect` lives on
+    //      `ElementState::_effects` (drops with the state) — it
+    //      isn't installed into the Node's handler bundle, so
+    //      capturing `CocoaElement` here doesn't form an Rc cycle.
     // Incoming: signal change → set field's stringValue. Routed
     // through `Element::set_string_attribute` (rather than a typed
     // `Retained<NSTextField>` capture) for two reasons:
@@ -588,3 +600,28 @@ pub(crate) fn install_checkbox_checked_bind(
 // read-only sink — the `bind:` syntax implies two-way binding, which
 // doesn't apply. Users that want signal-driven label text should write
 // `<label>{move || sig.get()}</label>` directly.
+
+// ---------------------------------------------------------------------
+// Stack — bind:mouse_hover=signal (one-way: framework → app)
+// ---------------------------------------------------------------------
+//
+// Cocoa-specific: hover is OS-driven, not app-driven, so we only
+// install the setter side. The signal is `set(true)` on
+// mouseEntered: and `set(false)` on mouseExited:; writes from the
+// app into the signal don't propagate back to AppKit (there's no
+// "synthesise hover" path).
+
+impl<Ch, Sig> BindAttribute<crate::keys::MouseHover, Sig> for Stack<Ch>
+where
+    Sig: IntoSignal<bool>,
+{
+    fn bind(
+        mut self,
+        _key: crate::keys::MouseHover,
+        signal: Sig,
+    ) -> Self {
+        let setter = signal.into_set();
+        self.set_pending_bind_mouse_hover(setter);
+        self
+    }
+}

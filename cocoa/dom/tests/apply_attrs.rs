@@ -56,7 +56,11 @@ fn init_executor_once(mtm: cocoa_dom::MainThreadMarker) {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        cocoa_dom::app::init_app(mtm);
+        // Test process — leak the returned (app, delegate)
+        // intentionally; they're singletons for the test run.
+        let (app, delegate) = cocoa_dom::app::init_app(mtm);
+        std::mem::forget(app);
+        std::mem::forget(delegate);
     });
 }
 

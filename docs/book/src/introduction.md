@@ -42,7 +42,8 @@ fn Counter() -> impl IntoView {
 }
 
 fn main() {
-    mount_to_window("Counter", (320.0, 200.0), || view! { <Counter /> });
+    mount_to_window("Counter", (320.0, 200.0), || view! { <Counter /> })
+        .run();
 }
 ```
 

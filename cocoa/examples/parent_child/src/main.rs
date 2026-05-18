@@ -72,7 +72,7 @@ mod app {
     pub fn main() {
         mount_to_window("Parent-Child communication", (380.0, 260.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

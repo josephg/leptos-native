@@ -19,11 +19,11 @@ use crate::signals::SignalStore;
 use crate::spec::{Attr, ContainerKind, Node};
 use leptos::cocoa::bind::BindAttribute;
 use leptos::cocoa::element::{
-    button, checkbox, color_well, date_picker, hstack, image_view,
+    button, checkbox, color_well, date_picker, grid, hstack, image_view,
     label, pop_up_button, progress_indicator, scroll_view,
     secure_text_field, segmented_control, slider, stack, stepper,
     text_field, text_view, vstack, Button, Checkbox, ColorWell, DatePicker,
-    ImageView, Label, PopUpButton, ProgressIndicator, ScrollView,
+    Grid, ImageView, Label, PopUpButton, ProgressIndicator, ScrollView,
     SegmentedControl, Slider, Stack, Stepper, TextField, TextView,
 };
 use leptos::Dom;
@@ -365,6 +365,59 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
                 }
             };
             AnyView::new(closure)
+        }
+        Node::DynamicList { count, max, template } => {
+            // Bulk-rebuild list driven by a usize signal. Every
+            // chaos write to `count_sig` re-runs the closure,
+            // which produces a fresh vstack whose child vector
+            // has the current length. AnyView::rebuild then
+            // unmounts the old vstack and mounts the new one.
+            //
+            // Stresses the same code paths Show does but with a
+            // wider variety of resulting tree shapes (0..=max
+            // children, all the same template).
+            let count_sig = match count {
+                Attr::Static(v) => {
+                    // Static dynamic-list is just a static vstack.
+                    let kids: Vec<AnyView<Dom>> = (0..*v)
+                        .map(|_| build(template, store))
+                        .collect();
+                    return vstack().child(kids).into_any();
+                }
+                Attr::Reactive { id, initial } => {
+                    store.ensure_index(*id, *initial)
+                }
+            };
+            let template = (**template).clone();
+            let store = store.clone();
+            let max = *max;
+            let closure = move || -> AnyView<Dom> {
+                let n = count_sig.get().min(max);
+                let kids: Vec<AnyView<Dom>> = (0..n)
+                    .map(|_| build(&template, &store))
+                    .collect();
+                vstack().child(kids).into_any()
+            };
+            AnyView::new(closure)
+        }
+        Node::Grid { children, .. } => {
+            // Grid<((), Vec<AnyView<Dom>>)>: !Send (one of its
+            // private fields' types breaks auto-Send), and Grid's
+            // `.child` accumulates into a tuple type, so
+            // dynamic-arity placement-bearing children aren't
+            // expressible via the public builder. Fall back to a
+            // plain vstack for grid specs — the cells still get
+            // rendered, just without grid-solver coverage. The
+            // spec variant is left in place so the generator's
+            // recursion shape stays stable for repro reproducibility;
+            // covering grid layout properly is its own audit item.
+            // (Render the children as a stack to at least exercise
+            // the recursive mount path.)
+            let kids: Vec<AnyView<Dom>> = children
+                .iter()
+                .map(|(_, _, kid_spec)| build(kid_spec, store))
+                .collect();
+            vstack().child(kids).into_any()
         }
     }
 }

@@ -26,7 +26,7 @@ mod app {
     pub fn main() {
         mount_to_window("Component on:click test", (320.0, 200.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

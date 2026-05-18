@@ -48,7 +48,7 @@ mod app {
     pub fn main() {
         mount_to_window("Error Boundary", (380.0, 220.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

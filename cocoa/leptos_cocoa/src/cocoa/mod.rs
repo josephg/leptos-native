@@ -11,6 +11,8 @@
 #![cfg(target_os = "macos")]
 #![allow(missing_docs)]
 
+#[cfg(feature = "animation")]
+pub mod animation;
 pub mod attr;
 pub mod bind;
 pub(crate) mod directives;

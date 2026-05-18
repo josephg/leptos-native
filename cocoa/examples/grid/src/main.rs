@@ -71,7 +71,7 @@ mod app {
                     </vstack>
                 </grid>
             }
-        });
+        }).run();
     }
 }
 

@@ -52,7 +52,7 @@ mod app {
     pub fn main() {
         mount_to_window("Persistent Counter", (340.0, 200.0), || {
             view! { <PersistentCounter /> }
-        });
+        }).run();
     }
 }
 

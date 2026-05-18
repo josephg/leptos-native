@@ -16,7 +16,7 @@ fn main() {
     };
 
     let mtm = MainThreadMarker::new().expect("must run on main thread");
-    let app = init_app(mtm);
+    let (app, _delegate) = init_app(mtm);
 
     let opened = open_window("cocoa_dom — hello", (400.0, 220.0), mtm);
 

@@ -119,5 +119,6 @@ mount_to_window(..., || view! {
             // long content
         </scroll_view>
     </vstack>
-});
+})
+.run();
 ```

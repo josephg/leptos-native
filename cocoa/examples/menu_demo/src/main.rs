@@ -129,7 +129,7 @@ mod app {
                     </vstack>
                 </window>
             }
-        });
+        }).run();
     }
 }
 

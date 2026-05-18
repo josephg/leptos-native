@@ -62,7 +62,7 @@ mod app {
     pub fn main() {
         mount_to_window("Multi-error boundary", (480.0, 280.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

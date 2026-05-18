@@ -1010,6 +1010,14 @@ impl Element {
         crate::event::on_text_field_change(&self.node, cb);
     }
 
+    /// Install hover tracking. `cb(true)` fires when the cursor
+    /// enters the element's visible rect; `cb(false)` when it
+    /// exits. Single handler per element — combine into one
+    /// closure if you need to fan out.
+    pub fn on_hover(&self, cb: impl FnMut(bool) + 'static) {
+        crate::event::on_hover(&self.node, cb);
+    }
+
     /// Wire a callback that fires when the user commits an edit
     /// (return key, focus loss, tabbing away). No-op if this
     /// element isn't an NSTextField. Coexists with
@@ -1146,8 +1154,25 @@ impl Element {
     pub fn set_alpha(&self, alpha: f64) {
         let v = self.ns_view();
         let clamped = alpha.clamp(0.0, 1.0);
-        if (v.alphaValue() - clamped).abs() > f64::EPSILON {
-            v.setAlphaValue(clamped);
+        let old = v.alphaValue();
+        if (old - clamped).abs() <= f64::EPSILON {
+            return;
+        }
+        #[cfg(feature = "animation")]
+        let visible_opacity = {
+            v.setWantsLayer(true);
+            v.layer().map(|layer| {
+                crate::animation::presentation_or_model(
+                    &layer, |l| l.opacity() as f64,
+                )
+            })
+        };
+        v.setAlphaValue(clamped);
+        #[cfg(feature = "animation")]
+        if let (Some(visible), Some(layer)) = (visible_opacity, v.layer()) {
+            crate::animation::animate_float(
+                &layer, "opacity", visible, clamped,
+            );
         }
     }
 

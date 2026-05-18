@@ -64,7 +64,8 @@ fn Counter(initial: i32) -> impl IntoView {
 fn main() {
     mount_to_window("Counter", (320.0, 200.0), || {
         view! { <Counter initial=0 /> }
-    });
+    })
+    .run();
 }
 ```
 
@@ -120,6 +121,10 @@ Two top-level entry points are exposed by `leptos_cocoa`:
   need to mount into an `<split_view>` via the dedicated
   `mount_to_split_window` entry point. See
   [Windows](../platform/cocoa/windows.md).
+
+Both return an `AppHandle`; calling `.run()` on it enters the
+AppKit run loop and tears the app state down cleanly when the
+loop returns. See [Cocoa Overview](../platform/cocoa/README.md#apphandle-and-the-run-chain).
 
 ## Where to go next
 

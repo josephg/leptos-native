@@ -29,7 +29,7 @@ mod app {
     pub fn main() {
         mount_to_window("Directives", (320.0, 160.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

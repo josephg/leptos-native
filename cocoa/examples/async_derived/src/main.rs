@@ -53,5 +53,5 @@ fn main() {
         .expect("tokio runtime");
     let _guard = rt.enter();
 
-    mount_to_window("AsyncDerived", (380.0, 200.0), || view! { <App /> });
+    mount_to_window("AsyncDerived", (380.0, 200.0), || view! { <App /> }).run();
 }

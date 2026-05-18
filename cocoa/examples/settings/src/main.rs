@@ -58,7 +58,7 @@ mod app {
     pub fn main() {
         mount_to_window("Settings", (380.0, 300.0), || {
             view! { <Settings /> }
-        });
+        }).run();
     }
 }
 

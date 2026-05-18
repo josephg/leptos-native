@@ -15,7 +15,10 @@
 //! flakiness without catching regressions our spec actually drives.
 
 use objc2::{rc::Retained, runtime::AnyObject};
-use objc2_app_kit::{NSButton, NSControl, NSTextField, NSView};
+use objc2_app_kit::{
+    NSButton, NSControl, NSDatePicker, NSPopUpButton, NSProgressIndicator,
+    NSSegmentedControl, NSSlider, NSStepper, NSTextField, NSView,
+};
 
 pub fn compare_trees(
     a_root: &NSView,
@@ -131,6 +134,94 @@ fn compare_node(a: &NSView, b: &NSView, path: &str) -> Result<(), String> {
         }
     }
 
+    // Numeric-value controls: compare `doubleValue` so a
+    // signal-driven Slider/Stepper/ProgressIndicator that didn't
+    // update doesn't pass silently. The fuzzer's spec drives these
+    // via reactive `value` attributes and (in --xcui) writes back
+    // via bind, so the reactive tree's final value should match
+    // the snapshot-built static tree's.
+    //
+    // Tolerance: AppKit rounds slider positions to its tick step;
+    // 1e-3 is comfortably within that and the worst case our spec
+    // generates.
+    fn cmp_double(
+        a: f64,
+        b: f64,
+        path: &str,
+        what: &str,
+    ) -> Result<(), String> {
+        if (a - b).abs() > 1e-3 {
+            return Err(format!(
+                "{path}: {what} mismatch ({a} vs {b})"
+            ));
+        }
+        Ok(())
+    }
+    if let (Some(sa), Some(sb)) = (
+        any_a.downcast_ref::<NSSlider>(),
+        any_b.downcast_ref::<NSSlider>(),
+    ) {
+        cmp_double(sa.doubleValue(), sb.doubleValue(), path, "NSSlider doubleValue")?;
+    }
+    if let (Some(sa), Some(sb)) = (
+        any_a.downcast_ref::<NSStepper>(),
+        any_b.downcast_ref::<NSStepper>(),
+    ) {
+        cmp_double(sa.doubleValue(), sb.doubleValue(), path, "NSStepper doubleValue")?;
+    }
+    if let (Some(pa), Some(pb)) = (
+        any_a.downcast_ref::<NSProgressIndicator>(),
+        any_b.downcast_ref::<NSProgressIndicator>(),
+    ) {
+        cmp_double(pa.doubleValue(), pb.doubleValue(), path, "NSProgressIndicator doubleValue")?;
+    }
+
+    // Index-bearing controls: NSPopUpButton's selectedItem index
+    // and NSSegmentedControl's selectedSegment. Both are driven
+    // by reactive `selection` attrs in the spec.
+    if let (Some(pa), Some(pb)) = (
+        any_a.downcast_ref::<NSPopUpButton>(),
+        any_b.downcast_ref::<NSPopUpButton>(),
+    ) {
+        let ai = pa.indexOfSelectedItem();
+        let bi = pb.indexOfSelectedItem();
+        if ai != bi {
+            return Err(format!(
+                "{path}: NSPopUpButton selectedItem mismatch ({ai} vs {bi})"
+            ));
+        }
+    }
+    if let (Some(sa), Some(sb)) = (
+        any_a.downcast_ref::<NSSegmentedControl>(),
+        any_b.downcast_ref::<NSSegmentedControl>(),
+    ) {
+        let ai = sa.selectedSegment();
+        let bi = sb.selectedSegment();
+        if ai != bi {
+            return Err(format!(
+                "{path}: NSSegmentedControl selectedSegment mismatch ({ai} vs {bi})"
+            ));
+        }
+    }
+
+    // NSDatePicker: dateValue is an NSDate. Compare via
+    // `timeIntervalSinceReferenceDate` for a numeric epoch diff.
+    if let (Some(da), Some(db)) = (
+        any_a.downcast_ref::<NSDatePicker>(),
+        any_b.downcast_ref::<NSDatePicker>(),
+    ) {
+        let ad = unsafe { da.dateValue() };
+        let bd = unsafe { db.dateValue() };
+        let at = unsafe { ad.timeIntervalSinceReferenceDate() };
+        let bt = unsafe { bd.timeIntervalSinceReferenceDate() };
+        if (at - bt).abs() > 1.0 {
+            return Err(format!(
+                "{path}: NSDatePicker dateValue mismatch \
+                 (epoch={at} vs {bt})"
+            ));
+        }
+    }
+
     // NSControl subclasses (NSButton, NSTextField, NSSlider, ...)
     // own implementation-detail private subviews — NSWidgetView,
     // NSButtonTextField, cell-backing things — that materialise
@@ -166,15 +257,21 @@ fn compare_node(a: &NSView, b: &NSView, path: &str) -> Result<(), String> {
 
 fn class_name(view: &NSView) -> String {
     // The runtime class can be a subclass (e.g. FlippedView).
-    // Also strip the `NSKVONotifying_` prefix ObjC adds when KVO
-    // is observing a property — that swizzling is non-deterministic
-    // (one tree may have a property observed, another may not) and
-    // both trees are semantically the same class.
+    // Also strip:
+    // - `NSKVONotifying_` prefix ObjC adds when KVO is observing
+    //   a property,
+    // - leading dots (`..`) the runtime occasionally adds to
+    //   nested KVO-swizzled class names.
+    // Both forms are non-deterministic (one tree may have a
+    // property observed, another may not) but represent the same
+    // underlying class.
     let cls = view.class();
     let raw = cls.name().to_string_lossy().into_owned();
-    raw.strip_prefix("NSKVONotifying_")
-        .map(str::to_owned)
-        .unwrap_or(raw)
+    let stripped = raw.trim_start_matches('.');
+    stripped
+        .strip_prefix("NSKVONotifying_")
+        .unwrap_or(stripped)
+        .to_owned()
 }
 
 fn approx_rect(a: f64, b: f64) -> bool {

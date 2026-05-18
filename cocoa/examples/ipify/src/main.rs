@@ -71,5 +71,5 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let _guard = rt.enter();
 
-    mount_to_window("ipify", (320.0, 140.0), || view! { <App /> });
+    mount_to_window("ipify", (320.0, 140.0), || view! { <App /> }).run();
 }

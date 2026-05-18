@@ -25,6 +25,8 @@
 
 #![cfg(target_os = "macos")]
 
+#[cfg(feature = "animation")]
+pub mod animation;
 pub mod app;
 pub mod color;
 #[cfg(feature = "debug-overlay")]

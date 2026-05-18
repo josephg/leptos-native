@@ -67,7 +67,7 @@ mod app {
     pub fn main() {
         mount_to_window("Timer", (320.0, 240.0), || {
             view! { <TimerDemo /> }
-        });
+        }).run();
     }
 }
 

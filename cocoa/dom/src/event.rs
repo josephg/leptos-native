@@ -34,12 +34,14 @@ use objc2::{
     define_class, msg_send,
     rc::Retained,
     runtime::{AnyObject, Bool, NSObject, ProtocolObject, Sel},
-    sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message,
+    sel, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message,
 };
 use objc2_app_kit::{
     NSControl, NSControlTextEditingDelegate, NSTextDelegate, NSTextField,
-    NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSView,
+    NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSTrackingArea,
+    NSTrackingAreaOptions, NSView,
 };
+use objc2_foundation::NSRect;
 use objc2_foundation::{NSNotification, NSObjectProtocol};
 use send_wrapper::SendWrapper;
 use std::{
@@ -104,6 +106,12 @@ pub struct NodeHandlers {
     pub(crate) text_field_delegate: Option<Retained<TextFieldDelegate>>,
     /// At most one TextViewDelegate per text-view-backed node.
     pub(crate) text_view_delegate: Option<Retained<TextViewDelegate>>,
+    /// At most one HoverTracker per node — receives
+    /// `mouseEntered:`/`mouseExited:` from an NSTrackingArea
+    /// installed on the view. Paired with `hover_tracking_area`
+    /// so we can `removeTrackingArea` on disconnect.
+    pub(crate) hover_tracker: Option<Retained<HoverTracker>>,
+    pub(crate) hover_tracking_area: Option<Retained<NSTrackingArea>>,
     // NB: no gesture-recognizer slot yet — the cocoa port currently
     // doesn't expose tap-on-non-control. When `<vstack on:click>`
     // lands (NSClickGestureRecognizer), add a
@@ -146,6 +154,16 @@ impl Drop for NodeHandlersBundle {
             // Off-main drop — can't touch AppKit. Leak the handlers
             // rather than abort.
             return;
+        }
+        // Remove the tracking area BEFORE dropping the
+        // HoverTracker — NSView retains the area, which retains the
+        // owner; the area must be detached so the owner is the only
+        // strong ref still standing, releasing on the field drop.
+        {
+            let h = self.handlers.borrow();
+            if let Some(area) = h.hover_tracking_area.as_deref() {
+                self.view.removeTrackingArea(area);
+            }
         }
         disconnect_view_handlers(&self.view);
         // The handlers RefCell drops next (field-drop order),
@@ -825,5 +843,128 @@ pub fn on_control_action(
     }
 
     node.handlers().borrow_mut().action_target = Some(target);
+}
+
+// ---------------------------------------------------------------------
+// Hover tracking (NSTrackingArea + HoverTracker)
+// ---------------------------------------------------------------------
+
+pub struct HoverIvars {
+    callback: RefCell<Box<dyn FnMut(bool) + 'static>>,
+    _live: LiveTracker,
+}
+
+define_class!(
+    /// ObjC class that owns an `NSTrackingArea` and turns its
+    /// `mouseEntered:` / `mouseExited:` callbacks into a single Rust
+    /// closure taking `bool` (true = entered, false = exited).
+    ///
+    /// AppKit dispatches tracking-area events to the area's `owner`,
+    /// not necessarily to the view itself. Using a dedicated owner
+    /// object lets us attach hover tracking to any NSView regardless
+    /// of subclass.
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = HoverIvars]
+    pub struct HoverTracker;
+
+    impl HoverTracker {
+        #[unsafe(method(mouseEntered:))]
+        fn mouse_entered(&self, _event: *mut NSObject) {
+            self.fire(true);
+        }
+        #[unsafe(method(mouseExited:))]
+        fn mouse_exited(&self, _event: *mut NSObject) {
+            self.fire(false);
+        }
+    }
+);
+
+impl HoverTracker {
+    fn fire(&self, entered: bool) {
+        let mut cb = match self.ivars().callback.try_borrow_mut() {
+            Ok(cb) => cb,
+            Err(_) => {
+                #[cfg(debug_assertions)]
+                eprintln!("[cocoa_dom] reentrant hover callback skipped");
+                return;
+            }
+        };
+        (cb)(entered);
+    }
+
+    pub fn new(
+        cb: impl FnMut(bool) + 'static,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let alloc = Self::alloc(mtm);
+        let this = alloc.set_ivars(HoverIvars {
+            callback: RefCell::new(Box::new(cb)),
+            _live: LiveTracker::new(&LIVE_HOVER_TRACKERS),
+        });
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+static LIVE_HOVER_TRACKERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Test-only: live HoverTrackers.
+#[doc(hidden)]
+pub fn hover_tracker_store_size_for_test() -> usize {
+    LIVE_HOVER_TRACKERS.load(Ordering::Relaxed)
+}
+
+/// Install hover tracking on `node`. `cb(true)` fires when the
+/// cursor enters the view's visible rect; `cb(false)` when it
+/// exits. **Single handler per node** (mirrors the existing
+/// single-handler-per-control NSControl rule).
+///
+/// The tracking area uses `InVisibleRect`, so it auto-updates as
+/// the view resizes / scrolls — no need to recreate it on layout
+/// changes. `ActiveAlways` ensures hover fires regardless of
+/// window key/main state.
+pub fn on_hover(
+    node: &crate::Node,
+    cb: impl FnMut(bool) + 'static,
+) {
+    let view = node.ns_view();
+    let mtm = MainThreadMarker::new()
+        .expect("on_hover must run on the main thread");
+
+    {
+        let handlers = node.handlers();
+        if handlers.borrow().hover_tracker.is_some() {
+            panic!(
+                "on_hover called twice on the same Node ({:p}). \
+                 Combine into a single closure if you need to \
+                 fan out.",
+                &*view
+            );
+        }
+    }
+
+    let tracker = HoverTracker::new(cb, mtm);
+
+    let options = NSTrackingAreaOptions::MouseEnteredAndExited
+        | NSTrackingAreaOptions::ActiveAlways
+        | NSTrackingAreaOptions::InVisibleRect;
+
+    // With `InVisibleRect`, the rect arg is ignored and AppKit
+    // tracks the view's visible rect automatically.
+    let owner: &AnyObject = &*tracker;
+    let area = unsafe {
+        NSTrackingArea::initWithRect_options_owner_userInfo(
+            NSTrackingArea::alloc(),
+            NSRect::ZERO,
+            options,
+            Some(owner),
+            None,
+        )
+    };
+    view.addTrackingArea(&area);
+
+    let mut h = node.handlers().borrow_mut();
+    h.hover_tracker = Some(tracker);
+    h.hover_tracking_area = Some(area);
 }
 

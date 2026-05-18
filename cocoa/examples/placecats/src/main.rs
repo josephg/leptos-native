@@ -67,5 +67,5 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let _guard = rt.enter();
 
-    mount_to_window("placecats", (520.0, 420.0), || view! { <App /> });
+    mount_to_window("placecats", (520.0, 420.0), || view! { <App /> }).run();
 }

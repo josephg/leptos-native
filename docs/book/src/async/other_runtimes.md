@@ -42,7 +42,8 @@ fn main() {
     mount_to_window("App", (320.0, 200.0), {
         let d = dispatcher.clone();
         move || view! { <App dispatcher=d.clone() /> }
-    });
+    })
+    .run();
 }
 ```
 

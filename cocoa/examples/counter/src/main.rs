@@ -28,7 +28,7 @@ mod app {
     pub fn main() {
         mount_to_window("Counter — view! + #[component]", (320.0, 200.0), || {
             view! { <Counter initial=0 /> }
-        });
+        }).run();
     }
 }
 

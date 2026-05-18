@@ -7,4 +7,6 @@
 //! on PopUpButton and SegmentedControl; those now route through
 //! `bind:value=` (disambiguated by the signal's `usize` type).
 
-pub use leptos_apple_shared::attr_keys::{AttributeKey, Checked, Value};
+pub use leptos_apple_shared::attr_keys::{
+    AttributeKey, Checked, MouseHover, Value,
+};

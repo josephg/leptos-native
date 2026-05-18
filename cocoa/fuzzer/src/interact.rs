@@ -73,15 +73,42 @@ fn walk(view: &NSView, rng: &mut ChaCha8Rng, stats: &mut Stats) {
     // buttons. Skip if no target is set: (a) there'd be no
     // handler to fire, (b) for checkboxes `performClick` would
     // toggle state with no signal to roundtrip the change.
+    //
+    // NB: `target` is a `weak` property whose synthesized getter
+    // is `objc_loadWeakRetained` — it bumps the target's retain
+    // count by +1. We read it via raw `msg_send` (so we don't
+    // pay objc2's `Retained` +1 on top) and then explicitly
+    // `release` to balance the +1 from the weak-load.
     if let Some(button) = any.downcast_ref::<NSButton>() {
-        if button.target().is_some() {
+        let target_ptr: *mut AnyObject =
+            unsafe { msg_send![button, target] };
+        if !target_ptr.is_null() {
+            // `target` selector goes through `objc_loadWeakRetained`,
+            // which returns the object +1 retained. Balance it.
+            unsafe {
+                let _: () = msg_send![&*target_ptr, release];
+            }
             unsafe { button.performClick(None) };
+            // `performClick`'s internal `sendAction:to:` resolves
+            // the target via another `objc_loadWeakRetained` and
+            // doesn't autorelease it before returning (verified via
+            // [target retainCount] probes pre/post: +1 per call).
+            // Balance the leak the same way.
+            unsafe {
+                let _: () = msg_send![&*target_ptr, release];
+            }
             stats.buttons_clicked += 1;
         }
         return;
     }
     if let Some(field) = any.downcast_ref::<NSTextField>() {
-        if field.delegate().is_some() {
+        let delegate_ptr: *mut AnyObject =
+            unsafe { msg_send![field, delegate] };
+        if !delegate_ptr.is_null() {
+            // Same: balance `objc_loadWeakRetained`'s +1.
+            unsafe {
+                let _: () = msg_send![&*delegate_ptr, release];
+            }
             type_into(field, rng);
             stats.text_fields_typed += 1;
         }
@@ -120,6 +147,28 @@ fn type_into(field: &NSTextField, rng: &mut ChaCha8Rng) {
     let Some(delegate) = field.delegate() else {
         return;
     };
+    // `NSTextField.delegate` is a `weak` property — the synthesized
+    // getter is `objc_loadWeakRetained`, which returns the object
+    // with retain count bumped by +1 to keep it alive across the
+    // (typically immediate) caller use. The objc2 binding declares
+    // the return as `Retained<...>` with `method_family = none`,
+    // which causes objc2 to add ANOTHER +1 on top (assuming a
+    // +0/autoreleased-return convention that doesn't actually
+    // apply here). Net effect: each `field.delegate()` call leaks
+    // +1 retain on the underlying object — verified empirically
+    // via `[delegate retainCount]` probes (1→3 across a single
+    // call; dropping `delegate` only releases 1 of those).
+    //
+    // The framework code never calls `.delegate()` on text fields,
+    // so this is purely a test-harness artifact. Balance it here
+    // with an explicit `release` once we're done with `delegate`,
+    // so the post-teardown `LIVE_TEXT_FIELD_DELEGATES` snapshot
+    // sees the actual delegate retain count and not this +1
+    // bookkeeping ghost.
+    let leak_balance: *mut AnyObject = {
+        let d: &AnyObject = (*delegate).as_ref();
+        d as *const _ as *mut _
+    };
     let name = NSString::from_str("NSControlTextDidChangeNotification");
     let object: &AnyObject = field.as_ref();
     let notif: Retained<NSNotification> = unsafe {
@@ -129,4 +178,13 @@ fn type_into(field: &NSTextField, rng: &mut ChaCha8Rng) {
     let _: () = unsafe {
         msg_send![delegate_any, controlTextDidChange: &*notif]
     };
+    drop(notif);
+    drop(delegate);
+    // Drain the +1 retain left over by `field.delegate()` —
+    // `objc_loadWeakRetained` returned +1, `Retained` added
+    // another +1, `drop(delegate)` released one, this releases
+    // the other.
+    unsafe {
+        let _: () = msg_send![&*leak_balance, release];
+    }
 }

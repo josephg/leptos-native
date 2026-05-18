@@ -63,5 +63,5 @@ fn App() -> impl IntoView {
 fn main() {
     mount_to_window("Slots", (320.0, 180.0), || {
         view! { <App /> }
-    });
+    }).run();
 }

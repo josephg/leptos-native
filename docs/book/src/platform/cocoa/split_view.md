@@ -26,7 +26,8 @@ mount_to_split_window("Notes", (900.0, 600.0), || view! {
             <Inspector />
         </split_pane>
     </split_view>
-});
+})
+.run();
 ```
 
 ## `mount_to_split_window`
@@ -37,8 +38,12 @@ Split views need an NSSplitViewController as the window's
 point:
 
 ```rust
-mount_to_split_window(title, (width, height), || view! { <split_view>...</split_view> });
+mount_to_split_window(title, (width, height), || view! { <split_view>...</split_view> }).run();
 ```
+
+Like the other cocoa mount entry points, `mount_to_split_window`
+returns an `AppHandle` — see [the mount entry-point
+overview](./README.md#apphandle-and-the-run-chain).
 
 The closure **must** return a `<split_view>`.
 

@@ -57,7 +57,7 @@ mod app {
     pub fn main() {
         mount_to_window("Login", (360.0, 260.0), || {
             view! { <LoginForm /> }
-        });
+        }).run();
     }
 }
 

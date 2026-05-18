@@ -17,6 +17,23 @@ debug-overlay = [
   "objc2-app-kit/block2",
   "dep:block2",
 ]
+# CoreAnimation integration: enables `cocoa_dom::animation` plus
+# implicit animation of layer-backed property changes
+# (background_color, corner_radius, border, alpha) when invoked
+# inside `with_animation(...)`. Pulls in the CAAnimation /
+# CATransaction / CASpringAnimation / CAMediaTimingFunction
+# subsystems of objc2-quartz-core. Off by default — opting in adds
+# linkage to the full QuartzCore animation surface; without it the
+# port behaves exactly as before (every property change snaps).
+animation = [
+  "objc2-quartz-core/CAAnimation",
+  "objc2-quartz-core/CATransaction",
+  "objc2-quartz-core/CAMediaTiming",
+  "objc2-quartz-core/CAMediaTimingFunction",
+  "objc2-quartz-core/CATransform3D",
+  "objc2-foundation/NSValue",
+  "dep:objc2-core-graphics",
+]
 
 [dependencies]
 renderer = { workspace = true }
@@ -46,6 +63,7 @@ objc2-foundation = { version = "0.3", features = [
     "NSTimeZone",
 ] }
 objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
+objc2-core-graphics = { version = "0.3", optional = true }
 objc2-core-foundation = "0.3"
 objc2-app-kit = { version = "0.3", features = [
     "NSLayoutConstraint",
@@ -83,6 +101,7 @@ objc2-app-kit = { version = "0.3", features = [
     "NSEvent",
     "NSMenu",
     "NSMenuItem",
+    "NSTrackingArea",
 ] }
 
 [lints.rust]
@@ -143,6 +162,11 @@ path = "tests/app_menu.rs"
 harness = false
 
 [[test]]
+name = "menu"
+path = "tests/menu.rs"
+harness = false
+
+[[test]]
 name = "icon"
 path = "tests/icon.rs"
 harness = false
@@ -193,3 +217,9 @@ harness = false
 name = "signal_mt"
 path = "tests/signal_mt.rs"
 harness = false
+
+[[test]]
+name = "animation"
+path = "tests/animation.rs"
+harness = false
+required-features = ["animation"]

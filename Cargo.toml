@@ -19,6 +19,7 @@ members = [
   "uikit/dom",
 
   # cocoa examples
+  "cocoa/examples/animation",
   "cocoa/examples/async_derived",
   "cocoa/examples/bind_tuple_form",
   "cocoa/examples/checkbox",

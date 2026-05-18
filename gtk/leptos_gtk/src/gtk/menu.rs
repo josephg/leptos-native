@@ -25,23 +25,81 @@ use gtk_dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
 use reactive_graph::effect::RenderEffect;
 use renderer::menu::Modifiers;
 use renderer::view::{Mountable, Render};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+// ---------------------------------------------------------------------
+// SectionCursor — gio-section-aware grouping for <menu_separator/>
+// ---------------------------------------------------------------------
+//
+// gio menus model "divider between groups of items" as separate
+// `gio::Menu` sections appended to a parent via `append_section`. The
+// renderer draws a divider line between adjacent sections, but does
+// *not* draw a divider between two loose items in the same section.
+//
+// So to honour `<menu_separator/>`, each <menu>'s items have to be
+// grouped into sections at build time, with each separator
+// terminating the current section and opening a new one. The cursor
+// here is the shared mutable state that lets MenuItem /
+// MenuSeparator / nested Menu builds all push into the right
+// section.
+
+/// Per-`<menu>` section accumulator. Created when entering a
+/// submenu's build, flushed at exit so the final section makes it
+/// into the parent menu.
+pub struct SectionCursor {
+    /// The menu that finished sections get appended to.
+    parent: dom_menu::Menu,
+    /// The currently-open section, or `None` if no items have been
+    /// appended since the last separator (or build start). Lazily
+    /// allocated.
+    open:   RefCell<Option<dom_menu::Menu>>,
+}
+
+impl SectionCursor {
+    fn new(parent: dom_menu::Menu) -> Self {
+        Self { parent, open: RefCell::new(None) }
+    }
+
+    /// Ensure a section is open and return a handle. Children of
+    /// the current group append to this section.
+    fn ensure_open(&self) -> dom_menu::Menu {
+        let mut open = self.open.borrow_mut();
+        if open.is_none() {
+            *open = Some(dom_menu::menu());
+        }
+        open.as_ref().unwrap().clone()
+    }
+
+    /// Close the currently-open section (if any) by appending it to
+    /// the parent. The next item appended via [`Self::ensure_open`]
+    /// starts a fresh section.
+    fn flush(&self) {
+        let mut open = self.open.borrow_mut();
+        if let Some(section) = open.take() {
+            self.parent.append_section(&section);
+        }
+    }
+}
 
 // ---------------------------------------------------------------------
 // MenuParent + MenuMountable
 // ---------------------------------------------------------------------
 
 /// What we're attaching a child to. Bar = the application's top-
-/// level `gio::Menu` (rendered as the menu bar); Menu = a submenu.
+/// level `gio::Menu` (rendered as the menu bar); Menu = a submenu
+/// with a section cursor for separator-driven grouping.
 ///
 /// Both variants carry the `gtk::Application` because reactive
 /// menu-item-title updates and accel bindings need it.
 pub enum MenuParent<'a> {
     Bar(&'a DomMenuBar),
     Menu {
-        menu: &'a dom_menu::Menu,
-        app:  &'a gtk4::Application,
+        app:    &'a gtk4::Application,
+        /// Section accumulator — items go into the currently-open
+        /// section (lazily allocated). `<menu_separator/>` flushes
+        /// it so the next item starts a fresh section.
+        cursor: &'a SectionCursor,
     },
 }
 
@@ -245,12 +303,20 @@ where
 
         // Append immediately with a placeholder title; `install`
         // runs the closure synchronously for the initial value, so
-        // the empty wrapper exists only for the duration of one
-        // synchronous call before being replaced with the real
-        // title.
+        // the empty wrapper exists only for one synchronous call
+        // before being replaced with the real title.
+        //
+        // Under the section-cursor model, a nested <menu> wrapper
+        // item lives inside its parent's currently-open section
+        // (not in the parent menu directly). The MenuBar case has
+        // no section cursor — wrapper items sit directly in the
+        // menu bar's `gio::Menu`.
         let idx = match parent {
             MenuParent::Bar(bar) => bar.append_submenu("", &sub),
-            MenuParent::Menu { menu, .. } => menu.append_submenu("", &sub),
+            MenuParent::Menu { cursor, .. } => {
+                let section = cursor.ensure_open();
+                section.append_submenu("", &sub)
+            }
         };
 
         // Reactive title — `gio::MenuItem` is immutable, so reactive
@@ -269,9 +335,13 @@ where
             effects.push(eff);
         }
 
-        // Descend into children.
-        let new_parent = MenuParent::Menu { menu: &sub, app: &app };
+        // Descend into children with a fresh section cursor scoped
+        // to this submenu. The cursor's `flush` at the end of this
+        // method seals the final section into `sub`.
+        let cursor = SectionCursor::new(sub.clone());
+        let new_parent = MenuParent::Menu { app: &app, cursor: &cursor };
         let children_state = self.children.build_into_menu(&new_parent);
+        cursor.flush();
 
         MenuState {
             _menu:     sub,
@@ -282,19 +352,26 @@ where
 }
 
 /// Owned handle for the menu's parent — captured into the reactive
-/// title closure (which outlives the borrowed [`MenuParent`]).
-/// Both variants are cheap to clone: gio glib objects are
-/// refcounted.
+/// title closure (which outlives the borrowed [`MenuParent`]). Both
+/// variants are cheap to clone: gio glib objects are refcounted.
+///
+/// For the `Menu` arm we snapshot the section the wrapper item was
+/// inserted into. Reactive title updates evict/re-insert the wrapper
+/// at the same index *within that section*. The section's identity
+/// is stable across the menu bar's lifetime — even after the section
+/// has been flushed into the parent menu, it remains the live model
+/// that the renderer reads, so future replace_item calls land in the
+/// right spot.
 enum ParentReplaceHandle {
     Bar(DomMenuBar),
-    Menu(dom_menu::Menu),
+    Section(dom_menu::Menu),
 }
 
 impl ParentReplaceHandle {
     fn replace_submenu(&self, idx: usize, label: &str, sub: &dom_menu::Menu) {
         match self {
             ParentReplaceHandle::Bar(b) => b.replace_submenu(idx, label, sub),
-            ParentReplaceHandle::Menu(m) => m.replace_submenu(idx, label, sub),
+            ParentReplaceHandle::Section(s) => s.replace_submenu(idx, label, sub),
         }
     }
 }
@@ -302,7 +379,9 @@ impl ParentReplaceHandle {
 fn parent_replace_handle(parent: &MenuParent) -> ParentReplaceHandle {
     match parent {
         MenuParent::Bar(b) => ParentReplaceHandle::Bar((*b).clone()),
-        MenuParent::Menu { menu, .. } => ParentReplaceHandle::Menu((*menu).clone()),
+        MenuParent::Menu { cursor, .. } => {
+            ParentReplaceHandle::Section(cursor.ensure_open())
+        }
     }
 }
 
@@ -402,8 +481,32 @@ impl SupportsEvent<ActionEvent> for MenuItem {}
 
 #[doc(hidden)]
 pub struct MenuItemState {
+    /// Kept alive so the gio::MenuItem / gio::SimpleAction don't
+    /// drop while the menu is still installed (the gio::Menu
+    /// model only holds them by reference).
     _item:    dom_menu::MenuItem,
+    /// Reactive-effect retains. Dropped before `_item` (struct
+    /// fields drop in declaration order), so reactive setters
+    /// stop firing before the item itself goes away.
     _effects: Vec<RenderEffect<()>>,
+    /// The application this item registered its action on. Held
+    /// so the [`Drop`] impl below can call `remove_action` and
+    /// avoid leaking entries on the application's action group
+    /// when the menu tree tears down.
+    app:      gtk4::Application,
+}
+
+impl Drop for MenuItemState {
+    fn drop(&mut self) {
+        // Unregister the per-item `app.menuitem_N` action from the
+        // application's action group. Otherwise every menu-bar
+        // rebuild would accumulate dead actions on the app
+        // (the auto-generated action name is process-wide unique,
+        // so they'd never collide, but they'd never get GC'd
+        // either). Cocoa's analog lives in
+        // `cocoa_dom::menu::MenuItem::drop_handlers`.
+        let _ = self.app.remove_action(self._item.action_name());
+    }
 }
 
 impl MenuMountable for MenuItem {
@@ -415,7 +518,18 @@ impl MenuMountable for MenuItem {
              `title=\"…\"` in the macro).",
         );
 
-        let item = dom_menu::menu_item();
+        // Pick the checkable variant up-front when the builder
+        // has a `checked=` slot. GTK doesn't let us swap a plain
+        // `SimpleAction` to a stateful one after the fact — the
+        // underlying menu renderer only shows the check column for
+        // items whose action carries state, so the decision lives
+        // here at construction time. The reactive `checked` setter
+        // below uses `set_state` against the now-stateful action.
+        let item = if self.checked.is_some() {
+            dom_menu::menu_item_checkable()
+        } else {
+            dom_menu::menu_item()
+        };
         let app = parent.app().clone();
         let mut effects = Vec::new();
 
@@ -425,23 +539,25 @@ impl MenuMountable for MenuItem {
             item.set_action(&app, move || cb());
         }
 
-        // Append to parent. <menu_item> directly under <menu_bar>
-        // panics — wrap in <menu> first.
-        let parent_menu = match parent {
-            MenuParent::Menu { menu, .. } => menu,
+        // Append into the parent's currently-open section.
+        // <menu_item> directly under <menu_bar> panics — wrap in
+        // <menu> first.
+        let section = match parent {
+            MenuParent::Menu { cursor, .. } => cursor.ensure_open(),
             MenuParent::Bar(_) => panic!(
                 "<menu_item> must be a child of <menu>, not directly \
                  under <menu_bar>. Wrap your items in <menu title=\"…\"> \
                  first."
             ),
         };
-        let idx = parent_menu.append_item(&item);
+        let idx = section.append_item(&item);
 
         // Title is reactive — gio::MenuItem is immutable so we
-        // evict and re-insert. The set_label path on the
-        // already-detached MenuItem keeps our local handle in sync
-        // for future reactive runs.
-        let parent_for: dom_menu::Menu = (*parent_menu).clone();
+        // evict and re-insert *within the section*. The section
+        // handle is stable across the menu's lifetime (it remains
+        // the live model even after being flushed to its parent),
+        // so future replace_item lands in the right spot.
+        let parent_for: dom_menu::Menu = section;
         let item_for = item.clone();
         let idx_cell = Rc::new(Cell::new(idx));
         if let Some(eff) = install(title, move |t| {
@@ -458,7 +574,8 @@ impl MenuMountable for MenuItem {
                 effects.push(eff);
             }
         }
-        // Checked (v1 stub on GTK — see gtk_dom::menu::MenuItem).
+        // Checked. The action is already stateful (set above), so
+        // set_checked hits the underlying gio::SimpleAction's state.
         if let Some(c) = self.checked {
             let it = item.clone();
             if let Some(eff) = install(c, move |b| it.set_checked(b)) {
@@ -474,6 +591,7 @@ impl MenuMountable for MenuItem {
         MenuItemState {
             _item:    item,
             _effects: effects,
+            app,
         }
     }
 }
@@ -489,29 +607,28 @@ pub fn menu_separator() -> MenuSeparator {
 }
 
 #[doc(hidden)]
-pub struct MenuSeparatorState {
-    _section: dom_menu::Menu,
-}
+pub struct MenuSeparatorState {}
 
 impl MenuMountable for MenuSeparator {
     type State = MenuSeparatorState;
 
     fn build_into_menu(self, parent: &MenuParent) -> Self::State {
-        // GTK groups items into sections; adjacent sections render
-        // with a divider between them. The simplest "separator" is
-        // an empty section: a fresh `gio::Menu` appended via
-        // `append_section`. Items added to the same parent menu
-        // after this will appear in a new visual group.
-        let section = dom_menu::menu();
+        // gio renders a divider between adjacent sections. We
+        // implement <menu_separator/> by closing the parent's
+        // currently-open section: subsequent items pick up a fresh
+        // section, and the gap between the two becomes a visible
+        // divider.
         match parent {
-            MenuParent::Menu { menu, .. } => {
-                menu.append_section(&section);
+            MenuParent::Menu { cursor, .. } => {
+                cursor.flush();
             }
             MenuParent::Bar(_) => panic!(
                 "<menu_separator/> must be a child of <menu>, not \
                  directly under <menu_bar>."
             ),
         }
-        MenuSeparatorState { _section: section }
+        // Nothing to retain — the divider is encoded in the
+        // section topology, not in any standalone widget.
+        MenuSeparatorState {}
     }
 }

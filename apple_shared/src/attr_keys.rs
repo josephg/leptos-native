@@ -29,6 +29,18 @@ impl AttributeKey for Checked {
     const KEY: &'static str = "checked";
 }
 
+/// `bind:mouse_hover` key — one-way (framework → app) hover
+/// state. The signal is `set(true)` when the cursor enters the
+/// element and `set(false)` when it leaves. Distinct from a
+/// generic `bind:value` because it ignores writes from the app
+/// (cursor position is OS-driven, not app-driven).
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct MouseHover;
+
+impl AttributeKey for MouseHover {
+    const KEY: &'static str = "mouse_hover";
+}
+
 // Note: each port defines its own `Selection` marker in its
 // `bind` module — the type is a tag for the BindAttribute trait
 // dispatch and naturally lives next to the impls.

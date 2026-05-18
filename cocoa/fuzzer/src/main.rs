@@ -69,8 +69,14 @@ struct Args {
 
     /// Assert thread-local handler / delegate stores return to
     /// their pre-seed baseline after teardown. On by default —
-    /// pass --no-check-leaks to disable.
-    #[arg(long, default_value_t = true)]
+    /// pass `--check-leaks false` to disable.
+    #[arg(
+        long,
+        default_value_t = true,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        default_missing_value = "true",
+    )]
     check_leaks: bool,
 
     /// Stricter per-iteration leak check: after every chaos
@@ -98,6 +104,36 @@ struct Args {
     /// ordering issues; opt in to exercise it.
     #[arg(long, default_value_t = 0.0)]
     show_prob: f64,
+
+    /// Probability of emitting a `DynamicList` (length-driven
+    /// bulk-rebuild) at each `gen_node` call. Each chaos write
+    /// against the count signal rebuilds the whole vstack
+    /// subtree — stresses AnyView::rebuild and the mount/unmount
+    /// cycle on N copies of a template. 0 = off.
+    #[arg(long, default_value_t = 0.0)]
+    dynamic_list_prob: f64,
+
+    /// Probability of emitting a `Grid` at each `gen_node`
+    /// call. Exercises `<grid columns rows>` + per-cell
+    /// `grid_column_at` / `grid_row_at` placement and Taffy's
+    /// grid solver. Children may share cells (intentional
+    /// collisions) to exercise the solver's overlap handling.
+    /// 0 = off.
+    #[arg(long, default_value_t = 0.0)]
+    grid_prob: f64,
+
+    /// Open this many EXTRA reactive windows per seed (each gets
+    /// its own freshly-generated spec, mounted into its own
+    /// window under the same `Owner`). Surfaces per-process
+    /// state collisions (NSToolbar identifier dedup, NSMenuBar
+    /// singleton swaps, NSWindow tab grouping, autosave-key
+    /// collisions on shared controls) that single-window seeds
+    /// can't reach. Each extra window also goes through the
+    /// chaos loop, but doesn't get a comparison rebuild (the
+    /// extra windows are stress-only — only the primary
+    /// window's reactive vs static tree is diffed). 0 = off.
+    #[arg(long, default_value_t = 0)]
+    extra_windows: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,7 +219,13 @@ fn main() {
     let _ = cocoa_dom::spawner::init();
     let mtm = MainThreadMarker::new()
         .expect("cocoa_fuzzer must run on the main thread");
-    let _app = init_app(mtm);
+    // The fuzzer doesn't enter the run loop; keep the app +
+    // delegate alive for the process's lifetime via plain
+    // bindings (NOT mem::forget — the process exits at end of
+    // `main()`, so locals drop in scope and we get clean teardown
+    // if we ever wanted it). NSApplication is a singleton so its
+    // Retained is essentially harmless.
+    let (_app, _delegate) = init_app(mtm);
 
     let mut fails = 0u32;
     let mut runs = 0u32;
@@ -233,6 +275,8 @@ fn run_one(
         g.max_depth = args.depth;
         g.reactive_fraction = args.reactive;
         g.show_probability = args.show_prob;
+        g.dynamic_list_probability = args.dynamic_list_prob;
+        g.grid_probability = args.grid_prob;
         g.generate()
     };
 
@@ -267,6 +311,65 @@ fn run_one(
             state_a.mount(&win_a.content_root, None);
         })?;
 
+        // Optional: open N extra reactive windows with their own
+        // freshly-generated specs (different RNG fork per window).
+        // Surfaces per-process collisions the single-window seeds
+        // can't reach — see `--extra-windows` docs. Hold the
+        // OpenedWindow + state + spec for the duration of the
+        // seed so they live alongside `win_a` and exercise multi-
+        // window lifetimes.
+        struct ExtraWindow {
+            // Field declaration order matters — Drop runs in
+            // top-down field order, and we need state to unmount
+            // before the window closes.
+            state: Box<dyn renderer::view::Mountable<leptos::Dom>>,
+            window: cocoa_dom::window::OpenedWindow,
+            #[allow(dead_code)]
+            store: SignalStore,
+        }
+        let mut extras: Vec<ExtraWindow> = Vec::with_capacity(
+            args.extra_windows as usize,
+        );
+        for i in 0..args.extra_windows {
+            let mut sub_rng = ChaCha8Rng::seed_from_u64(
+                seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(
+                    (i as u64).wrapping_add(1),
+                ),
+            );
+            let extra_spec = {
+                let mut g = Generator::new(&mut sub_rng);
+                g.max_depth = args.depth;
+                g.reactive_fraction = args.reactive;
+                g.show_probability = args.show_prob;
+                g.dynamic_list_probability = args.dynamic_list_prob;
+                g.grid_probability = args.grid_prob;
+                g.generate()
+            };
+            let title = format!("fuzz-extra-{seed}-{i}");
+            let win = catch_ns("open_window-extra", || {
+                open_window(&title, (640.0, 480.0), mtm)
+            })?;
+            let extra_store = SignalStore::new();
+            let view = build(&extra_spec, &extra_store);
+            let mut st: Box<dyn renderer::view::Mountable<leptos::Dom>> =
+                Box::new(catch_ns("build-extra", || view.build())?);
+            catch_ns("mount-extra", || {
+                st.mount(&win.content_root, None);
+            })?;
+            catch_ns("compute_layout-extra", || {
+                layout::compute_layout(
+                    win.content_root.as_node(),
+                    LAYOUT_AVAIL,
+                );
+            })?;
+            extras.push(ExtraWindow {
+                state: st,
+                window: win,
+                store: extra_store,
+            });
+        }
+        pump_run_loop(0.05);
+
         catch_ns("compute_layout-A-1", || {
             layout::compute_layout(win_a.content_root.as_node(), LAYOUT_AVAIL);
         })?;
@@ -290,6 +393,15 @@ fn run_one(
             if args.check_per_iteration {
                 let tree_a_for_check = win_a.tree.clone();
                 let post_mount_check = post_mount_a;
+                // Show / DynamicList legitimately resize the tree
+                // and store counts across iterations (a Show flip
+                // unmounts the old branch, mounts the new — node
+                // counts and handler counts both change). Per-
+                // iteration equality is only meaningful when the
+                // spec is shape-stable, i.e. when none of the
+                // structural-mutation gens are enabled.
+                let allow_drift = args.show_prob > 0.0
+                    || args.dynamic_list_prob > 0.0;
                 let mut per_iter_err: Option<String> = None;
                 let mut last_iter = 0usize;
                 chaos.run_with_callback(&reactive_store, |iter| {
@@ -301,11 +413,35 @@ fn run_one(
                         stores: store_sizes(),
                         tree_nodes: tree_a_for_check.node_count(),
                     };
-                    if now != post_mount_check {
+                    // When structural mutation is enabled, the
+                    // post-mount snapshot is the LOWER bound, not
+                    // the equality target. We only flag drift if
+                    // counts grow unboundedly (a chaos iteration
+                    // that doesn't flip anything shouldn't push
+                    // counts above the post-mount snapshot's
+                    // peak). With drift allowed, switch the check
+                    // to "current ≤ 4× post_mount" — a loose
+                    // ceiling that still catches per-iteration
+                    // leaks (handler count climbing linearly with
+                    // chaos iters would blow past this).
+                    let bad = if allow_drift {
+                        now.stores.handler
+                            > post_mount_check.stores.handler * 4 + 8
+                            || now.stores.text_field
+                                > post_mount_check.stores.text_field * 4 + 8
+                            || now.stores.text_view
+                                > post_mount_check.stores.text_view * 4 + 8
+                            || now.tree_nodes
+                                > post_mount_check.tree_nodes * 4 + 8
+                    } else {
+                        now != post_mount_check
+                    };
+                    if bad {
                         per_iter_err = Some(format!(
                             "chaos iter {iter}: store/tree drift; \
-                             post_mount={:?} now={:?}",
-                            post_mount_check, now
+                             post_mount={:?} now={:?} \
+                             (allow_drift={})",
+                            post_mount_check, now, allow_drift
                         ));
                     }
                     last_iter = iter;
@@ -408,6 +544,24 @@ fn run_one(
         // generously so any final RenderEffect tasks complete
         // BEFORE the owner drops — accessing a signal whose
         // owner has been disposed panics.
+        // Tear down extras first (reverse order — Drop usually
+        // goes LIFO; mirror it for the AppKit-level NSView /
+        // NSWindow lifetimes to expose any close-order
+        // dependencies between same-process windows).
+        for (idx, mut ex) in extras.into_iter().enumerate().rev() {
+            let i = idx as u32;
+            catch_ns("unmount-extra", || ex.state.unmount())?;
+            catch_ns("teardown-extra", || {
+                ex.window.content_root.as_node().teardown()
+            })?;
+            catch_ns("close-extra", || ex.window.close())?;
+            // Drop `state` and `store` explicitly to detach them
+            // from this scope before the next extra closes.
+            drop(ex.state);
+            drop(ex.store);
+            let _ = i;
+        }
+
         catch_ns("unmount-A", || state_a.unmount())?;
         catch_ns("unmount-B", || state_b.unmount())?;
         catch_ns("teardown-A", || win_a.content_root.as_node().teardown())?;

@@ -19,7 +19,8 @@ fn Counter() -> impl IntoView {
 fn main() {
     mount_to_window("Counter", (320.0, 200.0), || {
         view! { <Counter /> }
-    });
+    })
+    .run();
 }
 ```
 
@@ -90,15 +91,26 @@ effects), and stores. See [Working with Signals](../reactivity/signals.md).
 fn main() {
     mount_to_window("Counter", (320.0, 200.0), || {
         view! { <Counter /> }
-    });
+    })
+    .run();
 }
 ```
 
 `mount_to_window` is the macOS entry point. It opens an NSWindow
-with the given title and size, runs the closure inside a fresh
+with the given title and size and runs the closure inside a fresh
 `Owner` (so signals/effects in it get cleaned up correctly when
-the window closes), mounts the resulting view, and starts the
-AppKit main loop.
+the window closes). It returns an `AppHandle` that owns the
+`NSApplication`, the root `Owner`, and the mounted view state.
+Calling `.run()` enters the AppKit main loop; when the loop
+returns (Cmd-Q, last-window-close, or
+`cocoa_dom::app::quit()`), the handle drops in declared order
+(view state → reactive owner → app → delegate), so cleanup
+happens **in scope** rather than being skipped via `mem::forget`.
+
+`AppHandle` is `#[must_use]`: if you forget `.run()`, the
+compiler warns. Dropping the handle without calling `.run()` is
+a valid (if usually accidental) way to tear the app state down
+without ever showing it.
 
 On Linux/GTK the signature is similar but takes a leading
 application ID:

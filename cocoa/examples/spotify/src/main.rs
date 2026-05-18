@@ -12,6 +12,9 @@ mod app {
     // ---- palette ----------------------------------------------------
 
     const BG_BODY: Color    = Color::Rgba { r: 0.000, g: 0.000, b: 0.000, a: 1.0 };
+    #[allow(dead_code)] // Anchor for the resting card colour;
+    // referenced by `card_hover_bg`'s lerp endpoints in spirit
+    // (kept as a design-token constant rather than inlined).
     const BG_PANEL: Color   = Color::Rgba { r: 0.071, g: 0.071, b: 0.071, a: 1.0 }; // #121212
     const BG_RAISED: Color  = Color::Rgba { r: 0.094, g: 0.094, b: 0.094, a: 1.0 }; // #181818
     const BG_ROW_HOVER: Color = Color::Rgba { r: 0.165, g: 0.165, b: 0.165, a: 1.0 }; // #2a2a2a
@@ -78,10 +81,6 @@ mod app {
     fn cover_block(size: f32, cover_idx: usize, letter: &'static str) -> impl IntoView {
         let (r, g, b) = COVER_COLORS[cover_idx % COVER_COLORS.len()];
         let bg = Color::rgb(r, g, b);
-        // `.size(n)` locks the cover to an n×n square that flex
-        // layout can't squeeze (sets width/height/min_w/min_h + flex
-        // shrink=0 in one line; otherwise a long sibling title would
-        // compress fixed-width children).
         view! {
             <vstack
                 size=size
@@ -100,6 +99,30 @@ mod app {
                 </label>
             </vstack>
         }
+    }
+
+    /// Reactive background colour for the outer card panel — fades
+    /// from `BG_PANEL` (resting) to `BG_RAISED` (hover) over a
+    /// 0.3s ease-in-out. Returns the (raw_signal, color_closure)
+    /// pair so the caller can bind both: `bind:mouse_hover=raw`
+    /// + `background_color=bg`.
+    fn card_hover_bg() -> (RwSignal<bool>, impl Fn() -> Color + Send + Sync + Copy + 'static) {
+        use leptos::cocoa::animation::{ease_in_out, with_animation};
+        let raw = RwSignal::new(false);
+        let progress = RwSignal::new(0.0_f64);
+        Effect::new(move |_| {
+            let on = raw.get();
+            with_animation(ease_in_out(0.3), move || {
+                progress.set(if on { 1.0 } else { 0.0 });
+            });
+        });
+        let bg = move || {
+            // 0.071 → 0.165 (#121212 → #2a2a2a). Component-wise lerp.
+            let t = progress.get() as f32;
+            let lerp = |a: f32, b: f32| a + (b - a) * t;
+            Color::rgb(lerp(0.071, 0.165), lerp(0.071, 0.165), lerp(0.071, 0.165))
+        };
+        (raw, bg)
     }
 
     /// "Pill" toggle chip — the filter buttons under "Your Library".
@@ -556,13 +579,15 @@ mod app {
                         >
                             <hstack gap=14.0>
                                 {daily_mixes.into_iter().map(|(subtitle, cover, num, label_text)| {
+                                    let (hover_raw, hover_bg) = card_hover_bg();
                                     view! {
                                         <vstack
                                             width=200.0
                                             gap=10.0
                                             padding=12.0
-                                            background_color=BG_PANEL
+                                            background_color=hover_bg
                                             corner_radius=8.0
+                                            bind:mouse_hover=hover_raw
                                         >
                                             {cover_block(140.0, cover, num)}
                                             <label
@@ -604,13 +629,15 @@ mod app {
                         >
                             <hstack gap=14.0>
                                 {albums.into_iter().map(|(name, cover, letter)| {
+                                    let (hover_raw, hover_bg) = card_hover_bg();
                                     view! {
                                         <vstack
                                             width=200.0
                                             gap=10.0
                                             padding=12.0
-                                            background_color=BG_PANEL
+                                            background_color=hover_bg
                                             corner_radius=8.0
+                                            bind:mouse_hover=hover_raw
                                         >
                                             {cover_block(140.0, cover, letter)}
                                             <label
@@ -1113,7 +1140,7 @@ mod app {
     }
 
     pub fn main() {
-        run(|| view! { <App /> });
+        run(|| view! { <App /> }).run();
     }
 }
 

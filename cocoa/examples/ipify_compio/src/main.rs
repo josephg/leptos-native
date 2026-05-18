@@ -115,5 +115,5 @@ fn main() {
     mount_to_window("ipify (compio)", (340.0, 160.0), {
         let d = dispatcher.clone();
         move || view! { <App dispatcher=d.clone() /> }
-    });
+    }).run();
 }

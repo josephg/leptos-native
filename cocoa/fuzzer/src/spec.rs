@@ -140,6 +140,39 @@ pub enum Node {
         on: Box<Node>,
         off: Option<Box<Node>>,
     },
+    /// Dynamic-length child list driven by a reactive `usize`
+    /// signal. Renders `count` copies of `template` as siblings.
+    /// Toggling `count` via chaos exercises the bulk-rebuild
+    /// path (`AnyView::rebuild` over a vstack with a new child
+    /// vector), which is where mount/unmount cycle bugs hide —
+    /// every chaos write replaces the whole subtree.
+    ///
+    /// Distinct from `<For>` (which would keep stable per-key
+    /// state) — this is the simpler bulk-replace shape. Adding
+    /// `<For>` is a separate audit item.
+    DynamicList {
+        count: Attr<usize>,
+        /// Upper bound for chaos. Generator picks
+        /// `max ∈ 1..=4` to keep total node count bounded.
+        max: usize,
+        /// Cloned `count` times to populate the child vector.
+        template: Box<Node>,
+    },
+    /// `<grid>` with explicit cell placements. Distinct from
+    /// `<view>`/`<vstack>`/`<hstack>` because grid takes
+    /// `columns` / `rows` track templates and each child carries
+    /// `grid_column_*` / `grid_row_*` placement attrs. Exercises
+    /// `LayoutAttrs::grid_column_*` paths and Taffy's grid solver.
+    Grid {
+        /// Column count: 1..=4.
+        columns: usize,
+        /// Row count: 1..=4.
+        rows: usize,
+        /// Each child carries its `(col, row)` 1-based placement.
+        /// Multiple children may share a cell — exercises the
+        /// solver's collision handling.
+        children: Vec<(usize, usize, Node)>,
+    },
 }
 
 impl Node {
@@ -161,6 +194,8 @@ impl Node {
             Node::ColorWell { .. } => "color_well",
             Node::ImageView { .. } => "image_view",
             Node::Show { .. } => "show",
+            Node::DynamicList { .. } => "dynamic_list",
+            Node::Grid { .. } => "grid",
         }
     }
 
@@ -174,6 +209,14 @@ impl Node {
             }
             Node::Show { on, off, .. } => {
                 on.size() + off.as_ref().map_or(0, |n| n.size())
+            }
+            Node::DynamicList { template, max, .. } => {
+                // Upper bound — max possible mounted size if
+                // count ever reaches its ceiling.
+                template.size() * max
+            }
+            Node::Grid { children, .. } => {
+                children.iter().map(|(_, _, n)| n.size()).sum()
             }
             _ => 0,
         };
@@ -270,6 +313,29 @@ fn write_tree(node: &Node, f: &mut fmt::Formatter, indent: usize) -> fmt::Result
             if let Some(off) = off {
                 writeln!(f, "{pad}  off:")?;
                 write_tree(off, f, indent + 2)?;
+            }
+        }
+        Node::DynamicList { count, max, template } => {
+            writeln!(
+                f,
+                "{pad}dynamic_list count={:?} max={}",
+                count.initial(),
+                max,
+            )?;
+            writeln!(f, "{pad}  template:")?;
+            write_tree(template, f, indent + 2)?;
+        }
+        Node::Grid { columns, rows, children } => {
+            writeln!(
+                f,
+                "{pad}grid {}x{} ({} cells)",
+                columns,
+                rows,
+                children.len(),
+            )?;
+            for (c, r, n) in children {
+                writeln!(f, "{pad}  @({c},{r}):")?;
+                write_tree(n, f, indent + 2)?;
             }
         }
     }

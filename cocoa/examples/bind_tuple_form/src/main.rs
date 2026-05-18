@@ -41,7 +41,7 @@ mod app {
     pub fn main() {
         mount_to_window("bind tuple", (380.0, 200.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

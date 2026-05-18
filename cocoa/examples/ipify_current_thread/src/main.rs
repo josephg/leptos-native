@@ -88,5 +88,5 @@ fn main() {
         "ipify (current_thread)",
         (340.0, 160.0),
         || view! { <App /> },
-    );
+    ).run();
 }

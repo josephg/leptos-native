@@ -12,6 +12,19 @@ mod common;
 
 use cocoa_dom::Element;
 
+/// Initialise NSApplication once per test process. `init_app`
+/// returns `(app, delegate)` — both are intentionally leaked here
+/// since the test process exits after running its few cases.
+fn init_app_once(mtm: cocoa_dom::MainThreadMarker) {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let (app, delegate) = cocoa_dom::app::init_app(mtm);
+        std::mem::forget(app);
+        std::mem::forget(delegate);
+    });
+}
+
 fn focus_unmounted_returns_false() {
     let _mtm = common::test_mtm();
     let el = Element::create("text_field");
@@ -29,7 +42,7 @@ fn blur_unmounted_returns_false() {
 
 fn focus_mounted_text_field_succeeds() {
     let mtm = common::test_mtm();
-    cocoa_dom::app::init_app(mtm);
+    init_app_once(mtm);
     let win =
         cocoa_dom::window::open_window("focus-test", (320.0, 200.0), mtm);
 
@@ -58,7 +71,7 @@ fn focus_mounted_text_field_succeeds() {
 
 fn blur_clears_focus() {
     let mtm = common::test_mtm();
-    cocoa_dom::app::init_app(mtm);
+    init_app_once(mtm);
     let win =
         cocoa_dom::window::open_window("blur-test", (320.0, 200.0), mtm);
 
@@ -83,7 +96,7 @@ fn blur_clears_focus() {
 fn focus_on_button_works() {
     // Buttons are NSResponders too — focus should succeed.
     let mtm = common::test_mtm();
-    cocoa_dom::app::init_app(mtm);
+    init_app_once(mtm);
     let win =
         cocoa_dom::window::open_window("button-focus", (320.0, 200.0), mtm);
 

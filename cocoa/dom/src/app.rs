@@ -23,22 +23,30 @@ use objc2_foundation::{
 /// the menu/delegate (probably not what you want — call once at app
 /// startup).
 ///
-/// Returns the shared [`NSApplication`] for the caller to drive
-/// (typically by calling [`run_loop`]).
-pub fn init_app(mtm: MainThreadMarker) -> Retained<NSApplication> {
+/// Returns the shared [`NSApplication`] **and** a `Retained` to the
+/// AppDelegate we installed. The caller must keep the delegate alive
+/// for the app's lifetime — NSApplication holds it weakly, so
+/// dropping the `Retained` would dealloc the delegate and leave a
+/// dangling pointer in `app.delegate`. The mount entry points stash
+/// it on `AppHandle`; if you're calling `init_app` directly you take
+/// on the same responsibility.
+pub fn init_app(
+    mtm: MainThreadMarker,
+) -> (Retained<NSApplication>, Retained<AppDelegate>) {
     let _ = spawner::init();
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     install_default_menu(&app, mtm);
 
     let delegate = AppDelegate::new(mtm);
-    let delegate_proto: &ProtocolObject<dyn NSApplicationDelegate> =
-        ProtocolObject::from_ref(&*delegate);
-    app.setDelegate(Some(delegate_proto));
-    // The app holds the delegate weakly; leak ours so it lives forever.
-    std::mem::forget(delegate);
+    // Pool-wrap setDelegate per `MEMORY_POLICY.md` §4.
+    objc2::rc::autoreleasepool(|_| {
+        let delegate_proto: &ProtocolObject<dyn NSApplicationDelegate> =
+            ProtocolObject::from_ref(&*delegate);
+        app.setDelegate(Some(delegate_proto));
+    });
 
-    app
+    (app, delegate)
 }
 
 /// Run the AppKit run loop. Blocks until the app terminates (via
@@ -99,7 +107,7 @@ define_class!(
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[ivars = ()]
-    struct AppDelegate;
+    pub struct AppDelegate;
 
     unsafe impl NSObjectProtocol for AppDelegate {}
 

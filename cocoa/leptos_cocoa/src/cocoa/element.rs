@@ -233,6 +233,24 @@ pub struct Stack<Children> {
     align_content:    Option<MaybeReactive<AlignContent>>,
     justify_items:    Option<MaybeReactive<JustifyItems>>,
     wrap:             Option<MaybeReactive<FlexWrap>>,
+    /// Uniform layer scale (Phase 1.5). Identity = 1.0. Animates
+    /// via `transform.scale.{x,y}` inside `with_animation`. Only
+    /// surfaced on `Stack` for now — add to other builders as
+    /// needed. Always present in the struct (so `.child()` /
+    /// rebuild keep their shape stable across feature builds);
+    /// the `.scale()` builder method and the wire-up are
+    /// `#[cfg(feature = "animation")]`-gated.
+    #[cfg(feature = "animation")]
+    scale:            Option<MaybeReactive<f64>>,
+    /// Layer translation_y in points (Phase 1.5). Independent of
+    /// frame; animates via `transform.translation.y` inside
+    /// `with_animation`.
+    #[cfg(feature = "animation")]
+    translation_y:    Option<MaybeReactive<f64>>,
+    /// `bind:mouse_hover=signal` — receives `true` on cursor
+    /// enter, `false` on exit. Boxed setter so the Stack stays
+    /// non-generic over the signal type.
+    pending_bind_mouse_hover: Option<Box<dyn FnMut(bool) + Send + 'static>>,
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
     decoration:       CocoaDecoration,
@@ -248,6 +266,11 @@ fn empty_stack() -> Stack<()> {
         align_content: None,
         justify_items: None,
         wrap: None,
+        #[cfg(feature = "animation")]
+        scale: None,
+        #[cfg(feature = "animation")]
+        translation_y: None,
+        pending_bind_mouse_hover: None,
         layout: LayoutAttrs::default(),
         universal: UniversalAttrs::default(),
         decoration: CocoaDecoration::default(),
@@ -357,11 +380,48 @@ impl<Ch> Stack<Ch> {
             align_content: self.align_content,
             justify_items: self.justify_items,
             wrap: self.wrap,
+            #[cfg(feature = "animation")]
+            scale: self.scale,
+            #[cfg(feature = "animation")]
+            translation_y: self.translation_y,
+            pending_bind_mouse_hover: self.pending_bind_mouse_hover,
             layout: self.layout,
             universal: self.universal,
             decoration: self.decoration,
             children: (self.children, child),
         }
+    }
+
+    pub(crate) fn set_pending_bind_mouse_hover(
+        &mut self,
+        setter: Box<dyn FnMut(bool) + Send + 'static>,
+    ) {
+        self.pending_bind_mouse_hover = Some(setter);
+    }
+
+    /// Uniform layer scale (animation-feature only). `1.0` is
+    /// identity. Use inside `with_animation(...)` for a smooth
+    /// press / pop effect.
+    #[cfg(feature = "animation")]
+    pub fn scale<V>(mut self, s: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.scale = Some(s.into_maybe_reactive());
+        self
+    }
+
+    /// Layer translation_y in points (animation-feature only).
+    /// `0.0` is identity. Independent of layout — moves the
+    /// rendered layer without touching Taffy. Use inside
+    /// `with_animation(...)` for slide-in / slide-out effects.
+    #[cfg(feature = "animation")]
+    pub fn translation_y<V>(mut self, ty: V) -> Self
+    where
+        V: IntoMaybeReactive<f64>,
+    {
+        self.translation_y = Some(ty.into_maybe_reactive());
+        self
     }
 }
 
@@ -399,6 +459,23 @@ where
         wire_attr!(effects, el, self.wrap,            set_flex_wrap);
         wire_attr!(effects, el, self.align_content,   set_align_content);
         wire_attr!(effects, el, self.justify_items,   set_justify_items);
+        #[cfg(feature = "animation")]
+        wire_attr!(
+            effects, el, self.scale,
+            |n: &cocoa_dom::Node, s: f64| cocoa_dom::layout::set_scale(n, s, s)
+        );
+        #[cfg(feature = "animation")]
+        wire_attr!(
+            effects, el, self.translation_y,
+            |n: &cocoa_dom::Node, ty: f64| cocoa_dom::layout::set_translation(n, 0.0, ty)
+        );
+        // bind:mouse_hover=signal — one-way hover state writer.
+        if let Some(mut setter) = self.pending_bind_mouse_hover {
+            cocoa_dom::event::on_hover(
+                el.as_node(),
+                move |entered| setter(entered),
+            );
+        }
         // flex_shrink / flex_basis are applied via apply_layout
         // (they're LayoutAttrs fields). Decoration attrs go through
         // apply_decoration. `hidden` goes through apply_layout (it

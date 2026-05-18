@@ -155,7 +155,7 @@ mod app {
     pub fn main() {
         mount_to_window("Showcase", (520.0, 720.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

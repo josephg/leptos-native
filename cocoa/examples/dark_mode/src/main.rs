@@ -95,7 +95,7 @@ mod app {
     pub fn main() {
         mount_to_window("Dark mode", (480.0, 320.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

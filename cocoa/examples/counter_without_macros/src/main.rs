@@ -34,7 +34,7 @@ mod app {
 
         mount_to_window("Builder-style counter", (340.0, 200.0), move || {
             view
-        });
+        }).run();
     }
 
     impl Count {

@@ -23,7 +23,8 @@ fn main() {
     // 3. Run the app. NSApp.run() blocks here for the lifetime of
     //    the program; the guard above is kept alive in the same
     //    stack frame, so the runtime context stays set on main.
-    mount_to_window("My App", (320.0, 240.0), || view! { <App /> });
+    mount_to_window("My App", (320.0, 240.0), || view! { <App /> })
+        .run();
 }
 ```
 

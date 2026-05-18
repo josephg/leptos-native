@@ -57,7 +57,7 @@ mod app {
     pub fn main() {
         mount_to_window("Checkbox + events demo", (420.0, 280.0), || {
             view! { <Demo /> }
-        });
+        }).run();
     }
 }
 

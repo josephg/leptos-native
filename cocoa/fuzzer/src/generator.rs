@@ -26,6 +26,15 @@ pub struct Generator<'a> {
     /// (conditional). Set to 0 to disable shape-changing nodes
     /// (only attr reactivity). Default 0.15.
     pub show_probability: f64,
+    /// Probability of emitting a `DynamicList` (length-driven
+    /// bulk-rebuild) at each gen_node call. Defaults to 0; opt in
+    /// to exercise the AnyView::rebuild path on a vstack whose
+    /// child vector mutates per chaos write.
+    pub dynamic_list_probability: f64,
+    /// Probability of emitting a `Grid` at each gen_container
+    /// call. Defaults to 0; opt in to exercise grid placement +
+    /// the Taffy grid solver.
+    pub grid_probability: f64,
 }
 
 impl<'a> Generator<'a> {
@@ -43,6 +52,8 @@ impl<'a> Generator<'a> {
             // explicitly via `Generator { show_probability:
             // 0.1, .. }` to opt in.
             show_probability: 0.0,
+            dynamic_list_probability: 0.0,
+            grid_probability: 0.0,
         }
     }
 
@@ -334,8 +345,47 @@ impl<'a> Generator<'a> {
             };
             return Node::Show { when, on, off };
         }
+        // Sometimes emit a DynamicList — a length-driven
+        // bulk-rebuild container. Like Show, requires room for at
+        // least one nested generated leaf below.
+        if depth + 1 < self.max_depth
+            && self.rng.gen_bool(self.dynamic_list_probability)
+        {
+            let max = self.rng.gen_range(1..=4);
+            // Force `count` reactive so chaos can drive it.
+            let initial = self.rng.gen_range(0..=max);
+            let count = Attr::Reactive {
+                id: self.fresh_id(),
+                initial,
+            };
+            let template = Box::new(self.gen_node(depth + 1));
+            return Node::DynamicList { count, max, template };
+        }
         if depth >= self.max_depth {
             return self.gen_leaf();
+        }
+        // Sometimes emit a grid (only if there's depth budget for
+        // the cell children).
+        if depth + 1 < self.max_depth
+            && self.rng.gen_bool(self.grid_probability)
+        {
+            let columns = self.rng.gen_range(1..=4);
+            let rows = self.rng.gen_range(1..=4);
+            // Number of placed children — at least 1, up to
+            // columns*rows*2 (with intentional collisions allowed).
+            let n_kids =
+                self.rng.gen_range(1..=(columns * rows * 2).min(8));
+            let mut kids = Vec::with_capacity(n_kids);
+            for _ in 0..n_kids {
+                let col = self.rng.gen_range(1..=columns);
+                let row = self.rng.gen_range(1..=rows);
+                kids.push((col, row, self.gen_node(depth + 1)));
+            }
+            return Node::Grid {
+                columns,
+                rows,
+                children: kids,
+            };
         }
         if self.rng.gen_bool(0.4) {
             self.gen_container(depth)

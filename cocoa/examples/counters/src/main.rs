@@ -86,7 +86,7 @@ mod app {
     pub fn main() {
         mount_to_window("Counters — dynamic", (360.0, 480.0), || {
             view! { <Counters /> }
-        });
+        }).run();
     }
 }
 

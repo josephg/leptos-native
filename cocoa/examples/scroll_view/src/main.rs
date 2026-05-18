@@ -113,7 +113,7 @@ mod app {
     pub fn main() {
         mount_to_window("Scroll views", (400.0, 700.0), || {
             view! { <App /> }
-        });
+        }).run();
     }
 }
 

@@ -33,6 +33,9 @@ default = []
 # Strokes a 1px outline around every Taffy-tracked node, toggled with
 # the `~` key. Forwards to `cocoa_dom`.
 debug-overlay = ["cocoa_dom/debug-overlay"]
+# CoreAnimation Phase 1: `with_animation(...)` + animated
+# decoration / opacity setters. Forwards to `cocoa_dom`.
+animation = ["cocoa_dom/animation"]
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }

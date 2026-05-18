@@ -29,7 +29,7 @@ mod app {
     pub fn main() {
         mount_to_window("Greeter — bind:value", (360.0, 200.0), || {
             view! { <Greeter /> }
-        });
+        }).run();
     }
 }
 

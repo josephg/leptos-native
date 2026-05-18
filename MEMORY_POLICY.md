@@ -59,7 +59,7 @@ this doc.
 | Per-tree state (per-window or per-scene) | Field on `LayoutTree<B>` | `LayoutTree::relayout_queued` |
 | Per-Node, needed during layout | Field on `CocoaMeta` / `IosMeta` (the port's `NodeMeta`) | `intrinsic_width_from_content` |
 | Process-wide counters / IDs | `static AtomicU64` | toolbar identifier generator |
-| App-scoped pinning (Owners that live forever) | `Box::leak` | `mount::run` Owner pinning |
+| App-scoped pinning (Owners + root State) | Field on `AppHandle`; user binds it in `main` and calls `.run()` | `cocoa/leptos_cocoa::mount::AppHandle` |
 
 ### Forbidden
 
@@ -468,8 +468,13 @@ thread_local! { static MY_REGISTRY: RefCell<…> = …; }
 
 Use a field on the appropriate owner (Node / LayoutTree / wrapper
 struct). If you genuinely need process-global, use a
-`static AtomicU64` for IDs, or `Box::leak` for app-scoped pinning.
-TLS introduces shutdown-order bugs you'll only catch in production.
+`static AtomicU64` for IDs, or — for the app's root reactive
+`Owner` and root view `State` — make the mount entry point
+return an `AppHandle` that the user's `main` binds before
+calling `.run()`. The handle's `Drop` runs after the run loop
+returns, so cleanup happens in scope rather than being skipped
+via `mem::forget`. TLS introduces shutdown-order bugs you'll
+only catch in production.
 
 ### e) Drop running on a background thread
 

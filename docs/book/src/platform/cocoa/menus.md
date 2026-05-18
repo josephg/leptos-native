@@ -35,7 +35,8 @@ run(|| view! {
     <window title="My App" size=WindowSize(800.0, 600.0)>
         <Root />
     </window>
-});
+})
+.run();
 ```
 
 ## `<menu_bar>`

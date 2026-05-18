@@ -11,7 +11,8 @@ fn main() {
         <window title="My App".to_string() size=WindowSize(800.0, 600.0)>
             <Root />
         </window>
-    });
+    })
+    .run();
 }
 ```
 
@@ -72,7 +73,8 @@ Render multiple `<window>`s under your root:
 run(|| view! {
     <window title="Main"  size=WindowSize(800.0, 600.0)><Main /></window>
     <window title="Tools" size=WindowSize(280.0, 600.0)><Tools /></window>
-});
+})
+.run();
 ```
 
 Each window has its own Taffy layout tree — the windows are
@@ -119,7 +121,8 @@ fn main() {
         <window title="Inspector" size=WindowSize(280.0, 480.0)>
             <Inspector />
         </window>
-    });
+    })
+    .run();
 }
 ```
 

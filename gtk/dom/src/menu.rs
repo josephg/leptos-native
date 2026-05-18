@@ -189,9 +189,49 @@ static NEXT_ACTION_ID: AtomicUsize = AtomicUsize::new(0);
 /// the caller (the leptos_gtk Render impl) does that after
 /// configuring the action.
 pub fn menu_item() -> MenuItem {
+    new_menu_item(/* checkable */ false)
+}
+
+/// Create a fresh menu item whose underlying `gio::SimpleAction`
+/// carries a boolean state, so the menu renderer shows a check-
+/// mark column for it. Callers wanting [`MenuItem::set_checked`] to
+/// actually do anything must use this variant — the plain
+/// [`menu_item`] action has no state and the check-column flag is
+/// silently ignored.
+///
+/// State starts as `false`. Activating the item via the desktop
+/// shell auto-toggles the state per `gio::SimpleAction`'s default
+/// activate handler; layer the user closure on top via
+/// [`MenuItem::set_action`] and call [`MenuItem::set_checked`]
+/// from a reactive effect to re-assert state on signal changes.
+pub fn menu_item_checkable() -> MenuItem {
+    new_menu_item(/* checkable */ true)
+}
+
+fn new_menu_item(checkable: bool) -> MenuItem {
     let id = NEXT_ACTION_ID.fetch_add(1, Ordering::Relaxed);
     let action_name = format!("menuitem_{}", id);
-    let action = gio::SimpleAction::new(&action_name, None);
+    let action = if checkable {
+        let a = gio::SimpleAction::new_stateful(
+            &action_name,
+            None,
+            &false.to_variant(),
+        );
+        // Suppress the default change-state handler. Without this,
+        // activating a boolean-stateful action auto-flips its state
+        // — which would visually toggle the checkmark on click,
+        // independent of whether the user's `on:action` closure
+        // actually mutated the bound signal. A `checked=move || sig.get()`
+        // binding would then drift out of sync with `sig`. Matching
+        // cocoa's behaviour: the checkmark strictly mirrors the
+        // reactive setter; click only fires the user closure.
+        a.connect_change_state(|_action, _value| {
+            // intentional no-op — see comment above
+        });
+        a
+    } else {
+        gio::SimpleAction::new(&action_name, None)
+    };
 
     let item = gio::MenuItem::new(Some(""), None);
     item.set_detailed_action(&format!("app.{}", action_name));
@@ -234,20 +274,19 @@ impl MenuItem {
         self.action.set_enabled(b);
     }
 
-    /// Show a check-mark via the action's stateful machinery. Per
-    /// `gio::SimpleAction`'s conventions, items with state render
-    /// with a check / radio indicator depending on the state type.
-    /// We bootstrap a stateful action on first `set_checked` call
-    /// — costs a tiny re-allocation but keeps the unchecked-item
-    /// case lean.
-    pub fn set_checked(&self, _b: bool) {
-        // Implementing this needs a stateful action which requires
-        // recreating the action with `with_state(...)`. v1 deferred:
-        // the cocoa side has this but GTK's stateful actions
-        // interact with menu rendering in non-obvious ways. Use a
-        // toggle via on:action + reactive title for now.
-        // TODO: full stateful-action wiring.
-        let _ = _b;
+    /// Show or hide the check-mark indicator. Only effective when
+    /// the item was constructed via [`menu_item_checkable`] (which
+    /// gives the underlying action a boolean state). Calling this
+    /// on a non-checkable item is silently ignored — the action
+    /// has no state to set.
+    ///
+    /// `set_state` doesn't fire `change_state` handlers, so reactive
+    /// re-assertion (driven by `checked=move || sig.get()`) doesn't
+    /// trigger any spurious closures.
+    pub fn set_checked(&self, b: bool) {
+        if self.action.state_type().is_some() {
+            self.action.set_state(&b.to_variant());
+        }
     }
 
     /// Set the keyboard accelerator. `key` is e.g. `"r"`, `"F1"`,

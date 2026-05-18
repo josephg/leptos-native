@@ -29,7 +29,8 @@ run(|| view! {
             <split_pane>...</split_pane>
         </split_view>
     </window>
-});
+})
+.run();
 ```
 
 ## `<toolbar>`

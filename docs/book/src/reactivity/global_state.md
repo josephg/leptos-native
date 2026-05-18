@@ -22,7 +22,8 @@ fn main() {
         let state = Store::new(AppState::default());
         provide_context(state);
         view! { <Root /> }
-    });
+    })
+    .run();
 }
 
 #[component]
@@ -85,7 +86,8 @@ fn main() {
     mount_to_window("App", (640.0, 480.0), || {
         provide_context(RwSignal::new(false));   // dark mode
         view! { <Root /> }
-    });
+    })
+    .run();
 }
 
 #[component]

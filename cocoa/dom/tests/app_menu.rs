@@ -14,7 +14,12 @@ use objc2_app_kit::{NSApplication, NSEventModifierFlags, NSMenuItem};
 /// `setMainMenu:` replaces; safe to repeat.
 fn ensure_app_initialized() -> objc2::rc::Retained<NSApplication> {
     let mtm = common::test_mtm();
-    cocoa_dom::app::init_app(mtm)
+    let (app, delegate) = cocoa_dom::app::init_app(mtm);
+    // Test process — leak the delegate intentionally so the
+    // NSApplication's weak slot stays valid across this and
+    // subsequent test cases. Same pattern as `apply_attrs.rs`.
+    std::mem::forget(delegate);
+    app
 }
 
 fn item(menu: &objc2_app_kit::NSMenu, idx: usize) -> objc2::rc::Retained<NSMenuItem> {

@@ -290,6 +290,15 @@ pub fn schedule_relayout(node: &Node) {
 }
 
 fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
+    // Phase 2: snapshot the in-flight animation BEFORE the
+    // dedup check. The deferred compute_layout runs after
+    // CURRENT has been cleared, so we capture here and read at
+    // compute time. Setting unconditionally (even if the dedup
+    // returns early) ensures an animated setter that follows a
+    // non-animated one still gets its animation honoured.
+    #[cfg(feature = "animation")]
+    crate::animation::capture_for_layout();
+
     // Dedup: each tree carries its own "is a pass queued?" flag.
     // Cheap, no global state, no shutdown-order issue.
     if tree.relayout_queued.replace(true) {
@@ -516,8 +525,12 @@ fn warn_zero_height_scroll_views(tree: &TreeRef, root: NodeId) {
 /// Walk the subtree rooted at `id`, calling `setFrame:` on each
 /// node's NSView with its Taffy-computed layout.
 fn apply_frames(tree: &TreeRef, id: NodeId) {
+    #[cfg(feature = "animation")]
+    let pending = crate::animation::take_pending_layout_animation();
+    #[cfg(not(feature = "animation"))]
+    let pending: Option<()> = None;
     tree.walk_subtree(id, &mut |_id, layout, view| {
-        set_frame_from_layout(&view, &layout);
+        set_frame_from_layout(&view, &layout, pending);
     });
 }
 
@@ -526,9 +539,13 @@ fn apply_frames(tree: &TreeRef, id: NodeId) {
 /// [`compute_layout_children`] for pane-roots whose outer frame is
 /// owned by Auto-Layout (e.g. NSSplitView panes).
 fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
+    #[cfg(feature = "animation")]
+    let pending = crate::animation::take_pending_layout_animation();
+    #[cfg(not(feature = "animation"))]
+    let pending: Option<()> = None;
     tree.walk_subtree(root_id, &mut |id, layout, view| {
         if id != root_id {
-            set_frame_from_layout(&view, &layout);
+            set_frame_from_layout(&view, &layout, pending);
         }
     });
 }
@@ -658,7 +675,12 @@ pub fn first_baseline_offset(view: &NSView) -> Option<f64> {
     Some(raw + insets.top as f64)
 }
 
-fn set_frame_from_layout(view: &NSView, layout: &Layout) {
+fn set_frame_from_layout(
+    view: &NSView,
+    layout: &Layout,
+    #[cfg(feature = "animation")] pending_anim: Option<crate::animation::Animation>,
+    #[cfg(not(feature = "animation"))] _pending_anim: Option<()>,
+) {
     use renderer::Point;
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
@@ -668,10 +690,61 @@ fn set_frame_from_layout(view: &NSView, layout: &Layout) {
             view as *const _, x, y, width, height
         );
     }
+
+    // Phase 2: capture layer's pre-mutation position/bounds so
+    // we can animate over the captured-to-new delta. Layer-backed
+    // views only; we don't force `wantsLayer = true` here because
+    // that would silently change rendering for many NSView
+    // subclasses. Document: layout animation requires the
+    // animated view (or an ancestor) to already be layer-backed
+    // — typically via `background_color`, `corner_radius`, or an
+    // explicit `setWantsLayer(true)`.
+    //
+    // From-values read the PRESENTATION layer so that interrupting
+    // a running frame animation continues smoothly from the visible
+    // frame instead of snapping to the model.
+    #[cfg(feature = "animation")]
+    let snapshot = pending_anim.and_then(|anim| {
+        view.layer().map(|layer| {
+            let visible_pos = crate::animation::presentation_or_model(
+                &layer, |l| l.position()
+            );
+            let visible_bounds = crate::animation::presentation_or_model(
+                &layer, |l| l.bounds()
+            );
+            (anim, layer.clone(), visible_pos, visible_bounds)
+        })
+    });
+
     view.setFrame(NSRect::new(
         NSPoint::new(x as f64, y as f64),
         NSSize::new(width as f64, height as f64),
     ));
+
+    #[cfg(feature = "animation")]
+    if let Some((anim, layer, old_position, old_bounds)) = snapshot {
+        let new_position = layer.position();
+        let new_bounds = layer.bounds();
+        // Skip if no actual change — avoids a spurious
+        // animation queued on every relayout tick.
+        let pos_moved =
+            (old_position.x - new_position.x).abs() > f64::EPSILON
+                || (old_position.y - new_position.y).abs() > f64::EPSILON;
+        let bounds_changed = (old_bounds.size.width - new_bounds.size.width)
+            .abs() > f64::EPSILON
+            || (old_bounds.size.height - new_bounds.size.height).abs()
+                > f64::EPSILON;
+        if pos_moved || bounds_changed {
+            crate::animation::animate_frame(
+                &layer,
+                old_position,
+                old_bounds,
+                new_position,
+                new_bounds,
+                anim,
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -759,7 +832,19 @@ pub fn set_background_color(node: &Node, color: crate::Color) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         let ns_color = color.to_nscolor();
-        layer.setBackgroundColor(Some(&ns_color.CGColor()));
+        let new_cg = ns_color.CGColor();
+        #[cfg(feature = "animation")]
+        let old_cg = crate::animation::presentation_or_model(
+            &layer, |l| l.backgroundColor()
+        );
+        layer.setBackgroundColor(Some(&new_cg));
+        #[cfg(feature = "animation")]
+        crate::animation::animate_color(
+            &layer,
+            "backgroundColor",
+            old_cg.as_deref(),
+            Some(&new_cg),
+        );
     }
 }
 
@@ -785,7 +870,18 @@ pub fn set_corner_radius(node: &Node, radius: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
+        #[cfg(feature = "animation")]
+        let old = crate::animation::presentation_or_model(
+            &layer, |l| l.cornerRadius()
+        );
         layer.setCornerRadius(radius as f64);
+        #[cfg(feature = "animation")]
+        crate::animation::animate_float(
+            &layer,
+            "cornerRadius",
+            old,
+            radius as f64,
+        );
     }
 }
 
@@ -796,7 +892,128 @@ pub fn set_border_width(node: &Node, width: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
+        #[cfg(feature = "animation")]
+        let old = crate::animation::presentation_or_model(
+            &layer, |l| l.borderWidth()
+        );
         layer.setBorderWidth(width as f64);
+        #[cfg(feature = "animation")]
+        crate::animation::animate_float(
+            &layer,
+            "borderWidth",
+            old,
+            width as f64,
+        );
+    }
+}
+
+/// Apply a 2D scale transform to the view's CALayer. `(1.0, 1.0)`
+/// Apply a 2D translation to the view's CALayer (in points). `(0, 0)`
+/// is identity. Independent of `setFrame:` — moves the rendered
+/// layer without touching Taffy's layout.
+///
+/// When called inside `with_animation(...)`, animates
+/// `transform.translation.{x,y}` from their prior values. Useful
+/// for slide-in / slide-out effects without disturbing layout.
+#[cfg(feature = "animation")]
+pub fn set_translation(node: &Node, tx: f64, ty: f64) {
+    use objc2_quartz_core::CATransform3D;
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        let model = layer.transform();
+        // From-value reads the PRESENTATION layer so that
+        // interrupting a running animation continues smoothly
+        // from the visible position instead of snapping to the
+        // model.
+        let visible = crate::animation::presentation_or_model(
+            &layer, |l| l.transform()
+        );
+        let old_tx = visible.m41;
+        let old_ty = visible.m42;
+        // Preserve any existing scale (m11/m22) on the model. If
+        // the layer has no scale set yet (m11/m22 == 0 → identity
+        // is uninitialised), treat as 1.0.
+        let sx = if model.m11 == 0.0 { 1.0 } else { model.m11 };
+        let sy = if model.m22 == 0.0 { 1.0 } else { model.m22 };
+        let mut new_t = CATransform3D::new_scale(sx, sy, 1.0);
+        new_t.m41 = tx;
+        new_t.m42 = ty;
+        layer.setTransform(new_t);
+        if let Some(anim) = crate::animation::current_animation() {
+            let from_x = objc2_foundation::NSNumber::new_f64(old_tx);
+            let to_x = objc2_foundation::NSNumber::new_f64(tx);
+            crate::animation::apply_property_animation(
+                &layer,
+                "transform.translation.x",
+                Some(from_x.as_ref()),
+                Some(to_x.as_ref()),
+                anim,
+            );
+            let from_y = objc2_foundation::NSNumber::new_f64(old_ty);
+            let to_y = objc2_foundation::NSNumber::new_f64(ty);
+            crate::animation::apply_property_animation(
+                &layer,
+                "transform.translation.y",
+                Some(from_y.as_ref()),
+                Some(to_y.as_ref()),
+                anim,
+            );
+        }
+    }
+}
+
+/// Apply a 2D scale transform to the view's CALayer. `(1.0, 1.0)`
+/// is identity (no transform installed). Negative values flip,
+/// `0.0` collapses. The scale is anchored at the layer's current
+/// `anchorPoint` (default = centre).
+///
+/// When called inside `with_animation(...)`, animates
+/// `transform.scale.x` and `transform.scale.y` from their prior
+/// values. Available only with the `animation` Cargo feature.
+#[cfg(feature = "animation")]
+pub fn set_scale(node: &Node, sx: f64, sy: f64) {
+    use objc2_quartz_core::CATransform3D;
+    let view = node.ns_view();
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        // From-value reads the PRESENTATION layer so an
+        // interrupted prior animation continues smoothly from the
+        // visible scale instead of snapping to the model.
+        let visible = crate::animation::presentation_or_model(
+            &layer, |l| l.transform()
+        );
+        let old_sx = visible.m11; // x-scale stored on m11
+        let old_sy = visible.m22; // y-scale stored on m22
+        // Preserve translation components — otherwise a co-resident
+        // set_translation would have its m41/m42 clobbered when
+        // set_scale rewrote the matrix.
+        let model = layer.transform();
+        let mut new_t = CATransform3D::new_scale(sx, sy, 1.0);
+        new_t.m41 = model.m41;
+        new_t.m42 = model.m42;
+        new_t.m43 = model.m43;
+        layer.setTransform(new_t);
+        if let Some(anim) = crate::animation::current_animation() {
+            let from_x = objc2_foundation::NSNumber::new_f64(old_sx);
+            let to_x = objc2_foundation::NSNumber::new_f64(sx);
+            crate::animation::apply_property_animation(
+                &layer,
+                "transform.scale.x",
+                Some(from_x.as_ref()),
+                Some(to_x.as_ref()),
+                anim,
+            );
+            let from_y = objc2_foundation::NSNumber::new_f64(old_sy);
+            let to_y = objc2_foundation::NSNumber::new_f64(sy);
+            crate::animation::apply_property_animation(
+                &layer,
+                "transform.scale.y",
+                Some(from_y.as_ref()),
+                Some(to_y.as_ref()),
+                anim,
+            );
+        }
     }
 }
 
@@ -807,6 +1024,18 @@ pub fn set_border_color(node: &Node, color: crate::Color) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         let ns = color.to_nscolor();
-        layer.setBorderColor(Some(&ns.CGColor()));
+        let new_cg = ns.CGColor();
+        #[cfg(feature = "animation")]
+        let old_cg = crate::animation::presentation_or_model(
+            &layer, |l| l.borderColor()
+        );
+        layer.setBorderColor(Some(&new_cg));
+        #[cfg(feature = "animation")]
+        crate::animation::animate_color(
+            &layer,
+            "borderColor",
+            old_cg.as_deref(),
+            Some(&new_cg),
+        );
     }
 }

@@ -107,5 +107,5 @@ fn main() {
 
     mount_to_window("Transition + ErrorBoundary", (520.0, 480.0), || {
         view! { <App /> }
-    });
+    }).run();
 }

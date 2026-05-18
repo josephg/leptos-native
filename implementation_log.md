@@ -5,6 +5,173 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-18 — Hover events + `bind:mouse_hover` + spotify demo
+
+Continued the animation pipeline by adding the missing
+*input* side: a hover event so user code can drive animations
+from cursor enter/exit.
+
+**`cocoa_dom::event::on_hover`** — installs an `NSTrackingArea`
+on the node's view with a dedicated `HoverTracker` (NSObject
+subclass) as `owner`. The tracker holds a Rust closure and routes
+`mouseEntered:` / `mouseExited:` into `cb(true)` / `cb(false)`.
+Tracking area is configured with
+`MouseEnteredAndExited | ActiveAlways | InVisibleRect` so it
+auto-tracks the visible rect — no need to recreate on layout
+changes.
+
+Lifetime per MEMORY_POLICY §3:
+- `HoverTracker` and the `NSTrackingArea` retain are both stored
+  in `NodeHandlers` (new `hover_tracker` and
+  `hover_tracking_area` fields). When the last Node clone
+  drops, the bundle drops, `removeTrackingArea` runs *before*
+  the tracker releases (otherwise NSView would still hold a
+  dangling owner reference through its area list).
+- Single handler per node (panic on double install — same
+  policy as `on_control_action`).
+
+**`bind:mouse_hover=signal`** — one-way binding (framework → app)
+implemented as `BindAttribute<MouseHover, Sig>` on `Stack` only
+for now. Distinct from `bind:value=` because the OS owns the
+state — app writes don't synthesise hover events back. The
+`MouseHover` marker key lives in `leptos_apple_shared` (next to
+`Value` / `Checked`); the impl lives in
+`leptos_cocoa::cocoa::bind`.
+
+**`translation_y` attr on Stack** — mirror of `scale`, animates
+`transform.translation.{x,y}` via the existing apparatus. Layout
+unaffected — translation is a pure CALayer transform, doesn't
+disturb Taffy.
+
+**Spotify demo wiring**: `cover_block` now takes a `raw`
+RwSignal<bool> from `bind:mouse_hover`, plus a `progress`
+RwSignal<f64> animated through `with_animation(ease_in_out(0.5))`
+inside an `Effect` that watches `raw`. The covered properties
+(`scale`, `translation_y`, `background_color`) read from
+`progress`, so a single bool flip drives a smooth combined
+transition. Skipped the play-button overlay — would need
+`position: Absolute` + `inset` on `LayoutAttrs`, which is the
+next obvious follow-up.
+
+Pattern note for hover-driven animations: bind to a "raw" bool,
+have an Effect re-fire `with_animation(curve, || derived.set(...))`,
+and use the derived signal for animated attrs. Necessary because
+the bind setter writes the signal directly (no animation
+context), so a watcher Effect is what introduces the context for
+downstream re-fires.
+
+---
+
+## 2026-05-18 — CoreAnimation Phase 1.5 (scale) + Phase 2 (layout)
+
+Two follow-ups to the Phase 1 work below, both still behind the
+`animation` Cargo feature.
+
+**Phase 1.5: `scale` builder attr on `Stack`.** Animates via
+`transform.scale.{x,y}` keypaths (NSNumber-valued — avoids the
+NSValue+CATransform3D dance). Adds `CATransform3D` to the
+feature's objc2-quartz-core deps. Surfaced on `Stack` only for
+now; other builders need a per-struct field add (the
+non-controversial-but-tedious kind of edit). Demo: a "Press"
+button on the existing `animation_cocoa` example scales the
+panel to 0.92 then springs back to 1.0 via two chained
+`with_animation` calls.
+
+**Phase 2: layout animation.** When inside `with_animation`,
+Taffy-driven `setFrame:` calls animate the underlying layer's
+`position` and `bounds` instead of snapping. Mechanism:
+`schedule_relayout_for_tree` captures `current_animation()` into
+a separate TLS slot (`PENDING_LAYOUT_ANIM`) at schedule time;
+the deferred `compute_layout` pass reads + clears the slot and
+threads it through to `set_frame_from_layout`. Necessary because
+the dispatch-queue ordering puts the `CleanupGuard` restore
+*before* the relayout fires (cleanup is queued during
+with_animation; relayout is queued from the effect that re-runs
+inside the cleanup-spawn_local FIFO ordering — by relayout time,
+`CURRENT` is None).
+
+Scope:
+- Animates only views that are already layer-backed. We
+  deliberately don't `setWantsLayer(true)` from
+  `set_frame_from_layout` because that would silently flip
+  rendering for many NSView subclasses (text fields, scroll
+  views) and there's no clear "undo" if the user wasn't asking
+  for it. Practical effect: any view with a `background_color`
+  / `corner_radius` / `border_*` (or that explicitly opts in)
+  participates; bare `<vstack>` containers won't unless the
+  parent forces wantsLayer.
+- Animates `position` and `bounds` (NSValue-wrapped CGPoint /
+  CGRect). Skips the addAnimation call when neither moved —
+  avoids a spurious queued animation on every relayout tick.
+- Adds `NSValue` to objc2-foundation features and `CATransform3D`
+  to objc2-quartz-core (both in the `animation` feature only).
+
+Demo additions to `animation_cocoa`: a "Resize" button toggles
+the panel's `width` between 240 and 480 via `with_animation(spring())`.
+A "Press" button shows the scale chain.
+
+Carries over the Phase 1 caveats: panic-safety via Drop guard,
+main-thread assertion, FIFO ordering for effect-driven setter
+writes. Per-relayout-pass `PENDING_LAYOUT_ANIM` is single-slot
+TLS, cleared at the start of every compute_layout pass — fits
+the same carve-out as `CURRENT`.
+
+---
+
+## 2026-05-18 — CoreAnimation Phase 1 (property animations)
+
+Added `cocoa_dom::animation` (re-exported as
+`leptos_cocoa::cocoa::animation`) behind a new `animation` Cargo
+feature on both `cocoa_dom` and `leptos_cocoa`. Off by default —
+opting in pulls extra objc2-quartz-core subsystems
+(`CAAnimation`, `CATransaction`, `CAMediaTiming`,
+`CAMediaTimingFunction`) and threads `#[cfg(feature =
+"animation")]` blocks through the half-dozen layer-backed
+setters in `cocoa/dom/src/layout.rs` + `set_alpha` in
+`cocoa/dom/src/node.rs`. With the feature off, the port behaves
+exactly as before.
+
+**API shape**: `with_animation(Animation, FnOnce)` —
+SwiftUI-style. Single TLS slot holds the in-flight animation;
+the body runs synchronously, and a `spawn_local` cleanup
+schedules the slot's reset *after* any RenderEffect re-runs the
+body queued (FIFO ordering on the main dispatch queue keeps
+effect-driven setter writes inside the animation context).
+
+**Mechanism**: each participating setter, when
+`current_animation().is_some()`, reads the layer property's old
+value, writes the new model value, then `addAnimation:forKey:`s
+a `CABasicAnimation` (or `CASpringAnimation` for spring curves)
+with explicit `fromValue` / `toValue`. CoreAnimation interpolates
+the presentation layer between the two. No open CATransaction —
+the explicit-from-value approach side-steps the AppKit
+suppression that bites direct `setAlphaValue:` / setter calls
+outside `animator()`.
+
+**Why not implicit-only / `animator()`**: NSView's `animator()`
+proxy is fine for opacity but doesn't extend to layer-backed
+properties (`cornerRadius`, `borderColor`, `backgroundColor` of
+the CALayer), and a single API that worked uniformly was worth
+the slightly less idiomatic-Cocoa approach. Springs aren't
+representable as an `animator()` curve at all.
+
+**Phase 1 scope**: opacity (NSView's alphaValue cascades to
+layer.opacity when wantsLayer is true; we also push an explicit
+CABasicAnimation on `opacity`), `backgroundColor`,
+`cornerRadius`, `borderWidth`, `borderColor`. Frame/bounds
+changes from Taffy relayout do not animate — Phase 2. Mount /
+unmount transitions — Phase 3. CATransition view swaps —
+Phase 4.
+
+**TLS justification**: single fixed-size value, only ever Some
+during a `with_animation` burst, cleared via spawn_local. Falls
+under MEMORY_POLICY §2's app-scope carve-out (same shape as the
+reactive_graph current-Owner slot).
+
+Demo: `cocoa/examples/animation/` — fade, color spring, combined.
+
+---
+
 ## 2026-05-15 — Async runtime integration (tokio, compio, …)
 
 Added documented support for combining the cocoa port's main-thread

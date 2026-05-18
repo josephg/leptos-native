@@ -1,9 +1,9 @@
 [package]
-name = "spotify_cocoa"
+name = "animation_cocoa"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa", features = ["animation"] }
-cocoa_dom = { path = "../../dom", features = ["animation"] }
+any_spawner = "0.3"

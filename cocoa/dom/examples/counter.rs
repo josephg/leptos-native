@@ -21,7 +21,7 @@ fn main() {
     };
 
     let mtm = MainThreadMarker::new().expect("must run on main thread");
-    let app = init_app(mtm);
+    let (app, _delegate) = init_app(mtm);
 
     let owner = Owner::new();
     owner.set();
