@@ -69,6 +69,11 @@ path = "tests/tree_mutation.rs"
 harness = false
 
 [[test]]
+name = "node_lifecycle"
+path = "tests/node_lifecycle.rs"
+harness = false
+
+[[test]]
 name = "layout"
 path = "tests/layout.rs"
 harness = false
