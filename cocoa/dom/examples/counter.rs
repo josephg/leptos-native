@@ -33,21 +33,21 @@ fn main() {
     let count = RwSignal::new(0_i32);
 
     // ---- build the view (hand-placed frames; no taffy at this level) ----
-    let label = Text::create_with("Count: 0", mtm);
+    let label = Text::create_with(&opened.tree, "Count: 0", mtm);
     set_frame(label.as_node().ns_view(), 20.0, 140.0, 280.0, 24.0);
     opened.content_root.insert_node(label.as_node(), None);
 
-    let dec = Element::create_with("button", mtm);
+    let dec = Element::create_with(&opened.tree, "button", mtm);
     dec.set_attribute("title", "-1");
     set_frame(dec.ns_view(), 20.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(dec.as_node(), None);
 
-    let reset = Element::create_with("button", mtm);
+    let reset = Element::create_with(&opened.tree, "button", mtm);
     reset.set_attribute("title", "Reset");
     set_frame(reset.ns_view(), 120.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(reset.as_node(), None);
 
-    let inc = Element::create_with("button", mtm);
+    let inc = Element::create_with(&opened.tree, "button", mtm);
     inc.set_attribute("title", "+1");
     set_frame(inc.ns_view(), 220.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(inc.as_node(), None);

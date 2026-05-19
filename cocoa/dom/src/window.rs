@@ -160,12 +160,23 @@ pub fn open_window(
     // Height is still content-sized; if the user's outer container
     // wants to fill the window vertically too, they add
     // `flex_grow=1` to it.
-    let content_root = Element::create_with("view", mtm);
+    let tree = layout::new_tree();
+    let content_root = Element::create_with(&tree, "view", mtm);
     layout::set_flex_direction(
         content_root.as_node(),
         layout::FlexDirection::Column,
     );
-    let tree = layout::new_tree();
+    // The content_root must fill its NSView's bounds (= window's
+    // content area). Express that as 100% size so Taffy resolves it
+    // against the `AvailableSpace::Definite` we pass to
+    // `compute_layout`. This is what makes the root cover the whole
+    // window without `compute_layout` having to overwrite user-set
+    // sizes on every pass.
+    {
+        use renderer::attrs::Dim;
+        renderer::setters::set_size_width(content_root.as_node(), Dim::Pct(1.0));
+        renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
+    }
     layout::register_in_tree(content_root.as_node(), &tree);
     nswindow.setContentView(Some(content_root.ns_view()));
 

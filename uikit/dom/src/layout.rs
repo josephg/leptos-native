@@ -84,23 +84,28 @@ fn layout_debug_enabled() -> bool {
 // Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
 
+/// Backwards-compatible no-op: arena allocation now happens eagerly
+/// in `Element::create_with` (and `Text` / `Placeholder`). Just
+/// publishes `node.id` as root if no root is set yet.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
-    if node.tree_id().is_some() {
-        return;
-    }
-    let node_id = node.mount_into_tree(tree);
+    let Some((node_tree, id)) = node.tree_id() else { return };
+    debug_assert!(
+        Rc::ptr_eq(&node_tree, tree),
+        "register_in_tree called with a tree that doesn't own this node"
+    );
     let mut root = tree.root.borrow_mut();
     if root.is_none() {
-        *root = Some(node_id);
+        *root = Some(id);
     }
 }
 
-/// Drop the node and unregister it. No-op if never registered.
+/// Drop the node and detach it from the tree.
 pub fn drop_node(node: &Node) {
     let parent = node
         .tree_id()
         .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    node.unmount_from_tree();
+    // Force an eager arena removal.
+    node.teardown();
     if let Some((tree, pid)) = parent {
         tree.mark_dirty(pid);
         schedule_relayout_for_tree(&tree, pid);
@@ -158,16 +163,14 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 
 pub fn attach_child(parent: &Node, child: &Node) {
     let Some((tree, parent_id)) = parent.tree_id() else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.add_child(parent_id, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
 
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let Some((tree, parent_id)) = parent.tree_id() else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.insert_child_at_index(parent_id, index, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
@@ -207,13 +210,23 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
     let w = available_size.width as f32;
     let h = available_size.height as f32;
 
+    // For axes where the root's style.size is `auto`, fill the
+    // available space. Axes the user has set explicitly are left
+    // alone — see cocoa's compute_layout for the rationale.
     {
         let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
-        style.size = Size {
-            width: Dimension::length(w),
-            height: Dimension::length(h),
-        };
-        handle.tree.set_style(handle.node_id, style);
+        let mut touched = false;
+        if style.size.width == Dimension::auto() {
+            style.size.width = Dimension::length(w);
+            touched = true;
+        }
+        if style.size.height == Dimension::auto() {
+            style.size.height = Dimension::length(h);
+            touched = true;
+        }
+        if touched {
+            handle.tree.set_style(handle.node_id, style);
+        }
     }
 
     let avail = Size {

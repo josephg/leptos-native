@@ -6,6 +6,27 @@ top.
 
 ---
 
+## 2026-05-19 — Node refactor part 2 (port mirror)
+
+Mirrored the cocoa changes; see `implementation_log.md` for the
+full rationale. GTK specifics:
+
+- `GtkBackend::Handlers = ()` (unchanged) — GTK signal handlers are
+  owned by the widget's signal connection. So `NodeData::handlers`
+  on GTK is just a unit slot; no cycle risk from delegate-style
+  retains.
+- `WeakElement` / `WeakNode` / `WeakText` / `WeakPlaceholder` added
+  for API parity with the other ports, even though the cycle risk
+  is moot here.
+- Node = `Rc<NodeInner { tree, id, kind, widget, is_borrowed }>`
+  with no state enum.
+- `Element::create(tree, "foo")` eagerly allocates into the arena.
+- `register_in_tree` reduced to a near-no-op that publishes root id.
+
+16/16 lifecycle tests pass. counter_gtk builds.
+
+---
+
 ## 2026-05-18 — Node ownership refactor (port mirror)
 
 Mirrored the cocoa Node refactor; see `implementation_log.md` for

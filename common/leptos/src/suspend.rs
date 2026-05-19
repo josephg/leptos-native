@@ -40,6 +40,7 @@
 
 use any_spawner::Executor;
 use renderer::{
+    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render},
 };
@@ -91,6 +92,7 @@ where
     R: Renderer,
     V: Render<R>,
 {
+    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     // Shared so the spawned task can mutate the variant when the
     // future resolves. Single-threaded (main thread) by
     // construction, hence `Rc<RefCell<_>>` is fine.
@@ -123,13 +125,14 @@ where
 {
     type State = SuspendState<R, V>;
 
-    fn build(self) -> Self::State {
-        let placeholder = R::create_placeholder();
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        let placeholder = R::create_placeholder(tree);
         let inner = Rc::new(RefCell::new(SuspendInner::Pending {
             placeholder,
             parent: None,
             marker: None,
         }));
+        let tree_for_future = tree.clone();
 
         // Spawn the future. When it resolves, splice the resolved
         // view into the same position as the placeholder. We hold
@@ -143,7 +146,7 @@ where
         let future = self.future;
         Executor::spawn_local(async move {
             let view = future.await;
-            let mut state = view.build();
+            let mut state = view.build(&tree_for_future);
 
             let Some(inner) = inner_weak.upgrade() else {
                 // SuspendState was dropped while the future was in
@@ -171,7 +174,10 @@ where
             }
         });
 
-        SuspendState { inner }
+        SuspendState {
+            tree: send_wrapper::SendWrapper::new(tree.clone()),
+            inner,
+        }
     }
 
     fn rebuild(self, state: &mut Self::State) {
@@ -180,7 +186,8 @@ where
         // Note: this kills any in-flight future from the previous
         // build — its continuation will see Ready or a dropped
         // inner and bail.
-        let new_state = self.build();
+        let tree = (*state.tree).clone();
+        let new_state = self.build(&tree);
         // Replace contents. The previous SuspendState's Drop
         // (via the Rc-held Pending/Ready) doesn't run here — we
         // need explicit unmount.

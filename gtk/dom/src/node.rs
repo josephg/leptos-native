@@ -2,15 +2,16 @@
 //! `gtk::Widget`.
 //!
 //! Each `Node` is a single `Rc<NodeInner>` carrying:
-//!   * the `gtk::Widget` (always present from creation),
-//!   * a `RefCell<NodeState>` describing whether the node's style
-//!     lives locally (`Unmounted`) or in the arena's `NodeData`
-//!     (`Mounted` / `MountedBorrowed`).
+//!   * the tree it lives in (`TreeRef`),
+//!   * its arena `NodeId`,
+//!   * a cached `gtk::Widget` for cheap `widget() -> &gtk::Widget`,
+//!   * an `is_borrowed` flag controlling whether `Drop` decrefs the
+//!     arena entry.
 //!
-//! Style mutations made before mount are buffered on the `Unmounted`
-//! variant; on `mount_into_tree` they migrate into the arena. After
-//! mount, accessors (`with_style`, `tree_id`) read/write through the
-//! arena via the `(tree, id)` key. Mirrors the cocoa port's
+//! All style state lives in the arena's `NodeData`. Accessors
+//! (`with_style`, etc.) route straight to the arena. Allocation is
+//! eager: `Element::create(tree, tag)` takes a `tree: &TreeRef` and
+//! allocates an arena entry up front. Mirrors the cocoa port's
 //! ownership story — see `cocoa/dom/src/node.rs` for the longer
 //! rationale.
 //!
@@ -29,7 +30,7 @@ use crate::taffy_layout::TaffyLayout;
 use gtk4::glib;
 use gtk4::prelude::*;
 use send_wrapper::SendWrapper;
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{fmt, rc::Rc};
 
 /// Compile-time-checked attribute identifiers, split by value type.
 /// Mirrors `cocoa_dom::node::StringAttr`.
@@ -93,60 +94,57 @@ pub enum NodeKind {
     Placeholder,
 }
 
-/// The core node wrapper.
+/// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
-/// `Node` is `Clone` (cheap Rc bump) and `Send + 'static` (via
+/// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
 /// [`SendWrapper`]). Touched only from the main thread; off-main
 /// access panics from the SendWrapper runtime check.
+///
+/// Every Node clone shares one `Rc<NodeInner>`. When the last clone
+/// of an OWNING Node drops, `NodeInner::Drop` calls
+/// `tree.decref(id)`. The arena's removal rule (refcount=0 AND
+/// parent=None) decides whether to actually free the entry — an
+/// entry still reachable through a parent's `children` list stays
+/// alive even with zero external Node handles.
+///
+/// For closure-capture patterns that need to refer back to a node
+/// without forming reference cycles, use [`WeakNode`] /
+/// [`WeakElement`] / [`WeakText`] / [`WeakPlaceholder`].
 #[derive(Clone)]
 pub struct Node {
     inner: SendWrapper<Rc<NodeInner>>,
 }
 
 pub(crate) struct NodeInner {
-    /// Top-level widget. Always present from creation; arena entry
-    /// (when mounted) holds its own clone (gtk4::Widget is gobject
-    /// refcount-shared, so cloning is cheap).
-    widget: gtk4::Widget,
+    tree: TreeRef,
+    id: NodeId,
     kind: NodeKind,
-    state: RefCell<NodeState>,
-}
-
-pub(crate) enum NodeState {
-    /// Style owned locally; not in any tree.
-    Unmounted { style: Style },
-    /// State lives in `tree.nodes[id]`; this Node carries the key.
-    Mounted { tree: TreeRef, id: NodeId },
-    /// Wraps an existing arena entry but does NOT own it — Drop is
-    /// a no-op. Used by `Node::from_widget_with_handle` to
-    /// synthesise a parent / root wrapper for a widget whose Node is
-    /// already in the tree under a different owner.
-    MountedBorrowed { tree: TreeRef, id: NodeId },
+    /// Cached `gtk::Widget` so `widget() -> &gtk::Widget` doesn't
+    /// have to borrow the arena's RefCell. Widget clone is a cheap
+    /// gobject refcount bump; the arena's `NodeData::view` holds the
+    /// other clone.
+    widget: gtk4::Widget,
+    /// When true, `Drop` does NOT decref the arena entry — this
+    /// Node is just a borrowed view onto someone else's entry.
+    /// Used by [`Node::from_widget_with_handle`].
+    is_borrowed: bool,
 }
 
 impl Drop for NodeInner {
     fn drop(&mut self) {
-        let state = std::mem::replace(
-            &mut *self.state.borrow_mut(),
-            NodeState::Unmounted { style: Style::default() },
-        );
-        if let NodeState::Mounted { tree, id } = state {
-            tree.remove(id);
+        if !self.is_borrowed {
+            self.tree.decref(self.id);
         }
-        // MountedBorrowed and Unmounted: nothing to do.
     }
 }
 
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let registered = matches!(
-            &*self.inner.state.borrow(),
-            NodeState::Mounted { .. } | NodeState::MountedBorrowed { .. }
-        );
         f.debug_struct("Node")
             .field("kind", &self.inner.kind)
             .field("type", &self.inner.widget.type_().name())
-            .field("registered", &registered)
+            .field("id", &self.inner.id)
+            .field("borrowed", &self.inner.is_borrowed)
             .finish()
     }
 }
@@ -170,9 +168,11 @@ impl AsRef<Node> for Placeholder {
 }
 
 impl Node {
-    /// Build a Node from any concrete `gtk::Widget` subclass with the
-    /// given default Taffy style.
-    pub fn from_widget<W>(
+    /// Allocate a fresh arena entry into `tree` and return a Node
+    /// owning it. The widget is shared with the arena via a
+    /// (cheap, gobject-refcounted) clone.
+    pub fn create_in_tree<W>(
+        tree: &TreeRef,
         widget: W,
         kind: NodeKind,
         default_style: Style,
@@ -180,19 +180,25 @@ impl Node {
     where
         W: IsA<gtk4::Widget>,
     {
+        let widget: gtk4::Widget = widget.upcast();
+        let widget_for_arena = widget.clone();
+        let id = tree.new_leaf(default_style, widget_for_arena, (), ());
+
         let inner = NodeInner {
-            widget: widget.upcast(),
+            tree: tree.clone(),
+            id,
             kind,
-            state: RefCell::new(NodeState::Unmounted { style: default_style }),
+            widget,
+            is_borrowed: false,
         };
         Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
     /// Build a Node wrapping `widget` with a pre-existing
-    /// [`LayoutHandle`] — used by `mount_before` in
-    /// `leptos_gtk::Dom` to synthesise a parent Element wrapper for
-    /// a widget whose Node we don't have. The resulting Node is
-    /// **borrowed**: its `Drop` does NOT remove the arena entry.
+    /// [`LayoutHandle`] — used by `mount_before` in `leptos_gtk::Dom`
+    /// to synthesise a parent Element wrapper for a widget whose
+    /// Node we don't have. The resulting Node is **borrowed**: its
+    /// `Drop` does NOT remove the arena entry.
     pub fn from_widget_with_handle<W>(
         widget: W,
         kind: NodeKind,
@@ -201,13 +207,13 @@ impl Node {
     where
         W: IsA<gtk4::Widget>,
     {
+        let widget: gtk4::Widget = widget.upcast();
         let inner = NodeInner {
-            widget: widget.upcast(),
+            tree: handle.tree,
+            id: handle.node_id,
             kind,
-            state: RefCell::new(NodeState::MountedBorrowed {
-                tree: handle.tree,
-                id: handle.node_id,
-            }),
+            widget,
+            is_borrowed: true,
         };
         Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
@@ -218,10 +224,8 @@ impl Node {
     }
 
     /// Get a fresh `gtk4::Widget` clone (cheap — gobject refcount).
-    /// Provided as an alias for the legacy `into_widget` consumer
-    /// API; `NodeInner` has a `Drop` impl, so we can't actually move
-    /// out of it. Callers that need ownership of a widget reference
-    /// should just clone.
+    /// `NodeInner` has a `Drop` impl, so we can't move out of it;
+    /// callers that need ownership of a widget should just clone.
     pub fn into_widget(self) -> gtk4::Widget {
         self.inner.widget.clone()
     }
@@ -230,89 +234,36 @@ impl Node {
         self.inner.kind
     }
 
-    // ---- New accessor surface --------------------------------------
+    // ---- Accessor surface ------------------------------------------
 
     /// Borrow the node's [`Style`] for read.
     pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
-        match &*self.inner.state.borrow() {
-            NodeState::Unmounted { style } => f(style),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let style = tree.style(*id).unwrap_or_default();
-                f(&style)
-            }
-        }
+        let style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+        f(&style)
     }
 
-    /// Mutate the node's [`Style`]. When mounted, the change is
-    /// pushed straight into the tree (which marks the node dirty).
+    /// Mutate the node's [`Style`]. Pushed straight into the tree
+    /// (which marks the node dirty).
     pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut state = self.inner.state.borrow_mut();
-        match &mut *state {
-            NodeState::Unmounted { style } => f(style),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let mut style = tree.style(*id).unwrap_or_default();
-                let r = f(&mut style);
-                tree.set_style(*id, style);
-                r
-            }
-        }
+        let mut style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+        let r = f(&mut style);
+        self.inner.tree.set_style(self.inner.id, style);
+        r
     }
 
-    /// Returns the `(TreeRef, NodeId)` pair if this Node has been
-    /// registered in a layout tree, otherwise `None`.
+    /// Returns the `(TreeRef, NodeId)` pair. Always `Some` now that
+    /// every Node has a tree from creation — the `Option` is kept for
+    /// API stability with existing call sites.
     pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
-        match &*self.inner.state.borrow() {
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                Some((tree.clone(), *id))
-            }
-            NodeState::Unmounted { .. } => None,
-        }
+        Some((self.inner.tree.clone(), self.inner.id))
     }
 
-    /// Cheap accessor for the LayoutHandle (re-exposed for tests).
+    /// Cheap accessor for the LayoutHandle.
     pub fn mounted_handle(&self) -> Option<LayoutHandle> {
-        self.tree_id().map(|(tree, node_id)| LayoutHandle { tree, node_id })
-    }
-
-    /// Mount the node into `tree`: moves its locally-held style into
-    /// a fresh arena entry. Transitions the Node from
-    /// [`NodeState::Unmounted`] to [`NodeState::Mounted`]. No-op if
-    /// already mounted.
-    pub(crate) fn mount_into_tree(&self, tree: &TreeRef) -> NodeId {
-        let mut state = self.inner.state.borrow_mut();
-        match &*state {
-            NodeState::Mounted { id, .. } => return *id,
-            NodeState::MountedBorrowed { id, .. } => return *id,
-            NodeState::Unmounted { .. } => {}
-        }
-        let prev = std::mem::replace(
-            &mut *state,
-            NodeState::Unmounted { style: Style::default() },
-        );
-        let style = match prev {
-            NodeState::Unmounted { style } => style,
-            _ => unreachable!(),
-        };
-        let id = tree.new_leaf(style, self.inner.widget.clone(), (), ());
-        *state = NodeState::Mounted { tree: tree.clone(), id };
-        id
-    }
-
-    /// Internal: drop this node out of its tree (if mounted). Used
-    /// by [`Node::teardown`] for explicit early removal.
-    pub(crate) fn unmount_from_tree(&self) {
-        let mut state = self.inner.state.borrow_mut();
-        let prev = std::mem::replace(
-            &mut *state,
-            NodeState::Unmounted { style: Style::default() },
-        );
-        if let NodeState::Mounted { tree, id } = prev {
-            tree.remove(id);
-        }
-        // MountedBorrowed and Unmounted: no-op.
+        Some(LayoutHandle {
+            tree: self.inner.tree.clone(),
+            node_id: self.inner.id,
+        })
     }
 
     /// Pointer-equality check (same underlying gobject).
@@ -321,12 +272,19 @@ impl Node {
     }
 
     /// Drop the resources owned by this node. Detaches Taffy entry
-    /// and unparents the widget. Safe to call repeatedly.
+    /// eagerly (bypasses the refcount-still-positive reachability
+    /// check) and unparents the widget. Safe to call repeatedly.
     pub fn teardown(&self) {
-        crate::layout::drop_node(self);
+        self.inner.tree.remove(self.inner.id);
         if self.inner.widget.parent().is_some() {
             self.inner.widget.unparent();
         }
+    }
+
+    /// Test-only: number of strong refs to the inner Rc.
+    #[doc(hidden)]
+    pub fn handlers_rc_count_for_test(&self) -> usize {
+        Rc::strong_count(&*self.inner)
     }
 }
 
@@ -351,27 +309,11 @@ impl Element {
         Element { node }
     }
 
-    /// Construct an element by tag name. Tag names map to GTK4 widget
-    /// classes.
+    /// Construct an element by tag name into `tree`. Allocates an
+    /// arena entry eagerly; the resulting Node refers to it directly.
     ///
-    /// Tags currently understood:
-    ///
-    ///   - `button`              → `gtk::Button`
-    ///   - `checkbox`            → `gtk::CheckButton`
-    ///   - `label`               → `gtk::Label`
-    ///   - `text_field`          → `gtk::Entry`
-    ///   - `secure_text_field`   → `gtk::PasswordEntry`
-    ///   - `slider`              → `gtk::Scale` (horizontal)
-    ///   - `pop_up_button`       → `gtk::DropDown`
-    ///   - `vstack` / `stack_view` → bare `gtk::Widget` w/ Taffy
-    ///     (`flex_direction: Column`)
-    ///   - `hstack`              → bare `gtk::Widget` w/ Taffy
-    ///     (`flex_direction: Row`)
-    ///   - `stack`               → bare `gtk::Widget` w/ Taffy (no
-    ///     direction preset; default Row)
-    ///   - `view` (and unknown)  → bare `gtk::Widget` w/ Taffy
-    ///     (default style — same as cocoa's flipped view container)
-    pub fn create(tag: &str) -> Self {
+    /// Tag names map to GTK4 widget classes.
+    pub fn create(tree: &TreeRef, tag: &str) -> Self {
         use crate::layout::{FlexDirection, Style};
 
         let (widget, default_style): (gtk4::Widget, Style) = match tag {
@@ -446,8 +388,6 @@ impl Element {
             }
             "grid" => {
                 // 2-D grid container backed by Taffy's grid algorithm.
-                // Underlying widget is still a `gtk::Box` — GTK doesn't
-                // care; Taffy assigns final frames to each child.
                 let w = container_widget();
                 let mut s = Style::default();
                 s.display = crate::layout::Display::Grid;
@@ -460,9 +400,8 @@ impl Element {
             }
         };
 
-        Element {
-            node: Node::from_widget(widget, NodeKind::Element, default_style),
-        }
+        let node = Node::create_in_tree(tree, widget, NodeKind::Element, default_style);
+        Element { node }
     }
 
     pub fn as_node(&self) -> &Node {
@@ -479,9 +418,6 @@ impl Element {
 
     /// Insert `child` before `marker` in this element's child list.
     /// If `marker` is `None`, append.
-    ///
-    /// The widget tree is updated via `Widget::insert_before`/
-    /// `Widget::set_parent`; the Taffy tree is updated to mirror.
     pub fn insert_node(&self, child: &crate::Node, marker: Option<&crate::Node>) {
         let _ = self.try_insert_node(child, marker);
     }
@@ -528,8 +464,6 @@ impl Element {
                 // Already our child — reposition only.
                 match marker {
                     None => {
-                        // Move to end: insert_before(None, None) is a
-                        // way to detach + reparent at end.
                         child_widget.insert_before(parent, None::<&gtk4::Widget>);
                     }
                     Some(m) => {
@@ -567,8 +501,7 @@ impl Element {
         true
     }
 
-    /// Remove `child` from this element's child list. Returns the
-    /// node back if it was actually our child, otherwise `None`.
+    /// Remove `child` from this element's child list.
     pub fn remove_child(&self, child: &crate::Node) -> Option<crate::Node> {
         let parent = self.widget();
         let child_widget = child.widget();
@@ -576,7 +509,6 @@ impl Element {
         if child_parent.as_ptr() != parent.as_ptr() {
             return None;
         }
-        // Window's set_child(None) unparents; otherwise just unparent.
         if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
             window.set_child(None::<&gtk4::Widget>);
         } else if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
@@ -851,8 +783,7 @@ impl Element {
         }
     }
 
-    /// Set this view's opacity (0.0..=1.0). Maps to
-    /// `gtk::Widget::set_opacity`. Diff-guarded.
+    /// Set this view's opacity (0.0..=1.0).
     pub fn set_alpha(&self, alpha: f64) {
         let w = self.widget();
         let clamped = alpha.clamp(0.0, 1.0);
@@ -871,16 +802,12 @@ impl Element {
         }
     }
 
-    /// Set the focused state — equivalent to AppKit's
-    /// `makeFirstResponder`. Returns `true` always (GTK's
-    /// `grab_focus` returns a bool indicating success).
+    /// Set the focused state.
     pub fn focus(&self) -> bool {
         self.widget().grab_focus()
     }
 
-    /// Resign focus. GTK doesn't have a direct "blur" — we route to
-    /// the parent window's "give up focus" by grabbing focus on the
-    /// root.
+    /// Resign focus.
     pub fn blur(&self) -> bool {
         if let Some(root) = self.widget().root() {
             root.set_focus(None::<&gtk4::Widget>);
@@ -910,7 +837,7 @@ impl Text {
         Text { node }
     }
 
-    pub fn create(content: &str) -> Self {
+    pub fn create(tree: &TreeRef, content: &str) -> Self {
         let label = gtk4::Label::new(Some(content));
         label.set_xalign(0.0);
         label.set_wrap(true);
@@ -918,7 +845,7 @@ impl Text {
         let mut style = Style::default();
         style.flex_shrink = 0.0;
         Text {
-            node: Node::from_widget(label, NodeKind::Text, style),
+            node: Node::create_in_tree(tree, label, NodeKind::Text, style),
         }
     }
 
@@ -964,7 +891,7 @@ impl Placeholder {
         Placeholder { node }
     }
 
-    pub fn create() -> Self {
+    pub fn create(tree: &TreeRef) -> Self {
         // Use a hidden Label (not a Box) so attempts to mount under a
         // placeholder error at the GTK layer rather than silently
         // succeeding.
@@ -972,14 +899,12 @@ impl Placeholder {
         widget.set_visible(false);
 
         let mut style = Style::default();
-        // Keep the placeholder out of flex layout — same trick
-        // cocoa_dom uses.
         style.position = crate::layout::Position::Absolute;
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
         Placeholder {
-            node: Node::from_widget(widget, NodeKind::Placeholder, style),
+            node: Node::create_in_tree(tree, widget, NodeKind::Placeholder, style),
         }
     }
 
@@ -997,25 +922,13 @@ impl Placeholder {
 // ---------------------------------------------------------------------
 
 /// Build a bare GtkWidget that hosts arbitrary children laid out by
-/// our [`TaffyLayout`]. The widget itself is a `gtk::Box` (the
-/// simplest concrete `gtk::Widget` that supports children), but its
-/// layout manager is replaced — `BoxLayout`'s spacing/orientation
-/// are not used.
+/// our [`TaffyLayout`].
 fn container_widget() -> gtk4::Widget {
-    // GtkBox with no internal spacing/orientation is the easiest way
-    // to get a real GTK container that supports add/remove children
-    // (via append/prepend) without needing to subclass GtkWidget. We
-    // attach our TaffyLayout in `taffy_layout::install_taffy_layout`
-    // once the node has registered in a tree (and we know the tree +
-    // node id), so the GtkBox's default BoxLayout is replaced.
     let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     b.upcast()
 }
 
-/// Append or insert `child` under `parent`, choosing the right GTK
-/// API based on whether `parent` is a `gtk::Box` (`append` /
-/// `insert_child_after`) or a generic widget (use `set_parent` +
-/// `insert_before`).
+/// Append or insert `child` under `parent`.
 fn attach_under(
     parent: &gtk4::Widget,
     child: &gtk4::Widget,
@@ -1039,8 +952,7 @@ fn attach_under(
     }
 }
 
-/// Find the index of `target` in `parent`'s child chain, by walking
-/// `first_child` → `next_sibling`. Returns `None` if not found.
+/// Find the index of `target` in `parent`'s child chain.
 fn child_index_in_parent(
     parent: &gtk4::Widget,
     target: &gtk4::Widget,
@@ -1058,19 +970,13 @@ fn child_index_in_parent(
 }
 
 /// Install our [`TaffyLayout`] on `widget` so its layout is driven by
-/// `tree`. `is_root` is true only for the window's content_root.
-///
-/// Called from [`crate::window::open_window`] (for the root) and from
-/// [`Element::create`]'s caller when a registered element is a
-/// container. Idempotent: if the widget already has a TaffyLayout,
-/// the existing one is left alone.
+/// `tree`. Idempotent.
 pub fn install_taffy_layout_for_container(
     widget: &gtk4::Widget,
     tree: &crate::layout::TreeRef,
     node_id: crate::layout::NodeId,
     is_root: bool,
 ) {
-    // Already installed? Skip.
     if widget
         .layout_manager()
         .map(|lm| lm.is::<TaffyLayout>())
@@ -1082,9 +988,7 @@ pub fn install_taffy_layout_for_container(
     widget.set_layout_manager(Some(lm));
 }
 
-/// Returns whether the given widget is a container (one we should
-/// install a TaffyLayout on). Containers are GtkBox-derived (we
-/// build them as GtkBox in [`container_widget`] above).
+/// Returns whether the given widget is a container.
 pub fn is_container_widget(widget: &gtk4::Widget) -> bool {
     widget.is::<gtk4::Box>()
 }
@@ -1093,4 +997,136 @@ pub fn is_container_widget(widget: &gtk4::Widget) -> bool {
 #[allow(dead_code)]
 fn _unused() {
     let _ = glib::value::Value::from(0i32);
+}
+
+// ---------------------------------------------------------------------
+// Weak handles — non-owning references for cycle-safe closure capture
+// ---------------------------------------------------------------------
+//
+// See `cocoa/dom/src/node.rs` for the longer rationale. GTK doesn't
+// have the ObjC delegate/target cycle that cocoa+iOS do (signal
+// handlers are owned by the GtkWidget itself and don't capture Node
+// clones), so these are provided primarily for API parity with the
+// other ports.
+
+/// Non-owning weak reference to a `Node`.
+#[derive(Clone)]
+pub struct WeakNode {
+    inner: SendWrapper<std::rc::Weak<NodeInner>>,
+}
+
+impl Node {
+    /// Get a non-owning weak handle for cycle-safe closure capture.
+    pub fn downgrade(&self) -> WeakNode {
+        WeakNode {
+            inner: SendWrapper::new(Rc::downgrade(&*self.inner)),
+        }
+    }
+}
+
+impl WeakNode {
+    /// Try to recover a strong `Node`. Returns `None` if all strong
+    /// references have dropped.
+    pub fn upgrade(&self) -> Option<Node> {
+        self.inner
+            .upgrade()
+            .map(|rc| Node { inner: SendWrapper::new(rc) })
+    }
+
+    /// Same as `upgrade().is_some()` but avoids the Rc clone.
+    pub fn is_alive(&self) -> bool {
+        self.inner.strong_count() > 0
+    }
+}
+
+impl fmt::Debug for WeakNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WeakNode")
+            .field("alive", &self.is_alive())
+            .finish()
+    }
+}
+
+/// Weak counterpart to [`Element`].
+#[derive(Clone, Debug)]
+pub struct WeakElement {
+    node: WeakNode,
+}
+
+impl Element {
+    pub fn weak(&self) -> WeakElement {
+        WeakElement { node: self.node.downgrade() }
+    }
+}
+
+impl WeakElement {
+    pub fn upgrade(&self) -> Option<Element> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Element {
+                Some(Element::from_node_unchecked(node))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
+}
+
+/// Weak counterpart to [`Text`].
+#[derive(Clone, Debug)]
+pub struct WeakText {
+    node: WeakNode,
+}
+
+impl Text {
+    pub fn weak(&self) -> WeakText {
+        WeakText { node: self.node.downgrade() }
+    }
+}
+
+impl WeakText {
+    pub fn upgrade(&self) -> Option<Text> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Text {
+                Some(Text { node })
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
+}
+
+/// Weak counterpart to [`Placeholder`].
+#[derive(Clone, Debug)]
+pub struct WeakPlaceholder {
+    node: WeakNode,
+}
+
+impl Placeholder {
+    pub fn weak(&self) -> WeakPlaceholder {
+        WeakPlaceholder { node: self.node.downgrade() }
+    }
+}
+
+impl WeakPlaceholder {
+    pub fn upgrade(&self) -> Option<Placeholder> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Placeholder {
+                Some(Placeholder { node })
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
 }

@@ -12,9 +12,7 @@
 #![allow(missing_docs)]
 
 use gtk4::prelude::*;
-use gtk_dom::{
-    layout::Style, NodeKind, Renderer as GtkRenderer,
-};
+use gtk_dom::{NodeKind, Renderer as GtkRenderer};
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
@@ -32,6 +30,7 @@ pub use gtk_dom::{
 pub struct Dom;
 
 impl RendererTrait for Dom {
+    type Backend = gtk_dom::layout::GtkBackend;
     type Node = Node;
     type Element = Element;
     type Text = Text;
@@ -41,12 +40,12 @@ impl RendererTrait for Dom {
         GtkRenderer::intern(text)
     }
 
-    fn create_text_node(text: &str) -> Text {
-        GtkRenderer::create_text_node(text)
+    fn create_text_node(tree: &gtk_dom::layout::TreeRef, text: &str) -> Text {
+        GtkRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder() -> Placeholder {
-        GtkRenderer::create_placeholder()
+    fn create_placeholder(tree: &gtk_dom::layout::TreeRef) -> Placeholder {
+        GtkRenderer::create_placeholder(tree)
     }
 
     fn set_text(node: &Text, text: &str) {
@@ -161,18 +160,16 @@ fn synthesise_parent_element(
             })
         });
 
-    let parent_node = match parent_handle {
-        Some(handle) => Node::from_widget_with_handle(
-            parent_widget,
-            NodeKind::Element,
-            handle,
-        ),
-        None => Node::from_widget(
-            parent_widget,
-            NodeKind::Element,
-            Style::default(),
-        ),
-    };
+    let handle = parent_handle.expect(
+        "synthesise_parent_element: `before` Node has no parent in its \
+         tree — every node is now arena-resident from creation, so this \
+         should be unreachable",
+    );
+    let parent_node = Node::from_widget_with_handle(
+        parent_widget,
+        NodeKind::Element,
+        handle,
+    );
     Element::from_node_unchecked(parent_node)
 }
 

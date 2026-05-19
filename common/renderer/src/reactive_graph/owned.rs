@@ -1,4 +1,5 @@
 use crate::{
+    layout::TreeRef,
     renderer::Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
@@ -58,8 +59,8 @@ where
 {
     type State = OwnedViewState<T::State, R>;
 
-    fn build(self) -> Self::State {
-        let state = self.owner.with(|| self.view.build());
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        let state = self.owner.with(|| self.view.build(tree));
         OwnedViewState::new(state, self.owner)
     }
 

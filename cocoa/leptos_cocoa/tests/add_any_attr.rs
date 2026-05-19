@@ -35,7 +35,8 @@ fn add_any_attr_routes_on_click_to_button() {
                 *fired_clone.lock().unwrap() += 1;
             }),));
 
-        let st = view.build();
+        let tree = cocoa_dom::layout::new_tree();
+        let st = view.build(&tree);
 
         // Synthesise a click via the test helper.
         let any: &objc2::runtime::AnyObject = st.el.ns_view().as_ref();

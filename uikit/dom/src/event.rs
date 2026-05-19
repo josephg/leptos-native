@@ -1,15 +1,14 @@
 //! Event handlers — bridging UIKit's target/action and delegate
 //! patterns into Rust closures.
 //!
-//! Design (mirror of `cocoa_dom::event`): each `Node` either holds
-//! `IosNodeHandlers` locally (in `NodeState::Unmounted`) or moves
-//! it into the arena's `NodeData::handlers` slot on mount. Either
-//! way there's exactly one `IosNodeHandlers` per node — no Rc
-//! sharing between Node clones; Node itself is a `Rc<NodeInner>`
-//! and the inner owns the state. When the last Node clone drops,
-//! `NodeInner::Drop` calls `tree.remove(id)` if mounted (which
-//! drops the arena's `NodeHandlers` and triggers
-//! `IosNodeHandlers::Drop`) or drops the local handlers directly.
+//! Design (mirror of `cocoa_dom::event`): `IosNodeHandlers` lives
+//! in the arena's `NodeData::handlers` slot, allocated eagerly
+//! when the Node is created. Exactly one per node; no Rc sharing
+//! between Node clones (clones share an `Rc<NodeInner>` that
+//! addresses a single arena entry). When the last clone drops,
+//! `NodeInner::Drop` calls `tree.decref(id)`; under the arena
+//! removal rule the entry is removed, dropping
+//! `NodeData::handlers` and triggering `IosNodeHandlers::Drop`.
 //! Drop nils out `setDelegate` / `removeAllTargets` on the view
 //! BEFORE releasing the delegate / target retains, so any lingering
 //! UIKit retain can't dispatch into freed memory.
@@ -75,10 +74,8 @@ impl Drop for LiveTracker {
 // NodeHandlers — Rust-side retain for everything installed on a Node
 // ---------------------------------------------------------------------
 
-/// Per-Node handler/delegate storage. Lives in
-/// [`crate::node::NodeState::Unmounted`] while the node is
-/// free-floating; on mount it migrates into the arena's
-/// `NodeData::handlers` slot.
+/// Per-Node handler/delegate storage. Lives in the arena's
+/// `NodeData::handlers` slot, allocated eagerly at Node creation.
 ///
 /// UIControl supports multiple target/action pairs per event mask,
 /// so `action_targets` is a `Vec` rather than a single slot.

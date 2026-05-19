@@ -6,22 +6,21 @@
 //! invokes it. We create one per registered handler, wire the
 //! AppKit control's `target` / `action` to point at it, and store
 //! the `Retained<ActionTarget>` in **`NodeHandlers`** — a small
-//! Rust struct held in `NodeState::Unmounted` while the node is
-//! free-floating, and moved into the arena's `NodeData::handlers`
-//! slot when the node mounts.
+//! Rust struct that lives in the arena's `NodeData::handlers`
+//! slot (allocated eagerly when the Node is created).
 //!
 //! Same pattern for `TextFieldDelegate` and `TextViewDelegate`.
 //!
 //! There is **no global storage** and no ObjC associated-object
 //! sidetable: handler lifetime tracks Rust ownership. When the
-//! last `Node` clone drops, the owning `NodeInner` drops; if the
-//! node was mounted, `NodeInner::Drop` calls `tree.remove(id)`,
-//! which drops `NodeData::handlers` (and thus `NodeHandlers`)
-//! before the arena's view retain. If still unmounted, the local
-//! `NodeHandlers` drops with the state. Either way `NodeHandlers::Drop`
-//! nils `setTarget` / `setDelegate` on the view before the handler
-//! retains release, so any lingering AppKit retain can't dispatch
-//! into freed memory.
+//! last `Node` clone drops, the owning `NodeInner` drops and calls
+//! `tree.decref(id)`. Under the arena removal rule (`refcount=0
+//! AND parent=None`), the arena entry is removed, which drops
+//! `NodeData::handlers` (and thus `NodeHandlers`) before the
+//! arena's view retain. `NodeHandlers::Drop` nils `setTarget` /
+//! `setDelegate` on the view before the handler retains release,
+//! so any lingering AppKit retain can't dispatch into freed
+//! memory.
 //!
 //! Why this matters: AppKit retains views in ways outside our
 //! control (autorelease pools, undo manager, focus chain, …). If
@@ -89,12 +88,11 @@ impl Drop for LiveTracker {
 
 /// Per-Node handler/delegate storage.
 ///
-/// Lives in [`crate::node::NodeState::Unmounted`] while the node is
-/// free-floating; on mount it migrates into the arena's
-/// `NodeData::handlers` slot (see `common/renderer/src/layout.rs`).
-/// Either way there's exactly one `NodeHandlers` per node — there
-/// is no `Rc`/`RefCell` sharing between Node clones, because Node
-/// itself is a `Rc<NodeInner>` and the inner owns the state.
+/// Lives in the arena's `NodeData::handlers` slot (see
+/// `common/renderer/src/layout.rs`), allocated eagerly when the
+/// Node is created. There's exactly one `NodeHandlers` per node;
+/// no `Rc`/`RefCell` sharing between Node clones (Node clones
+/// share an `Rc<NodeInner>` which addresses a single arena entry).
 ///
 /// Each `Retained<...>` here keeps its ObjC object alive while
 /// `NodeHandlers` is alive. The view's `setTarget` / `setDelegate`
@@ -105,9 +103,8 @@ impl Drop for LiveTracker {
 ///
 /// The `view` field is a back-reference to the NSView whose target
 /// / delegate slots the handlers populated. It's `None` until
-/// [`Self::attach_view`] is called — that happens in
-/// `Node::mount_into_tree` for the mounted case, and we call it
-/// explicitly in the unmounted-creation paths too so that handlers
+/// [`Self::attach_view`] is called — `Node::create_in_tree` wires
+/// it up eagerly so that handlers
 /// installed pre-mount also get the disconnect-on-drop guarantee.
 #[derive(Default)]
 pub struct NodeHandlers {

@@ -739,6 +739,10 @@ pub struct SearchToolbarItem {
     width_constraint: std::cell::RefCell<
         Option<objc2::rc::Retained<objc2_app_kit::NSLayoutConstraint>>,
     >,
+    /// Private throwaway layout tree that owns the search field's
+    /// Node — NSToolbar handles real layout so this tree is never
+    /// laid out. Kept alive so the Node's arena entry stays valid.
+    _tree: crate::layout::TreeRef,
 }
 
 /// Construct a fresh `NSSearchToolbarItem`. The embedded
@@ -750,7 +754,6 @@ pub fn search_toolbar_item(
     mtm: MainThreadMarker,
 ) -> SearchToolbarItem {
     use crate::node::{Node, NodeKind};
-    use taffy::Style;
 
     let id_ns = NSString::from_str(identifier);
     let id_ref: &NSToolbarItemIdentifier = unsafe {
@@ -775,9 +778,20 @@ pub fn search_toolbar_item(
     search_field.setSendsWholeSearchString(true);
 
     // Wrap the search field as an Element so existing string-attr /
-    // event-handler plumbing applies. No Taffy handle — NSToolbar
-    // controls the layout.
-    let node = Node::from_view(search_field, NodeKind::Element, Style::default());
+    // event-handler plumbing applies. NSToolbar owns the layout;
+    // we still allocate a private throwaway tree to satisfy the
+    // Node invariant that every node lives in some arena. The tree
+    // never participates in layout — its sole reason to exist is
+    // to hold the search field's handler/style storage and let
+    // Drop run normally.
+    let tree = crate::layout::new_tree();
+    let node = Node::create_in_tree(
+        &tree,
+        search_field,
+        NodeKind::Element,
+        taffy::Style::default(),
+        crate::layout::CocoaMeta::default(),
+    );
     let search_element = Element::from_node_unchecked(node);
 
     // Upcast to NSToolbarItem for storage in
@@ -790,6 +804,7 @@ pub fn search_toolbar_item(
         ns_item,
         search_element,
         width_constraint: std::cell::RefCell::new(None),
+        _tree: tree,
     }
 }
 

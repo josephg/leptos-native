@@ -6,7 +6,7 @@
 
 #![allow(missing_docs)]
 
-use ios_dom::{layout::Style, NodeKind, Renderer as IosRenderer};
+use ios_dom::{NodeKind, Renderer as IosRenderer};
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
@@ -21,6 +21,7 @@ pub use ios_dom::{
 pub struct Dom;
 
 impl RendererTrait for Dom {
+    type Backend = ios_dom::layout::IosBackend;
     type Node = Node;
     type Element = Element;
     type Text = Text;
@@ -30,12 +31,12 @@ impl RendererTrait for Dom {
         IosRenderer::intern(text)
     }
 
-    fn create_text_node(text: &str) -> Text {
-        IosRenderer::create_text_node(text)
+    fn create_text_node(tree: &ios_dom::layout::TreeRef, text: &str) -> Text {
+        IosRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder() -> Placeholder {
-        IosRenderer::create_placeholder()
+    fn create_placeholder(tree: &ios_dom::layout::TreeRef) -> Placeholder {
+        IosRenderer::create_placeholder(tree)
     }
 
     fn set_text(node: &Text, text: &str) {
@@ -138,18 +139,16 @@ fn synthesise_parent_element(
             })
         });
 
-    let parent_node = match parent_handle {
-        Some(handle) => Node::from_view_with_handle(
-            parent_view,
-            NodeKind::Element,
-            handle,
-        ),
-        None => Node::from_view(
-            parent_view,
-            NodeKind::Element,
-            Style::default(),
-        ),
-    };
+    let handle = parent_handle.expect(
+        "synthesise_parent_element: `before` Node has no parent in its \
+         tree — every node is now arena-resident from creation, so this \
+         should be unreachable",
+    );
+    let parent_node = Node::from_view_with_handle(
+        parent_view,
+        NodeKind::Element,
+        handle,
+    );
     Element::from_node_unchecked(parent_node)
 }
 

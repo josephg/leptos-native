@@ -28,13 +28,13 @@ where
     V: Render<Dom>,
     V::State: Mountable<Dom> + 'static,
 {
-    store_view_builder(move |window, content_root| {
+    store_view_builder(move |window, content_root, tree| {
         let owner = Owner::new();
         owner.set();
         std::mem::forget(owner);
 
         let view = f();
-        let mut state = view.build();
+        let mut state = view.build(tree);
         state.mount(content_root, None);
         std::mem::forget(state);
 

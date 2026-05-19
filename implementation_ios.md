@@ -6,6 +6,26 @@ top.
 
 ---
 
+## 2026-05-19 — Node refactor part 2 (port mirror)
+
+Mirrored the cocoa changes; see `implementation_log.md` for the
+full rationale. iOS specifics:
+
+- `IosBackend::Handlers = IosNodeHandlers` (set in the 2026-05-18
+  pass). The text-view-delegate explicit-drop ordering fix in
+  `IosNodeHandlers::Drop` is unchanged.
+- Node = `Rc<NodeInner { tree, id, kind, view: Retained<UIView>, is_borrowed }>`
+  with no state enum.
+- `Element::create(tree, "foo")` eagerly allocates into the arena.
+- `WeakElement` / `WeakNode` / `WeakText` / `WeakPlaceholder` added
+  in cocoa's image. Same upgrade-on-fire pattern for closure-back-
+  into-node use cases.
+
+20/20 lifecycle tests pass on iPhone 17 Pro simulator. All 9
+iOS examples build clean.
+
+---
+
 ## 2026-05-18 — Node ownership refactor (port mirror)
 
 Mirrored the cocoa Node refactor; see `implementation_log.md` for

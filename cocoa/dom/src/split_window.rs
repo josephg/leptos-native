@@ -572,9 +572,9 @@ fn build_pane(
     mtm: MainThreadMarker,
 ) -> Pane {
     // Pane root: a FlippedView with its own Taffy tree.
-    let root = Element::create_with("view", mtm);
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     let tree = layout::new_tree();
+    let root = Element::create_with(&tree, "view", mtm);
+    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::register_in_tree(root.as_node(), &tree);
 
     // **Keep** `translatesAutoresizingMaskIntoConstraints = true`

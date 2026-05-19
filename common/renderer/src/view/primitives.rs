@@ -2,6 +2,7 @@
 //! Each renders as a text node displaying the value's `to_string()`.
 
 use super::{Mountable, Render};
+use crate::layout::TreeRef;
 use crate::renderer::{CastFrom, Renderer};
 
 /// Retained state for a primitive — the platform Text node plus the last
@@ -17,8 +18,8 @@ macro_rules! impl_render_primitive {
             impl<R: Renderer> Render<R> for $ty {
                 type State = PrimitiveState<R, $ty>;
 
-                fn build(self) -> Self::State {
-                    let text = R::create_text_node(&self.to_string());
+                fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+                    let text = R::create_text_node(tree, &self.to_string());
                     PrimitiveState { text, last: self }
                 }
 

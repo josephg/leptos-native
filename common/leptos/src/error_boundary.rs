@@ -23,6 +23,7 @@ use reactive_graph::{
     traits::{Get, Update, With},
 };
 use renderer::{
+    layout::TreeRef,
     reactive_graph::{OwnedView, RenderEffectState},
     renderer::Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
@@ -146,11 +147,12 @@ where
         R,
     >;
 
-    fn build(mut self) -> Self::State {
+    fn build(mut self, tree: &TreeRef<R::Backend>) -> Self::State {
         let hook = Arc::clone(&self.hook);
         let _hook_guard = throw_error::set_error_hook(Arc::clone(&hook));
-        let mut children = Some(self.children.build());
-        RenderEffect::new(
+        let mut children = Some(self.children.build(tree));
+        let tree_for_effect = tree.clone();
+        let effect = RenderEffect::new(
             move |prev: Option<
                 ErrorBoundaryViewState<Chil::State, Fal::State>,
             >| {
@@ -167,7 +169,8 @@ where
                         // errors appeared, was showing children -> swap
                         (false, None) => {
                             state.fallback = Some(
-                                (self.fallback)(self.errors.clone()).build(),
+                                (self.fallback)(self.errors.clone())
+                                    .build(&tree_for_effect),
                             );
                             state
                                 .children
@@ -180,19 +183,25 @@ where
                     state
                 } else {
                     let fallback = (!self.errors_empty.get())
-                        .then(|| (self.fallback)(self.errors.clone()).build());
+                        .then(|| {
+                            (self.fallback)(self.errors.clone())
+                                .build(&tree_for_effect)
+                        });
                     ErrorBoundaryViewState {
                         children: children.take().unwrap(),
                         fallback,
                     }
                 }
             },
-        )
-        .into()
+        );
+        // Build the RenderEffectState manually since the public
+        // constructor is gone — we need to carry the tree alongside.
+        RenderEffectState::from_parts(tree.clone(), effect)
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        let new = self.build();
+        let tree = state.tree_ref();
+        let new = self.build(&tree);
         let mut old = std::mem::replace(state, new);
         old.insert_before_this(state);
         old.unmount();

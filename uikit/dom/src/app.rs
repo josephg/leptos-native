@@ -44,7 +44,7 @@ use std::cell::{Cell, RefCell};
 /// called. The SceneDelegate takes it on
 /// `scene:willConnectToSession:` and calls it with the window and
 /// content root after creating them.
-type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element)>;
+type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element, &crate::layout::TreeRef)>;
 
 // TLS allowed under `MEMORY_POLICY.md` §2 "app-scoped pinning"
 // carve-out: this is a single-value slot used to hand the view
@@ -59,7 +59,7 @@ thread_local! {
 /// Store a view builder to be invoked when the first scene connects.
 /// Called by the mount entry point before `uiapplication_main`.
 pub fn store_view_builder(
-    f: impl FnOnce(&UIWindow, &crate::node::Element) + 'static,
+    f: impl FnOnce(&UIWindow, &crate::node::Element, &crate::layout::TreeRef) + 'static,
 ) {
     BUILDER.with_borrow_mut(|slot| {
         *slot = Some(Box::new(f));
@@ -230,10 +230,26 @@ define_class!(
             ));
 
             // Content root — a vstack filling the window. The tag
-            // already implies `flex_direction: Column`.
-            let content_root =
-                crate::node::Element::create_with("vstack", mtm);
+            // already implies `flex_direction: Column`. Build the tree
+            // first, then create the content root inside it.
             let tree = crate::layout::new_tree();
+            let content_root =
+                crate::node::Element::create_with(&tree, "vstack", mtm);
+            // Fill the window via 100% size — Taffy resolves against
+            // the `AvailableSpace::Definite` passed to compute_layout.
+            // See cocoa's window.rs for the rationale; matches the
+            // cross-port pattern.
+            {
+                use renderer::attrs::Dim;
+                renderer::setters::set_size_width(
+                    content_root.as_node(),
+                    Dim::Pct(1.0),
+                );
+                renderer::setters::set_size_height(
+                    content_root.as_node(),
+                    Dim::Pct(1.0),
+                );
+            }
             crate::layout::register_in_tree(content_root.as_node(), &tree);
 
             let root_vc = RootViewController::new(mtm, content_root.clone());
@@ -242,7 +258,7 @@ define_class!(
 
             BUILDER.with_borrow_mut(|slot| {
                 if let Some(build) = slot.take() {
-                    build(&window, &content_root);
+                    build(&window, &content_root, &tree);
                 }
             });
 

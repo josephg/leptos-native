@@ -5,7 +5,7 @@
 //! via [`CocoaBackend`]. The wrappers below — `register_in_tree`,
 //! `attach_child`, `compute_layout`, the `set_*` setters — route
 //! through the new [`Node`] accessors (`with_style`, `with_meta`,
-//! `tree_id`, `mount_into_tree`) and dispatch into the shared tree.
+//! `tree_id`) and dispatch into the shared tree.
 //!
 //! What stays cocoa-specific:
 //!
@@ -137,139 +137,92 @@ fn layout_debug_enabled() -> bool {
 // Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
 
-/// Register `node` as a leaf in `tree` if not already registered.
+/// Build a Taffy `Style` for the documentView wrapper that backs a
+/// `<scroll_view>`'s scrollable content. See [`ScrollAxis`] for the
+/// per-axis semantics; this captures the sizing policy that makes
+/// the wrapper grow to content on the scroll axis and stay pinned
+/// to the viewport on the cross axis.
 ///
-/// `<scroll_view>` nodes additionally allocate a second Taffy leaf
-/// backed by the NSScrollView's documentView (the "child taffy
-/// parent"). The wrapper has `flex_shrink: 0` and `flex_direction:
-/// Column`, so it sizes to its content's natural extent and
-/// overflows the scroll view's clipped viewport — which is exactly
-/// what we want for the documentView's frame. Subsequent
-/// `attach_child` calls redirect into this wrapper, so the user's
-/// children are laid out inside it.
+/// Called from `Element::create_with` at allocation time and from
+/// `Element::set_scroll_axis` when the axis changes.
+pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
+    // The wrapper uses `position: Absolute` rather than
+    // participating in the scroll_view's flex flow. Two reasons:
+    //
+    // 1. **Intrinsic-sizing isolation.** An absolutely-positioned
+    //    child does NOT contribute to its parent's max-content /
+    //    min-content. With a flex wrapper, Taffy's max-content for
+    //    the scroll_view would include the wrapper's natural
+    //    content size, and that propagates UP to every ancestor's
+    //    intrinsic size computation — inflating the entire layout
+    //    to fit the scrollable content. `overflow: Hidden` on the
+    //    scroll_view stops *content_size* propagation but doesn't
+    //    suppress max-content propagation, so a flex wrapper still
+    //    poisons ancestor sizing.
+    //
+    // 2. **Bounded by viewport per axis.** With `inset.top: 0,
+    //    inset.left: 0` plus `size: auto`, the wrapper sits at the
+    //    scroll_view's top-left and sizes to its content on
+    //    whichever axes scroll. For axes that *don't* scroll, we
+    //    additionally set the opposite inset to 0 so the wrapper's
+    //    cross-axis size matches the viewport.
+    use taffy::{LengthPercentageAuto, Position};
+    let zero = LengthPercentageAuto::length(0.0);
+    let mut wrapper_style = Style::default();
+    wrapper_style.position = Position::Absolute;
+    wrapper_style.inset.top = zero;
+    wrapper_style.inset.left = zero;
+    match axis {
+        ScrollAxis::Vertical => {
+            wrapper_style.flex_direction = FlexDirection::Column;
+            wrapper_style.inset.right = zero;
+        }
+        ScrollAxis::Horizontal => {
+            wrapper_style.flex_direction = FlexDirection::Row;
+            wrapper_style.inset.bottom = zero;
+        }
+        ScrollAxis::Both => {
+            wrapper_style.flex_direction = FlexDirection::Column;
+        }
+    }
+    wrapper_style
+}
+
+/// Backwards-compatible no-op: arena allocation now happens eagerly
+/// in `Element::create_with` (and `Text` / `Placeholder`'s
+/// constructors). Registration of the tree root still needs to
+/// happen — `attach_child` did this previously by walking through
+/// `register_in_tree`, but with eager allocation we just publish
+/// the node id as root if no root is set yet.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
-    if node.tree_id().is_some() {
-        return;
-    }
-    // Migrate the node's local style/meta/handlers into the arena
-    // and transition the Node's state to Mounted. Returns the
-    // newly-allocated NodeId. View retain is bumped once (arena
-    // gets its own copy alongside NodeInner's).
-    let node_id = node.mount_into_tree(tree);
-
-    {
-        let mut root = tree.root.borrow_mut();
-        if root.is_none() {
-            *root = Some(node_id);
-        }
-    }
-
-    // Read meta once for the scroll-view branch decision.
-    let meta_snapshot = node.with_meta(|m| m.clone());
-    if meta_snapshot.is_scroll_view {
-        if let Some(doc) = scroll_view_document(node.ns_view()) {
-            // Wrapper style picks the scroll axis. The principle:
-            // on the scroll axis, the wrapper grows to natural
-            // content size (flex_shrink:0 keeps it from being
-            // squashed to fit the viewport); on a non-scroll axis,
-            // the wrapper's size is bounded to the viewport via the
-            // default align_items: Stretch on the parent flex,
-            // which means children that would overflow that axis
-            // simply paint outside the wrapper (NSScrollView's
-            // clipView still clips them visually).
-            //
-            // For Both, neither axis stretches — the wrapper takes
-            // its natural content size on both directions.
-            // The wrapper uses `position: Absolute` rather than
-            // participating in the scroll_view's flex flow. Two
-            // reasons:
-            //
-            // 1. **Intrinsic-sizing isolation.** An absolutely-
-            //    positioned child does NOT contribute to its parent's
-            //    max-content / min-content. With a flex wrapper,
-            //    Taffy's max-content for the scroll_view would
-            //    include the wrapper's natural content size, and that
-            //    propagates UP to every ancestor's intrinsic size
-            //    computation — inflating the entire layout to fit
-            //    the scrollable content. `overflow: Hidden` on the
-            //    scroll_view stops *content_size* propagation in the
-            //    layout pass but doesn't suppress max-content
-            //    propagation, so a flex wrapper still poisons
-            //    ancestor sizing.
-            //
-            // 2. **Bounded by viewport per axis.** With
-            //    `inset.top: 0, inset.left: 0` plus `size: auto`,
-            //    the wrapper sits at the scroll_view's top-left and
-            //    sizes to its content on whichever axes scroll. For
-            //    axes that *don't* scroll, we additionally set the
-            //    opposite inset to 0 so the wrapper's cross-axis
-            //    size matches the viewport (e.g. for Vertical,
-            //    inset.right: 0 → wrapper.width = scroll_view.width).
-            //
-            // Vertical scroll → expand horizontally to viewport, grow
-            // vertically with content.
-            // Horizontal scroll → expand vertically to viewport, grow
-            // horizontally with content.
-            // Both → corner-pin only; grow on both axes.
-            use taffy::{LengthPercentageAuto, Position};
-            let zero = LengthPercentageAuto::length(0.0);
-            let mut wrapper_style = Style::default();
-            wrapper_style.position = Position::Absolute;
-            wrapper_style.inset.top = zero;
-            wrapper_style.inset.left = zero;
-            match meta_snapshot.scroll_axis {
-                ScrollAxis::Vertical => {
-                    wrapper_style.flex_direction = FlexDirection::Column;
-                    // Lock cross-axis (horizontal) to viewport.
-                    wrapper_style.inset.right = zero;
-                }
-                ScrollAxis::Horizontal => {
-                    wrapper_style.flex_direction = FlexDirection::Row;
-                    // Lock cross-axis (vertical) to viewport.
-                    wrapper_style.inset.bottom = zero;
-                }
-                ScrollAxis::Both => {
-                    wrapper_style.flex_direction = FlexDirection::Column;
-                    // Neither cross-axis pinned; wrapper takes
-                    // content size on both axes.
-                }
-            }
-            let wrapper_id = tree.new_leaf(
-                wrapper_style,
-                SendWrapper::new(doc),
-                CocoaMeta::default(),
-                crate::event::NodeHandlers::default(),
-            );
-            tree.add_child(node_id, wrapper_id);
-            // Record the wrapper id on the scroll_view's meta so
-            // `attach_child` can redirect into it, and
-            // `Node::unmount_from_tree` / `drop_node` know to drop
-            // it alongside the scroll_view.
-            node.with_meta_mut(|m| m.child_taffy_parent = Some(wrapper_id));
-        }
+    let Some((node_tree, id)) = node.tree_id() else { return };
+    debug_assert!(
+        Rc::ptr_eq(&node_tree, tree),
+        "register_in_tree called with a tree that doesn't own this node"
+    );
+    let mut root = tree.root.borrow_mut();
+    if root.is_none() {
+        *root = Some(id);
     }
 }
 
-fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
+pub(crate) fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<objc2_app_kit::NSScrollView>()
         .and_then(|s| s.documentView())
 }
 
-/// Drop the node and unregister it. No-op if never registered.
-///
-/// Most cleanup now lives in `Node::unmount_from_tree` (handles the
-/// scroll-view wrapper, transitions state, removes the arena entry).
-/// We additionally mark the (former) parent dirty + schedule a
-/// relayout so the parent's flex cache doesn't keep a stale child
-/// box around.
+/// Drop the node and detach it from the tree. Now that `Node::Drop`
+/// already calls `decref` (and removes the scroll-view wrapper),
+/// this method just exists for callers that want a deterministic
+/// detach-now point and to mark the (former) parent dirty so its
+/// flex cache invalidates.
 pub fn drop_node(node: &Node) {
-    // Snapshot parent BEFORE unmount; afterward the node has no
-    // tree_id and we can't ask the arena for its parent anymore.
     let parent = node
         .tree_id()
         .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    node.unmount_from_tree();
+    // Force an eager arena removal (bypass refcount > 0 GC).
+    node.teardown();
     if let Some((tree, pid)) = parent {
         tree.mark_dirty(pid);
         schedule_relayout_for_tree(&tree, pid);
@@ -350,16 +303,14 @@ fn taffy_child_parent(parent: &Node) -> Option<(TreeRef, NodeId)> {
 
 pub fn attach_child(parent: &Node, child: &Node) {
     let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.add_child(parent_id, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
 
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.insert_child_at_index(parent_id, index, child_id);
     schedule_relayout_for_tree(&tree, parent_id);
 }
@@ -376,10 +327,9 @@ pub fn detach_child(parent: &Node, child: &Node) {
 // ---------------------------------------------------------------------
 
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    // `Node::with_style_mut` already routes between the local
-    // (Unmounted) and arena-resident (Mounted) cases and pushes
-    // tree.set_style internally for the latter — which marks the
-    // node dirty for the next Taffy pass.
+    // `Node::with_style_mut` reads the style from the arena, runs
+    // `f`, pushes the updated style back via `tree.set_style`
+    // (which marks the node dirty for the next Taffy pass).
     node.with_style_mut(f);
 }
 
@@ -429,14 +379,28 @@ fn compute_layout_inner(
     let w = available_size.width as f32;
     let h = available_size.height as f32;
 
-    // Force the root to fill the available space.
+    // For axes where the root's style.size is `auto`, fill the
+    // available space — otherwise the root would shrink to content
+    // (and any `fr`/percent children would distribute against 0).
+    // Axes where the user has set an explicit size (length, percent)
+    // are LEFT ALONE — this is the fix for the
+    // `reactive_width_drives_size_width` surprise: setting
+    // `width=50.0` on a root used to be silently overwritten on
+    // every relayout tick.
     {
         let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
-        style.size = Size {
-            width: Dimension::length(w),
-            height: Dimension::length(h),
-        };
-        handle.tree.set_style(handle.node_id, style);
+        let mut touched = false;
+        if style.size.width == Dimension::auto() {
+            style.size.width = Dimension::length(w);
+            touched = true;
+        }
+        if style.size.height == Dimension::auto() {
+            style.size.height = Dimension::length(h);
+            touched = true;
+        }
+        if touched {
+            handle.tree.set_style(handle.node_id, style);
+        }
     }
 
     let avail = Size {

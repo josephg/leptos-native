@@ -1,18 +1,18 @@
 //! Node, Element, Text, Placeholder — the DOM-shaped wrappers over
 //! `Retained<UIView>`.
 //!
-//! Each `Node` is a single `Rc<NodeInner>` carrying:
-//!   * the `Retained<UIView>` (always present from creation),
-//!   * a `RefCell<NodeState>` describing whether the node's
-//!     style / meta / handlers live locally (`Unmounted`) or in
-//!     the arena's `NodeData` (`Mounted` / `MountedBorrowed`).
+//! Each `Node` is a single `Rc<NodeInner>` that carries:
+//!   * the tree it lives in (`TreeRef`),
+//!   * its arena `NodeId`,
+//!   * a cached `Retained<UIView>` for cheap `&UIView` access,
+//!   * an `is_borrowed` flag controlling whether `Drop` decrefs the
+//!     arena entry.
 //!
-//! Style / meta mutations made before mount are buffered on the
-//! `Unmounted` variant; on `mount_into_tree` they migrate into the
-//! arena. After mount, accessors (`with_style`, `with_meta`,
-//! `with_handlers_mut`) read/write through the arena via the
-//! `(tree, id)` key. Mirrors the cocoa port's ownership story —
-//! see `cocoa/dom/src/node.rs` for the longer rationale.
+//! All style / meta / handler state lives in the arena's `NodeData`.
+//! Accessors (`with_style`, `with_meta`, `with_handlers_mut`) route
+//! straight to the arena. Allocation is eager: `Element::create_with`
+//! takes a `tree: &TreeRef` and allocates an arena entry up front.
+//! See `cocoa/dom/src/node.rs` for the longer rationale.
 //!
 //! See the crate-level docs for the threading contract.
 
@@ -88,65 +88,52 @@ pub enum NodeKind {
     Placeholder,
 }
 
+/// The core node wrapper — a thin handle into a `LayoutTree` arena.
+///
+/// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
+/// [`SendWrapper`]). Touched only from the main thread.
+///
+/// Every Node clone shares one `Rc<NodeInner>`. When the last clone
+/// of an OWNING Node drops, `NodeInner::Drop` calls
+/// `tree.decref(id)`. The arena's removal rule (refcount=0 AND
+/// parent=None) decides whether to actually free the entry.
+///
+/// For closure-capture patterns that need to refer back to a node
+/// without forming reference cycles, use [`WeakNode`] /
+/// [`WeakElement`] / [`WeakText`] / [`WeakPlaceholder`].
 #[derive(Clone)]
 pub struct Node {
     inner: SendWrapper<Rc<NodeInner>>,
 }
 
 pub(crate) struct NodeInner {
-    /// Top-level retained view. Always present; the arena entry
-    /// holds its own separate `Retained<UIView>` clone when mounted.
-    view: Retained<UIView>,
+    tree: TreeRef,
+    id: NodeId,
     kind: NodeKind,
-    state: RefCell<NodeState>,
-}
-
-pub(crate) enum NodeState {
-    /// Style / meta / handlers owned locally; not in any tree.
-    Unmounted {
-        style: Style,
-        meta: IosMeta,
-        handlers: crate::event::IosNodeHandlers,
-    },
-    /// State lives in `tree.nodes[id]`; this Node carries the key.
-    Mounted { tree: TreeRef, id: NodeId },
-    /// Wraps an existing arena entry but does NOT own it — Drop is
-    /// a no-op. Used by `Node::from_view_with_handle` to synthesise
-    /// a parent / root-reflow wrapper for a UIView whose Node is
-    /// already in the tree under a different owner.
-    MountedBorrowed { tree: TreeRef, id: NodeId },
+    /// Cached `Retained<UIView>` so `ui_view() -> &UIView` doesn't
+    /// need an arena borrow. Adds one ObjC retain per `NodeInner`
+    /// (the arena's `NodeData::view` is the other retain).
+    view: Retained<UIView>,
+    /// When true, `Drop` does NOT decref the arena entry.
+    is_borrowed: bool,
 }
 
 impl Drop for NodeInner {
     fn drop(&mut self) {
-        let state = std::mem::replace(
-            &mut *self.state.borrow_mut(),
-            NodeState::Unmounted {
-                style: Style::default(),
-                meta: IosMeta::default(),
-                handlers: crate::event::IosNodeHandlers::default(),
-            },
-        );
-        if let NodeState::Mounted { tree, id } = state {
-            tree.remove(id);
+        if !self.is_borrowed {
+            self.tree.decref(self.id);
         }
-        // Unmounted: local handlers drop here (via field-drop of the
-        // replaced default value, which has empty handlers).
-        // MountedBorrowed: someone else owns the arena entry.
     }
 }
 
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ptr: *const UIView = &*self.inner.view;
-        let registered = matches!(
-            &*self.inner.state.borrow(),
-            NodeState::Mounted { .. } | NodeState::MountedBorrowed { .. }
-        );
         f.debug_struct("Node")
             .field("kind", &self.inner.kind)
+            .field("id", &self.inner.id)
             .field("ptr", &ptr)
-            .field("registered", &registered)
+            .field("borrowed", &self.inner.is_borrowed)
             .finish()
     }
 }
@@ -170,27 +157,45 @@ impl AsRef<Node> for Placeholder {
 }
 
 impl Node {
-    pub fn from_view<V>(
+    /// Allocate a fresh arena entry into `tree` and return a Node
+    /// owning it. The view is retained twice — once on `NodeInner`
+    /// for fast `&UIView` access, once in the arena `NodeData::view`
+    /// for layout / drop ordering.
+    pub(crate) fn create_in_tree<V>(
+        tree: &TreeRef,
         view: Retained<V>,
         kind: NodeKind,
         default_style: Style,
+        default_meta: IosMeta,
     ) -> Self
     where
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
+        let view_for_arena = view.clone();
+        let id = tree.new_leaf(
+            default_style,
+            SendWrapper::new(view_for_arena),
+            default_meta,
+            crate::event::IosNodeHandlers::default(),
+        );
+        // Wire the handlers' view back-ref so Drop can nil
+        // setDelegate / removeAllTargets while the view is still alive.
+        tree.with_handlers_mut(id, |h| h.attach_view(view.clone()));
+
         let inner = NodeInner {
-            view,
+            tree: tree.clone(),
+            id,
             kind,
-            state: RefCell::new(NodeState::Unmounted {
-                style: default_style,
-                meta: IosMeta::default(),
-                handlers: crate::event::IosNodeHandlers::default(),
-            }),
+            view,
+            is_borrowed: false,
         };
         Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
 
+    /// Build a Node wrapping `view` with a pre-existing
+    /// [`LayoutHandle`]. The resulting Node is **borrowed**: its
+    /// `Drop` does NOT remove the arena entry.
     pub fn from_view_with_handle<V>(
         view: Retained<V>,
         kind: NodeKind,
@@ -201,12 +206,11 @@ impl Node {
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
         let inner = NodeInner {
-            view,
+            tree: handle.tree,
+            id: handle.node_id,
             kind,
-            state: RefCell::new(NodeState::MountedBorrowed {
-                tree: handle.tree,
-                id: handle.node_id,
-            }),
+            view,
+            is_borrowed: true,
         };
         Node { inner: SendWrapper::new(Rc::new(inner)) }
     }
@@ -219,158 +223,8 @@ impl Node {
         self.inner.view.clone()
     }
 
-    /// Get a fresh `Retained<UIView>` clone. The previous
-    /// `into_ui_view(self) -> Retained<UIView>` was misleading
-    /// because `NodeInner` has a `Drop` impl. This method is now
-    /// just a rename of `ui_view_retained`.
-    pub fn into_ui_view(self) -> Retained<UIView> {
-        self.inner.view.clone()
-    }
-
     pub fn kind(&self) -> NodeKind {
         self.inner.kind
-    }
-
-    // ---- New accessor surface --------------------------------------
-
-    /// Borrow the node's [`Style`] for read.
-    pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
-        match &*self.inner.state.borrow() {
-            NodeState::Unmounted { style, .. } => f(style),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let style = tree.style(*id).unwrap_or_default();
-                f(&style)
-            }
-        }
-    }
-
-    /// Mutate the node's [`Style`]. When mounted, the change is
-    /// pushed straight into the tree (which marks the node dirty).
-    pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut state = self.inner.state.borrow_mut();
-        match &mut *state {
-            NodeState::Unmounted { style, .. } => f(style),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let mut style = tree.style(*id).unwrap_or_default();
-                let r = f(&mut style);
-                tree.set_style(*id, style);
-                r
-            }
-        }
-    }
-
-    /// Borrow the node's [`IosMeta`] for read.
-    pub fn with_meta<R>(&self, f: impl FnOnce(&IosMeta) -> R) -> R {
-        match &*self.inner.state.borrow() {
-            NodeState::Unmounted { meta, .. } => f(meta),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let meta = tree.meta(*id).unwrap_or_default();
-                f(&meta)
-            }
-        }
-    }
-
-    /// Mutate the node's [`IosMeta`]. When mounted, the change is
-    /// pushed back into the tree.
-    pub fn with_meta_mut<R>(&self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
-        let mut state = self.inner.state.borrow_mut();
-        match &mut *state {
-            NodeState::Unmounted { meta, .. } => f(meta),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                let mut meta = tree.meta(*id).unwrap_or_default();
-                let r = f(&mut meta);
-                tree.set_meta(*id, meta);
-                r
-            }
-        }
-    }
-
-    /// Mutate this node's per-node handler set. Works in both the
-    /// Unmounted (local) and Mounted (arena-resident) states.
-    pub fn with_handlers_mut<R>(
-        &self,
-        f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
-    ) -> R {
-        let mut state = self.inner.state.borrow_mut();
-        match &mut *state {
-            NodeState::Unmounted { handlers, .. } => f(handlers),
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => tree
-                .with_handlers_mut(*id, f)
-                .expect("Mounted Node id must exist in tree"),
-        }
-    }
-
-    /// Returns the `(TreeRef, NodeId)` pair if this Node has been
-    /// registered in a layout tree, otherwise `None`.
-    pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
-        match &*self.inner.state.borrow() {
-            NodeState::Mounted { tree, id }
-            | NodeState::MountedBorrowed { tree, id } => {
-                Some((tree.clone(), *id))
-            }
-            NodeState::Unmounted { .. } => None,
-        }
-    }
-
-    /// Cheap accessor for the LayoutHandle (re-exposed for tests).
-    pub fn mounted_handle(&self) -> Option<LayoutHandle> {
-        self.tree_id().map(|(tree, node_id)| LayoutHandle { tree, node_id })
-    }
-
-    /// Mount the node into `tree`: moves its locally-held state into
-    /// a fresh arena entry. Transitions to [`NodeState::Mounted`].
-    /// No-op if already mounted.
-    pub(crate) fn mount_into_tree(&self, tree: &TreeRef) -> NodeId {
-        let mut state = self.inner.state.borrow_mut();
-        match &*state {
-            NodeState::Mounted { id, .. } => return *id,
-            NodeState::MountedBorrowed { id, .. } => return *id,
-            NodeState::Unmounted { .. } => {}
-        }
-        let prev = std::mem::replace(
-            &mut *state,
-            NodeState::Unmounted {
-                style: Style::default(),
-                meta: IosMeta::default(),
-                handlers: crate::event::IosNodeHandlers::default(),
-            },
-        );
-        let (style, meta, handlers) = match prev {
-            NodeState::Unmounted { style, meta, handlers } => {
-                (style, meta, handlers)
-            }
-            _ => unreachable!(),
-        };
-        let view_wrapped = SendWrapper::new(self.inner.view.clone());
-        let id = tree.new_leaf(style, view_wrapped, meta, handlers);
-        // Wire the handlers' view back-ref so its Drop can nil
-        // setDelegate / removeAllTargets against a still-live view.
-        tree.with_handlers_mut(id, |h| {
-            h.attach_view(self.inner.view.clone())
-        });
-        *state = NodeState::Mounted { tree: tree.clone(), id };
-        id
-    }
-
-    /// Internal: drop this node out of its tree (if mounted).
-    pub(crate) fn unmount_from_tree(&self) {
-        let mut state = self.inner.state.borrow_mut();
-        let prev = std::mem::replace(
-            &mut *state,
-            NodeState::Unmounted {
-                style: Style::default(),
-                meta: IosMeta::default(),
-                handlers: crate::event::IosNodeHandlers::default(),
-            },
-        );
-        if let NodeState::Mounted { tree, id } = prev {
-            tree.remove(id);
-        }
     }
 
     pub fn ptr_eq(&self, other: &Node) -> bool {
@@ -379,14 +233,75 @@ impl Node {
         a == b
     }
 
+    /// Drop the resources owned by this node and detach it from its
+    /// superview. Removes the arena entry eagerly (bypasses the
+    /// refcount-still-positive reachability check).
     pub fn teardown(&self) {
-        // Event handlers / delegates live in the arena's
-        // `IosNodeHandlers` when mounted (or locally in the
-        // `Unmounted` state); they drop when the last Node clone
-        // drops or `tree.remove` runs. `teardown` triggers the
-        // arena removal eagerly and unparents the UIView.
-        crate::layout::drop_node(self);
+        self.inner.tree.remove(self.inner.id);
         self.ui_view().removeFromSuperview();
+    }
+
+    // ---- Accessor surface ------------------------------------------
+
+    /// Borrow the node's [`Style`] for read.
+    pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
+        let style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+        f(&style)
+    }
+
+    /// Mutate the node's [`Style`]. Pushed straight into the tree
+    /// (which marks the node dirty).
+    pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
+        let mut style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+        let r = f(&mut style);
+        self.inner.tree.set_style(self.inner.id, style);
+        r
+    }
+
+    /// Borrow the node's [`IosMeta`] for read.
+    pub fn with_meta<R>(&self, f: impl FnOnce(&IosMeta) -> R) -> R {
+        let meta = self.inner.tree.meta(self.inner.id).unwrap_or_default();
+        f(&meta)
+    }
+
+    /// Mutate the node's [`IosMeta`]. Pushed back into the tree.
+    pub fn with_meta_mut<R>(&self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
+        let mut meta = self.inner.tree.meta(self.inner.id).unwrap_or_default();
+        let r = f(&mut meta);
+        self.inner.tree.set_meta(self.inner.id, meta);
+        r
+    }
+
+    /// Mutate this node's per-node handler set in the arena.
+    pub fn with_handlers_mut<R>(
+        &self,
+        f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
+    ) -> R {
+        self.inner
+            .tree
+            .with_handlers_mut(self.inner.id, f)
+            .expect("Node id must exist in arena")
+    }
+
+    /// Returns the `(TreeRef, NodeId)` pair. Always `Some` now that
+    /// every Node has a tree from creation — the `Option` is kept for
+    /// API stability.
+    pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
+        Some((self.inner.tree.clone(), self.inner.id))
+    }
+
+    /// Cheap accessor for the LayoutHandle.
+    pub fn mounted_handle(&self) -> Option<LayoutHandle> {
+        Some(LayoutHandle {
+            tree: self.inner.tree.clone(),
+            node_id: self.inner.id,
+        })
+    }
+
+    /// Test-only: number of strong refs to the inner Rc.
+    #[doc(hidden)]
+    pub fn handlers_rc_count_for_test(&self) -> usize {
+        Rc::strong_count(&*self.inner)
     }
 }
 
@@ -409,13 +324,13 @@ impl Element {
         Element { node }
     }
 
-    pub fn create(tag: &str) -> Self {
+    pub fn create(tree: &TreeRef, tag: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(tag, mtm)
+        Self::create_with(tree, tag, mtm)
     }
 
-    pub fn create_with(tag: &str, mtm: MainThreadMarker) -> Self {
+    pub fn create_with(tree: &TreeRef, tag: &str, mtm: MainThreadMarker) -> Self {
         use crate::layout::{FlexDirection, Style};
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -423,10 +338,6 @@ impl Element {
 
         let (view, default_style): (Retained<UIView>, Style) = match tag {
             "button" => {
-                // UIButton::buttonWithType: UIButtonTypeSystem is the
-                // standard iOS push button (blue tint, no bezel, ~44pt
-                // default height). Title and target/action are set
-                // later via attributes / on_click.
                 let b = UIButton::buttonWithType(
                     objc2_ui_kit::UIButtonType::System,
                     mtm,
@@ -437,9 +348,6 @@ impl Element {
                 (v, s)
             }
             "switch" => {
-                // UISwitch: on/off toggle, fixed intrinsic size (51×31).
-                // Use `bind:checked` and `on:change` (via target/action
-                // for UIControlEventValueChanged).
                 use objc2_ui_kit::UISwitch;
                 let sw = UISwitch::initWithFrame(
                     UISwitch::alloc(mtm),
@@ -451,7 +359,6 @@ impl Element {
                 (v, s)
             }
             "label" => {
-                // UILabel — the natural iOS text display. Not editable.
                 use objc2_ui_kit::UILabel;
                 let l = UILabel::initWithFrame(
                     UILabel::alloc(mtm),
@@ -474,8 +381,6 @@ impl Element {
                 (v, s)
             }
             "secure_text_field" => {
-                // iOS doesn't have a separate secure text field class.
-                // UITextField with secureTextEntry = YES.
                 let tf = UITextField::initWithFrame(
                     UITextField::alloc(mtm),
                     frame,
@@ -547,11 +452,6 @@ impl Element {
                 (v, s)
             }
             "pop_up_button" => {
-                // UIButton in system style. UIMenu is attached at
-                // install time via `set_popup_items`. Pull-down
-                // semantics come from
-                // `setShowsMenuAsPrimaryAction(true)` and the
-                // `changesSelectionAsPrimaryAction` toggle.
                 let b = UIButton::buttonWithType(
                     objc2_ui_kit::UIButtonType::System,
                     mtm,
@@ -565,10 +465,6 @@ impl Element {
                 (v, s)
             }
             "color_well" => {
-                // UIColorWell is the inline iOS color-picker control
-                // (iOS 14+). It manages its own
-                // UIColorPickerViewController presentation when
-                // tapped, so we don't have to thread VC lookup.
                 use objc2_ui_kit::UIColorWell;
                 let cw = UIColorWell::initWithFrame(
                     UIColorWell::alloc(mtm),
@@ -592,9 +488,6 @@ impl Element {
                 (v, s)
             }
             "scroll_view" => {
-                // UIScrollView with a content UIView child.
-                // Children added via `insert_node` are routed to the
-                // content view via `Element::subview_parent`.
                 use objc2_ui_kit::UIScrollView;
                 let scroll = UIScrollView::initWithFrame(
                     UIScrollView::alloc(mtm),
@@ -622,8 +515,6 @@ impl Element {
                 (v, s)
             }
             "text_view" => {
-                // UITextView IS a UIScrollView subclass — it handles
-                // its own scrolling natively. No wrapper needed.
                 use objc2_ui_kit::UITextView;
                 let tv = UITextView::initWithFrame(
                     UITextView::alloc(mtm),
@@ -655,10 +546,6 @@ impl Element {
                 (v, s)
             }
             "grid" => {
-                // 2-D grid container backed by Taffy's grid algorithm.
-                // Template tracks / gap / placement attrs are applied
-                // by the higher-level builder; this just establishes
-                // the container's `display: grid`.
                 let v: Retained<UIView> = UIView::initWithFrame(
                     UIView::alloc(mtm),
                     frame,
@@ -667,7 +554,6 @@ impl Element {
                 s.display = crate::layout::Display::Grid;
                 (v, s)
             }
-            // Unknown tags → generic UIView container.
             _ => {
                 let v: Retained<UIView> = UIView::initWithFrame(
                     UIView::alloc(mtm),
@@ -677,10 +563,18 @@ impl Element {
             }
         };
 
-        let node = Node::from_view(view, NodeKind::Element, default_style);
+        let mut default_meta = IosMeta::default();
         if tag == "scroll_view" {
-            node.with_meta_mut(|m| m.is_scroll_view = true);
+            default_meta.is_scroll_view = true;
         }
+
+        let node = Node::create_in_tree(
+            tree,
+            view,
+            NodeKind::Element,
+            default_style,
+            default_meta,
+        );
 
         Element { node }
     }
@@ -699,15 +593,12 @@ impl Element {
 
     /// Get a new `Retained<UIView>` (retain). See
     /// [`Node::ui_view_retained`] — use this in callback captures
-    /// instead of `self.clone()` to avoid forming a Node ↔
-    /// handlers cycle.
+    /// to avoid forming a Node ↔ handlers cycle.
     pub fn ui_view_retained(&self) -> Retained<UIView> {
         self.node.ui_view_retained()
     }
 
     /// The UIView that *actually* parents this element's children.
-    /// For `<scroll_view>` this is the content UIView (first subview
-    /// of the UIScrollView). For everything else it's self.
     pub fn subview_parent(&self) -> Retained<UIView> {
         let direct = self.ui_view();
         let routes_to_doc = self.node.with_meta(|m| m.is_scroll_view);
@@ -776,16 +667,9 @@ impl Element {
         Some(child.clone())
     }
 
-    /// Detach every UIView child without touching Taffy or handler
-    /// state. Tachys parents own their child `Node`s and call
-    /// `teardown` on them via `Mountable::unmount`, which is what
-    /// drops Taffy entries and event-target retentions — this
-    /// method only handles the UIView side. Mirrors
-    /// `cocoa_dom::Element::clear_children`.
     pub fn clear_children(&self) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
-        // subviews returns a copy, so iterating + removing is safe.
         let subs = parent.subviews();
         for sv in subs.iter() {
             sv.removeFromSuperview();
@@ -817,7 +701,6 @@ impl Element {
                         content_changed = true;
                     }
                 }
-                // Also set text on UILabel (used by label tag)
                 if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
                     let current = label.text().map(|s| s.to_string()).unwrap_or_default();
                     if current != value {
@@ -872,10 +755,6 @@ impl Element {
                 }
             }
             BoolAttr::Enabled => {
-                // On iOS, UIView doesn't have an `enabled` property.
-                // UIControl does. Set userInteractionEnabled on all
-                // views, and additionally set enabled on UIControl
-                // subclasses.
                 if view.isUserInteractionEnabled() != value {
                     view.setUserInteractionEnabled(value);
                 }
@@ -886,7 +765,6 @@ impl Element {
                 }
             }
             BoolAttr::Checked => {
-                // UISwitch: setOn:animated:
                 if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(view) {
                     if sw.isOn() != value {
                         sw.setOn_animated(value, true);
@@ -896,16 +774,6 @@ impl Element {
         }
     }
 
-    /// Wire a tap / value-change handler.
-    ///
-    /// For any `UIControl` this routes through the standard
-    /// target/action machinery — `on_control_action` picks the
-    /// right `UIControlEvents` mask based on the concrete control
-    /// (`TouchUpInside` for `UIButton`, `ValueChanged` for
-    /// `UISwitch` / `UISlider` / `UISegmentedControl` /
-    /// `UIDatePicker` / `UIStepper`). For everything else
-    /// (`UILabel`, `UIImageView`, container `UIView`s) we install a
-    /// `UITapGestureRecognizer` so plain views can be tapped too.
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
         let view = self.ui_view();
         if downcast::<UIControl>(view).is_some() {
@@ -915,16 +783,10 @@ impl Element {
         }
     }
 
-    /// Wire a callback for UIControl value changes (sliders, switches,
-    /// segmented controls, date pickers, steppers).
     pub fn on_action(&self, cb: impl FnMut() + 'static) {
         crate::event::on_control_action(&self.node, cb);
     }
 
-    /// Unit-payload "value changed" hook. Text fields fan to
-    /// editingChanged (every keystroke). UISwitch / UISlider /
-    /// UIStepper / UISegmentedControl / UIDatePicker fan to
-    /// ValueChanged. Other views are no-op.
     pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
         if downcast::<UITextField>(self.ui_view()).is_some() {
             crate::event::on_text_field_change(&self.node, move |_| cb());
@@ -933,31 +795,22 @@ impl Element {
         crate::event::on_control_action(&self.node, cb);
     }
 
-    /// Wire a callback that fires on every text change (keystroke /
-    /// paste / clear). Uses `editingChanged` UIControl event on
-    /// UITextField. No-op on non-UITextField.
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
         crate::event::on_text_field_change(&self.node, cb);
     }
 
-    /// Wire a callback that fires when editing ends (Return key,
-    /// focus loss). Uses `editingDidEnd` UIControl event.
     pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
         crate::event::on_text_field_end_editing(&self.node, cb);
     }
 
-    /// Wire a callback that fires when the text field gains focus.
     pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
         crate::event::on_text_field_focus(&self.node, cb);
     }
 
-    /// Wire a callback that fires when the text field loses focus.
     pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
         crate::event::on_text_field_blur(&self.node, cb);
     }
 
-    /// Wire a key event observer on a text field (hardware keyboard).
-    /// Stub for v1 — hardware keyboard events are deferred.
     pub fn on_text_keydown(
         &self,
         _cb: impl FnMut(crate::KeyEvent) + 'static,
@@ -969,10 +822,8 @@ impl Element {
         &self,
         _cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
-        // Deferred: UIKeyCommand + pressesBegan:
     }
 
-    /// Read the on/off state of a UISwitch.
     pub fn checked(&self) -> bool {
         if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(self.ui_view()) {
             return sw.isOn();
@@ -980,7 +831,6 @@ impl Element {
         false
     }
 
-    /// Read the current value of a UISlider.
     pub fn double_value(&self) -> f64 {
         if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
             return sl.value() as f64;
@@ -988,7 +838,6 @@ impl Element {
         0.0
     }
 
-    /// Set the value on a UISlider. Diffs to avoid redundant redraws.
     pub fn set_double_value(&self, v: f64) {
         if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
             let current = sl.value() as f64;
@@ -998,28 +847,24 @@ impl Element {
         }
     }
 
-    /// Slider min.
     pub fn set_slider_min(&self, v: f64) {
         if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
             sl.setMinimumValue(v as f32);
         }
     }
 
-    /// Slider max.
     pub fn set_slider_max(&self, v: f64) {
         if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
             sl.setMaximumValue(v as f32);
         }
     }
 
-    /// Set segment labels on a UISegmentedControl.
     pub fn set_segmented_items(&self, items: &[String]) {
         let Some(sc) =
             downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
         else {
             return;
         };
-        // Remove all existing segments and re-add.
         let current = sc.numberOfSegments();
         for _ in 0..current {
             sc.removeSegmentAtIndex_animated(0, false);
@@ -1033,7 +878,6 @@ impl Element {
         }
     }
 
-    /// Currently-selected segment index (-1 if none).
     pub fn segmented_selection(&self) -> isize {
         if let Some(sc) =
             downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
@@ -1043,7 +887,6 @@ impl Element {
         -1
     }
 
-    /// Programmatically select a segment.
     pub fn set_segmented_selection(&self, idx: isize) {
         if let Some(sc) =
             downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
@@ -1054,15 +897,6 @@ impl Element {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Pop-up button (UIButton + UIMenu)
-    // -----------------------------------------------------------------
-
-    /// Build a UIMenu from `items` and attach it to the underlying
-    /// UIButton. Each menu entry's tap fires `on_select` with its
-    /// index. The current selection (if `selected_idx < items.len()`)
-    /// is marked with a checkmark. No-op if the element isn't a
-    /// `<pop_up_button>`.
     pub fn set_popup_items(
         &self,
         items: &[String],
@@ -1076,13 +910,6 @@ impl Element {
         let mtm = MainThreadMarker::new()
             .expect("set_popup_items must run on the main thread");
 
-        // The handler shared across UIActions. We need a single
-        // closure that takes the chosen action and figures out which
-        // index it represented; we encode the index in the action's
-        // title and look it up at fire time. Simpler: clone a
-        // per-index closure for each action.
-        // SendWrapper because UIAction holds the closure with no
-        // Send bound but it only fires on the main thread anyway.
         let shared = Rc::new(RefCell::new(on_select));
 
         let actions: Vec<Retained<UIMenuElement>> = items
@@ -1120,11 +947,6 @@ impl Element {
         let menu = UIMenu::menuWithChildren(&ns_array, mtm);
         button.setMenu(Some(&menu));
 
-        // Update the button's title to reflect the current selection
-        // (UIButton with showsMenuAsPrimaryAction doesn't change its
-        // own title automatically when an action fires; we'd need to
-        // re-set it via the change callback. For first display we set
-        // it here.)
         if let Some(t) = items.get(selected_idx) {
             let ns = NSString::from_str(t);
             button.setTitle_forState(
@@ -1135,9 +957,6 @@ impl Element {
         }
     }
 
-    /// Programmatically set the popup's displayed selection. Updates
-    /// the button's title to `items[idx]` if known via the menu's
-    /// children.
     pub fn set_popup_selection(&self, items: &[String], idx: usize) {
         let Some(button) = downcast::<UIButton>(self.ui_view()) else {
             return;
@@ -1158,11 +977,6 @@ impl Element {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Color well (UIColorWell, iOS 14+)
-    // -----------------------------------------------------------------
-
-    /// Set the well's selected color.
     pub fn set_color_well_value(&self, color: crate::Color) {
         use objc2_ui_kit::UIColorWell;
         let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
@@ -1171,7 +985,6 @@ impl Element {
         cw.setSelectedColor(Some(&color.to_uicolor()));
     }
 
-    /// Read the well's currently-selected color, if any.
     pub fn color_well_value(&self) -> Option<crate::Color> {
         use objc2_ui_kit::UIColorWell;
         let cw = downcast::<UIColorWell>(self.ui_view())?;
@@ -1179,9 +992,6 @@ impl Element {
         crate::Color::from_uicolor(&c)
     }
 
-    /// Wire a callback to fire whenever the user picks a new color.
-    /// Uses UIControl's `valueChanged` event (UIColorWell is a
-    /// UIControl subclass).
     pub fn on_color_change(
         &self,
         mut cb: impl FnMut(crate::Color) + 'static,
@@ -1190,9 +1000,6 @@ impl Element {
         let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
             return;
         };
-        // Capture Retained<UIColorWell> in the closure (not the
-        // Element) to avoid forming a Node ↔ handlers cycle —
-        // see ios_dom::event module docs.
         let cw_for_cb: Retained<UIColorWell> = cw.retain();
         crate::event::on_control_action(&self.node, move || {
             if let Some(c) = cw_for_cb.selectedColor() {
@@ -1203,30 +1010,14 @@ impl Element {
         });
     }
 
-    // -----------------------------------------------------------------
-    // Universal UIView attributes
-    // -----------------------------------------------------------------
-
-    /// Set this view's opacity (0.0..=1.0). Maps to UIView's `alpha`.
     pub fn set_alpha(&self, alpha: f64) {
         let v = self.ui_view();
         let clamped = alpha.clamp(0.0, 1.0);
-        // UIView.alpha is CGFloat (f64 on 64-bit)
         if (v.alpha() - clamped).abs() > f64::EPSILON {
             v.setAlpha(clamped);
         }
     }
 
-    // -----------------------------------------------------------------
-    // Chrome — background, border, corner radius
-    //
-    // These all sit on UIView itself or its CALayer. We prefer the
-    // UIKit setters where available (`setBackgroundColor` on UIView)
-    // and fall through to the layer for the rest.
-    // -----------------------------------------------------------------
-
-    /// Set the view's background color. Pass `None` to clear (the
-    /// view becomes transparent).
     pub fn set_background_color(&self, color: Option<crate::Color>) {
         let v = self.ui_view();
         match color {
@@ -1235,23 +1026,14 @@ impl Element {
         }
     }
 
-    /// Set the view's corner radius (in points). Sets
-    /// `layer.cornerRadius` and `layer.masksToBounds = true` so the
-    /// rounded corners actually clip subview content. Pass `0.0` to
-    /// disable rounding.
     pub fn set_corner_radius(&self, radius: f64) {
         let layer = self.ui_view().layer();
         if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
             layer.setCornerRadius(radius);
-            // Without masksToBounds the corners look correct from
-            // afar but subview content (e.g. an image) bleeds past
-            // the rounded edge. Always enable.
             layer.setMasksToBounds(radius > 0.0);
         }
     }
 
-    /// Set the view's border width in points. `0.0` removes the
-    /// border. Combine with [`set_border_color`](Self::set_border_color).
     pub fn set_border_width(&self, width: f64) {
         let layer = self.ui_view().layer();
         if (layer.borderWidth() - width).abs() > f64::EPSILON {
@@ -1259,15 +1041,10 @@ impl Element {
         }
     }
 
-    /// Set the view's border color. Pass `None` to clear.
     pub fn set_border_color(&self, color: Option<crate::Color>) {
         let layer = self.ui_view().layer();
         match color {
             Some(c) => {
-                // UIColor::CGColor is unsafe in the binding (it
-                // returns a Retained<CGColor> whose lifetime would
-                // outlive the autorelease pool — fine here because
-                // we hand it straight to setBorderColor which retains).
                 let cg = unsafe { c.to_uicolor().CGColor() };
                 layer.setBorderColor(Some(&cg));
             }
@@ -1275,13 +1052,6 @@ impl Element {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Text styling
-    // -----------------------------------------------------------------
-
-    /// Set the text color on a text-bearing view (label, text_field,
-    /// secure_text_field, text_view). UILabel doesn't inherit from
-    /// UITextField, so we handle each type separately.
     pub fn set_text_color(&self, color: crate::Color) {
         let view = self.ui_view();
         let uicolor = color.to_uicolor();
@@ -1299,7 +1069,6 @@ impl Element {
         }
     }
 
-    /// Set text alignment.
     pub fn set_text_alignment(&self, alignment: crate::TextAlignment) {
         let view = self.ui_view();
 
@@ -1316,8 +1085,6 @@ impl Element {
         }
     }
 
-    /// Set the font size (in points). Uses the system font at the
-    /// given size; no Dynamic Type scaling in v1.
     pub fn set_font_size(&self, points: f64) {
         use objc2_ui_kit::UIFont;
         let font = UIFont::systemFontOfSize(points);
@@ -1344,11 +1111,6 @@ impl Element {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Control-specific statics
-    // -----------------------------------------------------------------
-
-    /// Toggle whether a UITextField draws a border.
     pub fn set_text_field_bordered(&self, bordered: bool) {
         if let Some(f) = downcast::<UITextField>(self.ui_view()) {
             use objc2_ui_kit::UITextBorderStyle;
@@ -1360,28 +1122,14 @@ impl Element {
         }
     }
 
-    /// Toggle whether a UITextField draws its bezel (same as border on iOS).
     pub fn set_text_field_bezeled(&self, bezeled: bool) {
         self.set_text_field_bordered(bezeled);
     }
 
-    /// Switch a UISlider between horizontal and vertical.
-    /// Vertical sliders not natively supported by UISlider — we
-    /// use a transform rotation. Stub for v1.
-    pub fn set_slider_vertical(&self, _vertical: bool) {
-        // Deferred: apply CGAffineTransform rotation
-    }
+    pub fn set_slider_vertical(&self, _vertical: bool) {}
+    pub fn set_slider_tick_marks(&self, _count: usize) {}
+    pub fn set_slider_snaps_to_ticks(&self, _snaps: bool) {}
 
-    /// Set tick marks on a UISlider (not natively supported — no-op).
-    pub fn set_slider_tick_marks(&self, _count: usize) {
-        // UISlider doesn't have tick marks natively.
-    }
-
-    /// Snap-to-tick on a UISlider (no-op, no native support).
-    pub fn set_slider_snaps_to_ticks(&self, _snaps: bool) {
-    }
-
-    /// UIDatePicker visual style.
     pub fn set_date_picker_style(&self, style: crate::DatePickerStyle) {
         if let Some(dp) =
             downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
@@ -1390,7 +1138,6 @@ impl Element {
         }
     }
 
-    /// Constrain a UIDatePicker's selectable range.
     pub fn set_date_picker_min(&self, d: Option<crate::Date>) {
         if let Some(dp) =
             downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
@@ -1409,10 +1156,6 @@ impl Element {
         }
     }
 
-    /// macOS-parity stub — iOS scroll indicators always auto-hide
-    /// (they only appear during active scrolling and fade out
-    /// shortly afterwards). Use `set_has_horizontal_scroller` /
-    /// `set_has_vertical_scroller` for whether they appear at all.
     pub fn set_autohides_scrollers(&self, _autohides: bool) {}
 
     pub fn set_has_horizontal_scroller(&self, has: bool) {
@@ -1431,12 +1174,8 @@ impl Element {
         }
     }
 
-    /// Toggle whether a UIProgressView stays visible when stopped.
-    /// UIProgressView always stays visible — no-op.
-    pub fn set_progress_displayed_when_stopped(&self, _shown: bool) {
-    }
+    pub fn set_progress_displayed_when_stopped(&self, _shown: bool) {}
 
-    /// Read the current date from a UIDatePicker.
     pub fn date_picker_value(&self) -> crate::Date {
         if let Some(dp) =
             downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
@@ -1447,7 +1186,6 @@ impl Element {
         crate::Date::now()
     }
 
-    /// Set the date in a UIDatePicker.
     pub fn set_date_picker_value(&self, d: crate::Date) {
         if let Some(dp) =
             downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
@@ -1462,7 +1200,6 @@ impl Element {
         }
     }
 
-    /// Read the value of a UIStepper.
     pub fn stepper_value(&self) -> f64 {
         if let Some(s) =
             downcast::<objc2_ui_kit::UIStepper>(self.ui_view())
@@ -1472,7 +1209,6 @@ impl Element {
         0.0
     }
 
-    /// Set the value of a UIStepper.
     pub fn set_stepper_value(&self, v: f64) {
         if let Some(s) =
             downcast::<objc2_ui_kit::UIStepper>(self.ui_view())
@@ -1483,7 +1219,6 @@ impl Element {
         }
     }
 
-    /// Configure a UIStepper's min, max, and step increment.
     pub fn configure_stepper(
         &self,
         min: f64,
@@ -1499,7 +1234,6 @@ impl Element {
         }
     }
 
-    /// Set the progress value on a UIProgressView (0..1).
     pub fn set_progress_value(&self, v: f64) {
         if let Some(p) =
             downcast::<objc2_ui_kit::UIProgressView>(self.ui_view())
@@ -1508,19 +1242,9 @@ impl Element {
         }
     }
 
-    /// Switch a UIProgressView between determinate (bar) and
-    /// indeterminate. iOS doesn't have a native indeterminate
-    /// progress bar — use UIActivityIndicatorView instead. Stub.
-    pub fn set_progress_indeterminate(&self, _indeterminate: bool) {
-    }
+    pub fn set_progress_indeterminate(&self, _indeterminate: bool) {}
+    pub fn set_progress_max(&self, _max: f64) {}
 
-    /// Set the max value on a progress view. UIProgressView range
-    /// is always 0..1 — no-op.
-    pub fn set_progress_max(&self, _max: f64) {
-    }
-
-    /// Wire a change observer on a UITextView. Fires on every
-    /// keystroke. Used by `bind:value` (write-back leg).
     pub fn on_text_view_change(
         &self,
         cb: impl FnMut(String) + 'static,
@@ -1528,7 +1252,6 @@ impl Element {
         crate::event::on_text_view_change(&self.node, cb);
     }
 
-    /// Set editability of a UITextView.
     pub fn set_text_view_editable(&self, editable: bool) {
         if let Some(tv) =
             downcast::<objc2_ui_kit::UITextView>(self.ui_view())
@@ -1539,28 +1262,22 @@ impl Element {
         }
     }
 
-    /// Read the value of a UITextView. Returns None for non-
-    /// text_view elements.
     pub fn text_view_value(&self) -> Option<String> {
         let tv =
             downcast::<objc2_ui_kit::UITextView>(self.ui_view())?;
         Some(tv.text().to_string())
     }
 
-    /// Make this element the first responder (keyboard focus).
     pub fn focus(&self) -> bool {
         let view = self.ui_view();
         view.becomeFirstResponder()
     }
 
-    /// Resign first responder.
     pub fn blur(&self) -> bool {
         let view = self.ui_view();
         view.resignFirstResponder()
     }
 
-    /// Load an image into an `<image_view>` from a file path.
-    /// Empty path clears the image.
     pub fn set_image_view_path(&self, path: &str) {
         use objc2_ui_kit::{UIImage, UIImageView};
         let Some(iv) = downcast::<UIImageView>(self.ui_view()) else {
@@ -1577,14 +1294,6 @@ impl Element {
         crate::layout::schedule_relayout(&self.node);
     }
 
-    /// Load an image into an `<image_view>` from in-memory bytes.
-    /// `None` or an empty slice clears the image; data UIKit can't
-    /// decode also clears it. `UIImage::imageWithData:` auto-detects
-    /// PNG, JPEG, GIF, TIFF, HEIC.
-    ///
-    /// Typical use: HTTP-fetch on a background async runtime, hand
-    /// the bytes back to main thread via a channel, then this
-    /// reactive setter fires on main.
     pub fn set_image_view_bytes(&self, bytes: Option<&[u8]>) {
         use objc2_ui_kit::{UIImage, UIImageView};
         use objc2_foundation::NSData;
@@ -1602,8 +1311,6 @@ impl Element {
         crate::layout::schedule_relayout(&self.node);
     }
 
-    /// Resolve an SF Symbol name to a `UIImage`. Returns `None`
-    /// for empty names or unknown symbols.
     fn sf_symbol_image(name: &str) -> Option<objc2::rc::Retained<objc2_ui_kit::UIImage>> {
         use objc2_ui_kit::UIImage;
         if name.is_empty() {
@@ -1613,9 +1320,6 @@ impl Element {
         UIImage::systemImageNamed(&ns_name)
     }
 
-    /// Set an SF Symbol as the image on a `<button>` (UIButton)
-    /// or `<image_view>` (UIImageView). Empty name clears.
-    /// iOS 13+; no-op on older systems.
     pub fn set_sf_symbol(&self, name: &str) {
         let view = self.ui_view();
         let image = Self::sf_symbol_image(name);
@@ -1633,9 +1337,6 @@ impl Element {
         }
     }
 
-    /// Set the `tintColor` on the view. Applies to UIImageView,
-    /// UIButton, and any UIView in general — UIKit propagates
-    /// tint through SF Symbols (template images) automatically.
     pub fn set_tint(&self, color: Option<crate::Color>) {
         let view = self.ui_view();
         unsafe {
@@ -1646,10 +1347,6 @@ impl Element {
             }
         }
     }
-
-    // -----------------------------------------------------------------
-    // Attribute removal
-    // -----------------------------------------------------------------
 
     pub fn remove_attribute(&self, name: &str) {
         if let Some(attr) = StringAttr::from_name(name) {
@@ -1718,13 +1415,13 @@ impl Text {
         Text { node }
     }
 
-    pub fn create(content: &str) -> Self {
+    pub fn create(tree: &TreeRef, content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(content, mtm)
+        Self::create_with(tree, content, mtm)
     }
 
-    pub fn create_with(content: &str, mtm: MainThreadMarker) -> Self {
+    pub fn create_with(tree: &TreeRef, content: &str, mtm: MainThreadMarker) -> Self {
         use objc2_ui_kit::UILabel;
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -1737,7 +1434,13 @@ impl Text {
         style.flex_shrink = 0.0;
 
         Text {
-            node: Node::from_view(view, NodeKind::Text, style),
+            node: Node::create_in_tree(
+                tree,
+                view,
+                NodeKind::Text,
+                style,
+                IosMeta::default(),
+            ),
         }
     }
 
@@ -1778,13 +1481,13 @@ impl Placeholder {
         Placeholder { node }
     }
 
-    pub fn create() -> Self {
+    pub fn create(tree: &TreeRef) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(mtm)
+        Self::create_with(tree, mtm)
     }
 
-    pub fn create_with(mtm: MainThreadMarker) -> Self {
+    pub fn create_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
         let view = UIView::initWithFrame(
@@ -1799,7 +1502,13 @@ impl Placeholder {
         style.size.height = crate::layout::Dimension::length(0.0);
 
         Placeholder {
-            node: Node::from_view(view, NodeKind::Placeholder, style),
+            node: Node::create_in_tree(
+                tree,
+                view,
+                NodeKind::Placeholder,
+                style,
+                IosMeta::default(),
+            ),
         }
     }
 
@@ -1816,11 +1525,133 @@ impl Placeholder {
 // Helpers
 // ---------------------------------------------------------------------
 
-/// Best-effort downcast of an `&UIView` to a more specific subclass.
 pub(crate) fn downcast<T>(view: &UIView) -> Option<&T>
 where
     T: DowncastTarget,
 {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<T>()
+}
+
+// ---------------------------------------------------------------------
+// Weak handles — non-owning references for cycle-safe closure capture
+// ---------------------------------------------------------------------
+//
+// See `cocoa/dom/src/node.rs` for the longer rationale. The same
+// Element-capture cycle risk applies on iOS (UIControl target/action
+// + UITextView delegate); `WeakElement` is the safe alternative.
+
+/// Non-owning weak reference to a `Node`.
+#[derive(Clone)]
+pub struct WeakNode {
+    inner: SendWrapper<std::rc::Weak<NodeInner>>,
+}
+
+impl Node {
+    pub fn downgrade(&self) -> WeakNode {
+        WeakNode {
+            inner: SendWrapper::new(Rc::downgrade(&*self.inner)),
+        }
+    }
+}
+
+impl WeakNode {
+    pub fn upgrade(&self) -> Option<Node> {
+        self.inner
+            .upgrade()
+            .map(|rc| Node { inner: SendWrapper::new(rc) })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.inner.strong_count() > 0
+    }
+}
+
+impl fmt::Debug for WeakNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WeakNode")
+            .field("alive", &self.is_alive())
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WeakElement {
+    node: WeakNode,
+}
+
+impl Element {
+    pub fn weak(&self) -> WeakElement {
+        WeakElement { node: self.node.downgrade() }
+    }
+}
+
+impl WeakElement {
+    pub fn upgrade(&self) -> Option<Element> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Element {
+                Some(Element::from_node_unchecked(node))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WeakText {
+    node: WeakNode,
+}
+
+impl Text {
+    pub fn weak(&self) -> WeakText {
+        WeakText { node: self.node.downgrade() }
+    }
+}
+
+impl WeakText {
+    pub fn upgrade(&self) -> Option<Text> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Text {
+                Some(Text { node })
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WeakPlaceholder {
+    node: WeakNode,
+}
+
+impl Placeholder {
+    pub fn weak(&self) -> WeakPlaceholder {
+        WeakPlaceholder { node: self.node.downgrade() }
+    }
+}
+
+impl WeakPlaceholder {
+    pub fn upgrade(&self) -> Option<Placeholder> {
+        self.node.upgrade().and_then(|node| {
+            if node.kind() == NodeKind::Placeholder {
+                Some(Placeholder { node })
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.node.is_alive()
+    }
 }

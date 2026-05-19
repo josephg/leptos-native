@@ -600,16 +600,21 @@ preference for the use case:
 
 - **Per-NSObject sideband state for a Node-backed view → field on
   `NodeHandlers`** (cocoa: `cocoa_dom::event::NodeHandlers`, iOS:
-  `ios_dom::event::IosNodeHandlers`). Each `Node` is a
-  `Rc<NodeInner>` whose `NodeState` carries the handlers locally
-  while `Unmounted`; on mount, the handlers migrate into the
-  arena's `NodeData::handlers` slot. Install functions go through
-  `node.with_handlers_mut(|h| ...)` which routes to whichever
-  storage is current. Lifecycle = arena entry lifecycle: when the
-  last Node clone drops, `NodeInner::Drop` calls `tree.remove(id)`,
-  which drops `NodeData::handlers`, fires `NodeHandlers::Drop`
-  (which nils target/delegate on the still-live view), then
-  releases the handler retains.
+  `ios_dom::event::IosNodeHandlers`). `NodeHandlers` lives as a
+  `RefCell<B::Handlers>` field on the per-window arena's
+  `NodeData<B>` entry. Install functions go through
+  `node.with_handlers_mut(|h| ...)` which calls
+  `tree.with_handlers_mut(id, f)` against the arena. The Node
+  itself is a thin `Rc<NodeInner { tree, id, kind, view, is_borrowed }>`
+  handle; the arena owns the actual per-node state.
+
+  Lifecycle = arena entry lifecycle: when the last Node clone of
+  an owning Node drops, `NodeInner::Drop` calls `tree.decref(id)`.
+  Under the removal rule (`refcount == 0 AND parent == None`),
+  the arena removes the entry. `NodeData` field-drop order
+  (`handlers` before `view`) fires `NodeHandlers::Drop`, which
+  nils target/delegate on the still-live view, then releases the
+  handler retains.
 
   **Don't use ObjC associated objects** for this. We tried — they
   tie handler lifetime to the NSView/UIView's ObjC reference
@@ -619,13 +624,23 @@ preference for the use case:
   handler leak. Rust-owned storage decouples from that and gives
   deterministic disconnect on drop.
 
-  **Avoid capturing `Element` clones in callback closures stored
-  on the same Node's handlers** — that forms an Rc cycle (closure
-  → captured Element → Rc<NodeInner> → arena entry → handlers →
-  Retained<handler> → ivars → closure). Capture `Retained<NSView>`
-  / `Retained<NSControl>` (or the equivalent subclass type)
-  instead — those don't pull the Rust Node into the cycle. See
-  `Node::ns_view_retained()` / `Element::ns_view_retained()`.
+  **Avoid capturing `Element` / `Node` clones in callback closures
+  stored on the same Node's handlers** — that forms a cycle
+  (closure → captured Element → `Rc<NodeInner>` → entry stays
+  alive forever → handlers stay alive → closure stays alive).
+  The cycle is structurally possible because Node::clone bumps
+  the Rc. Use one of:
+
+   * **Typed `Retained<NSView>` / `Retained<NSControl>`** when
+     the closure only needs to call ObjC methods on the view.
+     `Retained<NSButton>` doesn't pull the Rust Node into the
+     cycle. See `Node::ns_view_retained()` / `Element::ns_view_retained()`.
+   * **`WeakElement` / `WeakNode`** when the closure needs to
+     re-enter the element's Rust API (style, meta, handlers).
+     `el.weak()` returns a `WeakElement` (a `Weak<NodeInner>`);
+     `weak.upgrade()` recovers the Element at fire time, returning
+     `None` if the original has dropped. No cycle because Weak
+     refs don't keep the Rc alive.
 
   **Text-field/text-view delegate drop ordering**: the cocoa and
   iOS `NodeHandlers::Drop` impls explicitly release the

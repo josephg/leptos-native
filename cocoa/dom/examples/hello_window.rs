@@ -20,20 +20,20 @@ fn main() {
 
     let opened = open_window("cocoa_dom — hello", (400.0, 220.0), mtm);
 
-    let button = Element::create_with("button", mtm);
+    let button = Element::create_with(&opened.tree, "button", mtm);
     button.set_attribute("title", "Click me");
 
-    let label = Element::create_with("label", mtm);
+    let label = Element::create_with(&opened.tree, "label", mtm);
     label.set_attribute("value", "(initial label)");
 
-    let text_node = Text::create_with("text-node says hi", mtm);
+    let text_node = Text::create_with(&opened.tree, "text-node says hi", mtm);
 
     opened.content_root.insert_node(button.as_node(), None);
     opened.content_root.insert_node(label.as_node(), None);
     opened.content_root.insert_node(text_node.as_node(), None);
 
     // Demonstrate insertion before a marker, then remove_child.
-    let middle_label = Element::create_with("label", mtm);
+    let middle_label = Element::create_with(&opened.tree, "label", mtm);
     middle_label.set_attribute("value", "(inserted before text-node)");
     opened
         .content_root

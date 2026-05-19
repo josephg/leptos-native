@@ -436,7 +436,7 @@ where
 {
     type State = ToolbarState<C::State>;
 
-    fn build(self) -> Self::State {
+    fn build(self, _tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let mtm = MainThreadMarker::new()
             .expect("Toolbar::build must run on the main thread");
 
@@ -711,7 +711,13 @@ impl ToolbarItem {
         V::State: Mountable<Dom> + 'static,
     {
         self.view_factory = Some(Box::new(move |_mtm| {
-            let state = child.build();
+            // Toolbar custom views live outside the window's layout
+            // tree (AppKit sizes the item slot, not Taffy). Give the
+            // child its own stub tree so its `build` cascade can
+            // register without disturbing the toolbar's owning
+            // window tree.
+            let stub_tree = cocoa_dom::layout::new_tree();
+            let state = child.build(&stub_tree);
             let element = state
                 .elements()
                 .into_iter()

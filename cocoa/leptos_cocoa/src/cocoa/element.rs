@@ -11,6 +11,7 @@ use renderer::attrs::{
     DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
     WithUniversal,
 };
+use renderer::layout::TreeRef;
 use renderer::view::{Mountable, Render};
 use crate::Dom;
 use cocoa_dom::{
@@ -443,8 +444,8 @@ where
 {
     type State = ElementState<(), Ch::State>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("stack");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "stack");
         let mut effects = Vec::new();
 
         // Default direction = Column when caller didn't specify (the
@@ -488,7 +489,7 @@ where
         // deferred until ElementState::mount runs (when self.el has
         // joined a tree); the recursive mount cascade then registers
         // every descendant in the right Taffy tree.
-        let child_state = self.children.build();
+        let child_state = self.children.build(tree);
 
 
         ElementState {
@@ -689,8 +690,8 @@ where
 {
     type State = ElementState<(), Ch::State>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("grid");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "grid");
         let mut effects = Vec::new();
 
         // Static template-track lists go straight onto the node (no
@@ -775,7 +776,7 @@ where
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
 
-        let child_state = self.children.build();
+        let child_state = self.children.build(tree);
 
         ElementState {
             el,
@@ -1024,8 +1025,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("button");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "button");
         let mut effects = Vec::new();
 
         // Wire the title — install handles both static and reactive.
@@ -1263,8 +1264,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("checkbox");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "checkbox");
         let mut effects = Vec::new();
 
         // Title: drive via the standard install pipeline.
@@ -1480,8 +1481,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("slider");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "slider");
         let mut effects = Vec::new();
 
         // min/max set FIRST so initial setDoubleValue clamps correctly.
@@ -1702,8 +1703,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("pop_up_button");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "pop_up_button");
         let mut effects = Vec::new();
 
         // pulls_down BEFORE items: NSPopUpButton's mode controls
@@ -1967,8 +1968,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("label");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "label");
         let mut effects = Vec::new();
 
         let el_for_text = el.clone();
@@ -2336,9 +2337,9 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let tag = if self.secure { "secure_text_field" } else { "text_field" };
-        let el = CocoaElement::create(tag);
+        let el = CocoaElement::create(tree, tag);
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
@@ -2574,8 +2575,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("date_picker");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "date_picker");
         let mut effects = Vec::new();
 
         let el_for_val = el.clone();
@@ -2781,8 +2782,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("stepper");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "stepper");
         let mut effects = Vec::new();
 
         // Bounds + increment first so the initial setDoubleValue
@@ -2962,8 +2963,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("progress_indicator");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "progress_indicator");
         let mut effects = Vec::new();
 
         // Order matters: max before value so the value clamps
@@ -3130,8 +3131,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("color_well");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "color_well");
         let mut effects = Vec::new();
 
         let el_for_val = el.clone();
@@ -3321,8 +3322,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("segmented_control");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "segmented_control");
         let mut effects = Vec::new();
 
         el.set_segmented_items(&self.items);
@@ -3507,8 +3508,8 @@ where
 {
     type State = ElementState<(), Ch::State>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("scroll_view");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "scroll_view");
         let mut effects = Vec::new();
 
         // Apply axis FIRST — it sets the documentView wrapper's
@@ -3548,7 +3549,7 @@ where
         // Same cascade pattern as View: defer child mount to
         // ElementState::mount, so the tree-aware insert_node
         // registers each descendant in the right Taffy tree.
-        let child_state = self.children.build();
+        let child_state = self.children.build(tree);
 
         ElementState {
             el,
@@ -3691,8 +3692,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("image_view");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "image_view");
         let mut effects = Vec::new();
 
         // `source` first so `sf_symbol` can replace it last-write-wins
@@ -3851,8 +3852,8 @@ where
 {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = CocoaElement::create("text_view");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = CocoaElement::create(tree, "text_view");
         let mut effects = Vec::new();
 
         // value=… one-way drive. Routes through StringAttr::Value

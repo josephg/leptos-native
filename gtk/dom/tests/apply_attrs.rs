@@ -35,7 +35,8 @@ fn style_of(el: &Element) -> renderer::Style {
 }
 
 fn padding_static_lands_in_padding_field() {
-    let el = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -48,7 +49,8 @@ fn padding_static_lands_in_padding_field() {
 }
 
 fn flex_grow_static_lands_in_flex_grow() {
-    let el = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -58,14 +60,16 @@ fn flex_grow_static_lands_in_flex_grow() {
 }
 
 fn empty_universal_attrs_no_panic() {
-    let el = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
     let _ = layout::apply_universal(&el, UniversalAttrs::default());
 }
 
 fn alpha_static_sets_widget_opacity() {
+    let tree = gtk_dom::layout::new_tree();
     use gtk4::prelude::*;
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = UniversalAttrs::default();

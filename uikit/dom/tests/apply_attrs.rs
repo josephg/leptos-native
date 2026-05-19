@@ -39,8 +39,9 @@ fn style_of(el: &Element) -> renderer::Style {
 }
 
 fn padding_static_lands_in_padding_field() {
+    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -51,8 +52,9 @@ fn padding_static_lands_in_padding_field() {
 }
 
 fn flex_grow_static_lands_in_flex_grow() {
+    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -62,15 +64,17 @@ fn flex_grow_static_lands_in_flex_grow() {
 }
 
 fn empty_universal_attrs_no_panic() {
+    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
     let _ = layout::apply_universal(&el, UniversalAttrs::default());
 }
 
 fn alpha_static_sets_view_alpha() {
+    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = UniversalAttrs::default();
@@ -82,10 +86,11 @@ fn alpha_static_sets_view_alpha() {
 }
 
 fn tool_tip_silently_dropped_on_ios() {
+    let tree = ios_dom::layout::new_tree();
     // iOS has no hover-tooltip concept; the UniversalElement default
     // impl no-ops set_tool_tip. Verify it doesn't panic.
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = UniversalAttrs::default();

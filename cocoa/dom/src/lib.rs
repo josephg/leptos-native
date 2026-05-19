@@ -58,6 +58,7 @@ pub use interval::{
 pub use key_event::KeyEvent;
 pub use node::{
     BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
+    WeakElement, WeakNode, WeakPlaceholder, WeakText,
 };
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};

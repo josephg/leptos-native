@@ -9,49 +9,57 @@ mod common;
 use gtk_dom::{gtk::prelude::*, Element, NodeKind};
 
 fn view_is_a_box() {
+    let tree = gtk_dom::layout::new_tree();
     // `<view>` is a generic flexbox container, backed by gtk::Box
     // (with our TaffyLayout swapped in once mounted).
-    let el = Element::create("view");
+    let el = Element::create(&tree, "view");
     assert_eq!(el.as_node().kind(), NodeKind::Element);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn vstack_is_a_box() {
-    let el = Element::create("vstack");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "vstack");
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn hstack_is_a_box() {
-    let el = Element::create("hstack");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "hstack");
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn stack_is_a_box() {
-    let el = Element::create("stack");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "stack");
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn button_is_gtk_button() {
-    let el = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     assert_eq!(el.as_node().kind(), NodeKind::Element);
     assert!(el.widget().is::<gtk_dom::gtk::Button>());
 }
 
 fn checkbox_is_gtk_check_button() {
-    let el = Element::create("checkbox");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "checkbox");
     assert!(el.widget().is::<gtk_dom::gtk::CheckButton>());
 }
 
 fn label_is_gtk_label() {
-    let el = Element::create("label");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "label");
     assert!(el.widget().is::<gtk_dom::gtk::Label>());
 }
 
 fn label_wraps_by_default() {
+    let tree = gtk_dom::layout::new_tree();
     // gtk::Label::wrap defaults to false, but we flip it on at
     // construction so multi-line text behaves like cocoa's
     // wrappingLabelWithString:.
-    let el = Element::create("label");
+    let el = Element::create(&tree, "label");
     let l = el
         .widget()
         .downcast_ref::<gtk_dom::gtk::Label>()
@@ -60,7 +68,8 @@ fn label_wraps_by_default() {
 }
 
 fn text_field_is_gtk_entry() {
-    let el = Element::create("text_field");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "text_field");
     assert!(el.widget().is::<gtk_dom::gtk::Entry>());
     assert!(
         !el.widget().is::<gtk_dom::gtk::PasswordEntry>(),
@@ -69,12 +78,14 @@ fn text_field_is_gtk_entry() {
 }
 
 fn secure_text_field_is_password_entry() {
-    let el = Element::create("secure_text_field");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "secure_text_field");
     assert!(el.widget().is::<gtk_dom::gtk::PasswordEntry>());
 }
 
 fn slider_is_gtk_scale() {
-    let el = Element::create("slider");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "slider");
     let v = el.widget();
     assert!(v.is::<gtk_dom::gtk::Scale>());
     let s = v.downcast_ref::<gtk_dom::gtk::Scale>().unwrap();
@@ -84,18 +95,21 @@ fn slider_is_gtk_scale() {
 }
 
 fn pop_up_button_is_drop_down() {
-    let el = Element::create("pop_up_button");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "pop_up_button");
     assert!(el.widget().is::<gtk_dom::gtk::DropDown>());
 }
 
 fn unknown_tag_falls_back_to_view() {
-    let el = Element::create("totally_made_up_zzz");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "totally_made_up_zzz");
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
     assert!(!el.widget().is::<gtk_dom::gtk::Button>());
     assert_eq!(el.as_node().kind(), NodeKind::Element);
 }
 
 fn kind_is_always_element() {
+    let tree = gtk_dom::layout::new_tree();
     for tag in [
         "view",
         "button",
@@ -109,7 +123,7 @@ fn kind_is_always_element() {
         "stack",
         "totally_unknown_xyz",
     ] {
-        let el = Element::create(tag);
+        let el = Element::create(&tree, tag);
         assert_eq!(
             el.as_node().kind(),
             NodeKind::Element,

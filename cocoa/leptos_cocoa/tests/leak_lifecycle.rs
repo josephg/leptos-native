@@ -64,10 +64,11 @@ fn explicit_unmount_clears_button_handler() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let view = button()
             .title("OK")
             .add_any_attr((on(click, |_: ()| {}),));
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         // No explicit mount in this test (we're not driving a window);
         // build alone installs the click handler via target/action.
         let installed = snapshot();
@@ -94,9 +95,10 @@ fn explicit_unmount_clears_text_field_delegate() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = text_field().bind(leptos_cocoa::attr::Value, value);
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         let installed = snapshot();
         assert!(
             installed.1 > before.1,
@@ -128,10 +130,11 @@ fn drop_without_unmount_clears_button_handler() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let view = button()
             .title("OK")
             .add_any_attr((on(click, |_: ()| {}),));
-        let state = view.build();
+        let state = view.build(&tree);
         // Deliberately drop without calling unmount.
         drop(state);
     });
@@ -150,9 +153,10 @@ fn drop_without_unmount_clears_text_field_delegate() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = text_field().bind(leptos_cocoa::attr::Value, value);
-        let state = view.build();
+        let state = view.build(&tree);
         drop(state);
         // bind:value installs a `RenderEffect` whose async runner
         // (driven by the dispatch-queue spawner) captures an
@@ -184,9 +188,10 @@ fn drop_without_unmount_clears_text_field_no_bind() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let view = text_field()
             .add_any_attr((on(input, |_value: String| {}),));
-        let state = view.build();
+        let state = view.build(&tree);
         drop(state);
     });
 
@@ -208,6 +213,7 @@ fn composite_tree_explicit_unmount_clears_all() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let view = vstack()
             .child(button().title("A").add_any_attr((on(click, |_: ()| {}),)))
             .child(
@@ -223,7 +229,7 @@ fn composite_tree_explicit_unmount_clears_all() {
                 let v = RwSignal::new(String::new());
                 text_field().bind(leptos_cocoa::attr::Value, v)
             });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         let installed = snapshot();
         assert!(
             installed.0 >= before.0 + 2,
@@ -256,6 +262,7 @@ fn composite_tree_drop_without_unmount_clears_all() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let view = vstack()
             .child(button().title("A").add_any_attr((on(click, |_: ()| {}),)))
             .child(
@@ -267,7 +274,7 @@ fn composite_tree_drop_without_unmount_clears_all() {
                             .add_any_attr((on(click, |_: ()| {}),)),
                     ),
             );
-        let state = view.build();
+        let state = view.build(&tree);
         drop(state);
     });
 
@@ -294,6 +301,7 @@ fn for_diff_add_then_clear_clears_handlers() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let rows = RwSignal::new(Vec::<i32>::new());
 
         let for_view = For(ForProps::builder()
@@ -320,7 +328,7 @@ fn for_diff_add_then_clear_clears_handlers() {
             ._marker(PhantomData)
             .build());
         let view = vstack().child(for_view);
-        let mut state = view.build();
+        let mut state = view.build(&tree);
 
         // Push 100 rows.
         rows.update(|r| {
@@ -377,6 +385,7 @@ fn either_toggle_clears_handlers() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(false);
 
         let view = vstack().child(move || match flag.get() {
@@ -395,7 +404,7 @@ fn either_toggle_clears_handlers() {
                     ),
             ),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
 
         for _ in 0..50 {
             flag.update(|v| *v = !*v);
@@ -440,6 +449,7 @@ fn for_diff_shuffle_then_clear_clears_handlers() {
     let before = snapshot();
 
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let rows = RwSignal::new(Vec::<i32>::new());
 
         let for_view = For(ForProps::builder()
@@ -459,7 +469,7 @@ fn for_diff_shuffle_then_clear_clears_handlers() {
             ._marker(PhantomData)
             .build());
         let view = vstack().child(for_view);
-        let mut state = view.build();
+        let mut state = view.build(&tree);
 
         rows.update(|r| {
             for i in 0..50 {
@@ -517,7 +527,8 @@ fn drop_bare_text_view_clears_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
-        let state = text_view().build();
+        let tree = cocoa_dom::layout::new_tree();
+        let state = text_view().build(&tree);
         drop(state);
         common::pump_run_loop(0.1);
     });
@@ -534,9 +545,10 @@ fn explicit_unmount_clears_text_view_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = text_view().bind(leptos_cocoa::attr::Value, value);
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         let installed = snapshot();
         assert!(
             installed.2 > before.2,
@@ -566,11 +578,12 @@ fn drop_reactive_child_text_view_no_toggle() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || -> AnyView<Dom> {
             text_view().bind(leptos_cocoa::attr::Value, value).into_any()
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         state.unmount();
         common::pump_run_loop(0.1);
     });
@@ -591,12 +604,13 @@ fn show_off_bare_text_view_clears_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let view = vstack().child(move || match flag.get() {
             true => Either::Left(text_view()),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(false);
         common::pump_run_loop(0.1);
         let after_off = snapshot();
@@ -620,11 +634,12 @@ fn full_teardown_text_view_persistent_leak() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = vstack().child(
             text_view().bind(leptos_cocoa::attr::Value, value),
         );
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         state.unmount();
         for _ in 0..20 {
             common::pump_run_loop(0.02);
@@ -657,6 +672,7 @@ fn show_off_text_view_with_oninput_clears_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let view = vstack().child(move || match flag.get() {
             true => Either::Left(
@@ -665,7 +681,7 @@ fn show_off_text_view_with_oninput_clears_delegate() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(false);
         common::pump_run_loop(0.1);
         let after_off = snapshot();
@@ -688,6 +704,7 @@ fn show_off_text_field_clears_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -696,7 +713,7 @@ fn show_off_text_field_clears_delegate() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(false);
         common::pump_run_loop(0.1);
         let after_off = snapshot();
@@ -724,6 +741,7 @@ fn diagnose_text_view_bind_extra_clones() {
     use leptos_cocoa::cocoa::NodeRef;
     let _mtm = common::test_mtm();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let nref = NodeRef::new();
@@ -735,7 +753,7 @@ fn diagnose_text_view_bind_extra_clones() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
 
         let el_before = nref.get().expect("text_view registered");
         let count_before = el_before.as_node().handlers_rc_count_for_test();
@@ -783,6 +801,7 @@ fn build_in_pool_then_show_off() {
     objc2::rc::autoreleasepool(|_| {
         let owner = reactive_graph::owner::Owner::new();
         let _result: () = owner.with(|| {
+            let tree = cocoa_dom::layout::new_tree();
             let flag = RwSignal::new(true);
             let value = RwSignal::new(String::new());
             let view = vstack().child(move || match flag.get() {
@@ -791,7 +810,7 @@ fn build_in_pool_then_show_off() {
                 ),
                 false => Either::Right(label().text("off")),
             });
-            let mut state = view.build();
+            let mut state = view.build(&tree);
             // Drain the build pool by entering and exiting an inner one.
             // Anything autoreleased during build releases here.
             objc2::rc::autoreleasepool(|_| {
@@ -822,6 +841,7 @@ fn start_off_then_on_off() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(false);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -830,7 +850,7 @@ fn start_off_then_on_off() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(true);
         common::pump_run_loop(0.1);
         let after_on = snapshot();
@@ -855,15 +875,17 @@ fn warmup_then_show_off_text_view() {
     let _mtm = common::test_mtm();
     // Warmup: a separate scope first.
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let v = RwSignal::new(String::new());
         let mut s = text_view()
             .bind(leptos_cocoa::attr::Value, v)
-            .build();
+            .build(&tree);
         s.unmount();
         common::pump_run_loop(0.1);
     });
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -872,7 +894,7 @@ fn warmup_then_show_off_text_view() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(false);
         common::pump_run_loop(0.2);
         let after_off = snapshot();
@@ -892,6 +914,7 @@ fn show_off_text_view_inner_autoreleasepool() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -900,7 +923,7 @@ fn show_off_text_view_inner_autoreleasepool() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         objc2::rc::autoreleasepool(|_| {
             flag.set(false);
             common::pump_run_loop(0.2);
@@ -922,6 +945,7 @@ fn diagnose_text_view_repeated_toggles() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -930,7 +954,7 @@ fn diagnose_text_view_repeated_toggles() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         eprintln!("DIAG: just after build, tv_count={}", snapshot().2 - before.2);
         for i in 0..10 {
             flag.update(|v| *v = !*v);
@@ -954,6 +978,7 @@ fn diagnose_text_field_bind_extra_clones() {
     use leptos_cocoa::cocoa::NodeRef;
     let _mtm = common::test_mtm();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let nref = NodeRef::new();
@@ -965,7 +990,7 @@ fn diagnose_text_field_bind_extra_clones() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
 
         let el_before = nref.get().expect("text_field registered");
         let count_before = el_before.as_node().handlers_rc_count_for_test();
@@ -1009,6 +1034,7 @@ fn show_off_text_view_clears_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let flag = RwSignal::new(true);
         let value = RwSignal::new(String::new());
         let view = vstack().child(move || match flag.get() {
@@ -1017,7 +1043,7 @@ fn show_off_text_view_clears_delegate() {
             ),
             false => Either::Right(label().text("off")),
         });
-        let mut state = view.build();
+        let mut state = view.build(&tree);
         flag.set(false);
         common::pump_run_loop(0.1);
         let after_off = snapshot();
@@ -1043,9 +1069,10 @@ fn drop_without_unmount_clears_text_view_delegate() {
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
+        let tree = cocoa_dom::layout::new_tree();
         let value = RwSignal::new(String::new());
         let view = text_view().bind(leptos_cocoa::attr::Value, value);
-        let state = view.build();
+        let state = view.build(&tree);
         drop(state);
         common::pump_run_loop(0.1);
     });

@@ -5,6 +5,119 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-19 — Node refactor part 2: true arena handles + WeakElement
+
+Picked up where the 2026-05-18 entry left off. The post-05-18 design
+still had `Rc<NodeInner>` with a `NodeState::{Unmounted, Mounted,
+MountedBorrowed}` enum that branched on every accessor. The state
+enum is now gone — every Node is allocated into the arena from
+creation, all state lives in `NodeData<B>`, and `NodeInner` is just
+`{ tree, id, kind, view, is_borrowed }`.
+
+Plan: `~/.claude/plans/if-its-that-big-whimsical-kazoo.md` (6 phases).
+
+### What changed
+
+1. **`NodeData<B>` gained a `refcount: Cell<u32>`** with
+   `tree.incref(id)` / `tree.decref(id)`. Removal rule: an entry is
+   dropped from the slotmap when `refcount == 0 AND parent == None`.
+   This means a node still attached to a parent stays alive even
+   with zero external Node handles, and a node with handles stays
+   alive even after detach. Reachability + refcount, like a
+   tracing-GC root-set.
+
+2. **`Render::build` signature**: `fn build(self, tree: &TreeRef<R::Backend>) -> Self::State`.
+   The tree is explicit, threaded by the framework from
+   `mount_to_window` down through every Render impl. No
+   thread-local "current tree" context — explicit parameter only.
+   ~50 Render impls + ~11 .build() call sites updated.
+
+3. **`Node = Rc<NodeInner>`** with no state enum. `Element::create`
+   takes a tree and eagerly allocates the arena entry.
+   `NodeInner::Drop` calls `tree.decref(id)`. The arena's
+   `LayoutTree::remove` was rewritten to drop the `NodeData`
+   *outside* its `state` mutable borrow — without that hoist,
+   closures stored in handlers that capture Node clones would
+   re-enter `state.borrow()` during cleanup and panic.
+
+4. **`WeakNode` / `WeakElement` / `WeakText` / `WeakPlaceholder`**
+   are `Weak<NodeInner>` wrappers. Use `el.weak()` to get a
+   non-owning handle for closure capture; `weak.upgrade()` recovers
+   the strong handle at fire time. This is the cycle-safe pattern
+   for closures stored in `NodeHandlers` that need to re-enter the
+   element's Rust API. The bind helpers in `bind.rs` were already
+   cycle-safe (effects live on `ElementState::_effects`, separate
+   from handlers); the Weak types are primarily for user code in
+   `on_click` etc.
+
+5. **Mirror to GTK + iOS**. Same Node shape, same Weak types, same
+   accessor surface. iOS still has the
+   text-view-delegate-explicit-drop ordering fix in
+   `IosNodeHandlers::Drop`; GTK has nothing analogous because GTK
+   signal handlers are owned by their widget's signal connection.
+
+### Files touched
+
+- `common/renderer/src/layout.rs` — refcount field, incref/decref,
+  reachability-GC in `remove_child`, the hoisted-drop fix in `remove`.
+- `common/renderer/src/renderer/mod.rs` — `type Backend: LayoutBackend`
+  added to Renderer trait; `create_text_node` / `create_placeholder`
+  take a tree.
+- `common/renderer/src/view/*.rs` — every Render impl gets the tree
+  param.
+- `cocoa/dom/src/node.rs` — total rewrite. Removed NodeState enum,
+  added Weak types. Eager arena allocation in `Element::create_with`,
+  `Text::create_with`, `Placeholder::create_with`. Scroll-view
+  wrapper allocated at create-time.
+- `cocoa/dom/src/layout.rs` — `register_in_tree` reduced to a near-
+  no-op that publishes the root id; `attach_child` etc. no longer
+  call register internally.
+- `cocoa/leptos_cocoa/src/cocoa/element.rs` — every Element::create
+  call gets the tree.
+- Mirror to `gtk/dom/`, `gtk/leptos_gtk/`, `uikit/dom/`,
+  `uikit/leptos_uikit/`.
+- All cross-port tests updated to allocate a tree before
+  constructing elements.
+
+### Re-entrance fix in LayoutTree::remove
+
+The negative-example test
+`strong_element_capture_keeps_handler_alive` exposed a real bug.
+The previous `LayoutTree::remove` dropped the slotmap entry's
+`NodeData` *inside* the `with_state_mut` closure (i.e. while
+`state` was mutably borrowed). When `NodeData::handlers` dropped,
+`NodeHandlers::Drop` fired, the closures dropped, captured Node
+clones' `NodeInner::Drop` fired, which called `tree.decref(id) →
+tree.with_node(id) → state.borrow()` — already mutably borrowed,
+PANIC.
+
+Fix: hoist the removed `NodeData` out of the closure and drop it
+*after* the borrow releases. See
+`common/renderer/src/layout.rs::remove`'s
+"Move the removed entry OUT of the borrow scope" comment for the
+load-bearing detail.
+
+### Verification
+
+- cocoa_dom: 271 tests pass (incl. 21 node_lifecycle).
+- leptos_cocoa: 99 tests pass.
+- gtk_dom node_lifecycle: 16/16 pass.
+- ios_dom node_lifecycle: 20/20 pass on iPhone 17 Pro sim.
+- counter_cocoa runs; iOS examples build clean; counter_gtk builds.
+- Fuzzer 5 seeds @ chaos 100: 0 leaks.
+
+### Out of scope (deferred)
+
+- `Element::clone` is still `pub` — making it non-public would
+  enforce the cycle rule structurally but at the cost of UX.
+  `WeakElement` is the recommended alternative; convention +
+  fuzzer + tests catch violations.
+- Per-window trees stay (we considered one-tree-per-process and
+  rejected it).
+- Profiling arena-access overhead vs the old local-cache pattern.
+
+---
+
 ## 2026-05-18 — Node ownership refactor: collapse to `Rc<NodeInner>` + arena
 
 Per the plan at `~/.claude/plans/if-its-that-big-whimsical-kazoo.md`,

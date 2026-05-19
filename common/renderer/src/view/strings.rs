@@ -2,6 +2,7 @@
 //! `Rc<str>`, `Arc<str>`. Each renders as a single text node.
 
 use super::{Mountable, Render};
+use crate::layout::TreeRef;
 use crate::renderer::{CastFrom, Renderer};
 use std::{borrow::Cow, rc::Rc, sync::Arc};
 
@@ -13,8 +14,8 @@ pub struct StrState<'a, R: Renderer> {
 impl<'a, R: Renderer> Render<R> for &'a str {
     type State = StrState<'a, R>;
 
-    fn build(self) -> Self::State {
-        StrState { node: R::create_text_node(self), str: self }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        StrState { node: R::create_text_node(tree, self), str: self }
     }
 
     fn rebuild(self, state: &mut Self::State) {
@@ -54,8 +55,8 @@ pub struct StringState<R: Renderer> {
 
 impl<R: Renderer> Render<R> for String {
     type State = StringState<R>;
-    fn build(self) -> Self::State {
-        StringState { node: R::create_text_node(&self), str: self }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        StringState { node: R::create_text_node(tree, &self), str: self }
     }
     fn rebuild(self, state: &mut Self::State) {
         if self != state.str {
@@ -94,8 +95,8 @@ pub struct CowStrState<'a, R: Renderer> {
 
 impl<'a, R: Renderer> Render<R> for Cow<'a, str> {
     type State = CowStrState<'a, R>;
-    fn build(self) -> Self::State {
-        CowStrState { node: R::create_text_node(&self), str: self }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        CowStrState { node: R::create_text_node(tree, &self), str: self }
     }
     fn rebuild(self, state: &mut Self::State) {
         if self != state.str {
@@ -134,8 +135,8 @@ pub struct RcStrState<R: Renderer> {
 
 impl<R: Renderer> Render<R> for Rc<str> {
     type State = RcStrState<R>;
-    fn build(self) -> Self::State {
-        RcStrState { node: R::create_text_node(&self), str: self }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        RcStrState { node: R::create_text_node(tree, &self), str: self }
     }
     fn rebuild(self, state: &mut Self::State) {
         if !Rc::ptr_eq(&self, &state.str) {
@@ -174,8 +175,8 @@ pub struct ArcStrState<R: Renderer> {
 
 impl<R: Renderer> Render<R> for Arc<str> {
     type State = ArcStrState<R>;
-    fn build(self) -> Self::State {
-        ArcStrState { node: R::create_text_node(&self), str: self }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        ArcStrState { node: R::create_text_node(tree, &self), str: self }
     }
     fn rebuild(self, state: &mut Self::State) {
         if !Arc::ptr_eq(&self, &state.str) {

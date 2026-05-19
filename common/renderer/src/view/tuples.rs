@@ -1,6 +1,7 @@
 //! `Render<R>` for the unit type and tuples up to size 16.
 
 use super::{Mountable, Render};
+use crate::layout::TreeRef;
 use crate::renderer::{CastFrom, Renderer};
 
 /// Retained state for an `Option`/`Either` empty branch — a real
@@ -13,15 +14,9 @@ pub struct UnitState<R: Renderer> {
 }
 
 impl<R: Renderer> UnitState<R> {
-    /// Build a fresh placeholder-backed unit state.
-    pub fn new() -> Self {
-        UnitState { placeholder: R::create_placeholder() }
-    }
-}
-
-impl<R: Renderer> Default for UnitState<R> {
-    fn default() -> Self {
-        Self::new()
+    /// Build a fresh placeholder-backed unit state in `tree`.
+    pub fn new(tree: &crate::TreeRef<R::Backend>) -> Self {
+        UnitState { placeholder: R::create_placeholder(tree) }
     }
 }
 
@@ -37,7 +32,7 @@ impl<R: Renderer> Default for UnitState<R> {
 /// Taffy and breaking intrinsic-size measurement.
 impl<R: Renderer> Render<R> for () {
     type State = ();
-    fn build(self) -> Self::State {}
+    fn build(self, _tree: &TreeRef<R::Backend>) -> Self::State {}
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
@@ -86,8 +81,8 @@ macro_rules! impl_render_tuple {
         {
             type State = ($($T::State,)+);
 
-            fn build(self) -> Self::State {
-                ( $( self.$idx.build(), )+ )
+            fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+                ( $( self.$idx.build(tree), )+ )
             }
 
             fn rebuild(self, state: &mut Self::State) {

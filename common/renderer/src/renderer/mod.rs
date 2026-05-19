@@ -2,12 +2,20 @@
 //! concrete `Element`/`Node`/`Text`/`Placeholder` types and the imperative
 //! operations (create, set_attribute, insert_node, etc.) the view tree calls.
 
+use crate::layout::LayoutBackend;
 use crate::view::Mountable;
 use std::fmt::Debug;
 
 /// Implements the instructions necessary to render an interface on some
 /// platform. Each platform supplies its own `Renderer` impl.
 pub trait Renderer: Send + Sized + Debug + 'static {
+    /// Per-platform layout backend. `Render::build` takes a
+    /// `&TreeRef<Self::Backend>` so each builder can allocate its
+    /// arena entry into the correct window's tree without a hidden
+    /// thread-local. Cocoa sets this to `CocoaBackend`, GTK to
+    /// `GtkBackend`, iOS to `IosBackend`.
+    type Backend: LayoutBackend;
+
     /// The basic type of node in the view tree.
     type Node: Mountable<Self> + Clone + 'static;
     /// A visible element in the view tree.
@@ -36,11 +44,11 @@ pub trait Renderer: Send + Sized + Debug + 'static {
         text
     }
 
-    /// Creates a new text node.
-    fn create_text_node(text: &str) -> Self::Text;
+    /// Creates a new text node in the given layout tree.
+    fn create_text_node(tree: &crate::TreeRef<Self::Backend>, text: &str) -> Self::Text;
 
-    /// Creates a new placeholder node.
-    fn create_placeholder() -> Self::Placeholder;
+    /// Creates a new placeholder node in the given layout tree.
+    fn create_placeholder(tree: &crate::TreeRef<Self::Backend>) -> Self::Placeholder;
 
     /// Sets the text content of a text node.
     fn set_text(node: &Self::Text, text: &str);

@@ -42,7 +42,8 @@ fn iv(el: &Element) -> &NSImageView {
 
 fn image_view_tag_creates_nsimageview() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     let _iv = iv(&el);
 }
 
@@ -52,7 +53,8 @@ fn image_view_tag_creates_nsimageview() {
 
 fn valid_png_bytes_set_image() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     assert!(
         iv(&el).image().is_none(),
         "fresh image_view should have no image"
@@ -72,7 +74,8 @@ fn valid_png_bytes_set_image() {
 
 fn none_clears_image() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     el.set_image_view_bytes(Some(TINY_PNG));
     assert!(iv(&el).image().is_some());
 
@@ -91,7 +94,8 @@ fn none_clears_image() {
 
 fn empty_slice_clears_image() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     el.set_image_view_bytes(Some(TINY_PNG));
     assert!(iv(&el).image().is_some());
 
@@ -113,7 +117,8 @@ fn empty_slice_clears_image() {
 
 fn garbage_bytes_dont_panic() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     let junk = b"not an image at all, just some bytes";
 
     el.set_image_view_bytes(Some(junk));
@@ -132,7 +137,8 @@ fn garbage_bytes_dont_panic() {
 
 fn replace_with_new_valid_bytes() {
     let _mtm = common::test_mtm();
-    let el = Element::create("image_view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "image_view");
     el.set_image_view_bytes(Some(TINY_PNG));
     let first = iv(&el).image().expect("first image set");
     let first_ptr: *const objc2_app_kit::NSImage = &*first;

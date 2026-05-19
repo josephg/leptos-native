@@ -306,7 +306,8 @@ fn run_one(
 
         // Build + mount reactive tree.
         let view_a = build(&spec, &reactive_store);
-        let mut state_a = catch_ns("build-A", || view_a.build())?;
+        let tree_a = win_a.tree.clone();
+        let mut state_a = catch_ns("build-A", || view_a.build(&tree_a))?;
         catch_ns("mount-A", || {
             state_a.mount(&win_a.content_root, None);
         })?;
@@ -352,7 +353,7 @@ fn run_one(
             let extra_store = SignalStore::new();
             let view = build(&extra_spec, &extra_store);
             let mut st: Box<dyn renderer::view::Mountable<leptos::Dom>> =
-                Box::new(catch_ns("build-extra", || view.build())?);
+                Box::new(catch_ns("build-extra", || view.build(&win.tree))?);
             catch_ns("mount-extra", || {
                 st.mount(&win.content_root, None);
             })?;
@@ -510,7 +511,8 @@ fn run_one(
             open_window("fuzz-B", (800.0, 600.0), mtm)
         })?;
         let view_b = build(&spec, &static_store);
-        let mut state_b = catch_ns("build-B", || view_b.build())?;
+        let tree_b = win_b.tree.clone();
+        let mut state_b = catch_ns("build-B", || view_b.build(&tree_b))?;
         catch_ns("mount-B", || {
             state_b.mount(&win_b.content_root, None);
         })?;

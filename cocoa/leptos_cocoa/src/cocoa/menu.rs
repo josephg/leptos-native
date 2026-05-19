@@ -177,7 +177,7 @@ where
 {
     type State = MenuBarState<C::State>;
 
-    fn build(self) -> Self::State {
+    fn build(self, _tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let mtm = MainThreadMarker::new()
             .expect("MenuBar::build must run on the main thread");
         let bar = dom_menu::menu_bar(mtm);

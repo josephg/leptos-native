@@ -82,16 +82,20 @@ impl Renderer {
         text
     }
 
-    pub fn create_element(tag: &str, _namespace: Option<&str>) -> Element {
-        Element::create(tag)
+    pub fn create_element(
+        tree: &crate::layout::TreeRef,
+        tag: &str,
+        _namespace: Option<&str>,
+    ) -> Element {
+        Element::create(tree, tag)
     }
 
-    pub fn create_text_node(text: &str) -> Text {
-        Text::create(text)
+    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Text {
+        Text::create(tree, text)
     }
 
-    pub fn create_placeholder() -> Placeholder {
-        Placeholder::create()
+    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Placeholder {
+        Placeholder::create(tree)
     }
 
     pub fn set_text(node: &Text, text: &str) {

@@ -25,6 +25,7 @@
 //! tradeoff upstream Leptos makes.
 
 use crate::{
+    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render},
 };
@@ -52,6 +53,12 @@ pub struct AnyView<R: Renderer> {
 /// `SendWrapper`s — `Send + Sync` for any `Send` payload — so the
 /// stricter bound is satisfied in practice.
 pub struct AnyViewState<R: Renderer> {
+    /// Wrapped in `SendWrapper` because `TreeRef = Rc<...>` is
+    /// `!Send + !Sync`, but the state itself must be `Send + Sync`
+    /// to flow through `RenderEffect`'s `Arc<RwLock<Option<T>>>`.
+    /// `SendWrapper` panics if accessed off-thread, which never
+    /// happens on native targets (single-main-thread by construction).
+    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     inner: Box<dyn ErasedMountable<R> + Send + Sync>,
 }
 
@@ -90,16 +97,20 @@ where
 impl<R: Renderer> Render<R> for AnyView<R> {
     type State = AnyViewState<R>;
 
-    fn build(self) -> Self::State {
-        let inner = self.inner.build_erased();
-        AnyViewState { inner }
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        let inner = self.inner.build_erased(tree);
+        AnyViewState {
+            tree: send_wrapper::SendWrapper::new(tree.clone()),
+            inner,
+        }
     }
 
     fn rebuild(self, state: &mut Self::State) {
         // Concrete inner type may have changed — we can't reuse
         // the existing state. Unmount it, build the new view
         // fresh, and splice it in where the old one lived.
-        let mut new_state = self.build();
+        let tree = (*state.tree).clone();
+        let mut new_state = self.build(&tree);
         state.inner.insert_before_this(&mut new_state);
         state.inner.unmount();
         *state = new_state;
@@ -136,6 +147,7 @@ trait ErasedRender<R: Renderer> {
     /// `Option<V>` and `.take()`s it).
     fn build_erased(
         self: Box<Self>,
+        tree: &TreeRef<R::Backend>,
     ) -> Box<dyn ErasedMountable<R> + Send + Sync>;
 }
 
@@ -168,11 +180,12 @@ where
 {
     fn build_erased(
         mut self: Box<Self>,
+        tree: &TreeRef<R::Backend>,
     ) -> Box<dyn ErasedMountable<R> + Send + Sync> {
         let view = self
             .0
             .take()
             .expect("AnyView::build_erased called twice (internal bug)");
-        Box::new(view.build())
+        Box::new(view.build(tree))
     }
 }

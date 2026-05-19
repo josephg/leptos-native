@@ -197,7 +197,7 @@ where
 {
     type State = MenuBarState<C::State>;
 
-    fn build(self) -> Self::State {
+    fn build(self, _tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         // GTK doesn't have a process-wide singleton like NSApp.
         // The app is set as default by gtk::Application::new
         // (which init_app calls); inside the activate handler

@@ -12,15 +12,17 @@ use gtk_dom::{gtk::prelude::*, Element, NodeKind, Text};
 // ---------------------------------------------------------------------
 
 fn ptr_eq_true_for_clones() {
-    let el = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let a = el.as_node().clone();
     let b = el.as_node().clone();
     assert!(a.ptr_eq(&b), "clones should pointer-eq");
 }
 
 fn ptr_eq_false_for_distinct() {
-    let a = Element::create("view");
-    let b = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let a = Element::create(&tree, "view");
+    let b = Element::create(&tree, "view");
     assert!(
         !a.as_node().ptr_eq(b.as_node()),
         "distinct Elements should not pointer-eq"
@@ -28,7 +30,8 @@ fn ptr_eq_false_for_distinct() {
 }
 
 fn into_node_round_trip() {
-    let el = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     let original_ptr = el.widget().as_ptr();
     let n = el.into_node();
     let el2 = Element::from_node_unchecked(n);
@@ -41,7 +44,8 @@ fn into_node_round_trip() {
 }
 
 fn from_node_unchecked_panics_on_wrong_kind() {
-    let t = Text::create("x");
+    let tree = gtk_dom::layout::new_tree();
+    let t = Text::create(&tree, "x");
     let n = t.into_node();
     let result = std::panic::catch_unwind(
         std::panic::AssertUnwindSafe(move || {
@@ -86,9 +90,10 @@ fn child_at(widget: &gtk_dom::gtk::Widget, idx: usize) -> Option<gtk_dom::gtk::W
 // ---------------------------------------------------------------------
 
 fn insert_node_appends_when_marker_none() {
-    let parent = Element::create("view");
-    let a = Element::create("button");
-    let b = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
+    let a = Element::create(&tree, "button");
+    let b = Element::create(&tree, "button");
 
     parent.insert_node(a.as_node(), None);
     parent.insert_node(b.as_node(), None);
@@ -101,10 +106,11 @@ fn insert_node_appends_when_marker_none() {
 }
 
 fn insert_node_before_marker_places_correctly() {
-    let parent = Element::create("view");
-    let a = Element::create("button");
-    let b = Element::create("button");
-    let c = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
+    let a = Element::create(&tree, "button");
+    let b = Element::create(&tree, "button");
+    let c = Element::create(&tree, "button");
 
     // Initial order: a, c
     parent.insert_node(a.as_node(), None);
@@ -128,11 +134,12 @@ fn insert_node_before_marker_places_correctly() {
 }
 
 fn insert_node_moves_existing_child() {
+    let tree = gtk_dom::layout::new_tree();
     // gtk::Widget semantics: a widget has one parent. Inserting it
     // under a new parent removes it from the old.
-    let parent_a = Element::create("view");
-    let parent_b = Element::create("view");
-    let child = Element::create("button");
+    let parent_a = Element::create(&tree, "view");
+    let parent_b = Element::create(&tree, "view");
+    let child = Element::create(&tree, "button");
 
     parent_a.insert_node(child.as_node(), None);
     assert_eq!(child_count(parent_a.widget()), 1);
@@ -147,8 +154,9 @@ fn insert_node_moves_existing_child() {
 // ---------------------------------------------------------------------
 
 fn remove_child_returns_some_for_actual_child() {
-    let parent = Element::create("view");
-    let child = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
+    let child = Element::create(&tree, "button");
     parent.insert_node(child.as_node(), None);
 
     let removed = parent.remove_child(child.as_node());
@@ -157,9 +165,10 @@ fn remove_child_returns_some_for_actual_child() {
 }
 
 fn remove_child_returns_none_for_non_child() {
-    let parent = Element::create("view");
-    let actual = Element::create("button");
-    let stranger = Element::create("button");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
+    let actual = Element::create(&tree, "button");
+    let stranger = Element::create(&tree, "button");
     parent.insert_node(actual.as_node(), None);
 
     let removed = parent.remove_child(stranger.as_node());
@@ -173,9 +182,10 @@ fn remove_child_returns_none_for_non_child() {
 // ---------------------------------------------------------------------
 
 fn clear_children_removes_all() {
-    let parent = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
     for _ in 0..5 {
-        parent.insert_node(Element::create("button").as_node(), None);
+        parent.insert_node(Element::create(&tree, "button").as_node(), None);
     }
     assert_eq!(child_count(parent.widget()), 5);
 
@@ -184,7 +194,8 @@ fn clear_children_removes_all() {
 }
 
 fn clear_children_on_empty_is_no_op() {
-    let parent = Element::create("view");
+    let tree = gtk_dom::layout::new_tree();
+    let parent = Element::create(&tree, "view");
     parent.clear_children();
     parent.clear_children();
     assert_eq!(child_count(parent.widget()), 0);

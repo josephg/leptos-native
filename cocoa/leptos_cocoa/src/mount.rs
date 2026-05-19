@@ -167,9 +167,13 @@ where
     owner.set();
 
     // Build the user's view tree. For Window children, this opens
-    // their NSWindows synchronously.
+    // their NSWindows synchronously. We pass a freshly-created stub
+    // tree as the "outer" tree; in practice the top-level view is
+    // a `Window` (or tuple of Windows), each of which ignores the
+    // outer tree and builds children against its own per-window tree.
+    let stub_tree = cocoa_dom::layout::new_tree();
     let view = f();
-    let state = view.build();
+    let state = view.build(&stub_tree);
 
     AppHandle {
         state: Box::new(state),

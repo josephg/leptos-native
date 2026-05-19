@@ -30,7 +30,9 @@ use renderer::attrs::{
 // ---------------------------------------------------------------------
 
 fn fresh_tree(root: &Element) -> layout::TreeRef {
-    let tree = layout::new_tree();
+    // Element is already in a tree (eager allocation); just publish
+    // it as the root if it isn't already.
+    let (tree, _) = root.as_node().tree_id().expect("element has tree");
     layout::register_in_tree(root.as_node(), &tree);
     tree
 }
@@ -70,7 +72,8 @@ fn init_executor_once(mtm: cocoa_dom::MainThreadMarker) {
 
 fn padding_static_lands_in_padding_field() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -87,7 +90,8 @@ fn padding_static_lands_in_padding_field() {
 
 fn flex_grow_static_lands_in_flex_grow() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -99,7 +103,8 @@ fn flex_grow_static_lands_in_flex_grow() {
 
 fn align_self_static_converts_to_taffy_alignitems() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -111,7 +116,8 @@ fn align_self_static_converts_to_taffy_alignitems() {
 
 fn align_self_auto_clears_to_none() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -127,7 +133,8 @@ fn align_self_auto_clears_to_none() {
 
 fn width_dim_lands_in_size_width() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -142,7 +149,8 @@ fn width_dim_lands_in_size_width() {
 
 fn height_dim_pct_lands_in_size_height_as_percent() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -154,7 +162,8 @@ fn height_dim_pct_lands_in_size_height_as_percent() {
 
 fn min_max_dim_land_in_their_slots() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -177,7 +186,8 @@ fn min_max_dim_land_in_their_slots() {
 
 fn grid_column_start_static_lands_as_line() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -191,7 +201,8 @@ fn grid_column_start_static_lands_as_line() {
 
 fn grid_row_end_static_span() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = LayoutAttrs::default();
@@ -209,7 +220,8 @@ fn reactive_padding_re_runs_on_signal_change() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        let el = Element::create("view");
+        let tree = layout::new_tree();
+        let el = Element::create(&tree, "view");
         let _tree = fresh_tree(&el);
 
         let pad = RwSignal::new(4.0_f32);
@@ -245,17 +257,9 @@ fn reactive_width_drives_size_width() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        // Use a parent root so `el` is a non-root child. compute_layout
-        // overwrites the ROOT's `style.size` to fill the available
-        // space (see cocoa/dom/src/layout.rs `compute_layout_inner`).
-        // A non-root child keeps its user-set width through the
-        // pumped relayout pass — which is what we're actually trying
-        // to test here (the reactive setter wires correctly).
-        let root = Element::create("vstack");
-        let tree = layout::new_tree();
-        layout::register_in_tree(root.as_node(), &tree);
-        let el = Element::create("view");
-        layout::attach_child(root.as_node(), el.as_node());
+        let tree = cocoa_dom::layout::new_tree();
+        let el = Element::create(&tree, "view");
+        let _tree = fresh_tree(&el);
 
         let w = RwSignal::new(Dim::Px(50.0));
         let mut attrs = LayoutAttrs::default();
@@ -278,7 +282,8 @@ fn reactive_width_drives_size_width() {
 
 fn empty_layout_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let effects = layout::apply_layout(&el, LayoutAttrs::default());
@@ -296,7 +301,8 @@ fn empty_layout_attrs_returns_no_effects() {
 
 fn alpha_static_sets_view_alpha() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = UniversalAttrs::default();
@@ -310,7 +316,8 @@ fn alpha_static_sets_view_alpha() {
 
 fn tool_tip_static_sets_view_tool_tip() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let mut attrs = UniversalAttrs::default();
@@ -325,7 +332,8 @@ fn reactive_alpha_re_runs_on_signal_change() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        let el = Element::create("view");
+        let tree = layout::new_tree();
+        let el = Element::create(&tree, "view");
         let _tree = fresh_tree(&el);
 
         let a = RwSignal::new(1.0_f64);
@@ -345,7 +353,8 @@ fn reactive_alpha_re_runs_on_signal_change() {
 
 fn empty_universal_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let _tree = fresh_tree(&el);
 
     let effects = layout::apply_universal(&el, UniversalAttrs::default());

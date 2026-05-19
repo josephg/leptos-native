@@ -35,9 +35,10 @@ fn two_on_click_via_add_any_attr_panics() {
 
         // Building should panic when the second on:click is
         // installed during build.
+        let tree = cocoa_dom::layout::new_tree();
         let result = std::panic::catch_unwind(
             std::panic::AssertUnwindSafe(|| {
-                let _ = view.build();
+                let _ = view.build(&tree);
             }),
         );
         assert!(
@@ -56,7 +57,8 @@ fn one_on_click_does_not_panic() {
         let view = button()
             .title("OK")
             .add_any_attr((on(click, |_: ()| {}),));
-        let _ = view.build();
+        let tree = cocoa_dom::layout::new_tree();
+        let _ = view.build(&tree);
     });
 }
 

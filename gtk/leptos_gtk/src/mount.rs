@@ -86,7 +86,10 @@ where
         std::mem::forget(owner);
 
         let view = f(app);
-        let state = view.build();
+        // Stub tree for the top-level build; the actual Window child
+        // ignores this and builds against its own per-window tree.
+        let stub_tree = gtk_dom::layout::new_tree();
+        let state = view.build(&stub_tree);
         std::mem::forget(state);
     });
 

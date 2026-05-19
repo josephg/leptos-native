@@ -24,9 +24,10 @@
 //! - [`LayoutBackend`] — the trait each port implements.
 //! - per-node state (style, meta, handlers, view) lives inside
 //!   `NodeData<B>` in the arena slotmap. Each port's `Node` is a
-//!   thin `Rc<NodeInner>` whose `NodeState` is either
-//!   `Unmounted{style,meta,handlers}` (state owned locally) or
-//!   `Mounted{tree,id}` (state owned by the arena).
+//!   thin `Rc<NodeInner { tree, id, kind, view, is_borrowed }>`
+//!   handle into the arena — eagerly allocated at construction,
+//!   refcounted at the Rc level, dropped via `tree.decref(id)`
+//!   when the last clone goes away.
 //! - [`LayoutHandle<B>`] — `(TreeRef<B>, NodeId)` pair the port
 //!   carries on each registered element.
 //! - [`NodeContext<B>`] — read-only snapshot of a node's view +
@@ -227,6 +228,20 @@ struct NodeData<B: LayoutBackend> {
     final_layout: Layout,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
+    /// Number of strong `Node` handles currently pointing at this
+    /// entry. Plus `parent.is_some()` (reachable from a root), this
+    /// determines whether the entry stays in the slotmap.
+    ///
+    /// Removal rule (see [`LayoutTree::decref`] and
+    /// [`LayoutTree::remove_child`]): when `refcount == 0` AND
+    /// `parent == None`, the entry is dropped from the slotmap. A
+    /// Node handle keeps the entry alive even when detached from a
+    /// parent; a parent-attached entry stays alive even with no
+    /// external Node handles.
+    ///
+    /// Starts at 1 in `new_leaf` (the caller's Node handle owns
+    /// the first refcount).
+    refcount: Cell<u32>,
     // IMPORTANT: `handlers` MUST come before `view` here so it
     // drops first. Port-specific Handlers Drop impls (cocoa's
     // NodeHandlers) rely on the view still being alive so they
@@ -247,6 +262,7 @@ impl<B: LayoutBackend> NodeData<B> {
             final_layout: Layout::new(),
             parent: None,
             children: Vec::new(),
+            refcount: Cell::new(1),
             handlers: RefCell::new(handlers),
             view,
             meta,
@@ -302,6 +318,12 @@ impl<B: LayoutBackend> LayoutTree<B> {
     // -- mutation -----------------------------------------------------
 
     /// Insert a fresh leaf, returning its `NodeId`.
+    ///
+    /// The new entry starts with `refcount = 1` — the caller's
+    /// handle owns the first reference. Drop it via [`Self::decref`]
+    /// when finished, or call [`Self::add_child`] to attach to a
+    /// parent (after which the parent-edge keeps the entry alive
+    /// even if all external handles drop).
     pub fn new_leaf(
         &self,
         style: Style,
@@ -314,25 +336,47 @@ impl<B: LayoutBackend> LayoutTree<B> {
         }))
     }
 
-    /// Run a closure with a shared borrow of a node's handler
-    /// storage. Returns `None` if the node isn't in the tree.
-    pub fn with_handlers<R>(
-        &self,
-        id: NodeId,
-        f: impl FnOnce(&B::Handlers) -> R,
-    ) -> Option<R> {
+    /// Increment the refcount on `id`. No-op if `id` doesn't exist.
+    /// Called from `Node::clone` to record that another strong
+    /// handle now points at this entry.
+    pub fn incref(&self, id: NodeId) {
         let state = self.state.borrow();
-        let node = state.nodes.get(key(id))?;
-        // Bind the Ref to a local so it drops in reverse declaration
-        // order (before `state`). Without the binding, the implicit
-        // temporary lives until end-of-function and would be dropped
-        // AFTER state — UAF on the RefCell's borrow counter.
-        let handlers = node.handlers.borrow();
-        Some(f(&*handlers))
+        if let Some(n) = state.nodes.get(key(id)) {
+            n.refcount.set(n.refcount.get() + 1);
+        }
+    }
+
+    /// Decrement the refcount on `id`. If the result is `0` AND the
+    /// entry has no parent, the entry is removed from the slotmap
+    /// (it has become unreachable from both external handles and
+    /// the parent-attachment chain).
+    ///
+    /// Called from `Node::drop` to record that a strong handle has
+    /// gone away.
+    pub fn decref(&self, id: NodeId) {
+        let should_remove = {
+            let state = self.state.borrow();
+            let Some(n) = state.nodes.get(key(id)) else { return };
+            let new_count = n.refcount.get().saturating_sub(1);
+            n.refcount.set(new_count);
+            new_count == 0 && n.parent.is_none()
+        };
+        if should_remove {
+            self.remove(id);
+        }
+    }
+
+    /// Current refcount for `id`. Test-only; production code should
+    /// not branch on refcount values.
+    #[doc(hidden)]
+    pub fn refcount_for_test(&self, id: NodeId) -> Option<u32> {
+        self.state.borrow().nodes.get(key(id)).map(|n| n.refcount.get())
     }
 
     /// Run a closure with an exclusive borrow of a node's handler
     /// storage. Returns `None` if the node isn't in the tree.
+    /// (The shared-borrow `with_handlers` was deleted as unused;
+    /// add it back if a future caller needs read-only access.)
     pub fn with_handlers_mut<R>(
         &self,
         id: NodeId,
@@ -340,19 +384,13 @@ impl<B: LayoutBackend> LayoutTree<B> {
     ) -> Option<R> {
         let state = self.state.borrow();
         let node = state.nodes.get(key(id))?;
+        // Bind the borrow to a local so it drops in reverse
+        // declaration order (before `state`). Without the binding,
+        // the implicit temporary lives until end-of-function and
+        // would be dropped AFTER state — UAF on the RefCell's
+        // borrow counter.
         let mut handlers = node.handlers.borrow_mut();
         Some(f(&mut *handlers))
-    }
-
-    /// Take the handlers out of a node, leaving `B::Handlers::default()`
-    /// in its place. Used by the port's `unmount → unmounted-state`
-    /// transition if it ever needs to recover the original handlers
-    /// (no current callers; provided for symmetry with `take_view`).
-    pub fn take_handlers(&self, id: NodeId) -> Option<B::Handlers> {
-        let state = self.state.borrow();
-        let node = state.nodes.get(key(id))?;
-        let mut handlers = node.handlers.borrow_mut();
-        Some(std::mem::take(&mut *handlers))
     }
 
     /// Remove a node from the tree. Detaches it from any parent it
@@ -363,13 +401,23 @@ impl<B: LayoutBackend> LayoutTree<B> {
     /// is invalidated — without this, `compute_layout` would return
     /// a stale parent layout that still references the removed child.
     pub fn remove(&self, id: NodeId) {
-        let parent = self.with_state_mut(|s| {
+        // Move the removed entry OUT of the borrow scope. `NodeData`
+        // has port-specific Drop impls (cocoa's `NodeHandlers::Drop`
+        // nils setTarget/setDelegate; closures stored in handlers may
+        // capture `Node` clones whose own Drop calls `tree.decref` →
+        // `tree.with_node` → `self.state.borrow()`). Dropping
+        // `NodeData` inside `with_state_mut`'s mutable borrow would
+        // re-enter and panic with "RefCell already mutably borrowed".
+        //
+        // The fix: take the `NodeData` out, return it from the
+        // closure, drop it AFTER the borrow releases.
+        let (parent, removed) = self.with_state_mut(|s| {
             let Some((parent, kids)) = s
                 .nodes
                 .get(key(id))
                 .map(|n| (n.parent, n.children.clone()))
             else {
-                return None;
+                return (None, None);
             };
             if let Some(p) = parent {
                 if let Some(p_data) = s.nodes.get_mut(key(p)) {
@@ -381,9 +429,11 @@ impl<B: LayoutBackend> LayoutTree<B> {
                     c_data.parent = None;
                 }
             }
-            s.nodes.remove(key(id));
-            parent
+            let removed = s.nodes.remove(key(id));
+            (parent, removed)
         });
+        // `removed` drops here — outside the borrow. Safe to re-enter.
+        drop(removed);
         if let Some(p) = parent {
             self.mark_dirty(p);
         }
@@ -469,16 +519,24 @@ impl<B: LayoutBackend> LayoutTree<B> {
     }
 
     pub fn remove_child(&self, parent: NodeId, child: NodeId) {
-        self.with_state_mut(|s| {
+        let orphan_with_no_handles = self.with_state_mut(|s| {
             if let Some(p) = s.nodes.get_mut(key(parent)) {
                 p.children.retain(|c| *c != child);
             }
+            let mut became_orphan_without_handles = false;
             if let Some(c) = s.nodes.get_mut(key(child)) {
                 if c.parent == Some(parent) {
                     c.parent = None;
+                    became_orphan_without_handles = c.refcount.get() == 0;
                 }
             }
+            became_orphan_without_handles
         });
+        if orphan_with_no_handles {
+            // Reachability-GC rule: an entry with no parent AND no
+            // external handles is unreachable. Remove it.
+            self.remove(child);
+        }
         self.mark_dirty(parent);
     }
 

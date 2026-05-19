@@ -10,9 +10,7 @@
 
 #![allow(missing_docs)]
 
-use cocoa_dom::{
-    layout::Style, NodeKind, Renderer as CocoaRenderer,
-};
+use cocoa_dom::{NodeKind, Renderer as CocoaRenderer};
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
@@ -34,6 +32,7 @@ pub use cocoa_dom::{
 pub struct Dom;
 
 impl RendererTrait for Dom {
+    type Backend = cocoa_dom::layout::CocoaBackend;
     type Node = Node;
     type Element = Element;
     type Text = Text;
@@ -43,12 +42,12 @@ impl RendererTrait for Dom {
         CocoaRenderer::intern(text)
     }
 
-    fn create_text_node(text: &str) -> Text {
-        CocoaRenderer::create_text_node(text)
+    fn create_text_node(tree: &cocoa_dom::layout::TreeRef, text: &str) -> Text {
+        CocoaRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder() -> Placeholder {
-        CocoaRenderer::create_placeholder()
+    fn create_placeholder(tree: &cocoa_dom::layout::TreeRef) -> Placeholder {
+        CocoaRenderer::create_placeholder(tree)
     }
 
     fn set_text(node: &Text, text: &str) {
@@ -92,28 +91,17 @@ impl RendererTrait for Dom {
         // state) — without a real parent we couldn't mount the new
         // view, and the transition would silently fail.
         let parent_view = unsafe { node.ns_view().superview() }?;
-        let parent_handle: Option<cocoa_dom::layout::LayoutHandle> = node
-            .mounted_handle()
-            .and_then(|h| {
-                let parent_id = h.tree.parent(h.node_id)?;
-                Some(cocoa_dom::layout::LayoutHandle {
-                    tree: h.tree.clone(),
-                    node_id: parent_id,
-                })
-            });
-        let parent_node = match parent_handle {
-            Some(handle) => Node::from_view_with_handle(
-                parent_view,
-                cocoa_dom::NodeKind::Element,
-                handle,
-            ),
-            None => Node::from_view(
-                parent_view,
-                cocoa_dom::NodeKind::Element,
-                cocoa_dom::layout::Style::default(),
-            ),
+        let h = node.mounted_handle()?;
+        let parent_id = h.tree.parent(h.node_id)?;
+        let parent_handle = cocoa_dom::layout::LayoutHandle {
+            tree: h.tree.clone(),
+            node_id: parent_id,
         };
-        Some(parent_node)
+        Some(Node::from_view_with_handle(
+            parent_view,
+            cocoa_dom::NodeKind::Element,
+            parent_handle,
+        ))
     }
 
     fn first_child(node: &Node) -> Option<Node> {
@@ -175,28 +163,24 @@ pub(crate) fn synthesise_parent_element(
 ) -> Element {
     use cocoa_dom::layout::LayoutHandle;
 
-    let parent_handle: Option<LayoutHandle> = before
-        .mounted_handle()
-        .and_then(|h| {
-            let parent_id = h.tree.parent(h.node_id)?;
-            Some(LayoutHandle {
-                tree: h.tree.clone(),
-                node_id: parent_id,
-            })
-        });
-
-    let parent_node = match parent_handle {
-        Some(handle) => Node::from_view_with_handle(
-            parent_view,
-            NodeKind::Element,
-            handle,
-        ),
-        None => Node::from_view(
-            parent_view,
-            NodeKind::Element,
-            Style::default(),
-        ),
+    // `before` is always in a tree (eager allocation). If it has no
+    // parent in the Taffy tree (it's the root), fall back to using
+    // `before`'s own handle — the synthesised wrapper will then
+    // attach the new child to the root, which is the correct
+    // behaviour for "before the root" insertions.
+    let h = before.mounted_handle().expect(
+        "synthesise_parent_element: `before` must be in a tree",
+    );
+    let parent_id = h.tree.parent(h.node_id).unwrap_or(h.node_id);
+    let parent_handle = LayoutHandle {
+        tree: h.tree.clone(),
+        node_id: parent_id,
     };
+    let parent_node = Node::from_view_with_handle(
+        parent_view,
+        NodeKind::Element,
+        parent_handle,
+    );
     Element::from_node_unchecked(parent_node)
 }
 

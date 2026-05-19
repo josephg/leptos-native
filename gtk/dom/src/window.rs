@@ -39,17 +39,24 @@ pub fn open_window(
         .default_height(size.1)
         .build();
 
-    // Content root: a generic container element with column flex
-    // direction (matches AppKit's content_root default — children
-    // stack top-to-bottom and cross-axis stretch fills the window's
-    // width).
-    let content_root = Element::create("vstack");
-    layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
-
-    // Register in a fresh tree, then install our TaffyLayout as its
-    // layout manager (marked `is_root=true` so its `allocate` runs
-    // `compute_layout`).
+    // Build a fresh tree, then create the content root inside it.
     let tree = layout::new_tree();
+    let content_root = Element::create(&tree, "vstack");
+    layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
+    // Fill the window: 100% size resolves against the
+    // `AvailableSpace::Definite` Taffy receives at compute time.
+    // (See cocoa's window.rs for the rationale — the framework
+    // root expresses "I cover the window" via its style, instead
+    // of relying on compute_layout to overwrite user-set sizes.)
+    {
+        use renderer::attrs::Dim;
+        renderer::setters::set_size_width(content_root.as_node(), Dim::Pct(1.0));
+        renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
+    }
+
+    // Publish the content_root as the tree's root and install our
+    // TaffyLayout as its layout manager (`is_root=true` so its
+    // `allocate` runs `compute_layout`).
     layout::register_in_tree(content_root.as_node(), &tree);
     let root_id = content_root
         .as_node()

@@ -16,7 +16,8 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
-        let text_field = Element::create("text_field");
+        let tree = gtk_dom::layout::new_tree();
+        let text_field = Element::create(&tree, "text_field");
 
         text_field.set_attribute("value", "hello");
         let after_first = text_field
@@ -41,7 +42,8 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
 fn set_bool_attribute_with_same_value_idempotent() {
     with_reactive_scope(|| {
-        let checkbox = Element::create("checkbox");
+        let tree = gtk_dom::layout::new_tree();
+        let checkbox = Element::create(&tree, "checkbox");
 
         checkbox.set_bool_attribute(BoolAttr::Checked, true);
         let cb = checkbox

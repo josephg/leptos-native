@@ -24,6 +24,7 @@ use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
     LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
+use renderer::layout::TreeRef;
 use renderer::view::{Mountable, Render};
 
 // `apply_layout` / `apply_universal` live in `renderer`. The
@@ -280,8 +281,8 @@ where
 {
     type State = ElementState<(), Ch::State>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("stack");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "stack");
         let mut effects = Vec::new();
 
         let direction = self
@@ -348,7 +349,7 @@ where
         // Build children but DON'T mount them yet — same cascade
         // pattern as the cocoa port. Mounting is deferred until
         // ElementState::mount runs (when self.el has joined a tree).
-        let child_state = self.children.build();
+        let child_state = self.children.build(tree);
 
         ElementState {
             el,
@@ -505,8 +506,8 @@ where
 {
     type State = ElementState<(), Ch::State>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("grid");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "grid");
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
@@ -583,7 +584,7 @@ where
         effects.extend(apply_layout(&el, self.layout));
         effects.extend(apply_universal(&el, self.universal));
 
-        let child_state = self.children.build();
+        let child_state = self.children.build(tree);
 
         ElementState {
             el,
@@ -695,8 +696,8 @@ impl WithUniversal for Button {
 impl Render<Dom> for Button {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("button");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "button");
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -847,8 +848,8 @@ impl WithUniversal for Checkbox {
 impl Render<Dom> for Checkbox {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("checkbox");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "checkbox");
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -1003,8 +1004,8 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("slider");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "slider");
         let mut effects = Vec::new();
 
         el.set_slider_min(self.min_value);
@@ -1149,8 +1150,8 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 impl Render<Dom> for PopUpButton {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("pop_up_button");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "pop_up_button");
         let mut effects = Vec::new();
 
         el.set_popup_items(&self.items);
@@ -1275,8 +1276,8 @@ impl WithUniversal for Label {
 impl Render<Dom> for Label {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
-        let el = GtkElement::create("label");
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+        let el = GtkElement::create(tree, "label");
         let mut effects = Vec::new();
 
         let el_for_text = el.clone();
@@ -1437,13 +1438,13 @@ impl WithUniversal for TextField {
 impl Render<Dom> for TextField {
     type State = ElementState<(), ()>;
 
-    fn build(self) -> Self::State {
+    fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let tag = if self.secure {
             "secure_text_field"
         } else {
             "text_field"
         };
-        let el = GtkElement::create(tag);
+        let el = GtkElement::create(tree, tag);
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {

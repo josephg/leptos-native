@@ -202,7 +202,7 @@ fn pane_root_receives_mounted_subviews() {
         let before = pane.root.ns_view().subviews().len();
 
         let view = label().text("hello");
-        let mut state = view.build();
+        let mut state = view.build(&pane.tree);
         use renderer::view::Mountable;
         state.mount(&pane.root, None);
 

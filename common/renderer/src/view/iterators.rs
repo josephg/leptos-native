@@ -2,6 +2,7 @@
 //! fixed-size `[T; N]` arrays. Keyed iteration lives in `keyed.rs`.
 
 use crate::{
+    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render},
 };
@@ -13,21 +14,23 @@ where
 {
     type State = VecState<T::State, R>;
 
-    fn build(self) -> Self::State {
-        let marker = R::create_placeholder();
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        let marker = R::create_placeholder(tree);
         VecState {
-            states: self.into_iter().map(T::build).collect(),
+            tree: send_wrapper::SendWrapper::new(tree.clone()),
+            states: self.into_iter().map(|v| v.build(tree)).collect(),
             marker,
         }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        let VecState { states, marker } = state;
+        let VecState { tree: tree_wrap, states, marker } = state;
+        let tree: &TreeRef<R::Backend> = &**tree_wrap;
         let old = states;
         // unkeyed diff
         if old.is_empty() {
             let mut new_states: Vec<T::State> =
-                self.into_iter().map(T::build).collect();
+                self.into_iter().map(|v| v.build(tree)).collect();
             for item in new_states.iter_mut() {
                 R::try_mount_before(item, marker.as_ref());
             }
@@ -48,7 +51,7 @@ where
                         T::rebuild(new, old_state)
                     }
                     (Some(new), None) => {
-                        let mut new_state = new.build();
+                        let mut new_state = new.build(tree);
                         R::try_mount_before(
                             &mut new_state,
                             marker.as_ref(),
@@ -66,7 +69,7 @@ where
             // None/None but `new_iter` may still hold items past Some/None
             // pairings — push all of them as adds)
             for new in new_iter {
-                let mut new_state = new.build();
+                let mut new_state = new.build(tree);
                 R::try_mount_before(&mut new_state, marker.as_ref());
                 adds.push(new_state);
             }
@@ -86,6 +89,7 @@ where
     R: Renderer,
     T: Mountable<R>,
 {
+    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     states: Vec<T>,
     /// Marker placeholder so new items can be inserted-before a known node
     /// rather than appended-after the last known item.

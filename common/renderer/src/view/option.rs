@@ -3,17 +3,33 @@
 //! state.
 
 use super::{Mountable, Render};
+use crate::layout::TreeRef;
 use crate::renderer::Renderer;
+
+/// Retained state for `Option<T>`. Carries the tree alongside
+/// the inner state so None → Some rebuild paths can call `build`
+/// without a tree parameter.
+pub struct OptionState<R, T>
+where
+    R: Renderer,
+    T: Render<R>,
+{
+    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
+    inner: Option<T::State>,
+}
 
 impl<R, T> Render<R> for Option<T>
 where
     R: Renderer,
     T: Render<R>,
 {
-    type State = Option<T::State>;
+    type State = OptionState<R, T>;
 
-    fn build(self) -> Self::State {
-        self.map(Render::build)
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+        OptionState {
+            tree: send_wrapper::SendWrapper::new(tree.clone()),
+            inner: self.map(|v| v.build(tree)),
+        }
     }
 
     fn rebuild(self, state: &mut Self::State) {
@@ -26,15 +42,44 @@ where
         // a Placeholder that serves as the mount anchor) instead
         // of `Option<T>`. `<Show>`, `<Switch>`, `<ShowLet>` all
         // follow this pattern.
-        match (self, state.as_mut()) {
+        match (self, state.inner.as_mut()) {
             (Some(new), Some(s)) => new.rebuild(s),
-            (Some(new), None) => *state = Some(new.build()),
+            (Some(new), None) => state.inner = Some(new.build(&**&state.tree)),
             (None, Some(s)) => {
                 s.unmount();
-                *state = None;
+                state.inner = None;
             }
             (None, None) => {}
         }
+    }
+}
+
+impl<R, T> Mountable<R> for OptionState<R, T>
+where
+    R: Renderer,
+    T: Render<R>,
+{
+    fn unmount(&mut self) {
+        if let Some(inner) = &mut self.inner {
+            inner.unmount();
+        }
+    }
+
+    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+        if let Some(inner) = &mut self.inner {
+            inner.mount(parent, marker);
+        }
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
+        self.inner
+            .as_ref()
+            .map(|inner| inner.insert_before_this(child))
+            .unwrap_or(false)
+    }
+
+    fn elements(&self) -> Vec<R::Element> {
+        self.inner.as_ref().map(Mountable::elements).unwrap_or_default()
     }
 }
 

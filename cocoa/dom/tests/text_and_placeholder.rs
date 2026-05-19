@@ -10,7 +10,8 @@ use objc2_app_kit::NSTextField;
 
 fn text_create_basic() {
     let _mtm = common::test_mtm();
-    let t = Text::create("hello");
+    let tree = cocoa_dom::layout::new_tree();
+    let t = Text::create(&tree, "hello");
     assert_eq!(t.as_node().kind(), NodeKind::Text);
 
     // Backed by an NSTextField with the given content.
@@ -25,7 +26,8 @@ fn text_create_basic() {
 
 fn text_create_empty() {
     let _mtm = common::test_mtm();
-    let t = Text::create("");
+    let tree = cocoa_dom::layout::new_tree();
+    let t = Text::create(&tree, "");
     let any: &AnyObject = t.as_node().ns_view().as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
     assert_eq!(field.stringValue().to_string(), "");
@@ -33,7 +35,8 @@ fn text_create_empty() {
 
 fn text_create_multiline_preserves_newlines() {
     let _mtm = common::test_mtm();
-    let t = Text::create("line one\nline two\nline three");
+    let tree = cocoa_dom::layout::new_tree();
+    let t = Text::create(&tree, "line one\nline two\nline three");
     let any: &AnyObject = t.as_node().ns_view().as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
     assert_eq!(
@@ -44,7 +47,8 @@ fn text_create_multiline_preserves_newlines() {
 
 fn text_set_text_updates_value() {
     let _mtm = common::test_mtm();
-    let t = Text::create("before");
+    let tree = cocoa_dom::layout::new_tree();
+    let t = Text::create(&tree, "before");
     t.set_text("after");
     let any: &AnyObject = t.as_node().ns_view().as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
@@ -53,7 +57,8 @@ fn text_set_text_updates_value() {
 
 fn placeholder_create_is_hidden_zero_size() {
     let _mtm = common::test_mtm();
-    let p = Placeholder::create();
+    let tree = cocoa_dom::layout::new_tree();
+    let p = Placeholder::create(&tree);
     assert_eq!(p.as_node().kind(), NodeKind::Placeholder);
 
     let view = p.as_node().ns_view();

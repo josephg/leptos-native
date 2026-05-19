@@ -38,7 +38,7 @@ where
 {
     let mtm = common::test_mtm();
     let opened = cocoa_dom::window::open_window("test", size, mtm);
-    let mut state = view.build();
+    let mut state = view.build(&opened.tree);
     state.mount(&opened.content_root, None);
     let content_size = opened.content_root.ns_view().frame().size;
     cocoa_dom::layout::compute_layout(

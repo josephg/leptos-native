@@ -62,7 +62,8 @@ fn bool_attr_name_round_trips() {
 
 fn title_set_on_button() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_string_attribute(StringAttr::Title, "Hello");
     let any: &AnyObject = el.ns_view().as_ref();
     let b = any.downcast_ref::<NSButton>().unwrap();
@@ -71,7 +72,8 @@ fn title_set_on_button() {
 
 fn value_set_on_text_field() {
     let _mtm = common::test_mtm();
-    let el = Element::create("text_field");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "text_field");
     el.set_string_attribute(StringAttr::Value, "abc");
     let any: &AnyObject = el.ns_view().as_ref();
     let c = any.downcast_ref::<NSControl>().unwrap();
@@ -80,7 +82,8 @@ fn value_set_on_text_field() {
 
 fn placeholder_set_on_text_field() {
     let _mtm = common::test_mtm();
-    let el = Element::create("text_field");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "text_field");
     el.set_string_attribute(StringAttr::Placeholder, "Type here");
     let any: &AnyObject = el.ns_view().as_ref();
     let f = any.downcast_ref::<NSTextField>().unwrap();
@@ -92,7 +95,8 @@ fn placeholder_set_on_text_field() {
 
 fn title_on_non_button_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = Element::create("label");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "label");
     // Should not panic; should not affect the label's content.
     el.set_string_attribute(StringAttr::Title, "ignored");
     let any: &AnyObject = el.ns_view().as_ref();
@@ -108,7 +112,8 @@ fn title_on_non_button_is_no_op() {
 
 fn enabled_toggles_nscontrol() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     let any: &AnyObject = el.ns_view().as_ref();
     let c = any.downcast_ref::<NSControl>().unwrap();
     assert!(c.isEnabled(), "buttons start enabled");
@@ -122,7 +127,8 @@ fn enabled_toggles_nscontrol() {
 
 fn enabled_on_non_control_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     // No NSControl underneath — should silently no-op.
     el.set_bool_attribute(BoolAttr::Enabled, false);
     // No assertion possible on the missing control, but the call
@@ -131,7 +137,8 @@ fn enabled_on_non_control_is_no_op() {
 
 fn hidden_toggles_view() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     let v = el.ns_view();
     assert!(!v.isHidden(), "views start visible");
 
@@ -145,7 +152,8 @@ fn hidden_toggles_view() {
 fn checked_toggles_button_state() {
     use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn};
     let _mtm = common::test_mtm();
-    let el = Element::create("checkbox");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "checkbox");
     let any: &AnyObject = el.ns_view().as_ref();
     let b = any.downcast_ref::<NSButton>().unwrap();
     assert_eq!(b.state(), NSControlStateValueOff, "starts off");
@@ -159,7 +167,8 @@ fn checked_toggles_button_state() {
 
 fn checked_on_non_button_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = Element::create("text_field");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "text_field");
     el.set_bool_attribute(BoolAttr::Checked, true);
     // No state to read on a text field — calling without panic is
     // the assertion.
@@ -171,7 +180,8 @@ fn checked_on_non_button_is_no_op() {
 
 fn remove_title_clears_button() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_string_attribute(StringAttr::Title, "Hi");
     el.remove_string_attribute(StringAttr::Title);
     let any: &AnyObject = el.ns_view().as_ref();
@@ -181,7 +191,8 @@ fn remove_title_clears_button() {
 
 fn remove_placeholder_clears_text_field() {
     let _mtm = common::test_mtm();
-    let el = Element::create("text_field");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "text_field");
     el.set_string_attribute(StringAttr::Placeholder, "X");
     el.remove_string_attribute(StringAttr::Placeholder);
     let any: &AnyObject = el.ns_view().as_ref();
@@ -194,7 +205,8 @@ fn remove_placeholder_clears_text_field() {
 
 fn remove_hidden_makes_visible() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     el.set_bool_attribute(BoolAttr::Hidden, true);
     assert!(el.ns_view().isHidden());
 
@@ -204,7 +216,8 @@ fn remove_hidden_makes_visible() {
 
 fn remove_enabled_resets_to_enabled() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_bool_attribute(BoolAttr::Enabled, false);
     el.remove_bool_attribute(BoolAttr::Enabled);
     let any: &AnyObject = el.ns_view().as_ref();
@@ -215,7 +228,8 @@ fn remove_enabled_resets_to_enabled() {
 fn remove_checked_resets_to_off() {
     use objc2_app_kit::NSControlStateValueOff;
     let _mtm = common::test_mtm();
-    let el = Element::create("checkbox");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "checkbox");
     el.set_bool_attribute(BoolAttr::Checked, true);
     el.remove_bool_attribute(BoolAttr::Checked);
     let any: &AnyObject = el.ns_view().as_ref();
@@ -229,7 +243,8 @@ fn remove_checked_resets_to_off() {
 
 fn rndr_set_attribute_routes_string_variants() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_attribute("title", "via_str");
     let any: &AnyObject = el.ns_view().as_ref();
     let b = any.downcast_ref::<NSButton>().unwrap();
@@ -240,7 +255,8 @@ fn rndr_set_attribute_skips_bool_attrs() {
     // The string entry point deliberately does NOT route bool attrs
     // through the bool setter — builders use the typed bool setter.
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     let any: &AnyObject = el.ns_view().as_ref();
     let c = any.downcast_ref::<NSControl>().unwrap();
     assert!(c.isEnabled());
@@ -252,14 +268,16 @@ fn rndr_set_attribute_skips_bool_attrs() {
 
 fn rndr_set_attribute_unknown_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_attribute("totally_unknown", "x");
     // No panic; no observable change.
 }
 
 fn rndr_remove_attribute_routes_to_typed() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_string_attribute(StringAttr::Title, "Will be cleared");
     el.remove_attribute("title");
     let any: &AnyObject = el.ns_view().as_ref();
@@ -269,7 +287,8 @@ fn rndr_remove_attribute_routes_to_typed() {
 
 fn rndr_remove_attribute_routes_bool() {
     let _mtm = common::test_mtm();
-    let el = Element::create("view");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "view");
     el.set_bool_attribute(BoolAttr::Hidden, true);
     el.remove_attribute("hidden");
     assert!(!el.ns_view().isHidden());
@@ -281,7 +300,8 @@ fn rndr_remove_attribute_routes_bool() {
 
 fn set_string_same_value_is_idempotent() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_string_attribute(StringAttr::Title, "X");
     // Setting the same value twice doesn't change observable state.
     // (We rely on the diff guard to skip the AppKit setter — the
@@ -295,7 +315,8 @@ fn set_string_same_value_is_idempotent() {
 
 fn set_bool_same_value_is_idempotent() {
     let _mtm = common::test_mtm();
-    let el = Element::create("button");
+    let tree = cocoa_dom::layout::new_tree();
+    let el = Element::create(&tree, "button");
     el.set_bool_attribute(BoolAttr::Enabled, false);
     el.set_bool_attribute(BoolAttr::Enabled, false);
     let any: &AnyObject = el.ns_view().as_ref();

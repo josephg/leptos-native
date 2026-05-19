@@ -313,7 +313,7 @@ where
 {
     type State = WindowState;
 
-    fn build(self) -> Self::State {
+    fn build(self, _outer_tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let mtm = MainThreadMarker::new()
             .expect("Window::build must run on the main thread");
 
@@ -403,10 +403,11 @@ where
         }
 
         // Build the user's view tree, then mount under the content
-        // root. The mount cascade propagates the tree to every
-        // descendant (each insert_node sees the parent's
-        // LayoutHandle and registers the child in the same tree).
-        let mut children = self.children.build();
+        // root. Children build into THIS window's per-window tree —
+        // the outer_tree passed in belongs to whatever
+        // window/scene the Window itself was constructed under,
+        // which is irrelevant here.
+        let mut children = self.children.build(&opened.tree);
         children.mount(&opened.content_root, None);
 
         // Initial layout against the contentView's current size.

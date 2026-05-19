@@ -7,7 +7,8 @@ mod common;
 use gtk_dom::{gtk::prelude::*, NodeKind, Placeholder, Text};
 
 fn text_create_basic() {
-    let t = Text::create("hello");
+    let tree = gtk_dom::layout::new_tree();
+    let t = Text::create(&tree, "hello");
     assert_eq!(t.as_node().kind(), NodeKind::Text);
 
     let l = t
@@ -19,7 +20,8 @@ fn text_create_basic() {
 }
 
 fn text_create_empty() {
-    let t = Text::create("");
+    let tree = gtk_dom::layout::new_tree();
+    let t = Text::create(&tree, "");
     let l = t
         .as_node()
         .widget()
@@ -29,7 +31,8 @@ fn text_create_empty() {
 }
 
 fn text_create_multiline_preserves_newlines() {
-    let t = Text::create("line one\nline two\nline three");
+    let tree = gtk_dom::layout::new_tree();
+    let t = Text::create(&tree, "line one\nline two\nline three");
     let l = t
         .as_node()
         .widget()
@@ -39,7 +42,8 @@ fn text_create_multiline_preserves_newlines() {
 }
 
 fn text_set_text_updates_value() {
-    let t = Text::create("before");
+    let tree = gtk_dom::layout::new_tree();
+    let t = Text::create(&tree, "before");
     t.set_text("after");
     let l = t
         .as_node()
@@ -50,7 +54,8 @@ fn text_set_text_updates_value() {
 }
 
 fn placeholder_create_is_invisible() {
-    let p = Placeholder::create();
+    let tree = gtk_dom::layout::new_tree();
+    let p = Placeholder::create(&tree);
     assert_eq!(p.as_node().kind(), NodeKind::Placeholder);
 
     let widget = p.as_node().widget();
@@ -60,11 +65,12 @@ fn placeholder_create_is_invisible() {
 }
 
 fn placeholder_backed_by_label_so_children_error() {
+    let tree = gtk_dom::layout::new_tree();
     // Implementation detail: we use gtk::Label rather than gtk::Box
     // for placeholders so that a `placeholder.append(child)` attempt
     // would fail at the GTK type level rather than silently mounting
     // an invisible child.
-    let p = Placeholder::create();
+    let p = Placeholder::create(&tree);
     assert!(
         p.as_node().widget().is::<gtk_dom::gtk::Label>(),
         "Placeholder should be a gtk::Label so it can't accept children"

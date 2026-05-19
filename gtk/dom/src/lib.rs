@@ -44,6 +44,7 @@ pub use main_thread::on_main;
 
 pub use node::{
     BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
+    WeakElement, WeakNode, WeakPlaceholder, WeakText,
 };
 pub use renderer::{
     ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,

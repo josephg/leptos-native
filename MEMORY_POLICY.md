@@ -106,39 +106,54 @@ keeps the thing it's installed on alive forever, because it captured
 a strong handle that traces back to itself." The rule that prevents
 this:
 
-> A closure stored on a `Node` (or destined to be stored on one) must
-> only capture **typed `Retained<NSSpecificSubclass>`** handles to
-> AppKit/UIKit objects, plus plain owned data (signals, setters,
-> primitive payloads). It must not capture `Node`, `CocoaElement`,
-> `Element`, or any wrapper that holds an `Rc<NodeInner>`.
+> A closure stored on a `Node` (i.e. installed into the arena's
+> handlers via `on_click`, `on_text_change`, etc.) must not capture
+> a strong `Node` / `Element` / `Text` / `Placeholder` clone. Use
+> one of: (a) typed `Retained<NSSpecificSubclass>` from
+> `ns_view_retained()`, (b) `WeakElement` / `WeakNode` from
+> `el.weak()` with `upgrade()` at fire time, or (c) plain owned
+> data (signals, setters, primitive payloads).
 
 ### Why
 
-`Node` is `Rc<NodeInner>`. When mounted, the inner's `NodeState::Mounted`
-key points at an arena entry; that entry holds the
-`Retained<ActionTarget>` (or delegate Retained). The ObjC handler's
-ivars hold the closure. If the closure captures `Element` (which is
-`Node`), the strong-ref chain closes:
+`Node` is `Rc<NodeInner { tree, id, kind, view, is_borrowed }>`
+where the arena (`LayoutTree<B>`) owns the entry at `id`. The
+arena entry's `NodeData` holds `RefCell<NodeHandlers>`; the
+handlers hold `Retained<ActionTarget>` (or delegate Retained); the
+ObjC handler's ivars hold the closure. If the closure captures
+`Element`, the strong-ref chain closes:
 
 ```
-Closure → Element → Rc<NodeInner> → (tree, id) → arena entry →
-  Retained<handler> → ivars → Closure
+Closure → Element → Rc<NodeInner> → (Rc strong count > 0)
+  → NodeInner::Drop never fires → tree.decref never called
+  → arena entry refcount stays > 0 → entry stays in slotmap
+  → NodeData stays alive → handlers stay alive
+  → Retained<handler> stays alive → ivars stay alive
+  → Closure stays alive → Element stays alive → cycle
 ```
 
 This is an unbreakable cycle. `NodeInner::Drop` (which would call
-`tree.remove(id)` to fire `NodeHandlers::Drop` and nil setTarget/
-setDelegate) never runs because the Rc never drops.
+`tree.decref(id)` and let the arena's removal rule clean up,
+firing `NodeHandlers::Drop` and nilling setTarget/setDelegate)
+never runs because the Rc never drops.
 
-Capturing a `Retained<NSButton>` instead of an `Element` breaks the
-cycle — `Retained<NSButton>` doesn't transitively reach
-`Rc<NodeInner>`. ObjC's NSButton has no concept of the arena; it
-just holds a `target` weak pointer at our `ActionTarget`.
+There are two ways to break it:
 
-### How
+1. **Don't pull `Rc<NodeInner>` into the closure.** Capture a
+   `Retained<NSButton>` instead — it transitively reaches only the
+   ObjC NSButton, not the Rust Node. ObjC's NSButton has no
+   concept of the arena; it just holds a `target` weak pointer at
+   our `ActionTarget`.
 
-Every element exposes `ns_view_retained()` / `ui_view_retained()` for
-exactly this purpose. The bind installers in
-`cocoa/leptos_cocoa/src/cocoa/bind.rs` show the canonical pattern:
+2. **Pull a non-owning handle.** `WeakNode` / `WeakElement` are
+   `Weak<NodeInner>` wrappers — they don't keep the Rc alive.
+   `upgrade()` recovers a strong handle at fire time (returns
+   `None` if the original has dropped, gracefully).
+
+### How — option 1: typed Retained
+
+The bind installers in `cocoa/leptos_cocoa/src/cocoa/bind.rs` show
+the typed-Retained pattern:
 
 ```rust
 let view_for_set = el.as_node().ns_view_retained();
@@ -151,6 +166,32 @@ RenderEffect::new(move |_| {
 
 This Effect can be installed on the same `Node`'s handlers without
 forming a cycle.
+
+### How — option 2: WeakElement
+
+When the closure needs to re-enter the element's Rust API (style,
+meta, handlers — anything that's not on the ObjC view itself), use
+the `weak()` / `upgrade()` pattern:
+
+```rust
+let weak = el.weak();   // WeakElement
+el.on_click(move || {
+    if let Some(el) = weak.upgrade() {
+        el.set_string_attribute(StringAttr::Title, "clicked");
+    }
+});
+```
+
+The closure holds `WeakElement` (a `Weak<NodeInner>`). When the
+user's strong Element references drop, `Rc::strong_count` goes to
+zero; `NodeInner::Drop` fires; the arena entry's removal-on-orphan
+rule (refcount=0 AND parent=None) triggers; handlers drop; the
+closure drops; the dangling WeakElement inside it dies harmlessly.
+
+`WeakElement` mirrors exist as `WeakNode`, `WeakText`, and
+`WeakPlaceholder`. Each port exports its own versions (cocoa via
+`cocoa_dom::WeakElement` etc., iOS via `ios_dom::WeakElement`,
+GTK via `gtk_dom::WeakElement`).
 
 ### Setters are always safe
 
@@ -255,12 +296,25 @@ the cost of forgetting one is hours of bug hunting.
 ### Node, arena, and handlers
 
 `Node` is `#[derive(Clone)]`. Every clone bumps the `Rc<NodeInner>`
-strong count. When the last clone drops:
+strong count. When the last clone of an OWNING Node drops (Node
+with `is_borrowed = false`):
 
-1. `NodeInner::Drop` inspects the `NodeState`. If `Mounted`, it calls
-   `tree.remove(id)` — which removes the `NodeData` entry from the
-   arena's slotmap, dropping its `RefCell<NodeHandlers>` field.
-2. `NodeHandlers::Drop` fires. Order matters:
+1. `NodeInner::Drop` calls `tree.decref(id)`.
+2. The arena's removal rule kicks in: if `refcount == 0 AND
+   parent == None`, the entry is removed from the slotmap. (An
+   entry still reachable via a parent's `children` list stays
+   alive even with zero external Node handles — that's the
+   parent-reachability rule.)
+3. `tree.remove(id)` moves the `NodeData` OUT of the slotmap's
+   mutable borrow (via the explicit hoist in
+   `LayoutTree::remove`) and drops it after releasing the
+   borrow. **This ordering is load-bearing**: dropping `NodeData`
+   inside the borrow would re-enter `tree.state` (via captured
+   Node clones in handler closures calling `tree.decref` →
+   `tree.with_node` → `state.borrow()`) and panic with "RefCell
+   already mutably borrowed". See `LayoutTree::remove` comments.
+4. `NodeData` field-drop order (`handlers` before `view`) fires
+   `NodeHandlers::Drop`:
    - **Drop text-field / text-view delegate `Retained`s first**
      (explicitly inside the Drop body). AppKit/UIKit pins an extra
      retain on those delegates the moment `setDelegate(None)` runs;
@@ -274,11 +328,14 @@ strong count. When the last clone drops:
    - Then field-drop releases the remaining `Retained<ActionTarget>`
      / `Retained<HoverTracker>` — their `dealloc` runs and the
      `LiveTracker` decrements.
-3. After handlers drop, `NodeData::view` drops, releasing the
+5. After handlers drop, `NodeData::view` drops, releasing the
    arena's NSView/UIView retain. (`NodeInner` also holds its own
    retain, which drops at the end of `NodeInner` field-drop.)
-4. For `Unmounted` state at drop time: the local `NodeHandlers`
-   drops directly via state field-drop; same sequence.
+
+For a BORROWED Node (`is_borrowed = true` — produced by
+`Node::from_view_with_handle`), Drop is a no-op: no decref, no
+arena cleanup. Borrowed Nodes are non-owning views onto an entry
+some other owning Node holds.
 
 For this to be deterministic, **the Node must drop on the main
 thread**. `SendWrapper<Retained<NSView>>` in `NodeHandlers::view`
@@ -341,21 +398,27 @@ manually `dispose` signals — the Owner tree handles it.
 Suppose we add `<rating>` — a 5-star NSControl analog with
 `bind:value=signal`.
 
-1. **Create the view in `node.rs`**: `Element::create_with("rating", mtm)`
+1. **Create the view in `node.rs`**: `Element::create_with(tree, "rating", mtm)`
    matches a new tag, allocates `RatingControl` (subclass of
-   `NSControl`), wraps in `Retained<NSView>`, builds a `Node` via
-   `Node::from_view`. The new Node starts in `NodeState::Unmounted`
-   with default (empty) handlers.
+   `NSControl`), wraps in `Retained<NSView>`, allocates a fresh
+   arena entry in `tree` via `Node::create_in_tree`. The Node is
+   live in the arena from creation; its initial refcount is 1
+   (the new Element handle owns the first reference).
 
 2. **Wire the target/action in `event.rs`**: `on_rating_change`
    takes `&Node` and `cb: impl FnMut(u8)`. Internally:
    ```rust
    let target = ActionTarget::new(...);
    unsafe { control.setTarget(Some(&target)); control.setAction(Some(sel!(actionFired:))); }
-   node.handlers().borrow_mut().action_target = Some(target);
+   let view_retained = node.ns_view_retained();
+   node.with_handlers_mut(|h| {
+       h.attach_view(view_retained);
+       h.action_target = Some(target);
+   });
    ```
-   Nothing autoreleased here, so no pool-wrap needed (NSControl's
-   setTarget is the simple case).
+   `attach_view` is what gives `NodeHandlers::Drop` a back-ref to
+   nil setTarget on. Nothing autoreleased here, so no pool-wrap
+   needed (NSControl's setTarget is the simple case).
 
 3. **Bind it in `bind.rs`**: `install_rating_value_bind` looks like:
    ```rust
@@ -376,9 +439,10 @@ Suppose we add `<rating>` — a 5-star NSControl analog with
    }
    ```
 
-4. **No tests of bundle Drop needed** — the existing `leak_lifecycle`
-   suite asserts the patterns above; if your new builder follows
-   them, leak counters return to baseline automatically.
+4. **No tests of arena-Drop needed** — the existing `leak_lifecycle`
+   suite and `node_lifecycle` tests assert the patterns above;
+   if your new builder follows them, leak counters return to
+   baseline automatically.
 
 If you find yourself wanting to capture `el` in the Effect because
 "I need to call multiple methods on it" — store a `Retained<RatingControl>`
@@ -404,10 +468,10 @@ Examples that require the `Element` route today:
 
 The `el.clone()` capture in those cases is still cycle-safe under
 §3 — the closure lives on `ElementState::_effects`, *not* in the
-Node's handler bundle. The cycle rule only applies to closures
-stored in handler ivars (delegates, target/action). Closures owned
-by a `RenderEffect` that drops with the element state can safely
-hold an `Element` clone.
+arena's handlers. The cycle rule only applies to closures stored
+in handler ivars (delegates, target/action). Closures owned by a
+`RenderEffect` that drops with the element state can safely hold
+an `Element` clone.
 
 Empirically: bypassing `schedule_relayout` for a string setter
 during chaos shows up as a delegate-store leak in the fuzzer

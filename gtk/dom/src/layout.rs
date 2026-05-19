@@ -5,7 +5,7 @@
 //! The shape mirrors `cocoa_dom::layout`: per-element wrappers
 //! ([`register_in_tree`], [`attach_child`], the `set_*` setters)
 //! route through the new [`Node`] accessors (`with_style`,
-//! `tree_id`, `mount_into_tree`) and dispatch into
+//! `tree_id`) and dispatch into
 //! the shared tree.
 //!
 //! Where cocoa drives layout via an explicit `compute_layout` call
@@ -17,6 +17,7 @@
 
 use crate::node::Node;
 use gtk4::prelude::*;
+use std::rc::Rc;
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -78,27 +79,31 @@ pub fn new_tree() -> TreeRef {
 // Per-Node helpers — read/write Node state via its accessors.
 // ---------------------------------------------------------------------
 
-/// Register `node` as a leaf in `tree` if not already registered.
+/// Backwards-compatible no-op: arena allocation now happens eagerly
+/// in `Element::create` (and `Text` / `Placeholder`). Registration of
+/// the tree root still needs to happen — we just publish the node id
+/// as root if no root is set yet.
 pub fn register_in_tree(node: &Node, tree: &TreeRef) {
-    if node.tree_id().is_some() {
-        return;
-    }
-    let node_id = node.mount_into_tree(tree);
+    let Some((node_tree, id)) = node.tree_id() else { return };
+    debug_assert!(
+        Rc::ptr_eq(&node_tree, tree),
+        "register_in_tree called with a tree that doesn't own this node"
+    );
     let mut root = tree.root.borrow_mut();
     if root.is_none() {
-        *root = Some(node_id);
+        *root = Some(id);
     }
 }
 
-/// Drop the node and unregister it. No-op if never registered.
-///
-/// Most cleanup now lives in `Node::unmount_from_tree`; we
-/// additionally mark the (former) parent dirty + queue a resize.
+/// Drop the node and detach it from the tree. Now that `NodeInner::Drop`
+/// already calls `decref`, this just exists for callers that want an
+/// eager detach-now point and to mark the (former) parent dirty.
 pub fn drop_node(node: &Node) {
     let parent = node
         .tree_id()
         .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    node.unmount_from_tree();
+    // Force an eager arena removal (bypass refcount > 0 GC).
+    node.teardown();
     if let Some((tree, pid)) = parent {
         tree.mark_dirty(pid);
         queue_root_resize(&tree);
@@ -111,16 +116,14 @@ pub fn drop_node(node: &Node) {
 
 pub fn attach_child(parent: &Node, child: &Node) {
     let Some((tree, parent_id)) = parent.tree_id() else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.add_child(parent_id, child_id);
     queue_root_resize(&tree);
 }
 
 pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
     let Some((tree, parent_id)) = parent.tree_id() else { return };
-    register_in_tree(child, &tree);
-    let child_id = child.tree_id().expect("just registered").1;
+    let Some((_, child_id)) = child.tree_id() else { return };
     tree.insert_child_at_index(parent_id, index, child_id);
     queue_root_resize(&tree);
 }
@@ -150,10 +153,9 @@ pub fn queue_root_resize(tree: &TreeRef) {
 // ---------------------------------------------------------------------
 
 pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    // `Node::with_style_mut` already routes between the local
-    // (Unmounted) and arena-resident (Mounted) cases and pushes
-    // tree.set_style internally for the latter — which marks the
-    // node dirty for the next Taffy pass.
+    // `Node::with_style_mut` reads the style from the arena, runs
+    // `f`, pushes the updated style back via `tree.set_style`
+    // (which marks the node dirty for the next Taffy pass).
     node.with_style_mut(f);
 }
 
@@ -247,12 +249,24 @@ pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
     let Some(handle) = root.mounted_handle() else { return };
     let (w, h) = available_size;
 
-    let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
-    style.size = Size {
-        width: Dimension::length(w),
-        height: Dimension::length(h),
-    };
-    handle.tree.set_style(handle.node_id, style);
+    // For axes where the root's style.size is `auto`, fill the
+    // available space. Axes the user has set explicitly are left
+    // alone — see cocoa's compute_layout for the rationale.
+    {
+        let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
+        let mut touched = false;
+        if style.size.width == Dimension::auto() {
+            style.size.width = Dimension::length(w);
+            touched = true;
+        }
+        if style.size.height == Dimension::auto() {
+            style.size.height = Dimension::length(h);
+            touched = true;
+        }
+        if touched {
+            handle.tree.set_style(handle.node_id, style);
+        }
+    }
 
     let avail = Size {
         width: AvailableSpace::Definite(w),

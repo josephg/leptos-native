@@ -38,6 +38,7 @@ fn toolbar_attaches_to_window() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("toolbar-attach", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
 
         // Build a <toolbar> with two items.
         let view = toolbar()
@@ -55,7 +56,7 @@ fn toolbar_attaches_to_window() {
                     .icon(cocoa_dom::Icon::sf_symbol("minus")),
             );
 
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         // `nswindow.toolbar()` returning Some is the main assertion
@@ -80,6 +81,7 @@ fn toolbar_attaches_to_window() {
 fn duplicate_identifier_panics() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
+        let tree = &cocoa_dom::layout::new_tree();
         let view = toolbar()
             .child(
                 toolbar_item()
@@ -93,7 +95,7 @@ fn duplicate_identifier_panics() {
             );
         let result = std::panic::catch_unwind(
             std::panic::AssertUnwindSafe(|| {
-                let _ = <_ as Render<Dom>>::build(view);
+                let _ = <_ as Render<Dom>>::build(view, tree);
             }),
         );
         assert!(
@@ -222,13 +224,14 @@ fn drop_releases_action_target() {
     let _mtm = common::test_mtm();
     let before = event::handler_store_size_for_test();
     with_reactive_scope(|| {
+        let tree = &cocoa_dom::layout::new_tree();
         let view = toolbar().child(
             toolbar_item()
                 .identifier("drop")
                 .label("Drop me")
                 .on(leptos_cocoa::event_macos::action, |_| {}),
         );
-        let state = <_ as Render<Dom>>::build(view);
+        let state = <_ as Render<Dom>>::build(view, tree);
 
         // While the state is alive, the handler count should have
         // grown — the toolbar item registration owns one
@@ -309,12 +312,13 @@ fn toolbar_handle_insert_and_remove() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("handle-test", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("first").label("First"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         // Insert a second item at index 1 (after "first").
@@ -366,12 +370,13 @@ fn toolbar_set_items_adds_one_item() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-add-one", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         // [a] → [a, b]. Retained-in-order check passes ('a' alone
@@ -405,13 +410,14 @@ fn toolbar_set_items_noop_on_unchanged() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-noop", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
@@ -447,13 +453,14 @@ fn toolbar_set_items_removes_absent_identifier() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-remove", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
@@ -483,6 +490,7 @@ fn toolbar_set_items_handles_reorder() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-reorder", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
@@ -490,7 +498,7 @@ fn toolbar_set_items_handles_reorder() {
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"))
             .child(toolbar_item().identifier("c").label("C"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b", "c"]);
@@ -533,13 +541,14 @@ fn toolbar_set_items_inserts_between_retained() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-middle", (640.0, 480.0), mtm);
+        let tree = &opened.tree;
         let handle = ToolbarHandle::new();
 
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("c").label("C"));
-        let mut state = <_ as Render<Dom>>::build(view);
+        let mut state = <_ as Render<Dom>>::build(view, tree);
         state.mount(&opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "c"]);
@@ -581,7 +590,7 @@ fn two_toolbars_can_share_item_identifiers() {
         let view1 = toolbar()
             .child(toolbar_item().identifier("a").label("A1"))
             .child(toolbar_item().identifier("b").label("B1"));
-        let mut state1 = <_ as Render<Dom>>::build(view1);
+        let mut state1 = <_ as Render<Dom>>::build(view1, &opened1.tree);
         state1.mount(&opened1.content_root, None);
 
         // Second toolbar: defaults, cascade [a, b] — same item ids.
@@ -591,7 +600,7 @@ fn two_toolbars_can_share_item_identifiers() {
             .handle(handle2)
             .child(toolbar_item().identifier("a").label("A2"))
             .child(toolbar_item().identifier("b").label("B2"));
-        let mut state2 = <_ as Render<Dom>>::build(view2);
+        let mut state2 = <_ as Render<Dom>>::build(view2, &opened2.tree);
         state2.mount(&opened2.content_root, None);
 
         // Dynamically add 'c' to the second toolbar — this insert

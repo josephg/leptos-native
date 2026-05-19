@@ -36,6 +36,7 @@
 //! The diff algorithm is unchanged; only the surrounding glue is.
 
 use crate::{
+    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render},
 };
@@ -90,6 +91,7 @@ where
     V: Render<R>,
     R: Renderer,
 {
+    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     parent: Option<R::Element>,
     marker: R::Placeholder,
     hashed_items: FxIndexSet<K>,
@@ -107,7 +109,7 @@ where
 {
     type State = KeyedState<K, V, R>;
 
-    fn build(self) -> Self::State {
+    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
         let items = self.items.into_iter().flatten();
         let (capacity, _) = items.size_hint();
         let mut hashed_items =
@@ -116,11 +118,12 @@ where
         for (index, item) in items.enumerate() {
             hashed_items.insert((self.key_fn)(&item));
             let view = (self.view_fn)(index, item);
-            rendered_items.push(Some(view.build()));
+            rendered_items.push(Some(view.build(tree)));
         }
         KeyedState {
+            tree: send_wrapper::SendWrapper::new(tree.clone()),
             parent: None,
-            marker: R::create_placeholder(),
+            marker: R::create_placeholder(tree),
             hashed_items,
             rendered_items,
         }
@@ -128,11 +131,13 @@ where
 
     fn rebuild(self, state: &mut Self::State) {
         let KeyedState {
+            tree: tree_wrap,
             parent,
             marker,
             hashed_items,
             rendered_items,
         } = state;
+        let tree: &TreeRef<R::Backend> = &**tree_wrap;
         let new_items = self.items.into_iter().flatten();
         let (capacity, _) = new_items.size_hint();
         let mut new_hashed_items =
@@ -147,6 +152,7 @@ where
         let cmds = diff(hashed_items, &new_hashed_items);
 
         apply_diff::<R, T, V, VF>(
+            tree,
             parent.as_ref(),
             marker,
             cmds,
@@ -332,6 +338,7 @@ fn group_adjacent_moves(moved: Vec<DiffOpMove>) -> Vec<DiffOpMove> {
 }
 
 fn apply_diff<R, T, V, VF>(
+    tree: &TreeRef<R::Backend>,
     parent: Option<&R::Element>,
     marker: &R::Placeholder,
     diff: Diff,
@@ -402,7 +409,7 @@ fn apply_diff<R, T, V, VF>(
     for DiffOpAdd { at, mode } in add_cmds {
         let item = items[at].take().unwrap();
         let view = view_fn(at, item);
-        let mut state = view.build();
+        let mut state = view.build(tree);
         if let Some(parent) = parent {
             match mode {
                 DiffOpAddMode::Normal => {
