@@ -2,9 +2,6 @@
 resolver = "2"
 members = [
   # common (renderer-agnostic)
-  "common/reactive_graph",
-  "common/reactive_stores",
-  "common/reactive_stores_macro",
   "common/renderer",
   "common/leptos_macro",
   "common/leptos",
@@ -86,9 +83,6 @@ members = [
 
 # `cargo test` / `cargo build` (no args) operate on `default-members`.
 default-members = [
-  "common/reactive_graph",
-  "common/reactive_stores",
-  "common/reactive_stores_macro",
   "common/renderer",
   "common/leptos_macro",
   "common/leptos",
@@ -158,9 +152,6 @@ rust-version = "1.88"
 [workspace.dependencies]
 # --- workspace member crates (path-pinned) ---
 renderer = { path = "./common/renderer", version = "0.1.0" }
-reactive_graph = { path = "./common/reactive_graph", version = "0.2.14" }
-reactive_stores = { path = "./common/reactive_stores", version = "0.4.3" }
-reactive_stores_macro = { path = "./common/reactive_stores_macro", version = "0.4.2" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos = { path = "./common/leptos", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
@@ -175,6 +166,9 @@ either_of = { default-features = false, version = "0.1.9" }
 next_tuple = { default-features = false, version = "0.1.0" }
 oco_ref = { default-features = false, version = "0.2.1" }
 or_poisoned = { default-features = false, version = "0.1.0" }
+reactive_graph = { default-features = false, version = "0.2.14" }
+reactive_stores = { default-features = false, version = "0.4.3" }
+reactive_stores_macro = { default-features = false, version = "0.4.2" }
 
 # --- third-party deps ---
 itertools = { default-features = false, version = "0.14" }

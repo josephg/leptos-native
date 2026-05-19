@@ -6,4 +6,4 @@ publish = false
 
 [dependencies]
 leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
-reactive_stores = { path = "../../../common/reactive_stores" }
+reactive_stores = "0.4.3"
