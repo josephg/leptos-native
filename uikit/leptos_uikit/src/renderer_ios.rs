@@ -49,14 +49,6 @@ impl RendererTrait for Dom {
         IosRenderer::set_text(node, text);
     }
 
-    fn set_attribute(node: &Element, name: &str, value: &str) {
-        IosRenderer::set_attribute(node, name, value);
-    }
-
-    fn remove_attribute(node: &Element, name: &str) {
-        IosRenderer::remove_attribute(node, name);
-    }
-
     fn insert_node(
         parent: &Element,
         new_child: &Node,

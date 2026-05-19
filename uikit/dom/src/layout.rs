@@ -526,7 +526,7 @@ impl renderer::LayoutElement for Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_bool_attribute(self, crate::node::BoolAttr::Hidden, hidden);
+        Node::set_hidden(self, hidden);
     }
     // `set_clip`: iOS hasn't wired UIView::clipsToBounds yet, so
     // `overflow=Hidden` is layout-only on this port (Taffy

@@ -201,7 +201,7 @@ impl renderer::LayoutElement for Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_bool_attribute(self, crate::node::BoolAttr::Hidden, hidden);
+        Node::set_hidden(self, hidden);
     }
     fn set_clip(&self, clip: bool) {
         use gtk4::prelude::WidgetExt;

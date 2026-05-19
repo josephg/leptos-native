@@ -28,7 +28,7 @@ use ios_dom::{
         GridTemplateComponent, JustifyContent, JustifyItems, Position,
         TrackSizingFunction,
     },
-    BoolAttr, Element as IosElement, StringAttr,
+    Element as IosElement,
 };
 use reactive_graph::effect::RenderEffect;
 
@@ -846,7 +846,7 @@ impl Render<Dom> for Button {
 
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_string_attribute(StringAttr::Title, &t);
+            el_for_title.set_title(&t);
         }) {
             effects.push(eff);
         }
@@ -854,7 +854,7 @@ impl Render<Dom> for Button {
         if let Some(enabled) = self.enabled {
             let el_for_en = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_en.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_en.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -978,7 +978,7 @@ impl Render<Dom> for Label {
         };
         let el_for_text = el.clone();
         if let Some(eff) = install(text, move |s| {
-            el_for_text.set_string_attribute(StringAttr::Title, &s);
+            el_for_text.set_title(&s);
         }) {
             effects.push(eff);
         }
@@ -1118,13 +1118,13 @@ impl Render<Dom> for TextField {
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
-            el.set_string_attribute(StringAttr::Placeholder, &p);
+            el.set_placeholder(&p);
         }
 
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1135,7 +1135,7 @@ impl Render<Dom> for TextField {
         // subsequent ticks.
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_string_attribute(StringAttr::Value, &v);
+            el_for_value.set_value(&v);
         }) {
             effects.push(eff);
         }
@@ -1261,7 +1261,7 @@ impl Render<Dom> for Switch {
         // One-way `.checked(...)`.
         let el_for_checked = el.clone();
         if let Some(eff) = install(self.checked, move |b| {
-            el_for_checked.set_bool_attribute(BoolAttr::Checked, b);
+            el_for_checked.set_checked(b);
         }) {
             effects.push(eff);
         }
@@ -1269,7 +1269,7 @@ impl Render<Dom> for Switch {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1406,7 +1406,7 @@ impl Render<Dom> for Slider {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1547,7 +1547,7 @@ impl Render<Dom> for Stepper {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1905,7 +1905,7 @@ impl Render<Dom> for SegmentedControl {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2061,7 +2061,7 @@ impl Render<Dom> for PopUpButton {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2173,7 +2173,7 @@ impl Render<Dom> for ColorWell {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2313,7 +2313,7 @@ impl Render<Dom> for DatePicker {
         if let Some(enabled) = self.enabled {
             let el_for = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2545,7 +2545,7 @@ impl Render<Dom> for TextView {
 
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_string_attribute(StringAttr::Value, &v);
+            el_for_value.set_value(&v);
         }) {
             effects.push(eff);
         }

@@ -6,6 +6,25 @@ top.
 
 ---
 
+## 2026-05-19 — Direct typed attribute setters (port mirror)
+
+Mirrored the cocoa attribute-setter cleanup. Removed `StringAttr`
+and `BoolAttr` enums + their dispatch + the string-keyed
+`set_attribute` / `remove_attribute`. Replaced with direct typed
+methods on `Node`:
+
+- `set_title(&str)` — UIButton.setTitle(Normal) / UILabel.setText.
+- `set_value(&str)` — UITextField.setText / UITextView.setText.
+- `set_placeholder(&str)` — UITextField.setPlaceholder.
+- `set_hidden(bool)` — UIView.setHidden.
+- `set_enabled(bool)` — UIView.setUserInteractionEnabled + UIControl.setEnabled.
+- `set_checked(bool)` — UISwitch.setOn:animated:.
+
+Builders in `leptos_uikit` and the bind layer migrated to direct
+calls.
+
+---
+
 ## 2026-05-19 — Typed element constructors + Element/Node unification (port mirror)
 
 Mirrored two cocoa refactors landed earlier the same day:

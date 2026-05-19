@@ -44,7 +44,7 @@ pub use color::Color;
 pub use main_thread::on_main;
 
 pub use node::{
-    BoolAttr, Element, Node, StringAttr, WeakElement, WeakNode,
+    Element, Node, WeakElement, WeakNode,
 };
 pub use renderer::{
     ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,

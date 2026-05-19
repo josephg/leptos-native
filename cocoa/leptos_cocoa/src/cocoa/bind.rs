@@ -176,10 +176,7 @@ pub(crate) fn install_text_field_value_bind(
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_string_attribute(
-            cocoa_dom::StringAttr::Value,
-            &v,
-        );
+        el_for_set.set_value(&v);
     })
 }
 
@@ -253,10 +250,7 @@ pub(crate) fn install_text_view_value_bind(
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let s = getter();
-        el_for_set.set_string_attribute(
-            cocoa_dom::StringAttr::Value,
-            &s,
-        );
+        el_for_set.set_value(&s);
     })
 }
 

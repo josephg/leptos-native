@@ -228,7 +228,7 @@ fn checkbox_checked_round_trips() {
     let tree = gtk_dom::layout::new_tree();
     let el = Element::create_checkbox(&tree).0;
     assert!(!el.checked());
-    el.set_bool_attribute(BoolAttr::Checked, true);
+    el.set_checked(true);
     assert!(el.checked());
 }
 

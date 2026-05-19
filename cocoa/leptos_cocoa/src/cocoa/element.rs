@@ -24,7 +24,7 @@ use cocoa_dom::{
         GridTemplateComponent, JustifyContent, JustifyItems,
         TrackSizingFunction,
     },
-    BoolAttr, Color, Element as CocoaElement, StringAttr,
+    Color, Element as CocoaElement,
 };
 use reactive_graph::effect::RenderEffect;
 
@@ -1032,7 +1032,7 @@ where
         // Wire the title — install handles both static and reactive.
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_string_attribute(StringAttr::Title, &t);
+            el_for_title.set_title(&t);
         }) {
             effects.push(eff);
         }
@@ -1040,7 +1040,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1271,7 +1271,7 @@ where
         // Title: drive via the standard install pipeline.
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_string_attribute(StringAttr::Title, &t);
+            el_for_title.set_title(&t);
         }) {
             effects.push(eff);
         }
@@ -1281,7 +1281,7 @@ where
         // `set_bool_attribute(BoolAttr::Checked, ...)`.
         let el_for_checked = el.clone();
         if let Some(eff) = install(self.checked, move |b| {
-            el_for_checked.set_bool_attribute(BoolAttr::Checked, b);
+            el_for_checked.set_checked(b);
         }) {
             effects.push(eff);
         }
@@ -1510,7 +1510,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1732,7 +1732,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1974,7 +1974,7 @@ where
 
         let el_for_text = el.clone();
         if let Some(eff) = install(self.value, move |s| {
-            el_for_text.set_string_attribute(StringAttr::Value, &s);
+            el_for_text.set_value(&s);
         }) {
             effects.push(eff);
         }
@@ -1998,11 +1998,11 @@ where
                     match tt() {
                         Ok(s) => {
                             el_for_try
-                                .set_string_attribute(StringAttr::Value, &s);
+                                .set_value(&s);
                         }
                         Err(e) => {
                             el_for_try
-                                .set_string_attribute(StringAttr::Value, "");
+                                .set_value("");
                             *active.borrow_mut() = Some(
                                 crate::cocoa::error_guard::ErrorGuard(
                                     throw_error::throw(e),
@@ -2348,7 +2348,7 @@ where
         if let Some(p) = self.placeholder {
             let el_for = el.clone();
             if let Some(eff) = install(p, move |s| {
-                el_for.set_string_attribute(StringAttr::Placeholder, &s);
+                el_for.set_placeholder(&s);
             }) {
                 effects.push(eff);
             }
@@ -2357,7 +2357,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2366,7 +2366,7 @@ where
         // Install one-way `.value(...)` if used.
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_string_attribute(StringAttr::Value, &v);
+            el_for_value.set_value(&v);
         }) {
             effects.push(eff);
         }
@@ -2592,7 +2592,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -2822,7 +2822,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -3148,7 +3148,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -3341,7 +3341,7 @@ where
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -3863,7 +3863,7 @@ where
         // which knows how to find the inner NSTextView.
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_string_attribute(StringAttr::Value, &v);
+            el_for_value.set_value(&v);
         }) {
             effects.push(eff);
         }

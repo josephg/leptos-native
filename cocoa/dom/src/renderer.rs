@@ -113,14 +113,6 @@ impl Renderer {
         node.set_text(text);
     }
 
-    pub fn set_attribute(node: &Element, name: &str, value: &str) {
-        node.set_attribute(name, value);
-    }
-
-    pub fn remove_attribute(node: &Element, name: &str) {
-        node.remove_attribute(name);
-    }
-
     pub fn insert_node(
         parent: &Element,
         new_child: &Node,

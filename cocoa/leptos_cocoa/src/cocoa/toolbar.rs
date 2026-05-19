@@ -137,7 +137,7 @@ use cocoa_dom::{
         sidebar_tracking_separator_identifier, space_identifier,
         toggle_sidebar_identifier, ToolbarItemRegistration,
     },
-    Element as CocoaElement, MainThreadMarker, Node as CocoaNode, StringAttr,
+    Element as CocoaElement, MainThreadMarker, Node as CocoaNode,
 };
 
 // Re-export the dom-side enums from this module so user-facing
@@ -1170,7 +1170,7 @@ impl ToolbarMountable for ToolbarSearchItem {
         if let Some(ph) = self.placeholder {
             let el = el.clone();
             if let Some(eff) = install(ph, move |s| {
-                el.set_string_attribute(StringAttr::Placeholder, &s);
+                el.set_placeholder(&s);
             }) {
                 build.effects.push(eff);
             }
@@ -1184,7 +1184,7 @@ impl ToolbarMountable for ToolbarSearchItem {
         } else if let Some(v) = self.value {
             let el = el.clone();
             if let Some(eff) = install(v, move |s| {
-                el.set_string_attribute(StringAttr::Value, &s);
+                el.set_value(&s);
             }) {
                 build.effects.push(eff);
             }

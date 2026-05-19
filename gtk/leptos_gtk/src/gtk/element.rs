@@ -18,7 +18,7 @@ use gtk_dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    BoolAttr, Element as GtkElement, StringAttr,
+    Element as GtkElement,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
@@ -702,7 +702,7 @@ impl Render<Dom> for Button {
 
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_string_attribute(StringAttr::Title, &t);
+            el_for_title.set_title(&t);
         }) {
             effects.push(eff);
         }
@@ -710,7 +710,7 @@ impl Render<Dom> for Button {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -854,14 +854,14 @@ impl Render<Dom> for Checkbox {
 
         let el_for_title = el.clone();
         if let Some(eff) = install(self.title, move |t| {
-            el_for_title.set_string_attribute(StringAttr::Title, &t);
+            el_for_title.set_title(&t);
         }) {
             effects.push(eff);
         }
 
         let el_for_checked = el.clone();
         if let Some(eff) = install(self.checked, move |b| {
-            el_for_checked.set_bool_attribute(BoolAttr::Checked, b);
+            el_for_checked.set_checked(b);
         }) {
             effects.push(eff);
         }
@@ -1021,7 +1021,7 @@ impl Render<Dom> for Slider {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1166,7 +1166,7 @@ impl Render<Dom> for PopUpButton {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1282,7 +1282,7 @@ impl Render<Dom> for Label {
 
         let el_for_text = el.clone();
         if let Some(eff) = install(self.text, move |s| {
-            el_for_text.set_string_attribute(StringAttr::Value, &s);
+            el_for_text.set_value(&s);
         }) {
             effects.push(eff);
         }
@@ -1449,7 +1449,7 @@ impl Render<Dom> for TextField {
         if let Some(p) = self.placeholder {
             let el_for_p = el.clone();
             if let Some(eff) = install(p, move |s| {
-                el_for_p.set_string_attribute(StringAttr::Placeholder, &s);
+                el_for_p.set_placeholder(&s);
             }) {
                 effects.push(eff);
             }
@@ -1458,7 +1458,7 @@ impl Render<Dom> for TextField {
         if let Some(enabled) = self.enabled {
             let el_for_enabled = el.clone();
             if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_bool_attribute(BoolAttr::Enabled, b);
+                el_for_enabled.set_enabled(b);
             }) {
                 effects.push(eff);
             }
@@ -1466,7 +1466,7 @@ impl Render<Dom> for TextField {
 
         let el_for_value = el.clone();
         if let Some(eff) = install(self.value, move |v| {
-            el_for_value.set_string_attribute(StringAttr::Value, &v);
+            el_for_value.set_value(&v);
         }) {
             effects.push(eff);
         }

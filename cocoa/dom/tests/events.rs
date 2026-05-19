@@ -452,12 +452,11 @@ fn popup_items_and_selection() {
 }
 
 fn checkbox_checked_round_trips() {
-    use cocoa_dom::BoolAttr;
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
     let el = Element::create_checkbox(&tree).0;
     assert!(!el.checked());
-    el.set_bool_attribute(BoolAttr::Checked, true);
+    el.set_checked(true);
     assert!(el.checked());
 }
 

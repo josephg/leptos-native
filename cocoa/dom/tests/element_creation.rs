@@ -140,7 +140,7 @@ fn text_view_value_round_trips() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
     let el = Element::create_text_view(&tree).0;
-    el.set_string_attribute(cocoa_dom::StringAttr::Value, "Hello, world");
+    el.set_value("Hello, world");
     assert_eq!(el.text_view_value(), Some("Hello, world".to_string()));
 }
 

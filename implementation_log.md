@@ -5,6 +5,46 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-19 — Direct typed attribute setters; removed `StringAttr` / `BoolAttr`
+
+The chain `set_attribute(&str, &str)` → `set_string_attribute(StringAttr, &str)`
+→ enum-dispatch → typed view downcast → ObjC method call was three
+layers of indirection where the call site always knew the concrete
+attribute at compile time. The string-keyed entry point (renderer
+trait + `Element::set_attribute`) had already been removed in an
+earlier pass on this same day. This pass removes the enum-dispatch
+layer too.
+
+Replaced both `StringAttr` and `BoolAttr` enums + their
+`set_string_attribute` / `set_bool_attribute` /
+`remove_string_attribute` / `remove_bool_attribute` /
+`set_attribute` / `remove_attribute` methods with direct typed
+setters on `Node`:
+
+- `set_title(&str)` — NSButton.setTitle.
+- `set_value(&str)` — NSControl.setStringValue, or NSScrollView →
+  NSTextView.setString for `<text_view>`.
+- `set_placeholder(&str)` — NSTextField.setPlaceholderString.
+- `set_hidden(bool)` — NSView.setHidden.
+- `set_enabled(bool)` — NSControl.setEnabled.
+- `set_checked(bool)` — NSButton.setState.
+
+Each setter does its own concrete-subclass downcast guard (silent
+no-op for non-matching views) and inlines the diff-before-mutate +
+`schedule_relayout` pattern that the old enum dispatch centralized.
+
+Callers in `cocoa/leptos_cocoa/src/cocoa/element.rs` and `bind.rs`
+migrated to direct calls; `LayoutElement::set_view_hidden` now
+calls `Node::set_hidden` directly. Test file
+`cocoa/dom/tests/attributes.rs` (which mainly tested the enum
+machinery itself) is deleted; the underlying setter behavior is
+still covered transitively by every other test that constructs a
+control + drives an attribute.
+
+Mirrored to GTK and UIKit in the same pass.
+
+---
+
 ## 2026-05-19 — Unified `Element` and `Node`
 
 After the kind-discriminant + Text/Placeholder unification (earlier

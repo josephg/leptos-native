@@ -122,11 +122,6 @@ path = "tests/element_creation.rs"
 harness = false
 
 [[test]]
-name = "attributes"
-path = "tests/attributes.rs"
-harness = false
-
-[[test]]
 name = "events"
 path = "tests/events.rs"
 harness = false

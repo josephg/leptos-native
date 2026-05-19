@@ -32,60 +32,6 @@ use gtk4::prelude::*;
 use send_wrapper::SendWrapper;
 use std::{fmt, rc::Rc};
 
-/// Compile-time-checked attribute identifiers, split by value type.
-/// Mirrors `cocoa_dom::node::StringAttr`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum StringAttr {
-    Title,
-    Value,
-    Placeholder,
-}
-
-impl StringAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "title" => Self::Title,
-            "value" => Self::Value,
-            "placeholder" => Self::Placeholder,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Title => "title",
-            Self::Value => "value",
-            Self::Placeholder => "placeholder",
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BoolAttr {
-    Enabled,
-    Hidden,
-    Checked,
-}
-
-impl BoolAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "enabled" => Self::Enabled,
-            "hidden" => Self::Hidden,
-            "checked" => Self::Checked,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Enabled => "enabled",
-            Self::Hidden => "hidden",
-            Self::Checked => "checked",
-        }
-    }
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -426,144 +372,108 @@ impl Node {
         }
     }
 
-    /// `&str`-keyed entry point matching the renderer trait. Routes
-    /// through the typed enums; silently no-ops on unknown names.
-    pub fn set_attribute(&self, name: &str, value: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.set_string_attribute(attr, value);
-        }
-    }
-
-    /// Typed string-valued attribute setter.
-    pub fn set_string_attribute(&self, attr: StringAttr, value: &str) {
+    /// Set the title on a button-flavoured widget (`gtk::Button`,
+    /// `gtk::CheckButton`, `gtk::Label`). No-op on other classes.
+    /// Diffs first so an unchanged value doesn't churn relayout.
+    pub fn set_title(&self, value: &str) {
         let widget = self.widget();
-        let mut content_changed = false;
-        match attr {
-            StringAttr::Title => {
-                if let Some(button) = widget.downcast_ref::<gtk4::Button>() {
-                    let current = button.label();
-                    if current.as_deref() != Some(value) {
-                        button.set_label(value);
-                        content_changed = true;
-                    }
-                } else if let Some(check) =
-                    widget.downcast_ref::<gtk4::CheckButton>()
-                {
-                    let current = check.label();
-                    if current.as_deref() != Some(value) {
-                        check.set_label(Some(value));
-                        content_changed = true;
-                    }
-                } else if let Some(label) =
-                    widget.downcast_ref::<gtk4::Label>()
-                {
-                    if label.label().as_str() != value {
-                        label.set_label(value);
-                        content_changed = true;
-                    }
-                }
+        let mut changed = false;
+        if let Some(button) = widget.downcast_ref::<gtk4::Button>() {
+            if button.label().as_deref() != Some(value) {
+                button.set_label(value);
+                changed = true;
             }
-            StringAttr::Value => {
-                if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
-                    if entry.text().as_str() != value {
-                        entry.set_text(value);
-                        content_changed = true;
-                    }
-                } else if let Some(entry) =
-                    widget.downcast_ref::<gtk4::PasswordEntry>()
-                {
-                    if entry.text().as_str() != value {
-                        entry.set_text(value);
-                        content_changed = true;
-                    }
-                } else if let Some(label) =
-                    widget.downcast_ref::<gtk4::Label>()
-                {
-                    if label.label().as_str() != value {
-                        label.set_label(value);
-                        content_changed = true;
-                    }
-                }
+        } else if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
+            if check.label().as_deref() != Some(value) {
+                check.set_label(Some(value));
+                changed = true;
             }
-            StringAttr::Placeholder => {
-                if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
-                    if entry.placeholder_text().as_deref() != Some(value) {
-                        entry.set_placeholder_text(Some(value));
-                        content_changed = true;
-                    }
-                } else if let Some(entry) =
-                    widget.downcast_ref::<gtk4::PasswordEntry>()
-                {
-                    if entry.placeholder_text().as_deref() != Some(value) {
-                        entry.set_placeholder_text(Some(value));
-                        content_changed = true;
-                    }
-                }
+        } else if let Some(label) = widget.downcast_ref::<gtk4::Label>() {
+            if label.label().as_str() != value {
+                label.set_label(value);
+                changed = true;
             }
         }
-        if content_changed {
+        if changed {
             crate::layout::schedule_relayout(self);
         }
     }
 
-    /// Typed boolean-valued attribute setter.
-    pub fn set_bool_attribute(&self, attr: BoolAttr, value: bool) {
+    /// Set the value/text on an `Entry` / `PasswordEntry` / `Label`.
+    /// No-op on other classes.
+    pub fn set_value(&self, value: &str) {
         let widget = self.widget();
-        match attr {
-            BoolAttr::Hidden => {
-                if widget.is_visible() == value {
-                    widget.set_visible(!value);
-                }
+        let mut changed = false;
+        if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
+            if entry.text().as_str() != value {
+                entry.set_text(value);
+                changed = true;
             }
-            BoolAttr::Enabled => {
-                if widget.is_sensitive() != value {
-                    widget.set_sensitive(value);
-                }
+        } else if let Some(entry) =
+            widget.downcast_ref::<gtk4::PasswordEntry>()
+        {
+            if entry.text().as_str() != value {
+                entry.set_text(value);
+                changed = true;
             }
-            BoolAttr::Checked => {
-                if let Some(check) =
-                    widget.downcast_ref::<gtk4::CheckButton>()
-                {
-                    if check.is_active() != value {
-                        check.set_active(value);
-                    }
-                }
+        } else if let Some(label) = widget.downcast_ref::<gtk4::Label>() {
+            if label.label().as_str() != value {
+                label.set_label(value);
+                changed = true;
             }
+        }
+        if changed {
+            crate::layout::schedule_relayout(self);
         }
     }
 
-    pub fn remove_attribute(&self, name: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.remove_string_attribute(attr);
-            return;
-        }
-        if let Some(attr) = BoolAttr::from_name(name) {
-            self.remove_bool_attribute(attr);
-        }
-    }
-
-    pub fn remove_string_attribute(&self, attr: StringAttr) {
-        match attr {
-            StringAttr::Title => self.set_string_attribute(StringAttr::Title, ""),
-            StringAttr::Value => self.set_string_attribute(StringAttr::Value, ""),
-            StringAttr::Placeholder => {
-                let widget = self.widget();
-                if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
-                    entry.set_placeholder_text(None);
-                } else if let Some(entry) =
-                    widget.downcast_ref::<gtk4::PasswordEntry>()
-                {
-                    entry.set_placeholder_text(None);
-                }
+    /// Set placeholder text on an `Entry` / `PasswordEntry`. No-op
+    /// on other classes.
+    pub fn set_placeholder(&self, value: &str) {
+        let widget = self.widget();
+        let mut changed = false;
+        if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
+            if entry.placeholder_text().as_deref() != Some(value) {
+                entry.set_placeholder_text(Some(value));
+                changed = true;
+            }
+        } else if let Some(entry) =
+            widget.downcast_ref::<gtk4::PasswordEntry>()
+        {
+            if entry.placeholder_text().as_deref() != Some(value) {
+                entry.set_placeholder_text(Some(value));
+                changed = true;
             }
         }
+        if changed {
+            crate::layout::schedule_relayout(self);
+        }
     }
 
-    pub fn remove_bool_attribute(&self, attr: BoolAttr) {
-        match attr {
-            BoolAttr::Hidden => self.set_bool_attribute(BoolAttr::Hidden, false),
-            BoolAttr::Enabled => self.set_bool_attribute(BoolAttr::Enabled, true),
-            BoolAttr::Checked => self.set_bool_attribute(BoolAttr::Checked, false),
+    /// Toggle widget visibility (`set_visible(!value)`).
+    pub fn set_hidden(&self, value: bool) {
+        let widget = self.widget();
+        if widget.is_visible() == value {
+            widget.set_visible(!value);
+        }
+    }
+
+    /// Toggle widget sensitivity (gtk's "enabled" equivalent).
+    pub fn set_enabled(&self, value: bool) {
+        let widget = self.widget();
+        if widget.is_sensitive() != value {
+            widget.set_sensitive(value);
+        }
+    }
+
+    /// Set the on/off state on a `gtk::CheckButton`. No-op on other
+    /// classes.
+    pub fn set_checked(&self, value: bool) {
+        let widget = self.widget();
+        if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
+            if check.is_active() != value {
+                check.set_active(value);
+            }
         }
     }
 

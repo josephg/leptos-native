@@ -6,6 +6,28 @@ top.
 
 ---
 
+## 2026-05-19 — Direct typed attribute setters (port mirror)
+
+Mirrored the cocoa attribute-setter cleanup. Removed `StringAttr`
+and `BoolAttr` enums + their dispatch (`set_string_attribute` /
+`set_bool_attribute` / `remove_string_attribute` /
+`remove_bool_attribute`) and the string-keyed `set_attribute` /
+`remove_attribute` (both on `Node` and the renderer surface).
+Replaced with direct typed methods on `Node`:
+
+- `set_title(&str)` — gtk::Button.set_label / CheckButton.set_label /
+  Label.set_label.
+- `set_value(&str)` — Entry/PasswordEntry.set_text / Label.set_label.
+- `set_placeholder(&str)` — Entry/PasswordEntry.set_placeholder_text.
+- `set_hidden(bool)` — Widget.set_visible(!value).
+- `set_enabled(bool)` — Widget.set_sensitive.
+- `set_checked(bool)` — CheckButton.set_active.
+
+Builders in `leptos_gtk` and the bind layer migrated to direct
+calls.
+
+---
+
 ## 2026-05-19 — Typed element constructors + Element/Node unification (port mirror)
 
 Mirrored two cocoa refactors landed earlier the same day:

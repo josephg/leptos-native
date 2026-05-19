@@ -26,59 +26,6 @@ use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, fmt, rc::Rc};
 
-/// Compile-time-checked attribute identifiers, split by value type.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum StringAttr {
-    Title,
-    Value,
-    Placeholder,
-}
-
-impl StringAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "title" => Self::Title,
-            "value" => Self::Value,
-            "placeholder" => Self::Placeholder,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Title => "title",
-            Self::Value => "value",
-            Self::Placeholder => "placeholder",
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BoolAttr {
-    Enabled,
-    Hidden,
-    Checked,
-}
-
-impl BoolAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "enabled" => Self::Enabled,
-            "hidden" => Self::Hidden,
-            "checked" => Self::Checked,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Enabled => "enabled",
-            Self::Hidden => "hidden",
-            Self::Checked => "checked",
-        }
-    }
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -410,100 +357,105 @@ impl Node {
         }
     }
 
-    pub fn set_attribute(&self, name: &str, value: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.set_string_attribute(attr, value);
-        }
-    }
-
-    pub fn set_string_attribute(&self, attr: StringAttr, value: &str) {
+    /// Set the title on a UIButton (Normal state) or the text on a
+    /// UILabel. No-op on other classes.
+    pub fn set_title(&self, value: &str) {
         let view = self.ui_view();
-        let mut content_changed = false;
-        match attr {
-            StringAttr::Title => {
-                if let Some(button) = downcast::<UIButton>(view) {
-                    let current = button
-                        .titleForState(objc2_ui_kit::UIControlState::Normal)
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    if current != value {
-                        let s = NSString::from_str(value);
-                        button.setTitle_forState(
-                            Some(&s),
-                            objc2_ui_kit::UIControlState::Normal,
-                        );
-                        content_changed = true;
-                    }
-                }
-                if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
-                    let current = label.text().map(|s| s.to_string()).unwrap_or_default();
-                    if current != value {
-                        let s = NSString::from_str(value);
-                        label.setText(Some(&s));
-                        content_changed = true;
-                    }
-                }
-            }
-            StringAttr::Value => {
-                if let Some(field) = downcast::<UITextField>(view) {
-                    let current = field.text().map(|s| s.to_string()).unwrap_or_default();
-                    if current != value {
-                        let s = NSString::from_str(value);
-                        field.setText(Some(&s));
-                        content_changed = true;
-                    }
-                }
-                if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
-                    let current = tv.text().to_string();
-                    if current != value {
-                        tv.setText(Some(&NSString::from_str(value)));
-                        content_changed = true;
-                    }
-                }
-            }
-            StringAttr::Placeholder => {
-                if let Some(field) = downcast::<UITextField>(view) {
-                    let current: String = field
-                        .placeholder()
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-                    if current != value {
-                        let s = NSString::from_str(value);
-                        field.setPlaceholder(Some(&s));
-                        content_changed = true;
-                    }
-                }
+        let mut changed = false;
+        if let Some(button) = downcast::<UIButton>(view) {
+            let current = button
+                .titleForState(objc2_ui_kit::UIControlState::Normal)
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if current != value {
+                button.setTitle_forState(
+                    Some(&NSString::from_str(value)),
+                    objc2_ui_kit::UIControlState::Normal,
+                );
+                changed = true;
             }
         }
-        if content_changed {
+        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+            let current = label.text().map(|s| s.to_string()).unwrap_or_default();
+            if current != value {
+                label.setText(Some(&NSString::from_str(value)));
+                changed = true;
+            }
+        }
+        if changed {
             crate::layout::schedule_relayout(self);
         }
     }
 
-    pub fn set_bool_attribute(&self, attr: BoolAttr, value: bool) {
+    /// Set the text/value on a UITextField or UITextView. No-op on
+    /// other classes.
+    pub fn set_value(&self, value: &str) {
         let view = self.ui_view();
-        match attr {
-            BoolAttr::Hidden => {
-                if view.isHidden() != value {
-                    view.setHidden(value);
-                }
+        let mut changed = false;
+        if let Some(field) = downcast::<UITextField>(view) {
+            let current = field.text().map(|s| s.to_string()).unwrap_or_default();
+            if current != value {
+                field.setText(Some(&NSString::from_str(value)));
+                changed = true;
             }
-            BoolAttr::Enabled => {
-                if view.isUserInteractionEnabled() != value {
-                    view.setUserInteractionEnabled(value);
-                }
-                if let Some(control) = downcast::<UIControl>(view) {
-                    if control.isEnabled() != value {
-                        control.setEnabled(value);
-                    }
-                }
+        }
+        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
+            let current = tv.text().to_string();
+            if current != value {
+                tv.setText(Some(&NSString::from_str(value)));
+                changed = true;
             }
-            BoolAttr::Checked => {
-                if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(view) {
-                    if sw.isOn() != value {
-                        sw.setOn_animated(value, true);
-                    }
-                }
+        }
+        if changed {
+            crate::layout::schedule_relayout(self);
+        }
+    }
+
+    /// Set the placeholder on a UITextField. No-op on other classes.
+    pub fn set_placeholder(&self, value: &str) {
+        let view = self.ui_view();
+        if let Some(field) = downcast::<UITextField>(view) {
+            let current: String = field
+                .placeholder()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if current != value {
+                field.setPlaceholder(Some(&NSString::from_str(value)));
+                crate::layout::schedule_relayout(self);
+            }
+        }
+    }
+
+    /// Toggle UIView visibility.
+    pub fn set_hidden(&self, value: bool) {
+        let view = self.ui_view();
+        if view.isHidden() != value {
+            view.setHidden(value);
+        }
+    }
+
+    /// Toggle user-interaction / enabled state. Sets
+    /// `isUserInteractionEnabled` on the UIView; for UIControl
+    /// subclasses, also sets `isEnabled`.
+    pub fn set_enabled(&self, value: bool) {
+        let view = self.ui_view();
+        if view.isUserInteractionEnabled() != value {
+            view.setUserInteractionEnabled(value);
+        }
+        if let Some(control) = downcast::<UIControl>(view) {
+            if control.isEnabled() != value {
+                control.setEnabled(value);
+            }
+        }
+    }
+
+    /// Set the on/off state on a UISwitch (animated). No-op on
+    /// other classes.
+    pub fn set_checked(&self, value: bool) {
+        let view = self.ui_view();
+        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(view) {
+            if sw.isOn() != value {
+                sw.setOn_animated(value, true);
             }
         }
     }
@@ -1082,52 +1034,6 @@ impl Node {
         }
     }
 
-    pub fn remove_attribute(&self, name: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.remove_string_attribute(attr);
-            return;
-        }
-        if let Some(attr) = BoolAttr::from_name(name) {
-            self.remove_bool_attribute(attr);
-        }
-    }
-
-    pub fn remove_string_attribute(&self, attr: StringAttr) {
-        let view = self.ui_view();
-        match attr {
-            StringAttr::Title => {
-                if let Some(button) = downcast::<UIButton>(view) {
-                    button.setTitle_forState(
-                        Some(&NSString::from_str("")),
-                        objc2_ui_kit::UIControlState::Normal,
-                    );
-                }
-                if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
-                    label.setText(Some(&NSString::from_str("")));
-                }
-            }
-            StringAttr::Value => {
-                if let Some(field) = downcast::<UITextField>(view) {
-                    field.setText(Some(&NSString::from_str("")));
-                } else if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
-                    tv.setText(Some(&NSString::from_str("")));
-                }
-            }
-            StringAttr::Placeholder => {
-                if let Some(field) = downcast::<UITextField>(view) {
-                    field.setPlaceholder(None);
-                }
-            }
-        }
-    }
-
-    pub fn remove_bool_attribute(&self, attr: BoolAttr) {
-        match attr {
-            BoolAttr::Hidden => self.set_bool_attribute(BoolAttr::Hidden, false),
-            BoolAttr::Enabled => self.set_bool_attribute(BoolAttr::Enabled, true),
-            BoolAttr::Checked => self.set_bool_attribute(BoolAttr::Checked, false),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------

@@ -14,7 +14,7 @@
 
 mod common;
 
-use cocoa_dom::{BoolAttr, Element};
+use cocoa_dom::Element;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
 
@@ -39,7 +39,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
         let text_field = Element::create_text_field(&tree).0;
 
         // First set — establishes baseline.
-        text_field.set_attribute("value", "hello");
+        text_field.set_value("hello");
         let after_first = {
             let any: &objc2::runtime::AnyObject =
                 text_field.ns_view().as_ref();
@@ -53,7 +53,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
         // Second set with the *same* value — must be a no-op at the
         // Element level. This protects bind-cycle protection in
         // `Element::set_attribute` / `set_string_value`.
-        text_field.set_attribute("value", "hello");
+        text_field.set_value("hello");
 
         // And the underlying NSTextField's stringValue still reads
         // "hello" — sanity check.
@@ -77,14 +77,14 @@ fn set_bool_attribute_with_same_value_idempotent() {
         let tree = cocoa_dom::layout::new_tree();
         let checkbox = Element::create_checkbox(&tree).0;
 
-        checkbox.set_bool_attribute(BoolAttr::Checked, true);
+        checkbox.set_checked(true);
         let any: &objc2::runtime::AnyObject = checkbox.ns_view().as_ref();
         let btn: &NSButton =
             any.downcast_ref::<NSButton>().expect("checkbox is NSButton");
         assert_eq!(btn.state(), objc2_app_kit::NSControlStateValueOn);
 
         // Idempotent re-set.
-        checkbox.set_bool_attribute(BoolAttr::Checked, true);
+        checkbox.set_checked(true);
         assert_eq!(btn.state(), objc2_app_kit::NSControlStateValueOn);
     });
 }

@@ -52,13 +52,7 @@ pub trait Renderer: Send + Sized + Debug + 'static {
 
     /// Sets the text content of a text node.
     fn set_text(node: &Self::Text, text: &str);
-
-    /// Sets the given attribute on the given element by key and value.
-    fn set_attribute(node: &Self::Element, name: &str, value: &str);
-
-    /// Removes the given attribute from the given element.
-    fn remove_attribute(node: &Self::Element, name: &str);
-
+    
     /// Inserts `new_child` into `parent` before `marker`. If `marker` is
     /// `None`, appends to the end.
     fn insert_node(

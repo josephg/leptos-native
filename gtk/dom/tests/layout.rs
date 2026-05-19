@@ -369,7 +369,7 @@ fn label_text_change_reflowed_on_relayout() {
     let _tree = fresh_tree(&root);
 
     let label = Element::create_label(&tree).0;
-    label.set_attribute("value", "0");
+    label.set_value("0");
     root.insert_node(label.as_node(), None);
 
     layout::compute_layout(root.as_node(), (300.0, 50.0));
@@ -384,7 +384,7 @@ fn label_text_change_reflowed_on_relayout() {
         .map(|l| l.measure(gtk4::Orientation::Horizontal, -1).1)
         .unwrap_or(-1);
 
-    label.set_attribute("value", "-1");
+    label.set_value("-1");
     let raw_minus = label
         .widget()
         .downcast_ref::<gtk4::Label>()

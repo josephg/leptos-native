@@ -68,7 +68,7 @@ fn label_in_vstack_has_nonzero_height() {
     set_padding(root.as_node(), 12.0);
 
     let label = Element::create_label(&tree).0;
-    label.set_string_attribute(StringAttr::Title, "Hello, iOS!");
+    label.set_title("Hello, iOS!");
     root.insert_node(label.as_node(), None);
 
     compute_layout(
@@ -111,11 +111,11 @@ fn buttons_in_hstack_have_natural_size() {
     root.insert_node(hstack.as_node(), None);
 
     let b1 = Element::create_button(&tree).0;
-    b1.set_string_attribute(StringAttr::Title, "OK");
+    b1.set_title("OK");
     hstack.insert_node(b1.as_node(), None);
 
     let b2 = Element::create_button(&tree).0;
-    b2.set_string_attribute(StringAttr::Title, "Cancel");
+    b2.set_title("Cancel");
     hstack.insert_node(b2.as_node(), None);
 
     compute_layout(
@@ -158,14 +158,14 @@ fn vstack_label_plus_hstack_has_full_height() {
     set_padding(root.as_node(), 12.0);
 
     let label = Element::create_label(&tree).0;
-    label.set_string_attribute(StringAttr::Title, "Count: 0");
+    label.set_title("Count: 0");
     root.insert_node(label.as_node(), None);
 
     let hstack = Element::create_hstack(&tree);
     root.insert_node(hstack.as_node(), None);
     for title in ["-1", "Reset", "+1"] {
         let b = Element::create_button(&tree).0;
-        b.set_string_attribute(StringAttr::Title, title);
+        b.set_title(title);
         hstack.insert_node(b.as_node(), None);
     }
 

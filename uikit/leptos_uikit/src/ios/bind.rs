@@ -143,13 +143,12 @@ pub(crate) fn install_text_field_value_bind(
     el: &IosElement,
     bound: BoundValue,
 ) -> RenderEffect<()> {
-    use ios_dom::StringAttr;
     // Outgoing: editingChanged (every keystroke / paste / clear).
     let mut setter = bound.setter;
     el.on_text_change(move |new_value| setter(new_value));
 
-    // Incoming: signal change → set field text. Routed through
-    // `Element::set_string_attribute` (same rationale as the
+    // Incoming: signal change → set field text. Routed through the
+    // typed `Element::set_value` setter (same rationale as the
     // cocoa port — see that file). Cycle-safe per
     // `MEMORY_POLICY.md` §3 because the closure lives on the
     // RenderEffect attached to `ElementState::_effects`, not in
@@ -158,7 +157,7 @@ pub(crate) fn install_text_field_value_bind(
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let v = getter();
-        el_for_set.set_string_attribute(StringAttr::Value, &v);
+        el_for_set.set_value(&v);
     })
 }
 
@@ -484,18 +483,17 @@ pub(crate) fn install_text_view_value_bind(
     el: &IosElement,
     bound: BoundValue,
 ) -> RenderEffect<()> {
-    use ios_dom::StringAttr;
     let mut setter = bound.setter;
     el.on_text_view_change(move |new_value| setter(new_value));
 
-    // Routed through `Element::set_string_attribute` for parity
-    // with the cocoa port — see `cocoa/.../bind.rs` for the
+    // Routed through the typed `Element::set_value` setter for
+    // parity with the cocoa port — see `cocoa/.../bind.rs` for the
     // schedule_relayout rationale.
     let getter = bound.getter;
     let el_for_set = el.clone();
     RenderEffect::new(move |_prev| {
         let s = getter();
-        el_for_set.set_string_attribute(StringAttr::Value, &s);
+        el_for_set.set_value(&s);
     })
 }
 

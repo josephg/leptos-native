@@ -31,75 +31,6 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use send_wrapper::SendWrapper;
 use std::{fmt, rc::Rc};
 
-/// Compile-time-checked attribute identifiers, split by value type.
-///
-/// Cocoa builders should use these typed enums when they know the
-/// attribute name at the call site:
-///   * String-valued attributes → [`StringAttr`] +
-///     [`Element::set_string_attribute`]
-///   * Bool-valued attributes → [`BoolAttr`] +
-///     [`Element::set_bool_attribute`]
-///
-/// Passing the wrong-type variant to the wrong setter is a compile
-/// error.
-///
-/// `Element::set_attribute(&str, &str)` and
-/// `Element::remove_attribute(&str)` stay around for compatibility
-/// with the `Rndr` trait (which is web-shaped and expects string
-/// keys). Internally those route through `from_name` lookups on
-/// the appropriate enum.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum StringAttr {
-    Title,
-    Value,
-    Placeholder,
-}
-
-impl StringAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "title" => Self::Title,
-            "value" => Self::Value,
-            "placeholder" => Self::Placeholder,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Title => "title",
-            Self::Value => "value",
-            Self::Placeholder => "placeholder",
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BoolAttr {
-    Enabled,
-    Hidden,
-    Checked,
-}
-
-impl BoolAttr {
-    pub fn from_name(s: &str) -> Option<Self> {
-        Some(match s {
-            "enabled" => Self::Enabled,
-            "hidden" => Self::Hidden,
-            "checked" => Self::Checked,
-            _ => return None,
-        })
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Enabled => "enabled",
-            Self::Hidden => "hidden",
-            Self::Checked => "checked",
-        }
-    }
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -539,133 +470,102 @@ impl Node {
         }
     }
 
-    /// `&str`-keyed entry point matching the `Rndr` trait. Routes
-    /// through the typed enums — silently no-ops on unknown names.
-    /// Internal cocoa builders should prefer the typed
-    /// [`set_string_attribute`](Self::set_string_attribute) and
-    /// [`set_bool_attribute`](Self::set_bool_attribute) directly.
-    pub fn set_attribute(&self, name: &str, value: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.set_string_attribute(attr, value);
+    /// Set the title on an NSButton (push button / checkbox).
+    /// No-op on other view classes. Diffs first so a same-value set
+    /// doesn't trigger an unnecessary layout/redraw — important for
+    /// `bind:` effects that re-fire with unchanged values.
+    pub fn set_title(&self, value: &str) {
+        let view = self.ns_view();
+        if let Some(button) = downcast::<NSButton>(view) {
+            let current = button.title().to_string();
+            if current != value {
+                button.setTitle(&NSString::from_str(value));
+                crate::layout::schedule_relayout(self);
+            }
         }
-        // Bool attrs through this entry point would require parsing
-        // "true"/"false" — we deliberately don't, since the typed
-        // setter is the only blessed path. Unknown names no-op.
     }
 
-    /// Typed string-valued attribute setter. Routing:
-    ///   * `Title`       → `NSButton::setTitle:`
-    ///   * `Value`       → `NSControl::setStringValue:`
-    ///   * `Placeholder` → `NSTextField::setPlaceholderString:`
-    pub fn set_string_attribute(&self, attr: StringAttr, value: &str) {
+    /// Set the string value on an NSControl (`setStringValue:`) or,
+    /// for the `<text_view>` wrapper (NSScrollView → NSTextView),
+    /// route through the documentView's `setString:`. No-op on other
+    /// view classes.
+    pub fn set_value(&self, value: &str) {
         let view = self.ns_view();
-        let mut content_changed = false;
-        match attr {
-            StringAttr::Title => {
-                if let Some(button) = downcast::<NSButton>(view) {
-                    // Skip if the title hasn't actually changed —
-                    // avoids a needless layout/redraw cycle when the
-                    // same value is re-applied (e.g. by a bind:
-                    // Effect after user typing already left the title
-                    // unchanged).
-                    let current = button.title().to_string();
-                    if current != value {
-                        button.setTitle(&NSString::from_str(value));
-                        content_changed = true;
-                    }
-                }
+        if let Some(control) = downcast::<NSControl>(view) {
+            let current = control.stringValue().to_string();
+            if current != value {
+                control.setStringValue(&NSString::from_str(value));
+                crate::layout::schedule_relayout(self);
             }
-            StringAttr::Value => {
-                if let Some(control) = downcast::<NSControl>(view) {
-                    let current = control.stringValue().to_string();
-                    if current != value {
-                        control.setStringValue(&NSString::from_str(value));
-                        content_changed = true;
-                    }
-                } else if let Some(scroll) =
-                    downcast::<objc2_app_kit::NSScrollView>(view)
+        } else if let Some(scroll) =
+            downcast::<objc2_app_kit::NSScrollView>(view)
+        {
+            if let Some(doc) = scroll.documentView() {
+                let any_doc: &objc2::runtime::AnyObject = &doc;
+                if let Some(tv) =
+                    any_doc.downcast_ref::<objc2_app_kit::NSTextView>()
                 {
-                    // text_view is an NSScrollView wrapping an
-                    // NSTextView (the document view). Route value
-                    // mutations through to the inner NSTextView.
-                    if let Some(doc) = scroll.documentView() {
-                        let any_doc: &objc2::runtime::AnyObject = &doc;
-                        if let Some(tv) = any_doc
-                            .downcast_ref::<objc2_app_kit::NSTextView>()
-                        {
-                            let current = tv.string().to_string();
-                            if current != value {
-                                tv.setString(&NSString::from_str(value));
-                                content_changed = true;
-                            }
-                        }
-                    }
-                }
-            }
-            StringAttr::Placeholder => {
-                if let Some(field) = downcast::<NSTextField>(view) {
-                    // Diff before mutating: NSTextField doesn't redraw
-                    // on same-value sets but we keep the parity with
-                    // Title/Value behavior anyway.
-                    let current: String = field
-                        .placeholderString()
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
+                    let current = tv.string().to_string();
                     if current != value {
-                        let s = NSString::from_str(value);
-                        field.setPlaceholderString(Some(&s));
-                        // Placeholder text shows when the field is
-                        // empty; its width contributes to NSTextField's
-                        // intrinsicContentSize. Mark dirty so Taffy
-                        // re-measures.
-                        content_changed = true;
+                        tv.setString(&NSString::from_str(value));
+                        crate::layout::schedule_relayout(self);
                     }
                 }
             }
-        }
-        if content_changed {
-            // Intrinsic size may have changed; trigger a relayout
-            // pass so the frame catches up to the new content.
-            crate::layout::schedule_relayout(self);
         }
     }
 
-    /// Typed boolean-valued attribute setter. Routing:
-    ///   * `Enabled` → `NSControl::setEnabled:`
-    ///   * `Hidden`  → `NSView::setHidden:`
-    ///   * `Checked` → `NSButton::setState:` (On / Off)
-    ///
-    /// Each setter diffs against the current AppKit value before
-    /// mutating (avoids redundant redraws / focus-ring flashes).
-    pub fn set_bool_attribute(&self, attr: BoolAttr, value: bool) {
+    /// Set the placeholder string on an NSTextField. No-op on other
+    /// view classes. The placeholder shows when the field is empty;
+    /// its width contributes to `intrinsicContentSize`, so a change
+    /// schedules a relayout.
+    pub fn set_placeholder(&self, value: &str) {
         let view = self.ns_view();
-        match attr {
-            BoolAttr::Hidden => {
-                if view.isHidden() != value {
-                    view.setHidden(value);
-                }
+        if let Some(field) = downcast::<NSTextField>(view) {
+            let current: String = field
+                .placeholderString()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            if current != value {
+                field.setPlaceholderString(Some(&NSString::from_str(value)));
+                crate::layout::schedule_relayout(self);
             }
-            BoolAttr::Enabled => {
-                if let Some(control) = downcast::<NSControl>(view) {
-                    if control.isEnabled() != value {
-                        control.setEnabled(value);
-                    }
-                }
+        }
+    }
+
+    /// Toggle the underlying NSView's visibility. Diffs first to
+    /// avoid redundant redraws.
+    pub fn set_hidden(&self, value: bool) {
+        let view = self.ns_view();
+        if view.isHidden() != value {
+            view.setHidden(value);
+        }
+    }
+
+    /// Toggle the enabled state on an NSControl. No-op on plain
+    /// NSViews. Diffs first to avoid focus-ring flashes.
+    pub fn set_enabled(&self, value: bool) {
+        let view = self.ns_view();
+        if let Some(control) = downcast::<NSControl>(view) {
+            if control.isEnabled() != value {
+                control.setEnabled(value);
             }
-            BoolAttr::Checked => {
-                if let Some(button) = downcast::<NSButton>(view) {
-                    use objc2_app_kit::{
-                        NSControlStateValueOff, NSControlStateValueOn,
-                    };
-                    let want = if value {
-                        NSControlStateValueOn
-                    } else {
-                        NSControlStateValueOff
-                    };
-                    if button.state() != want {
-                        button.setState(want);
-                    }
-                }
+        }
+    }
+
+    /// Set the on/off state on an NSButton (checkbox / radio).
+    /// No-op on other view classes.
+    pub fn set_checked(&self, value: bool) {
+        let view = self.ns_view();
+        if let Some(button) = downcast::<NSButton>(view) {
+            use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn};
+            let want = if value {
+                NSControlStateValueOn
+            } else {
+                NSControlStateValueOff
+            };
+            if button.state() != want {
+                button.setState(want);
             }
         }
     }
@@ -1824,52 +1724,6 @@ impl Node {
         window.makeFirstResponder(None)
     }
 
-    /// `&str`-keyed entry point matching the `Rndr` trait. Looks
-    /// up the name in both [`StringAttr`] and [`BoolAttr`]; silently
-    /// no-ops on unknown names.
-    pub fn remove_attribute(&self, name: &str) {
-        if let Some(attr) = StringAttr::from_name(name) {
-            self.remove_string_attribute(attr);
-            return;
-        }
-        if let Some(attr) = BoolAttr::from_name(name) {
-            self.remove_bool_attribute(attr);
-        }
-    }
-
-    /// Reset a string attribute to empty/None.
-    pub fn remove_string_attribute(&self, attr: StringAttr) {
-        let view = self.ns_view();
-        match attr {
-            StringAttr::Title => {
-                if let Some(button) = downcast::<NSButton>(view) {
-                    button.setTitle(&NSString::from_str(""));
-                }
-            }
-            StringAttr::Value => {
-                if let Some(control) = downcast::<NSControl>(view) {
-                    control.setStringValue(&NSString::from_str(""));
-                }
-            }
-            StringAttr::Placeholder => {
-                if let Some(field) = downcast::<NSTextField>(view) {
-                    field.setPlaceholderString(None);
-                }
-            }
-        }
-    }
-
-    /// Reset a bool attribute to its default-absent value:
-    ///   * `Hidden`  → `false` (visible)
-    ///   * `Enabled` → `true` (enabled — NSControl's default)
-    ///   * `Checked` → `false` (off)
-    pub fn remove_bool_attribute(&self, attr: BoolAttr) {
-        match attr {
-            BoolAttr::Hidden => self.set_bool_attribute(BoolAttr::Hidden, false),
-            BoolAttr::Enabled => self.set_bool_attribute(BoolAttr::Enabled, true),
-            BoolAttr::Checked => self.set_bool_attribute(BoolAttr::Checked, false),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------

@@ -74,7 +74,7 @@ fn set_text_marks_node_dirty() {
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&tree, &child));
 
-    child.set_attribute("value", "now I have content");
+    child.set_value("now I have content");
 
     assert!(
         dirty_for(&tree, &child),

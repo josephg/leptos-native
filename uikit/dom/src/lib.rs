@@ -49,7 +49,7 @@ pub use interval::{
 };
 pub use key_event::KeyEvent;
 pub use node::{
-    BoolAttr, Element, Node, StringAttr, WeakElement, WeakNode,
+    Element, Node, WeakElement, WeakNode,
 };
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
