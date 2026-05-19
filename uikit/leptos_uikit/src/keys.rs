@@ -7,5 +7,5 @@ pub use renderer::attr_keys::{AttributeKey, Checked, Value};
 
 /// `bind:selection` key — defined in `crate::ios::bind` next to its
 /// `BindAttribute` impls. Re-exported here so the macro path
-/// `::leptos::attr::Selection` resolves.
+/// `::leptos_native::attr::Selection` resolves.
 pub use crate::ios::bind::Selection;

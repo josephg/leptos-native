@@ -4,7 +4,7 @@
 //! double-checks both the trait logic (which arm wins) AND the
 //! rebuild path (when a signal flips, the right view ends up
 //! mounted). Uses direct builder calls + the leptos `Switch` /
-//! `Match` components (no `view!{}` macro — the `::leptos::tachys`
+//! `Match` components (no `view!{}` macro — the `::leptos_native::tachys`
 //! path it emits doesn't resolve inside the `leptos_cocoa` crate
 //! itself).
 
@@ -14,7 +14,7 @@ mod common;
 
 use leptos_cocoa::prelude::*;
 use leptos_cocoa::cocoa::element::{label, vstack};
-use leptos::children::ToChildren;
+use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{Get, Set};
@@ -31,9 +31,9 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 fn arm(
     when: impl Fn() -> bool + Send + 'static,
     text: &'static str,
-) -> leptos::control_flow::Match<leptos_cocoa::cocoa::element::Label, Dom> {
-    leptos::control_flow::Match(
-        leptos::control_flow::MatchProps::builder()
+) -> leptos_native::control_flow::Match<leptos_cocoa::cocoa::element::Label, Dom> {
+    leptos_native::control_flow::Match(
+        leptos_native::control_flow::MatchProps::builder()
             .when(when)
             .children(ToChildren::to_children(move || label().text(text)))
             .build()
@@ -92,8 +92,8 @@ fn single_match_when_true_renders_child() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
         let arms = (arm(|| true, "hello"),);
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );
@@ -118,8 +118,8 @@ fn single_match_when_false_renders_nothing() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
         let arms = (arm(|| false, "hello"),);
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );
@@ -144,8 +144,8 @@ fn two_matches_first_wins() {
     with_reactive_scope(|| {
         // Both arms true; FIRST should win.
         let arms = (arm(|| true, "first"), arm(|| true, "second"));
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );
@@ -174,8 +174,8 @@ fn signal_change_swaps_active_arm() {
             arm(move || tab.get() == 0, "zero"),
             arm(move || tab.get() == 1, "one"),
         );
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );
@@ -214,8 +214,8 @@ fn no_match_renders_nothing_with_two_arms() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
         let arms = (arm(|| false, "a"), arm(|| false, "b"));
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );
@@ -238,8 +238,8 @@ fn transition_through_no_match() {
             arm(move || sel.get() == 1, "one"),
             arm(move || sel.get() == 2, "two"),
         );
-        let switch = leptos::control_flow::Switch(
-            leptos::control_flow::SwitchProps::builder()
+        let switch = leptos_native::control_flow::Switch(
+            leptos_native::control_flow::SwitchProps::builder()
                 .children(ToChildren::to_children(move || arms))
                 .build()
         );

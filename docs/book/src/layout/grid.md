@@ -6,7 +6,7 @@ explicit tracks, fractional units, named lines, `auto-flow` — so
 the mental model carries over cleanly.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 view! {
     <grid

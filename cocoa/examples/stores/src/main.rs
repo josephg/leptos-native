@@ -3,7 +3,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use reactive_stores::{Patch, Store};
 
     #[derive(Debug, Store, Patch)]

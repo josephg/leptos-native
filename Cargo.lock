@@ -1632,30 +1632,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
-name = "leptos"
-version = "0.1.0"
-dependencies = [
- "any_spawner",
- "either_of",
- "futures",
- "leptos_macro",
- "oco_ref",
- "or_poisoned",
- "paste",
- "reactive_graph",
- "renderer",
- "rustc-hash",
- "rustc_version",
- "send_wrapper",
- "slotmap",
- "thiserror 2.0.17",
- "throw_error",
- "tracing",
- "typed-builder",
- "typed-builder-macro",
-]
-
-[[package]]
 name = "leptos_apple_shared"
 version = "0.1.0"
 dependencies = [
@@ -1669,9 +1645,9 @@ dependencies = [
  "any_spawner",
  "cocoa_dom",
  "either_of",
- "leptos",
  "leptos_apple_shared",
  "leptos_macro",
+ "leptos_native",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
@@ -1692,8 +1668,8 @@ dependencies = [
  "glib 0.21.5",
  "gtk4",
  "gtk_dom",
- "leptos",
  "leptos_macro",
+ "leptos_native",
  "oco_ref",
  "reactive_graph",
  "renderer",
@@ -1722,15 +1698,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos_native"
+version = "0.1.0"
+dependencies = [
+ "any_spawner",
+ "either_of",
+ "futures",
+ "leptos_macro",
+ "oco_ref",
+ "or_poisoned",
+ "paste",
+ "reactive_graph",
+ "renderer",
+ "rustc-hash",
+ "rustc_version",
+ "send_wrapper",
+ "slotmap",
+ "thiserror 2.0.17",
+ "throw_error",
+ "tracing",
+ "typed-builder",
+ "typed-builder-macro",
+]
+
+[[package]]
 name = "leptos_uikit"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
  "either_of",
  "ios_dom",
- "leptos",
  "leptos_apple_shared",
  "leptos_macro",
+ "leptos_native",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",

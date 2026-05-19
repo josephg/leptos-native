@@ -45,7 +45,7 @@ when `email` or `admin` does.
 ## A worked example
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use reactive_stores::{Patch, Store};
 
 #[derive(Debug, Store, Patch)]

@@ -3,7 +3,7 @@
 The smallest useful Leptos program looks like this:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter() -> impl IntoView {
@@ -127,7 +127,7 @@ mount_to_window(
 On iOS there's only `run`:
 
 ```rust
-leptos::mount_ios::run(|| view! { <Counter /> });
+leptos_native::mount_ios::run(|| view! { <Counter /> });
 ```
 
 ## 5. Closures everywhere

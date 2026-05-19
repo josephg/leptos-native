@@ -8,7 +8,7 @@
 //! inside an `AsyncDerived` works exactly like the cocoa version.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]

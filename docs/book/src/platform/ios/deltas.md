@@ -39,7 +39,7 @@ write `<switch>` normally in `view!{}`.
 |-------------------------------|------------------------------|
 | `mount_to_window`             | — (only `run`)               |
 | `mount_to_split_window`       | — (no split-view backing)    |
-| `run`                         | `leptos::mount_ios::run`     |
+| `run`                         | `leptos_native::mount_ios::run`     |
 
 ## Window / scene model
 

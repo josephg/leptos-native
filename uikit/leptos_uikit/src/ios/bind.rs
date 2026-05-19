@@ -1,7 +1,7 @@
 //! Two-way binding (`bind:value=signal`, `bind:checked=signal`) for
 //! UIControl-derived elements. Direct port of [`crate::cocoa::bind`].
 //!
-//! The `view!{}` macro emits `.bind(::leptos::attr::Value, signal)`
+//! The `view!{}` macro emits `.bind(::leptos_native::attr::Value, signal)`
 //! for `bind:value=signal` (and similarly for `bind:checked`). We
 //! provide:
 //!   - an [`IntoSignal<T>`] trait abstracting over the kinds of

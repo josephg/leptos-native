@@ -14,7 +14,7 @@
 //!   * No CSS-based "hidden" toggling; we hide via
 //!     `hidden=move || …`.
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

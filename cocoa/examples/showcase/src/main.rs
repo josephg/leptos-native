@@ -5,8 +5,8 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
-    use leptos::core::children::TypedChildrenFn;
+    use leptos_native::prelude::*;
+    use leptos_native::core::children::TypedChildrenFn;
     use std::marker::PhantomData;
 
     // Section takes typed children. With this fork's no-AnyView design,

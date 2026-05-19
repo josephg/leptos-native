@@ -1,7 +1,7 @@
 # Cocoa API review
 
 A review of the public API surface that downstream apps target when they
-write `leptos = { package = "leptos_cocoa" }` and `use leptos::prelude::*;`.
+write `leptos = { package = "leptos_cocoa" }` and `use leptos_native::prelude::*;`.
 
 Scope: macOS only. The iOS and GTK ports mirror the same shape and most
 of the recommendations below apply equally to them, but the audit was
@@ -20,7 +20,7 @@ This is split into three sections:
 
 ### 1.1 Entry points (mounting)
 
-From `leptos::prelude::*`:
+From `leptos_native::prelude::*`:
 
 ```rust
 pub fn run<F, V>(f: F)                              // multi-window or custom
@@ -28,7 +28,7 @@ pub fn mount_to_window<F, V>(title: &str, size: (f64, f64), f: F)
 pub fn mount_to_split_window<F, V, P>(title: &str, size: (f64, f64), f: F)
 ```
 
-Plus the bare-builder form via `leptos::tachys::cocoa::window::window()`
+Plus the bare-builder form via `leptos_native::tachys::cocoa::window::window()`
 for the `run(|| (window().title(..).child(..), window()..))` multi-window
 pattern.
 
@@ -393,7 +393,7 @@ is an implementation detail the framework should hide.
 1. The `Color` type lives in `cocoa_dom`, leaking the implementation
    crate's name into user code (`use cocoa_dom::Color` shows up in
    spotify/pages examples). Should be re-exported from
-   `leptos::prelude::Color` only — actually it is, but examples
+   `leptos_native::prelude::Color` only — actually it is, but examples
    habitually import from `cocoa_dom` directly because it shows up
    in autocomplete first.
 2. Same for `cocoa_dom::Date`, `cocoa_dom::TextAlignment`,
@@ -440,7 +440,7 @@ modifier is the obvious target.
 The directive escape hatch is documented per-builder but there's no
 example of writing a directive from scratch. The `IntoDirective` trait
 is re-exported from `apple_shared` but the prelude doesn't even pull
-it in; users have to find `leptos::tachys::html::directive::*` or
+it in; users have to find `leptos_native::tachys::html::directive::*` or
 `leptos_cocoa::directive::IntoDirective`.
 
 #### 2.2.16 The `bind:value=` two-way binding silently accepts label
@@ -466,7 +466,7 @@ prelude also exposes a `tachys::cocoa::element::*` re-export, and
 the `counter_without_macros` example uses both:
 
 ```rust
-use leptos::tachys::{
+use leptos_native::tachys::{
     cocoa::element::{button, label, vstack},
     html::event::click,
 };
@@ -704,8 +704,8 @@ sharp edges.
    `<label>{move || sig.get()}</label>` (one character longer).
 6. **Stop leaking `cocoa_dom::` into example code.** Re-export
    `Color`, `Date`, `KeyEvent`, `TextAlignment`, `LineBreak`,
-   `SegmentStyle`, `DatePickerStyle` from a single `leptos::prelude`
-   path *only* (or `leptos::types::*`). Mark `cocoa_dom` as
+   `SegmentStyle`, `DatePickerStyle` from a single `leptos_native::prelude`
+   path *only* (or `leptos_native::types::*`). Mark `cocoa_dom` as
    `#[doc(hidden)]` for downstream — users should never need it.
 7. **Single import path for builders.** Pick `tachys::html::element::*`
    (matches macro) OR `tachys::cocoa::*` (matches port). Probably

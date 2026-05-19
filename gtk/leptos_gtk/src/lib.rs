@@ -2,7 +2,7 @@
 //!
 //! The user-facing crate. End-user examples write
 //! `leptos = { package = "leptos_gtk", path = ... }` in their
-//! Cargo.toml, then `use leptos::prelude::*` resolves to the
+//! Cargo.toml, then `use leptos_native::prelude::*` resolves to the
 //! gtk-specialized prelude here.
 //!
 //! The [`Dom`] unit type is this crate's [`renderer::Renderer`] impl.
@@ -23,12 +23,12 @@ pub use renderer_gtk::Dom;
 /// GTK-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
 pub type AnyView = renderer::view::AnyView<Dom>;
 
-/// GTK-pinned alias of [`leptos::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+/// GTK-pinned alias of [`leptos_native::children::ChildrenFn`].
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
 
-/// Bind/attribute keys re-exported under the `leptos::attr` path the
-/// `bind:foo=value` macro syntax expands to (`::leptos::attr::Value`,
-/// `::leptos::attr::Checked`).
+/// Bind/attribute keys re-exported under the `leptos_native::attr` path the
+/// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
+/// `::leptos_native::attr::Checked`).
 pub mod attr {
     pub use crate::keys::*;
 }
@@ -37,28 +37,28 @@ pub mod attr {
 // User-facing surface
 //
 // Exposed under the names the leptos_macro view!{} expansion expects
-// (`::leptos::tachys::html::element::*`, `::leptos::prelude::*`, etc.)
+// (`::leptos_native::tachys::html::element::*`, `::leptos_native::prelude::*`, etc.)
 // when this crate is brought in as `leptos = { package = "leptos_gtk" }`.
 // ---------------------------------------------------------------------
 
 /// Re-export of the renderer-agnostic core (Show, For, IntoView, etc.).
-pub use leptos as core;
+pub use leptos_native as core;
 
 // Re-exports the `#[component]` macro emits paths into.
-pub use leptos::component;
-pub use leptos::reactive;
-pub use leptos::__reexports;
-pub use leptos::children;
-pub use leptos::context;
+pub use leptos_native::component;
+pub use leptos_native::reactive;
+pub use leptos_native::__reexports;
+pub use leptos_native::children;
+pub use leptos_native::context;
 #[doc(hidden)]
-pub use leptos::typed_builder;
+pub use leptos_native::typed_builder;
 #[doc(hidden)]
-pub use leptos::typed_builder_macro;
-pub use leptos::callback;
+pub use leptos_native::typed_builder_macro;
+pub use leptos_native::callback;
 
 /// View-tree machinery + element builders + events under the path
-/// shape the `view!{}` macro emits (`::leptos::tachys::html::element::*`,
-/// `::leptos::tachys::view::*`).
+/// shape the `view!{}` macro emits (`::leptos_native::tachys::html::element::*`,
+/// `::leptos_native::tachys::view::*`).
 ///
 /// The web Leptos macro additionally routed SVG-tag-named elements
 /// through `tachys::svg::*` and emitted `.attr(name, value)` for
@@ -69,7 +69,7 @@ pub mod tachys {
     pub use ::renderer::view;
 
     /// Re-export of the gtk builders/window/etc., for the
-    /// `::leptos::tachys::gtk::*` paths some examples reference
+    /// `::leptos_native::tachys::gtk::*` paths some examples reference
     /// directly.
     pub mod gtk {
         pub use crate::gtk::*;
@@ -92,11 +92,11 @@ pub mod tachys {
     }
 }
 
-/// GTK-specialized [`IntoView`](leptos::IntoView). Pinning R to
+/// GTK-specialized [`IntoView`](leptos_native::IntoView). Pinning R to
 /// [`Dom`] lets user code write `impl IntoView` (the type parameter
 /// is resolved at the trait boundary).
-pub trait IntoView: leptos::IntoView<Dom> {}
-impl<T: leptos::IntoView<Dom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<Dom> {}
+impl<T: leptos_native::IntoView<Dom>> IntoView for T {}
 
 /// User prelude — items end-user examples bring into scope.
 pub mod prelude {

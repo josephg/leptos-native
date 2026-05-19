@@ -5,7 +5,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use std::time::Duration;
 
     #[component]

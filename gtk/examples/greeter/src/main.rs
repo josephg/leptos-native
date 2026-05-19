@@ -3,7 +3,7 @@
 //! whatever you type.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Greeter() -> impl IntoView {

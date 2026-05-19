@@ -14,7 +14,7 @@ publish = false
 # spawner can poll works.
 
 [dependencies]
-leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 
 # compio: thread-per-core runtime. On macOS, io-uring isn't
 # available, so we enable `polling` (kqueue under the hood via

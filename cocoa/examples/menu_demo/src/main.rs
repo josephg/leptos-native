@@ -13,12 +13,12 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     // The `view!{}` macro emits `event::action` for `on:action=…`. The
-    // macro path resolves to `::leptos::tachys::html::event::action`,
+    // macro path resolves to `::leptos_native::tachys::html::event::action`,
     // not to `event::action` in scope, so this `use` is only needed
     // when constructing builders directly (see `recent_items` below).
-    use leptos::tachys::html::event;
+    use leptos_native::tachys::html::event;
 
     pub fn main() {
         run(|| {

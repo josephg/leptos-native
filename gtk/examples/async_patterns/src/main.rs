@@ -8,7 +8,7 @@
 //! main-loop tick.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use std::time::Duration;
     use tokio::sync::{mpsc, oneshot};
 
@@ -34,7 +34,7 @@ mod app {
                 };
                 let _ = tx.send(body);
             });
-            leptos::core::task::spawn_local(async move {
+            leptos_native::core::task::spawn_local(async move {
                 let Some(rx) = cancel_slot.try_update(Option::take).flatten() else {
                     return;
                 };
@@ -97,7 +97,7 @@ mod app {
         let call = move |op: Op, a: i64, b: i64| {
             let (reply_tx, reply_rx) = oneshot::channel();
             let _ = svc.send(MathRequest { op, a, b, reply: reply_tx });
-            leptos::core::task::spawn_local(async move {
+            leptos_native::core::task::spawn_local(async move {
                 if let Ok(v) = reply_rx.await {
                     last.set(format!("= {v}"));
                 }

@@ -624,7 +624,7 @@ submenu repopulation is a v2 feature — it'd need either a
 remove-and-rebuild strategy, or a keyed reconciler analog of `For`.
 
 **`<window>` is now also a macro tag.** Until now examples used
-`window()` directly (imported from `leptos::tachys::cocoa::window`)
+`window()` directly (imported from `leptos_native::tachys::cocoa::window`)
 because no example needed `<window>` siblings to `<menu_bar>`.
 Added `window` to `element_macos.rs` so the macro path resolves.
 `Window::size` now takes one argument (an `impl Into<WindowSize>`)
@@ -717,7 +717,7 @@ content_root.teardown() → user's on_close.
   emission path).
 - Hid `cocoa_dom::` from user code. `Color`, `Date`, `Element`,
   `KeyEvent`, `LineBreak`, `TextAlignment`, `SegmentStyle`,
-  `DatePickerStyle` are all re-exported from `leptos::prelude`;
+  `DatePickerStyle` are all re-exported from `leptos_native::prelude`;
   examples no longer import from `cocoa_dom::` directly.
 - Unified `Grid::align_items()` → `Grid::align()` matching Stack.
 
@@ -1625,7 +1625,7 @@ you avoid one Label ergonomic gotcha.
 |-----------------|-----------------|-----------------------------------------------------|
 | `Resource`      | ✓               | Tier 2 baseline                                     |
 | `<Suspense>`    | ✓               | Tier 2 baseline                                     |
-| `Suspend::new`  | ✓               | Already re-exported from `leptos::prelude::*`       |
+| `Suspend::new`  | ✓               | Already re-exported from `leptos_native::prelude::*`       |
 | `LocalResource` | ✓               | Comes via `leptos_server::*` (no native gating)     |
 | `ErrorBoundary` | ✓               | Works as-is — pure reactive_graph                   |
 | `<Transition>`  | ✓               | Works as-is                                         |
@@ -2138,7 +2138,7 @@ is no longer responsible for mounting children. Instead:
     `run_app(title, size, build)` is gone — windows aren't owned by
     the app entry point anymore.
 
-**`leptos::mount_macos`** now exposes:
+**`leptos_native::mount_macos`** now exposes:
   - `run(closure)` — generic; closure returns any `Render`. The
     typical use is to return one or more `Window`s.
   - `mount_to_window(title, size, closure)` — sugar that wraps the
@@ -2151,7 +2151,7 @@ is no longer responsible for mounting children. Instead:
   - `cocoa_dom/examples/two_windows.rs` (new) — opens two independent
     windows from a single `mount::run` call. Validated working
     (multi-window confirmed; resize works on both windows).
-  - `examples/counter_macos/` — uses `leptos::prelude::*` with
+  - `examples/counter_macos/` — uses `leptos_native::prelude::*` with
     `mount_to_window`. Still works post-refactor.
 
 **Known limitations:**
@@ -2524,7 +2524,7 @@ For balance — these I was nervous about and they're actually fine:
 **Decision.** The `leptos` crate now compiles on macOS. Web-only
 modules (`form`, `portal`, `animated_show`, `mount`, `hydration`) are
 gated behind `cfg(not(target_os = "macos"))`. A new
-`leptos::mount_macos` module provides `mount_to_window(title, size, f)`
+`leptos_native::mount_macos` module provides `mount_to_window(title, size, f)`
 as the macOS analogue of `mount_to_body` / `mount_to`.
 
 The prelude on macOS re-exports the core stuff (signals, effects,
@@ -2533,16 +2533,16 @@ component) plus `mount_macos::*` and `tachys::cocoa::*`. Web-only
 prelude items (`bind:` infra, `node_ref`, `leptos_dom::helpers::*`,
 `form::*`, etc.) are dropped.
 
-A new `leptos::cocoa` re-exports `tachys::cocoa` for ergonomics:
-`use leptos::cocoa::element::{button, label, ...}`.
+A new `leptos_native::cocoa` re-exports `tachys::cocoa` for ergonomics:
+`use leptos_native::cocoa::element::{button, label, ...}`.
 
 **Status.** Validated with `examples/counter_macos/`, a counter that
-uses `leptos::prelude::*` and `mount_to_window` end-to-end. Compiles,
+uses `leptos_native::prelude::*` and `mount_to_window` end-to-end. Compiles,
 runs, and quits cleanly via Cmd-Q (exit code 0).
 
 **What's NOT in part 2 — split into Stage 5 part 3 (task #9).** The
 `view!{}` macro is *not* wired up on macOS. It hardcodes 26
-`::leptos::tachys::html::*` paths in `leptos_macro/src/view/mod.rs`,
+`::leptos_native::tachys::html::*` paths in `leptos_macro/src/view/mod.rs`,
 and proc macros can't read consumer `target_os`. To make it work
 natively we need either:
   1. Fork the macro into a Cocoa-flavoured `view_cocoa!{}`, or
@@ -2628,7 +2628,7 @@ on signal change. User confirmed clicks work.
   - Make the `view!{}` macro expand to our builder calls. Macro is
     in `leptos_macro`; it parses HTML-ish syntax and emits builder
     calls. Likely needs cocoa-aware pieces or a fork.
-  - `mount_to_window` as a `leptos::mount` entry point.
+  - `mount_to_window` as a `leptos_native::mount` entry point.
   - `#[component]` + `IntoView` integration so users can write
     components naturally.
 
@@ -2955,7 +2955,7 @@ still uses `on_click` (via NSButton subclass) — both work.
 ### Custom AttributeKey (`Selection`) for non-HTML bindings
 
 `bind:selection=signal` on `<pop_up_button>` emits
-`.bind(::leptos::attr::Selection, signal)` from the macro.
+`.bind(::leptos_native::attr::Selection, signal)` from the macro.
 "Selection" isn't in the upstream HTML attribute list, so we
 defined `Selection` in `tachys::cocoa::bind` and re-exported it
 from `tachys::html::attribute` (under
@@ -3188,7 +3188,7 @@ from text fields, no warning.
     `on_control_action`**. Could be inlined / removed.
   * **`Selection` AttributeKey lives in `cocoa::bind` and is
     re-exported from `tachys::html::attribute`** to satisfy the
-    macro emit path (`::leptos::attr::Selection`). Awkward
+    macro emit path (`::leptos_native::attr::Selection`). Awkward
     indirection that every future cocoa-only bind key will need.
     A small `#[cfg(target_os = "macos")] mod cocoa_keys` in the
     attribute module might centralize them.
@@ -3771,7 +3771,7 @@ Three of four items shipped, one deferred.
   * **`set_interval_with_handle`** — `cocoa_dom::interval` module
     with NSTimer-backed timer. Defines `IntervalHandle` (with
     `.clear()`) + an `IntervalError` for off-main-thread errors.
-    Re-exported from `leptos::prelude::*` on macOS so example
+    Re-exported from `leptos_native::prelude::*` on macOS so example
     code matches the upstream signature unchanged. Backing class
     is a small `TimerTarget` ObjC subclass holding a Rust closure
     via the same pattern as `ActionTarget`.
@@ -3780,7 +3780,7 @@ Three of four items shipped, one deferred.
     `RwSignal<Option<SendWrapper<Element>>>`. `new()`, `get()`,
     `get_untracked()`, `on_load(f)`, plus a private `load(&Element)`
     that builders call after constructing their underlying element.
-    Re-exported from `leptos::prelude::*` on macOS. Unlike the web
+    Re-exported from `leptos_native::prelude::*` on macOS. Unlike the web
     `NodeRef<HtmlInputElement>` etc., this is monomorphic — there's
     one element type on macOS, no JsCast, no type parameter.
     `.node_ref(r)` builder method on Button, Checkbox, Slider,
@@ -3843,7 +3843,7 @@ something useful with the attr.
     AddAnyAttr stub still drops it.
 
   * **B. Wrap component output in a custom View that intercepts at
-    mount-time.** Requires forking upstream `leptos::View<T>` —
+    mount-time.** Requires forking upstream `leptos_native::View<T>` —
     bad maintenance posture.
 
   * **C. Custom macro / IntoView path on macOS.** Hard fork. No.
@@ -3973,7 +3973,7 @@ API surface:
   * `Storage::synchronize()` — explicit flush (rarely needed;
     AppKit lazy-flushes).
 
-Re-exported from `leptos::prelude::*` on macOS.
+Re-exported from `leptos_native::prelude::*` on macOS.
 
 7 unit tests in `cocoa_dom/tests/storage.rs` cover round-trip,
 missing-key, overwrite, JSON-blob, unicode, etc. Each test uses

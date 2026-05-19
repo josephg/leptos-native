@@ -79,8 +79,8 @@ impl ToTokens for Model {
             #[doc = ""]
             #docs
             #prop_docs
-            #[derive(::leptos::typed_builder_macro::TypedBuilder)]
-            #[builder(doc, crate_module_path=::leptos::typed_builder)]
+            #[derive(::leptos_native::typed_builder_macro::TypedBuilder)]
+            #[builder(doc, crate_module_path=::leptos_native::typed_builder)]
             #vis struct #name #generics #where_clause {
                 #prop_builder_fields
             }
@@ -91,15 +91,15 @@ impl ToTokens for Model {
                 }
             }
 
-            /*impl #impl_generics ::leptos::Props for #name #generics #where_clause {
+            /*impl #impl_generics ::leptos_native::Props for #name #generics #where_clause {
                 type Builder = #builder_name #generics;
                 fn builder() -> Self::Builder {
                     #name::builder()
                 }
             }
 
-            impl #impl_generics ::leptos::DynAttrs for #name #generics #where_clause {
-                fn dyn_attrs(mut self, v: Vec<(&'static str, ::leptos::Attribute)>) -> Self {
+            impl #impl_generics ::leptos_native::DynAttrs for #name #generics #where_clause {
+                fn dyn_attrs(mut self, v: Vec<(&'static str, ::leptos_native::Attribute)>) -> Self {
                     #dyn_attrs_props
                     self
                 }
@@ -201,14 +201,14 @@ impl ToTokens for TypedBuilderOpts<'_> {
             if !self.strip_option {
                 let ty = &self.ty;
                 quote! {
-                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> #ty {
+                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos_native::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> #ty {
                         value.into_reactive_value()
                     },
                 }
             } else {
                 let ty = unwrap_option(self.ty);
                 quote! {
-                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> Option<#ty> {
+                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos_native::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> Option<#ty> {
                         Some(value.into_reactive_value())
                     },
                 }

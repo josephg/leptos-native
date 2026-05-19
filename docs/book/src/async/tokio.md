@@ -8,7 +8,7 @@ you want one of those, you want a tokio runtime alive somewhere.
 ## Setting up the runtime
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     // 1. Construct the runtime.

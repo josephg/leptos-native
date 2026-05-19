@@ -8,7 +8,7 @@ embedded WebView, no client-server split, no WASM.
 
 ```rust
 // Cargo.toml: leptos = { package = "leptos_cocoa" }   (or leptos_uikit / leptos_gtk)
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter() -> impl IntoView {

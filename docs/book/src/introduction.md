@@ -24,7 +24,7 @@ hydration. Your app is a Rust binary that links AppKit, UIKit, or
 GTK directly.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter() -> impl IntoView {

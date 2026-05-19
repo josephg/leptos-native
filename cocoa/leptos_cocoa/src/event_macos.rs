@@ -1,7 +1,7 @@
 //! Macro-facing facade for `tachys::html::event` on macOS.
 //!
 //! The `view!{}` macro emits paths like
-//! `::leptos::tachys::html::event::on(::leptos::tachys::html::event::click, handler)`
+//! `::leptos_native::tachys::html::event::on(::leptos_native::tachys::html::event::click, handler)`
 //! to wire up event listeners. On macOS we map this to our Cocoa
 //! event-handler infrastructure (target/action for buttons,
 //! NSTextFieldDelegate for text input).

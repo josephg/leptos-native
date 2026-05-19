@@ -3,7 +3,7 @@
 A date and/or time picker.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 let date = RwSignal::new(Date::now());
 view! { <date_picker bind:value=date /> }

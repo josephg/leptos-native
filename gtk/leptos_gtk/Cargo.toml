@@ -29,7 +29,7 @@ debug-overlay = ["gtk_dom/debug-overlay"]
 [dependencies]
 renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
-leptos = { workspace = true }
+leptos_native = { workspace = true }
 leptos_macro = { workspace = true }
 either_of = { workspace = true }
 oco_ref = { workspace = true }

@@ -1,7 +1,7 @@
 //! Two-way binding (`bind:value=signal`) for NSControl-derived
 //! elements.
 //!
-//! The `view!{}` macro emits `.bind(::leptos::attr::Value, signal)`
+//! The `view!{}` macro emits `.bind(::leptos_native::attr::Value, signal)`
 //! for `bind:value=signal`. We provide:
 //!   - an `IntoSignal<T>` trait abstracting over the kinds of
 //!     signal-like values users might pass (`RwSignal<T>`, `(Get,

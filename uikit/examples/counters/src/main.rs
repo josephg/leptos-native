@@ -5,7 +5,7 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Counters() -> impl IntoView {
@@ -57,7 +57,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos::mount_ios::run(|| view! { <Counters /> });
+        leptos_native::mount_ios::run(|| view! { <Counters /> });
     }
 
 }

@@ -10,7 +10,7 @@
 //! The tokio runtime is started before `mount_to_window` so
 //! `tokio::time::sleep` has a reactor to use.
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use std::time::Duration;
 
 async fn slow_double(n: i32) -> i32 {

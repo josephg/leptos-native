@@ -1,8 +1,8 @@
-//! Counter — using `leptos::prelude::*`, the `view!{}` macro, and
+//! Counter — using `leptos_native::prelude::*`, the `view!{}` macro, and
 //! `#[component]` against the Linux/GTK backend.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Counter(initial: i32) -> impl IntoView {

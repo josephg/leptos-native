@@ -36,7 +36,7 @@ impl Docs {
         let mut quote_ws = "".to_string();
         let mut view_code_fence_state = ViewCodeFenceState::Outside;
         // todo fix docs stuff
-        const RSX_START: &str = "# ::leptos::view! {";
+        const RSX_START: &str = "# ::leptos_native::view! {";
         const RSX_END: &str = "# };";
 
         // Separated out of chain to allow rustfmt to work

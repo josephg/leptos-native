@@ -75,14 +75,14 @@ pub fn render_view(
             view
         } else if let Some(vm) = view_marker {
             quote! {
-                ::leptos::prelude::View::new(
+                ::leptos_native::prelude::View::new(
                     #view
                 )
                 .with_view_marker(#vm)
             }
         } else {
             quote! {
-                ::leptos::prelude::View::new(
+                ::leptos_native::prelude::View::new(
                     #view
                 )
             }
@@ -117,8 +117,8 @@ fn element_children_to_tokens(
     } else if cfg!(feature = "__internal_erase_components") {
         Some(quote! {
             .child(
-                ::leptos::tachys::view::iterators::StaticVec::from(vec![#(
-                    ::leptos::prelude::IntoMaybeErased::into_maybe_erased(#children)
+                ::leptos_native::tachys::view::iterators::StaticVec::from(vec![#(
+                    ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(#children)
                 ),*])
             )
         })
@@ -165,8 +165,8 @@ fn fragment_to_tokens(
         children.into_iter().next()
     } else if cfg!(feature = "__internal_erase_components") {
         Some(quote! {
-            ::leptos::tachys::view::iterators::StaticVec::from(vec![#(
-                ::leptos::prelude::IntoMaybeErased::into_maybe_erased(#children)
+            ::leptos_native::tachys::view::iterators::StaticVec::from(vec![#(
+                ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(#children)
             ),*])
         })
     } else if children.len() > 16 {
@@ -244,7 +244,7 @@ fn node_to_tokens(
         Node::Comment(_) => None,
         Node::Doctype(node) => {
             let value = node.value.to_string_best();
-            Some(quote! { ::leptos::tachys::html::doctype(#value) })
+            Some(quote! { ::leptos_native::tachys::html::doctype(#value) })
         }
         Node::Fragment(fragment) => fragment_to_tokens(
             &mut fragment.children,
@@ -284,7 +284,7 @@ fn text_to_tokens(text: &LitStr) -> TokenStream {
     // on nightly, can use static string optimization
     if cfg!(all(feature = "nightly", rustc_nightly)) {
         quote! {
-            ::leptos::tachys::view::static_types::Static::<#text>
+            ::leptos_native::tachys::view::static_types::Static::<#text>
         }
     }
     // otherwise, just use the literal string
@@ -468,14 +468,14 @@ pub(crate) fn element_to_tokens(
         let name = if is_custom {
             let name = node.name().to_string();
             let custom = Ident::new("custom", name.span());
-            quote_spanned! { node.name().span() => ::leptos::tachys::html::element::#custom(#name) }
+            quote_spanned! { node.name().span() => ::leptos_native::tachys::html::element::#custom(#name) }
         } else {
             let ident = match tag.as_str() {
                 "use" | "use_" => Ident::new_raw("use", name.span()).to_token_stream(),
                 "switch" => Ident::new_raw("switch", name.span()).to_token_stream(),
                 _ => name.to_token_stream(),
             };
-            quote_spanned! { node.name().span() => ::leptos::tachys::html::element::#ident() }
+            quote_spanned! { node.name().span() => ::leptos_native::tachys::html::element::#ident() }
         };
 
         let attributes = node.attributes();
@@ -697,7 +697,7 @@ pub(crate) fn attribute_absolute(
                             let key_name = key.to_string();
                             if key_name == "class" || key_name == "style" {
                                 Some(
-                                    quote! { ::leptos::tachys::html::#key::#key(#value) },
+                                    quote! { ::leptos_native::tachys::html::#key::#key(#value) },
                                 )
                             } else if key_name == "aria" {
                                 let value = attribute_value(node, true);
@@ -706,7 +706,7 @@ pub(crate) fn attribute_absolute(
                                 let fn_name = parts_iter.map(|p| p.to_string()).collect::<Vec<String>>().join("_");
                                 let key = Ident::new(&fn_name, key.span());
                                 Some(
-                                    quote! { ::leptos::tachys::html::attribute::#key(#value) },
+                                    quote! { ::leptos_native::tachys::html::attribute::#key(#value) },
                                 )
                             } else if multipart {
                                 // e.g., attr:data-foo="bar"
@@ -715,11 +715,11 @@ pub(crate) fn attribute_absolute(
                                     End(n) => n.to_string(),
                                 }).collect::<String>();
                                 Some(
-                                    quote! { ::leptos::tachys::html::attribute::custom::custom_attribute(#key_name, #value) },
+                                    quote! { ::leptos_native::tachys::html::attribute::custom::custom_attribute(#key_name, #value) },
                                 )
                             } else {
                                 Some(
-                                    quote! { ::leptos::tachys::html::attribute::#key(#value) },
+                                    quote! { ::leptos_native::tachys::html::attribute::#key(#value) },
                                 )
                             }
                         } else if id == "use" {
@@ -731,7 +731,7 @@ pub(crate) fn attribute_absolute(
                             };
                             Some(
                                 quote! {
-                                    ::leptos::tachys::html::directive::directive(
+                                    ::leptos_native::tachys::html::directive::directive(
                                         #key,
                                         #[allow(clippy::useless_conversion)] #param
                                     )
@@ -744,14 +744,14 @@ pub(crate) fn attribute_absolute(
                                 .replacen("style:", "", 1)
                                 .replacen("class:", "", 1);
                             Some(
-                                quote! { ::leptos::tachys::html::#id::#id((#key, #value)) },
+                                quote! { ::leptos_native::tachys::html::#id::#id((#key, #value)) },
                             )
                         } else if id == "prop" {
                             let value = attribute_value(node, false);
                             let key = &node.key.to_string();
                             let key = key.replacen("prop:", "", 1);
                             Some(
-                                quote! { ::leptos::tachys::html::property::#id(#key, #value) },
+                                quote! { ::leptos_native::tachys::html::property::#id(#key, #value) },
                             )
                         } else if id == "on" {
                             let key = &node.key.to_string();
@@ -759,7 +759,7 @@ pub(crate) fn attribute_absolute(
                             let (on, ty, handler) =
                                 event_type_and_handler(&key, node);
                             Some(
-                                quote! { ::leptos::tachys::html::event::#on(#ty, #handler) },
+                                quote! { ::leptos_native::tachys::html::event::#on(#ty, #handler) },
                             )
                         } else {
                             proc_macro_error2::abort!(
@@ -783,22 +783,22 @@ pub(crate) fn attribute_absolute(
             let name = &node.key.to_string();
             if name == "class" || name == "style" {
                 quote! {
-                    ::leptos::tachys::html::#key::#key(#value)
+                    ::leptos_native::tachys::html::#key::#key(#value)
                 }
             }
             else if name.contains('-') && !name.starts_with("aria-") {
                 quote! {
-                    ::leptos::tachys::html::attribute::custom::custom_attribute(#name, #value)
+                    ::leptos_native::tachys::html::attribute::custom::custom_attribute(#name, #value)
                 }
             }
             else if name == "node_ref" {
                 quote! {
-                    ::leptos::tachys::html::node_ref::#key(#value)
+                    ::leptos_native::tachys::html::node_ref::#key(#value)
                 }
             }
             else {
                 quote! {
-                    ::leptos::tachys::html::attribute::#key(#value)
+                    ::leptos_native::tachys::html::attribute::#key(#value)
                 }
             }
         }),
@@ -816,11 +816,11 @@ pub(crate) fn two_way_binding_to_tokens(
 
     if name == "group" {
         quote! {
-            .bind(leptos::tachys::reactive_graph::bind::#ident, #value)
+            .bind(leptos_native::tachys::reactive_graph::bind::#ident, #value)
         }
     } else {
         quote! {
-            .bind(::leptos::attr::#ident, #value)
+            .bind(::leptos_native::attr::#ident, #value)
         }
     }
 }
@@ -884,7 +884,7 @@ pub(crate) fn event_type_and_handler(
     };
 
     let event_type = quote! {
-        ::leptos::tachys::html::event::#event_type
+        ::leptos_native::tachys::html::event::#event_type
     };
     let event_type = if options.captured {
         let capture = if let Some(capture) = capture_ident {
@@ -892,7 +892,7 @@ pub(crate) fn event_type_and_handler(
         } else {
             quote! { capture }
         };
-        quote! { ::leptos::tachys::html::event::#capture(#event_type) }
+        quote! { ::leptos_native::tachys::html::event::#capture(#event_type) }
     } else {
         event_type
     };
@@ -903,7 +903,7 @@ pub(crate) fn event_type_and_handler(
         } else {
             quote! { undelegated }
         };
-        quote! { ::leptos::tachys::html::event::#undelegated(#event_type) }
+        quote! { ::leptos_native::tachys::html::event::#undelegated(#event_type) }
     } else {
         event_type
     };
@@ -1040,7 +1040,7 @@ fn attribute_value(
                     if cfg!(all(feature = "nightly", rustc_nightly)) {
                         if let Lit::Str(str) = &lit.lit {
                             return quote! {
-                                ::leptos::tachys::view::static_types::Static::<#str>
+                                ::leptos_native::tachys::view::static_types::Static::<#str>
                             };
                         }
                     }
@@ -1052,7 +1052,7 @@ fn attribute_value(
                     }
                 } else {
                     quote! {
-                        ::leptos::prelude::IntoAttributeValue::into_attribute_value(#expr)
+                        ::leptos_native::prelude::IntoAttributeValue::into_attribute_value(#expr)
                     }
                 }
             }
@@ -1060,7 +1060,7 @@ fn attribute_value(
             KVAttributeValue::InvalidBraced(block) => {
                 if is_attribute_proper {
                     quote! {
-                        ::leptos::prelude::IntoAttributeValue::into_attribute_value(#block)
+                        ::leptos_native::prelude::IntoAttributeValue::into_attribute_value(#block)
                     }
                 } else {
                     quote! {

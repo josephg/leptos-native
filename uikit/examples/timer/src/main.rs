@@ -4,7 +4,7 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use std::time::Duration;
 
     #[component]
@@ -74,7 +74,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos::mount_ios::run(|| view! { <TimerDemo /> });
+        leptos_native::mount_ios::run(|| view! { <TimerDemo /> });
     }
 
 }

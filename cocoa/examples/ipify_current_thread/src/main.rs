@@ -21,7 +21,7 @@
 //! - Deterministic task ordering (FIFO on a single worker).
 //! - Easier reasoning about concurrency for tests.
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use serde::Deserialize;
 use std::future;
 

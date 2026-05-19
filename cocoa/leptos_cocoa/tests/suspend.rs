@@ -21,7 +21,7 @@
 mod common;
 
 use cocoa_dom::event::handler_store_size_for_test;
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use leptos_cocoa::cocoa::element::{button, hstack, label};
 use leptos_cocoa::event_macos::{click, on};
 use leptos_cocoa::Dom;

@@ -390,8 +390,8 @@ Linux until Stage 5 anyway.
 ### Web-only crates now gate themselves out of native builds
 
 `leptos_router` and `leptos_meta` both unconditionally import web-only
-items (`tachys::dom`, `tachys::html::element`, `leptos::ev`,
-`leptos::html`, `web_sys::*`). Before Stage 2, Linux had
+items (`tachys::dom`, `tachys::html::element`, `leptos_native::ev`,
+`leptos_native::html`, `web_sys::*`). Before Stage 2, Linux had
 `leptos_native = false`, which kept those modules visible — the
 crates compiled. After flipping the flag, those modules disappear
 on Linux too, so the crates fail to build on native targets.
@@ -457,7 +457,7 @@ items* below.
   `tachys::svg::view` for the `<view>` tag).
 - **`tachys::html::element` / `tachys::html::event` are undefined on
   Linux.** Macro facades come in Stage 5.
-- **`leptos::gtk` re-export not yet added.** Mirrors `leptos::cocoa`
+- **`leptos_native::gtk` re-export not yet added.** Mirrors `leptos_native::cocoa`
   on macOS; lands when `tachys::gtk` (the builder layer) does, in
   Stage 5.
 
@@ -867,7 +867,7 @@ GTK does its own layout. This stage may end up being just:
   hard-coded in examples) — propose
   `mount_to_window(app_id, title, size, view_fn)`. Or a builder.
 - `pub use tachys::gtk::BindAttribute` re-export in
-  `leptos::prelude` for `target_os = "linux"`, mirroring the cocoa
+  `leptos_native::prelude` for `target_os = "linux"`, mirroring the cocoa
   re-export.
 
 ### Stage 6 — dynamic children, more controls

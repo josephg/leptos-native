@@ -28,5 +28,5 @@ leptos = { package = "leptos_gtk" }
 leptos = { package = "leptos_uikit" }
 ```
 
-All three give you the same `leptos::prelude::*` import surface for
+All three give you the same `leptos_native::prelude::*` import surface for
 your app code.

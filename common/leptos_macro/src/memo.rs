@@ -40,9 +40,9 @@ impl ToTokens for MemoMacroInput {
         let path = &self.path;
 
         tokens.extend(quote! {
-            ::leptos::reactive::computed::Memo::new(
+            ::leptos_native::reactive::computed::Memo::new(
                 move |_| {
-                    use ::leptos::reactive::traits::With;
+                    use ::leptos_native::reactive::traits::With;
                     #root.with(|st: _| st.#path.clone())
                 }
             )

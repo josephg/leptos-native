@@ -3,7 +3,7 @@ use test::Bencher;
 
 #[bench]
 fn leptos_deep_creation(b: &mut Bencher) {
-    use leptos::*;
+    use leptos_native::*;
     let runtime = create_runtime();
 
     b.iter(|| {
@@ -24,7 +24,7 @@ fn leptos_deep_creation(b: &mut Bencher) {
 
 #[bench]
 fn leptos_deep_update(b: &mut Bencher) {
-    use leptos::*;
+    use leptos_native::*;
     let runtime = create_runtime();
 
     b.iter(|| {
@@ -46,7 +46,7 @@ fn leptos_deep_update(b: &mut Bencher) {
 
 #[bench]
 fn leptos_narrowing_down(b: &mut Bencher) {
-    use leptos::*;
+    use leptos_native::*;
     let runtime = create_runtime();
 
     b.iter(|| {
@@ -63,7 +63,7 @@ fn leptos_narrowing_down(b: &mut Bencher) {
 
 #[bench]
 fn leptos_fanning_out(b: &mut Bencher) {
-    use leptos::*;
+    use leptos_native::*;
     let runtime = create_runtime();
 
     b.iter(|| {
@@ -81,7 +81,7 @@ fn leptos_fanning_out(b: &mut Bencher) {
 
 #[bench]
 fn leptos_narrowing_update(b: &mut Bencher) {
-    use leptos::*;
+    use leptos_native::*;
     let runtime = create_runtime();
 
     b.iter(|| {

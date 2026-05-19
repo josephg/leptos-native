@@ -89,7 +89,7 @@ pub(crate) fn component_to_tokens(
 
         if optional {
             optional_props.push(quote! {
-                props.#name = { #value }.map(::leptos::prelude::IntoReactiveValue::into_reactive_value);
+                props.#name = { #value }.map(::leptos_native::prelude::IntoReactiveValue::into_reactive_value);
             })
         } else {
             required_props.push(quote! {
@@ -176,7 +176,7 @@ pub(crate) fn component_to_tokens(
         if cfg!(feature = "__internal_erase_components") {
             quote! {
                 .add_any_attr({
-                    vec![#(::leptos::attr::any_attribute::IntoAnyAttribute::into_any_attr(#spreads),)*]
+                    vec![#(::leptos_native::attr::any_attribute::IntoAnyAttribute::into_any_attr(#spreads),)*]
                 })
             }
         } else {
@@ -249,7 +249,7 @@ pub(crate) fn component_to_tokens(
                     .children({
                         #(#clonables)*
 
-                        ::leptos::children::ToChildren::to_children(move || #children)
+                        ::leptos_native::children::ToChildren::to_children(move || #children)
                     })
                 }
             }
@@ -291,11 +291,11 @@ pub(crate) fn component_to_tokens(
             #[allow(unreachable_code)]
             #[allow(unused_mut)]
             #[allow(clippy::let_and_return)]
-            ::leptos::component::component_view(
+            ::leptos_native::component::component_view(
                 #[allow(clippy::needless_borrows_for_generic_args)]
                 &#name,
                 {
-                    let mut props = ::leptos::component::component_props_builder(&#name #generics)
+                    let mut props = ::leptos_native::component::component_props_builder(&#name #generics)
                         #(#required_props)*
                         #(#slots)*
                         #children
@@ -336,7 +336,7 @@ pub fn items_to_clone_to_tokens(
 }
 
 /// By default all children are placed in an outer closure || #children.
-/// This is to work with all the variants of the leptos::children::ToChildren::to_children trait.
+/// This is to work with all the variants of the leptos_native::children::ToChildren::to_children trait.
 /// Strings are optimised to be passed without the wrapping closure, providing significant compile time and binary size improvements.
 pub fn maybe_optimised_component_children(
     children: &[Node<impl CustomNode>],
@@ -418,7 +418,7 @@ pub fn maybe_optimised_component_children(
         .children({
             #(#clonables)*
 
-            ::leptos::children::ToChildren::to_children(::leptos::children::ChildrenOptContainer(#children))
+            ::leptos_native::children::ToChildren::to_children(::leptos_native::children::ChildrenOptContainer(#children))
         })
     })
 }

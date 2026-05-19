@@ -9,10 +9,10 @@
 //! goes to the top-screen menu bar via the AppMenu extension.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     // The `view!{}` macro emits `event::action` for `on:action=…`.
     // Only needed when constructing items in Rust outside the macro.
-    use leptos::tachys::html::event;
+    use leptos_native::tachys::html::event;
 
     pub fn main() {
         run("org.leptos.menu_demo_gtk", |app| {

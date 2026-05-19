@@ -8,7 +8,7 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]
@@ -53,7 +53,7 @@ mod app {
     pub fn main() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let _guard = rt.enter();
-        leptos::mount_ios::run(|| view! { <App /> });
+        leptos_native::mount_ios::run(|| view! { <App /> });
     }
 }
 

@@ -7,7 +7,7 @@ near the root of your tree.
 ## Pattern: a context-provided store
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use reactive_stores::{Patch, Store};
 
 #[derive(Debug, Default, Store, Patch)]

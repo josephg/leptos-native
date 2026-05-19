@@ -5,7 +5,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn _smallest() -> impl IntoView {
     view! { "hello" }

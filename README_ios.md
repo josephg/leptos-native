@@ -9,7 +9,7 @@ state. Layout is via [Taffy](https://github.com/DioxusLabs/taffy)
 flexbox.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {
@@ -27,7 +27,7 @@ fn Counter(initial: i32) -> impl IntoView {
 }
 
 fn main() {
-    leptos::run(|| view! { <Counter initial=0 /> });
+    leptos_native::run(|| view! { <Counter initial=0 /> });
 }
 ```
 
@@ -152,7 +152,7 @@ panic = "abort"   # iOS doesn't support unwinding out of objc frames
 Then in `src/main.rs`:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn App() -> impl IntoView {
@@ -160,7 +160,7 @@ fn App() -> impl IntoView {
 }
 
 fn main() {
-    leptos::run(|| view! { <App /> });
+    leptos_native::run(|| view! { <App /> });
 }
 ```
 

@@ -5,7 +5,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     pub fn main() {
         mount_to_window("Grid", (640.0, 480.0), || {

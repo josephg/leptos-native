@@ -7,7 +7,7 @@ preferences. The framework doesn't ship a custom abstraction —
 use the `gio` crate directly and bridge to signals via `Effect`.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use gio::prelude::*;
 
 fn main() {

@@ -153,7 +153,7 @@ pub(crate) fn slot_to_tokens(
                     .children({
                         #(#clonables)*
 
-                        ::leptos::children::ToChildren::to_children(move || #children #view_marker)
+                        ::leptos_native::children::ToChildren::to_children(move || #children #view_marker)
                     })
                 }
             }

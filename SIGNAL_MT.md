@@ -302,7 +302,7 @@ pub fn on_main(f: impl FnOnce() + Send + 'static);
 Cocoa port wires
 `set_main_dispatcher(|f| DispatchQueue::main().exec_async(f))`,
 GTK wires `MainContext::default().invoke(...)`, iOS reuses cocoa's.
-`RemoteSignal` (if we ship it) uses `leptos::on_main` rather than
+`RemoteSignal` (if we ship it) uses `leptos_native::on_main` rather than
 `apple_shared::on_main`, so it works on all ports.
 
 Decision: yes, eventually. Not on the critical path right now —

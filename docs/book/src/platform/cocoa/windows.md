@@ -4,7 +4,7 @@ The `<window>` builder mounts an NSWindow declaratively as part
 of your view tree.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     run(|| view! {
@@ -109,7 +109,7 @@ For menu-bar / status-item apps that should keep running with
 no windows open, disable this before mounting:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     set_quit_on_last_window_close(false);

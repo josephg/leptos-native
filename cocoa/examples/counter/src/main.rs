@@ -1,4 +1,4 @@
-//! Counter — using `leptos::prelude::*`, the `view!{}` macro, and
+//! Counter — using `leptos_native::prelude::*`, the `view!{}` macro, and
 //! `#[component]`.
 //!
 //! Stage 5 part 3 (slice 2): IntoView + #[component] now work on
@@ -7,7 +7,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Counter(initial: i32) -> impl IntoView {

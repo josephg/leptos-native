@@ -2,7 +2,7 @@
 //!
 //! Mirrors `leptos_cocoa::event_macos`. The `view!{}` macro emits
 //! paths like
-//! `::leptos::tachys::html::event::on(::leptos::tachys::html::event::click, handler)`.
+//! `::leptos_native::tachys::html::event::on(::leptos_native::tachys::html::event::click, handler)`.
 //! On GTK we map this to our gtk_dom event-handler infrastructure
 //! (signal connections on `Button::clicked`, `Entry::changed`, etc.).
 

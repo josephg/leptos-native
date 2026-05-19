@@ -19,7 +19,7 @@
 /// by construction — one icon source per item.
 ///
 /// ```ignore
-/// use leptos::prelude::*;
+/// use leptos_native::prelude::*;
 ///
 /// // Static SF symbol.
 /// <toolbar_item label="Add" icon=Icon::sf_symbol("plus.circle"/>

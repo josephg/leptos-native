@@ -9,7 +9,7 @@ and desktop integration.
 The simplest entry point:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     mount_to_window(
@@ -28,7 +28,7 @@ menu bar, custom app-startup wiring — use `run` and accept the
 `gtk::Application` reference:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     run("org.example.my_app", |app| view! {

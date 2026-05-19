@@ -63,7 +63,7 @@ Anything `Render` — same as the flex containers.
 
 ## Track-sizing helpers
 
-Exported by `leptos::prelude::*`:
+Exported by `leptos_native::prelude::*`:
 
 - `fr(n)` — fractional units of remaining space.
 - `length(px)` — fixed pixel size.

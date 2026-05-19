@@ -16,7 +16,7 @@
 //! installed under `/usr/share/glib-2.0/schemas/` (see
 //! `glib-compile-schemas`).
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

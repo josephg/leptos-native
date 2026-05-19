@@ -444,7 +444,7 @@ impl<P: 'static> IntoSplitView<P> for SplitView<P> {
     }
 }
 
-impl<P: 'static> IntoSplitView<P> for leptos::View<SplitView<P>> {
+impl<P: 'static> IntoSplitView<P> for leptos_native::View<SplitView<P>> {
     fn into_split_view(self) -> SplitView<P> {
         self.into_inner()
     }
