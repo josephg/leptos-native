@@ -59,7 +59,7 @@ fn bool_attr_name_round_trips() {
 
 fn title_set_on_button() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_string_attribute(StringAttr::Title, "Hello");
     let b = el
         .widget()
@@ -70,7 +70,7 @@ fn title_set_on_button() {
 
 fn value_set_on_text_field() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     el.set_string_attribute(StringAttr::Value, "abc");
     let e = el
         .widget()
@@ -81,7 +81,7 @@ fn value_set_on_text_field() {
 
 fn placeholder_set_on_text_field() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     el.set_string_attribute(StringAttr::Placeholder, "Type here");
     let e = el
         .widget()
@@ -92,7 +92,7 @@ fn placeholder_set_on_text_field() {
 
 fn title_on_non_button_is_no_op() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     // Should not panic; entry doesn't have a "title".
     el.set_string_attribute(StringAttr::Title, "ignored");
     let e = el
@@ -112,7 +112,7 @@ fn title_on_non_button_is_no_op() {
 
 fn enabled_toggles_widget_sensitive() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let v = el.widget();
     assert!(v.is_sensitive(), "buttons start enabled");
 
@@ -128,7 +128,7 @@ fn enabled_on_view_is_supported() {
     // gtk::Widget::set_sensitive applies to every widget, so
     // unlike cocoa (where `enabled` only affects NSControls), GTK
     // accepts it on plain views too. Assert that.
-    let el = Element::create(&tree, "view");
+    let el = Element::create_stack(&tree);
     let v = el.widget();
     assert!(v.is_sensitive());
     el.set_bool_attribute(BoolAttr::Enabled, false);
@@ -137,7 +137,7 @@ fn enabled_on_view_is_supported() {
 
 fn hidden_toggles_view() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "view");
+    let el = Element::create_stack(&tree);
     let v = el.widget();
     // Note: gtk::Widget defaults to *not* visible (must be added to
     // a parent + shown). Test against initial state explicitly.
@@ -157,7 +157,7 @@ fn hidden_toggles_view() {
 
 fn checked_toggles_check_button() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "checkbox");
+    let el = Element::create_checkbox(&tree).0;
     let c = el
         .widget()
         .downcast_ref::<gtk_dom::gtk::CheckButton>()
@@ -173,7 +173,7 @@ fn checked_toggles_check_button() {
 
 fn checked_on_non_check_button_is_no_op() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     el.set_bool_attribute(BoolAttr::Checked, true);
     // No state to read on entry — calling without panic is the
     // assertion.
@@ -185,7 +185,7 @@ fn checked_on_non_check_button_is_no_op() {
 
 fn remove_title_clears_button() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_string_attribute(StringAttr::Title, "Hi");
     el.remove_string_attribute(StringAttr::Title);
     let b = el
@@ -197,7 +197,7 @@ fn remove_title_clears_button() {
 
 fn remove_placeholder_clears_text_field() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     el.set_string_attribute(StringAttr::Placeholder, "X");
     el.remove_string_attribute(StringAttr::Placeholder);
     let e = el
@@ -212,7 +212,7 @@ fn remove_placeholder_clears_text_field() {
 
 fn remove_hidden_makes_visible() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "view");
+    let el = Element::create_stack(&tree);
     el.set_bool_attribute(BoolAttr::Hidden, true);
     assert!(!el.widget().is_visible());
 
@@ -222,7 +222,7 @@ fn remove_hidden_makes_visible() {
 
 fn remove_enabled_resets_to_enabled() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_bool_attribute(BoolAttr::Enabled, false);
     el.remove_bool_attribute(BoolAttr::Enabled);
     assert!(el.widget().is_sensitive());
@@ -230,7 +230,7 @@ fn remove_enabled_resets_to_enabled() {
 
 fn remove_checked_resets_to_off() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "checkbox");
+    let el = Element::create_checkbox(&tree).0;
     el.set_bool_attribute(BoolAttr::Checked, true);
     el.remove_bool_attribute(BoolAttr::Checked);
     let c = el
@@ -246,7 +246,7 @@ fn remove_checked_resets_to_off() {
 
 fn rndr_set_attribute_routes_string_variants() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_attribute("title", "via_str");
     let b = el
         .widget()
@@ -259,7 +259,7 @@ fn rndr_set_attribute_skips_bool_attrs() {
     let tree = gtk_dom::layout::new_tree();
     // The string entry point deliberately doesn't route bool attrs
     // through the bool setter — builders use the typed bool setter.
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     assert!(el.widget().is_sensitive());
 
     el.set_attribute("enabled", "false");
@@ -268,14 +268,14 @@ fn rndr_set_attribute_skips_bool_attrs() {
 
 fn rndr_set_attribute_unknown_is_no_op() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_attribute("totally_unknown", "x");
     // No panic; no observable change.
 }
 
 fn rndr_remove_attribute_routes_to_typed() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_string_attribute(StringAttr::Title, "Will be cleared");
     el.remove_attribute("title");
     let b = el
@@ -287,7 +287,7 @@ fn rndr_remove_attribute_routes_to_typed() {
 
 fn rndr_remove_attribute_routes_bool() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "view");
+    let el = Element::create_stack(&tree);
     el.set_bool_attribute(BoolAttr::Hidden, true);
     el.remove_attribute("hidden");
     assert!(el.widget().is_visible());
@@ -299,7 +299,7 @@ fn rndr_remove_attribute_routes_bool() {
 
 fn set_string_same_value_is_idempotent() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_string_attribute(StringAttr::Title, "X");
     el.set_string_attribute(StringAttr::Title, "X");
     el.set_string_attribute(StringAttr::Title, "X");
@@ -312,7 +312,7 @@ fn set_string_same_value_is_idempotent() {
 
 fn set_bool_same_value_is_idempotent() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     el.set_bool_attribute(BoolAttr::Enabled, false);
     el.set_bool_attribute(BoolAttr::Enabled, false);
     assert!(!el.widget().is_sensitive());

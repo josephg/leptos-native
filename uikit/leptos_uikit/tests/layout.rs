@@ -39,7 +39,7 @@ where
 {
     let _mtm = common::test_mtm();
 
-    let root = ios_dom::Element::create("vstack");
+    let root = ios_dom::Element::create_vstack(&tree);
     let tree = ios_dom::layout::new_tree();
     ios_dom::layout::set_as_root(root.as_node(), &tree);
 

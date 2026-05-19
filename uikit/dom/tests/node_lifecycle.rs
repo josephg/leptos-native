@@ -24,7 +24,7 @@ use ios_dom::{
 fn freshly_created_node_has_tree_id() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let (_, id) = el
         .as_node()
         .tree_id()
@@ -42,7 +42,7 @@ fn freshly_created_node_has_tree_id() {
 fn style_mutation_lands_in_arena() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "view");
+    let el = Element::create_vstack(&tree);
     el.as_node().with_style_mut(|s| s.flex_grow = 7.0);
     let id = el.as_node().tree_id().unwrap().1;
     assert_eq!(tree.style(id).unwrap().flex_grow, 7.0);
@@ -51,7 +51,7 @@ fn style_mutation_lands_in_arena() {
 fn scroll_view_has_is_scroll_view_at_create_time() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "scroll_view");
+    let el = Element::create_scroll_view(&tree).0;
     let meta = el.as_node().with_meta(|m| m.clone());
     assert!(meta.is_scroll_view, "scroll_view sets is_scroll_view");
 }
@@ -64,7 +64,7 @@ fn dropping_last_node_clone_removes_arena_entry() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
     let id = {
-        let el = Element::create(&tree, "button");
+        let el = Element::create_button(&tree).0;
         el.as_node().tree_id().unwrap().1
     };
     assert!(
@@ -76,7 +76,7 @@ fn dropping_last_node_clone_removes_arena_entry() {
 fn cloning_node_extends_lifetime() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
 
     let clone = el.as_node().clone();
@@ -102,7 +102,7 @@ fn borrowed_node_drop_does_not_remove_arena_entry() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
 
-    let owner = Element::create(&tree, "vstack");
+    let owner = Element::create_vstack(&tree);
     let id = owner.as_node().tree_id().unwrap().1;
 
     let handle = owner.as_node().mounted_handle().unwrap();
@@ -136,7 +136,7 @@ fn handler_installed_drops_with_node() {
     let baseline = handler_store_size_for_test();
     {
         let tree = layout::new_tree();
-        let el = Element::create(&tree, "button");
+        let el = Element::create_button(&tree).0;
         el.on_click(|| {});
         assert_eq!(
             handler_store_size_for_test(),
@@ -161,7 +161,7 @@ fn text_view_delegate_releases_on_node_drop() {
     let baseline = text_view_store_size_for_test();
     {
         let tree = layout::new_tree();
-        let el = Element::create(&tree, "text_view");
+        let el = Element::create_text_view(&tree).0;
         el.on_text_view_change(|_| {});
         assert_eq!(
             text_view_store_size_for_test(),
@@ -185,7 +185,7 @@ fn text_view_delegate_releases_on_node_drop() {
 fn new_leaf_starts_at_refcount_one() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     assert_eq!(
         tree.refcount_for_test(id),
@@ -197,7 +197,7 @@ fn new_leaf_starts_at_refcount_one() {
 fn incref_increments_refcount() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     tree.incref(id);
     assert_eq!(tree.refcount_for_test(id), Some(2));
@@ -210,8 +210,8 @@ fn incref_increments_refcount() {
 fn decref_decrements_but_keeps_alive_if_attached() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let root = Element::create(&tree, "vstack");
-    let child = Element::create(&tree, "button");
+    let root = Element::create_vstack(&tree);
+    let child = Element::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -234,8 +234,8 @@ fn decref_decrements_but_keeps_alive_if_attached() {
 fn detached_orphan_with_refcount_zero_is_removed() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let root = Element::create(&tree, "vstack");
-    let child = Element::create(&tree, "button");
+    let root = Element::create_vstack(&tree);
+    let child = Element::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -253,8 +253,8 @@ fn detached_orphan_with_refcount_zero_is_removed() {
 fn detached_orphan_with_handles_stays() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let root = Element::create(&tree, "vstack");
-    let child = Element::create(&tree, "button");
+    let root = Element::create_vstack(&tree);
+    let child = Element::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -268,7 +268,7 @@ fn detached_orphan_with_handles_stays() {
 fn decref_below_zero_is_safe() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
 
     tree.decref(id);
@@ -279,7 +279,7 @@ fn decref_below_zero_is_safe() {
 fn decref_on_nonexistent_is_noop() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     tree.remove(id);
     tree.decref(id);
@@ -293,7 +293,7 @@ fn decref_on_nonexistent_is_noop() {
 fn ui_view_pointer_stable() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let ptr_before: *const objc2_ui_kit::UIView = el.as_node().ui_view();
     let ptr_after: *const objc2_ui_kit::UIView = el.as_node().ui_view();
     assert_eq!(ptr_before, ptr_after, "ui_view() pointer must be stable");
@@ -306,7 +306,7 @@ fn ui_view_pointer_stable() {
 fn weak_node_upgrades_while_node_alive() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let weak = el.as_node().downgrade();
 
     assert!(weak.is_alive(), "weak handle is alive while Node is");
@@ -317,7 +317,7 @@ fn weak_node_upgrades_while_node_alive() {
 fn weak_node_upgrade_fails_after_drop() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let weak = el.as_node().downgrade();
     drop(el);
 
@@ -328,7 +328,7 @@ fn weak_node_upgrade_fails_after_drop() {
 fn weak_element_round_trips_kind() {
     let _mtm = common::test_mtm();
     let tree = layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let weak = el.weak();
     let recovered = weak.upgrade().expect("alive");
     assert_eq!(recovered.as_node().kind(), ios_dom::NodeKind::Element);
@@ -339,7 +339,7 @@ fn closure_capturing_weak_element_does_not_keep_arena_alive() {
     let baseline = handler_store_size_for_test();
     let tree = layout::new_tree();
     let id = {
-        let el = Element::create(&tree, "button");
+        let el = Element::create_button(&tree).0;
         let id = el.as_node().tree_id().unwrap().1;
 
         let weak = el.weak();

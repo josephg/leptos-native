@@ -282,7 +282,7 @@ where
     type State = ElementState<(), Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "stack");
+        let el = GtkElement::create_stack(tree);
         let mut effects = Vec::new();
 
         let direction = self
@@ -507,7 +507,7 @@ where
     type State = ElementState<(), Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "grid");
+        let el = GtkElement::create_grid(tree);
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
@@ -697,7 +697,7 @@ impl Render<Dom> for Button {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "button");
+        let el = GtkElement::create_button(tree).0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -849,7 +849,7 @@ impl Render<Dom> for Checkbox {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "checkbox");
+        let el = GtkElement::create_checkbox(tree).0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -1005,7 +1005,7 @@ impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "slider");
+        let el = GtkElement::create_slider(tree).0;
         let mut effects = Vec::new();
 
         el.set_slider_min(self.min_value);
@@ -1151,7 +1151,7 @@ impl Render<Dom> for PopUpButton {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "pop_up_button");
+        let el = GtkElement::create_pop_up_button(tree).0;
         let mut effects = Vec::new();
 
         el.set_popup_items(&self.items);
@@ -1277,7 +1277,7 @@ impl Render<Dom> for Label {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = GtkElement::create(tree, "label");
+        let el = GtkElement::create_label(tree).0;
         let mut effects = Vec::new();
 
         let el_for_text = el.clone();
@@ -1439,12 +1439,11 @@ impl Render<Dom> for TextField {
     type State = ElementState<(), ()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let tag = if self.secure {
-            "secure_text_field"
+        let el = if self.secure {
+            GtkElement::create_secure_text_field(tree).0
         } else {
-            "text_field"
+            GtkElement::create_text_field(tree).0
         };
-        let el = GtkElement::create(tree, tag);
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {

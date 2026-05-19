@@ -6,6 +6,42 @@ top.
 
 ---
 
+## 2026-05-19 — Typed element constructors + Element/Node unification (port mirror)
+
+Mirrored two cocoa refactors landed earlier the same day:
+
+1. Removed the `match tag { ... }` body in `Element::create_with` —
+   each builder now calls a uniquely-named typed constructor
+   (`Node::create_button`, `create_switch`, `create_label`,
+   `create_scroll_view`, ...) from the new
+   `uikit/dom/src/make_view.rs`. `Node::from_view` is the shared
+   registration primitive. See cocoa's `implementation_log.md` entry
+   for the full rationale.
+
+2. Unified `Element` and `Node` into a single type. `pub type
+   Element = Node;` aliased for backwards-compat; `as_node` /
+   `into_node` / `from_node_unchecked` kept as identity methods so
+   existing call sites work unchanged. `WeakElement` is now a type
+   alias for `WeakNode`. `Mountable<Dom>` / `CastFrom<Node>` /
+   `LayoutElement` / `UniversalElement` impls collapsed to single
+   `Node` impls.
+
+iOS-specific note: `<scroll_view>` allocates its content UIView as
+the first subview of the UIScrollView (same as the pre-refactor
+state). The cocoa-style `is_scroll_view` meta flag + internal Taffy
+wrapper is set up by `Node::create_scroll_view`.
+
+`AppDelegate` switched from
+`Element::create_with(&tree, "vstack", mtm)` to
+`Element::create_container_with(&tree, mtm)` + explicit
+`set_flex_direction(Column)` — the typed constructor doesn't preset
+direction.
+
+`Renderer::create_element(tag, namespace)` was unused inside the
+workspace and got deleted in step 1.
+
+---
+
 ## 2026-05-19 — Node refactor part 2 (port mirror)
 
 Mirrored the cocoa changes; see `implementation_log.md` for the

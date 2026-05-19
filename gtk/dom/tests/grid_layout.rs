@@ -50,7 +50,7 @@ fn make_grid(
     columns: Vec<renderer::GridTemplateComponent>,
     rows: Vec<renderer::GridTemplateComponent>,
 ) -> Element {
-    let g = Element::create(tree, "grid");
+    let g = Element::create_grid(tree);
     layout::set_grid_template_columns(g.as_node(), columns);
     layout::set_grid_template_rows(g.as_node(), rows);
     g
@@ -60,7 +60,7 @@ fn make_grid(
 
 fn create_grid_sets_display_grid() {
     let tree = gtk_dom::layout::new_tree();
-    let g = Element::create(&tree, "grid");
+    let g = Element::create_grid(&tree);
     let tree = fresh_tree(&g);
     let id = g.as_node().tree_id().unwrap().1;
     let style = tree.style(id).expect("registered node has a style");
@@ -74,8 +74,8 @@ fn three_column_fixed_widths() {
     );
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
 
@@ -92,9 +92,9 @@ fn fr_columns_distribute_leftover() {
     );
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
-    let c = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
+    let c = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -113,9 +113,9 @@ fn mixed_fixed_fr_auto_columns() {
     );
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
-    let c = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
+    let c = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -134,10 +134,10 @@ fn two_by_two_fills_in_row_order() {
     );
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
-    let c = Element::create(&tree, "view");
-    let d = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
+    let c = Element::create_stack(&tree);
+    let d = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -159,9 +159,9 @@ fn gap_shorthand_separates_both_axes() {
     layout::set_gap(g.as_node(), 10.0);
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
-    let c = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
+    let c = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -182,9 +182,9 @@ fn per_axis_gaps_apply_independently() {
     layout::set_row_gap(g.as_node(), 20.0);
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
-    let c = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
+    let c = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -203,7 +203,7 @@ fn column_span_two_widens_cell() {
     );
     let tree = fresh_tree(&g);
 
-    let wide = Element::create(&tree, "view");
+    let wide = Element::create_stack(&tree);
     layout::set_grid_column_end(wide.as_node(), GridLine::Span(2));
     g.insert_node(wide.as_node(), None);
 
@@ -219,7 +219,7 @@ fn column_range_one_to_negative_one_spans_full_width() {
     );
     let tree = fresh_tree(&g);
 
-    let full = Element::create(&tree, "view");
+    let full = Element::create_stack(&tree);
     layout::set_grid_column_start(full.as_node(), GridLine::Line(1));
     layout::set_grid_column_end(full.as_node(), GridLine::Line(-1));
     g.insert_node(full.as_node(), None);
@@ -236,7 +236,7 @@ fn block_spanning_two_rows_two_columns() {
     );
     let tree = fresh_tree(&g);
 
-    let block = Element::create(&tree, "view");
+    let block = Element::create_stack(&tree);
     layout::set_grid_column_start(block.as_node(), GridLine::Line(1));
     layout::set_grid_column_end(block.as_node(), GridLine::Line(3));
     layout::set_grid_row_start(block.as_node(), GridLine::Line(1));
@@ -268,8 +268,8 @@ fn auto_flow_row_with_one_column_stacks_vertically() {
     );
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
 
@@ -287,8 +287,8 @@ fn auto_flow_column_with_one_row_stacks_horizontally() {
     layout::set_grid_auto_flow(g.as_node(), GridAutoFlow::Column);
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
 
@@ -300,7 +300,7 @@ fn auto_flow_column_with_one_row_stacks_horizontally() {
 
 fn empty_grid_no_panic() {
     let tree = gtk_dom::layout::new_tree();
-    let g = Element::create(&tree, "grid");
+    let g = Element::create_grid(&tree);
     let _tree = fresh_tree(&g);
     layout::compute_layout(g.as_node(), (100.0, 100.0));
 }
@@ -310,7 +310,7 @@ fn zero_available_size_no_panic() {
     let g = make_grid(&tree, vec![fr(1.0), fr(1.0)], vec![fr(1.0)]);
     let _tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
 
     layout::compute_layout(g.as_node(), (0.0, 0.0));
@@ -324,7 +324,7 @@ fn padding_insets_grid_cells() {
     layout::set_padding(g.as_node(), 10.0);
     let tree = fresh_tree(&g);
 
-    let a = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
     g.insert_node(a.as_node(), None);
 
     layout::compute_layout(g.as_node(), (120.0, 70.0));
@@ -334,13 +334,13 @@ fn padding_insets_grid_cells() {
 
 fn flexbox_still_works_after_grid() {
     let tree = gtk_dom::layout::new_tree();
-    let root = Element::create(&tree, "view");
+    let root = Element::create_stack(&tree);
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     layout::set_gap(root.as_node(), 10.0);
     let tree = fresh_tree(&root);
 
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
+    let a = Element::create_stack(&tree);
+    let b = Element::create_stack(&tree);
     layout::set_width(a.as_node(), 40.0);
     layout::set_height(a.as_node(), 30.0);
     layout::set_width(b.as_node(), 40.0);

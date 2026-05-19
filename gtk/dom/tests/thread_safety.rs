@@ -22,7 +22,7 @@ fn create_off_main_panics() {
             // `new_tree()` is main-thread-safe (pure Rust); the panic
             // comes from the GTK widget constructor.
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Element::create(&tree, "button");
+            let _ = gtk_dom::Element::create_button(&tree).0;
         })
     })
     .join()

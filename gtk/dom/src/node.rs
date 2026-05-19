@@ -138,16 +138,30 @@ impl fmt::Debug for Node {
     }
 }
 
-impl AsRef<Node> for Element {
+impl AsRef<Node> for Node {
     fn as_ref(&self) -> &Node {
-        &self.node
+        self
     }
 }
 
 impl Node {
-    /// Allocate a fresh arena entry into `tree` and return a Node
-    /// owning it. The widget is shared with the arena via a
-    /// (cheap, gobject-refcounted) clone.
+    /// Typed registration primitive: hand in a concrete gtk widget
+    /// (`gtk::Button`, `gtk::Label`, ...), get back a `Node` owning
+    /// a fresh arena entry. Used by typed-builder construction in
+    /// `leptos_gtk` and by the renderer-protocol primitives
+    /// [`Node::create_text`] and [`Node::create_placeholder`].
+    pub fn from_view<W>(
+        tree: &TreeRef,
+        widget: W,
+        default_style: Style,
+    ) -> Self
+    where
+        W: IsA<gtk4::Widget>,
+    {
+        Self::create_in_tree(tree, widget, default_style)
+    }
+
+    /// Legacy alias for [`Self::from_view`].
     pub fn create_in_tree<W>(
         tree: &TreeRef,
         widget: W,
@@ -258,126 +272,38 @@ impl Node {
 }
 
 // ---------------------------------------------------------------------
-// Element
+// Node — typed-builder / renderer-protocol surface
 // ---------------------------------------------------------------------
 
-#[derive(Clone, Debug)]
-pub struct Element {
-    node: Node,
-}
+/// Backwards-compatibility alias. `Element` used to be a distinct
+/// wrapper over `Node`; after the kind-discriminant + Text/Placeholder
+/// unification, the wrapper had no remaining state. `Node` is now the
+/// single user-facing type for every gtk-backed arena entry.
+pub type Element = Node;
 
-impl Element {
-    /// Wrap a `Node`. There is no longer any kind discriminant — every
-    /// arena entry is structurally an Element-shaped Node.
-    pub fn from_node_unchecked(node: Node) -> Self {
-        Element { node }
-    }
-
-    /// Construct an element by tag name into `tree`. Allocates an
-    /// arena entry eagerly; the resulting Node refers to it directly.
-    ///
-    /// Tag names map to GTK4 widget classes.
-    pub fn create(tree: &TreeRef, tag: &str) -> Self {
-        use crate::layout::{FlexDirection, Style};
-
-        let (widget, default_style): (gtk4::Widget, Style) = match tag {
-            "button" => {
-                let b = gtk4::Button::new();
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (b.upcast(), s)
-            }
-            "checkbox" => {
-                let c = gtk4::CheckButton::new();
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (c.upcast(), s)
-            }
-            "label" => {
-                let l = gtk4::Label::new(None);
-                // Default to left-aligned text — matches AppKit's
-                // wrappingLabel default. Wraps on overflow.
-                l.set_xalign(0.0);
-                l.set_wrap(true);
-                l.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (l.upcast(), s)
-            }
-            "text_field" => {
-                let e = gtk4::Entry::new();
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (e.upcast(), s)
-            }
-            "secure_text_field" => {
-                let e = gtk4::PasswordEntry::new();
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (e.upcast(), s)
-            }
-            "slider" => {
-                let s_ = gtk4::Scale::new(
-                    gtk4::Orientation::Horizontal,
-                    None::<&gtk4::Adjustment>,
-                );
-                s_.set_draw_value(false);
-                let mut st = Style::default();
-                st.flex_shrink = 0.0;
-                (s_.upcast(), st)
-            }
-            "pop_up_button" => {
-                let dd = gtk4::DropDown::default();
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (dd.upcast(), s)
-            }
-            "hstack" => {
-                let w = container_widget();
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Row;
-                (w, s)
-            }
-            "vstack" | "stack_view" => {
-                let w = container_widget();
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Column;
-                (w, s)
-            }
-            "stack" => {
-                // Bare flexbox container; direction defaults to Row
-                // unless the builder sets it.
-                let w = container_widget();
-                (w, Style::default())
-            }
-            "grid" => {
-                // 2-D grid container backed by Taffy's grid algorithm.
-                let w = container_widget();
-                let mut s = Style::default();
-                s.display = crate::layout::Display::Grid;
-                (w, s)
-            }
-            // `view` or anything unknown → generic container.
-            _ => {
-                let w = container_widget();
-                (w, Style::default())
-            }
-        };
-
-        let node = Node::create_in_tree(tree, widget, default_style);
-        Element { node }
-    }
-
+impl Node {
+    /// Identity. Kept (along with [`Self::into_node`] /
+    /// [`Self::from_node_unchecked`]) so the pre-unification call
+    /// style (`el.as_node()`, `el.into_node()`,
+    /// `Element::from_node_unchecked(n)`) keeps compiling.
     pub fn as_node(&self) -> &Node {
-        &self.node
+        self
     }
 
+    /// Identity. See [`Self::as_node`].
     pub fn into_node(self) -> Node {
-        self.node
+        self
     }
 
-    pub fn widget(&self) -> &gtk4::Widget {
-        self.node.widget()
+    /// Identity. See [`Self::as_node`].
+    pub fn from_node_unchecked(node: Node) -> Node {
+        node
+    }
+
+    /// Generic flexbox container (gtk::Box-backed). Used by
+    /// `<view>` / `<stack>` and by `window.rs` for the content root.
+    pub fn create_container(tree: &TreeRef) -> Self {
+        Node::from_view(tree, container_widget(), Style::default())
     }
 
     /// Insert `child` before `marker` in this element's child list.
@@ -576,7 +502,7 @@ impl Element {
             }
         }
         if content_changed {
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -783,13 +709,14 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Element: text-label & placeholder constructors
+// Node: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-impl Element {
-    /// Build a text-label Element — a `gtk::Label` configured for
-    /// left-aligned word-wrap. Used by the renderer's `create_text_node`,
-    /// which is the `Render` impl for `&str` / `String` / numerics.
+impl Node {
+    /// Build a text-label Node — a `gtk::Label` configured for
+    /// left-aligned word-wrap. Used by the renderer's
+    /// `create_text_node`, which is the `Render` impl for `&str` /
+    /// `String` / numerics.
     pub fn create_text(tree: &TreeRef, content: &str) -> Self {
         let label = gtk4::Label::new(Some(content));
         label.set_xalign(0.0);
@@ -797,30 +724,26 @@ impl Element {
         label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut style = Style::default();
         style.flex_shrink = 0.0;
-        Element {
-            node: Node::create_in_tree(tree, label, style),
-        }
+        Node::from_view(tree, label, style)
     }
 
-    /// Update the displayed string on a text-label Element. No-op if
+    /// Update the displayed string on a text-label Node. No-op if
     /// the backing widget isn't a `gtk::Label` or the value is
     /// unchanged.
     pub fn set_text(&self, content: &str) {
-        if let Some(label) =
-            self.node.widget().downcast_ref::<gtk4::Label>()
-        {
+        if let Some(label) = self.widget().downcast_ref::<gtk4::Label>() {
             if label.label().as_str() != content {
                 label.set_label(content);
-                crate::layout::schedule_relayout(&self.node);
+                crate::layout::schedule_relayout(self);
             }
         }
     }
 
-    /// Build a placeholder Element — a hidden, zero-sized `gtk::Label`
+    /// Build a placeholder Node — a hidden, zero-sized `gtk::Label`
     /// used by the renderer's control-flow primitives (`Render for ()`,
     /// tuple/iterator/keyed end-markers) as a stable mount anchor.
     ///
-    /// We use a hidden Label (not a Box) so attempts to mount under a
+    /// Hidden Label (not a Box) so attempts to mount under a
     /// placeholder error at the GTK layer rather than silently
     /// succeeding.
     pub fn create_placeholder(tree: &TreeRef) -> Self {
@@ -832,9 +755,7 @@ impl Element {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Element {
-            node: Node::create_in_tree(tree, widget, style),
-        }
+        Node::from_view(tree, widget, style)
     }
 }
 
@@ -842,12 +763,7 @@ impl Element {
 // Helpers
 // ---------------------------------------------------------------------
 
-/// Build a bare GtkWidget that hosts arbitrary children laid out by
-/// our [`TaffyLayout`].
-fn container_widget() -> gtk4::Widget {
-    let b = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    b.upcast()
-}
+use crate::make_view::container_widget;
 
 /// Append or insert `child` under `parent`.
 fn attach_under(
@@ -968,24 +884,12 @@ impl fmt::Debug for WeakNode {
     }
 }
 
-/// Weak counterpart to [`Element`].
-#[derive(Clone, Debug)]
-pub struct WeakElement {
-    node: WeakNode,
-}
+/// Backwards-compat alias for [`WeakNode`] — see [`Element`].
+pub type WeakElement = WeakNode;
 
-impl Element {
-    pub fn weak(&self) -> WeakElement {
-        WeakElement { node: self.node.downgrade() }
-    }
-}
-
-impl WeakElement {
-    pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().map(Element::from_node_unchecked)
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
+impl Node {
+    /// Convenience alias for [`Node::downgrade`] (historical name).
+    pub fn weak(&self) -> WeakNode {
+        self.downgrade()
     }
 }

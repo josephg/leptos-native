@@ -242,14 +242,8 @@ impl Renderer {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<Node> for Element {
-    fn cast_from(node: Node) -> Option<Element> {
-        Some(Element::from_node_unchecked(node))
-    }
-}
-
-impl CastFrom<Element> for Element {
-    fn cast_from(source: Element) -> Option<Element> {
+impl CastFrom<Node> for Node {
+    fn cast_from(source: Node) -> Option<Node> {
         Some(source)
     }
 }

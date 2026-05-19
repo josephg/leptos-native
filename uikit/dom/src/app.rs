@@ -234,7 +234,11 @@ define_class!(
             // first, then create the content root inside it.
             let tree = crate::layout::new_tree();
             let content_root =
-                crate::node::Element::create_with(&tree, "vstack", mtm);
+                crate::node::Element::create_container_with(&tree, mtm);
+            crate::layout::set_flex_direction(
+                content_root.as_node(),
+                crate::layout::FlexDirection::Column,
+            );
             // Fill the window via 100% size — Taffy resolves against
             // the `AvailableSpace::Definite` passed to compute_layout.
             // See cocoa's window.rs for the rationale; matches the

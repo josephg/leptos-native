@@ -791,7 +791,7 @@ pub fn search_toolbar_item(
         taffy::Style::default(),
         crate::layout::CocoaMeta::default(),
     );
-    let search_element = Element::from_node_unchecked(node);
+    let search_element = node;
 
     // Upcast to NSToolbarItem for storage in
     // `ToolbarItemRegistration.ns_item`. ObjC dynamic dispatch

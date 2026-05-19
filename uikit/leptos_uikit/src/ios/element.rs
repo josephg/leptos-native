@@ -387,7 +387,7 @@ impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
 impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
     type State = ElementState<(), Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "view");
+        let el = IosElement::create_vstack(tree);
         let mut effects = Vec::new();
         if let Some(dir) = self.flex_direction {
             set_flex_direction(el.as_node(), dir);
@@ -649,7 +649,7 @@ impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
 impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
     type State = ElementState<(), Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "grid");
+        let el = IosElement::create_grid(tree);
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
@@ -841,7 +841,7 @@ impl WithText for Button {
 impl Render<Dom> for Button {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "button");
+        let el = IosElement::create_button(tree).0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -968,7 +968,7 @@ impl WithText for Label {
 impl Render<Dom> for Label {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "label");
+        let el = IosElement::create_label(tree).0;
         let mut effects = Vec::new();
 
         // bind:value getter wins over .text(...) — same as cocoa.
@@ -1110,8 +1110,11 @@ impl WithText for TextField {
 impl Render<Dom> for TextField {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let tag = if self.secure { "secure_text_field" } else { "text_field" };
-        let el = IosElement::create(tree, tag);
+        let el = if self.secure {
+            IosElement::create_secure_text_field(tree).0
+        } else {
+            IosElement::create_text_field(tree).0
+        };
         let mut effects = Vec::new();
 
         if let Some(p) = self.placeholder {
@@ -1252,7 +1255,7 @@ impl WithUniversal for Switch {
 impl Render<Dom> for Switch {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "switch");
+        let el = IosElement::create_switch(tree).0;
         let mut effects = Vec::new();
 
         // One-way `.checked(...)`.
@@ -1386,7 +1389,7 @@ impl WithUniversal for Slider {
 impl Render<Dom> for Slider {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "slider");
+        let el = IosElement::create_slider(tree).0;
         let mut effects = Vec::new();
 
         // min/max set FIRST so initial set_double_value clamps correctly.
@@ -1528,7 +1531,7 @@ impl WithUniversal for Stepper {
 impl Render<Dom> for Stepper {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "stepper");
+        let el = IosElement::create_stepper(tree).0;
         let mut effects = Vec::new();
 
         // Bounds + increment first so the initial value clamps.
@@ -1627,7 +1630,7 @@ impl WithUniversal for ProgressIndicator {
 impl Render<Dom> for ProgressIndicator {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "progress_indicator");
+        let el = IosElement::create_progress_indicator(tree).0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -1745,7 +1748,7 @@ impl WithUniversal for ImageView {
 impl Render<Dom> for ImageView {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "image_view");
+        let el = IosElement::create_image_view(tree).0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -1887,7 +1890,7 @@ impl WithUniversal for SegmentedControl {
 impl Render<Dom> for SegmentedControl {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "segmented_control");
+        let el = IosElement::create_segmented_control(tree).0;
         let mut effects = Vec::new();
 
         el.set_segmented_items(&self.items);
@@ -2019,7 +2022,7 @@ impl WithUniversal for PopUpButton {
 impl Render<Dom> for PopUpButton {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "pop_up_button");
+        let el = IosElement::create_pop_up_button(tree).0;
         let mut effects = Vec::new();
 
         // The change callback: invoked when a menu item is picked.
@@ -2157,7 +2160,7 @@ impl WithUniversal for ColorWell {
 impl Render<Dom> for ColorWell {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "color_well");
+        let el = IosElement::create_color_well(tree).0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -2297,7 +2300,7 @@ impl WithUniversal for DatePicker {
 impl Render<Dom> for DatePicker {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "date_picker");
+        let el = IosElement::create_date_picker(tree).0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -2436,7 +2439,7 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
 impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
     type State = ElementState<(), Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "scroll_view");
+        let el = IosElement::create_scroll_view(tree).0;
         let mut effects = Vec::new();
 
         if let Some(b) = self.has_horizontal_scroller {
@@ -2537,7 +2540,7 @@ impl WithText for TextView {
 impl Render<Dom> for TextView {
     type State = ElementState<(), ()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
-        let el = IosElement::create(tree, "text_view");
+        let el = IosElement::create_text_view(tree).0;
         let mut effects = Vec::new();
 
         let el_for_value = el.clone();

@@ -195,34 +195,29 @@ impl renderer::LayoutNodeOps for Node {
     }
 }
 
-impl renderer::LayoutElement for crate::node::Element {
+impl renderer::LayoutElement for Node {
     type Node = Node;
     fn as_node(&self) -> &Self::Node {
-        crate::node::Element::as_node(self)
+        self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        crate::node::Element::set_bool_attribute(
-            self,
-            crate::node::BoolAttr::Hidden,
-            hidden,
-        );
+        Node::set_bool_attribute(self, crate::node::BoolAttr::Hidden, hidden);
     }
     fn set_clip(&self, clip: bool) {
         use gtk4::prelude::WidgetExt;
-        let widget = self.as_node().widget();
-        widget.set_overflow(if clip {
+        self.widget().set_overflow(if clip {
             gtk4::Overflow::Hidden
         } else {
             gtk4::Overflow::Visible
         });
     }
 }
-impl renderer::UniversalElement for crate::node::Element {
+impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        crate::node::Element::set_alpha(self, alpha)
+        Node::set_alpha(self, alpha)
     }
     fn set_tool_tip(&self, tip: &str) {
-        crate::node::Element::set_tool_tip(self, tip)
+        Node::set_tool_tip(self, tip)
     }
 }
 

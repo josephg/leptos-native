@@ -32,6 +32,7 @@ pub mod debug_overlay;
 pub mod event;
 pub mod layout;
 pub mod main_thread;
+mod make_view;
 pub mod menu;
 pub mod node;
 pub mod renderer;

@@ -190,9 +190,9 @@ impl fmt::Debug for Node {
     }
 }
 
-impl AsRef<Node> for Element {
+impl AsRef<Node> for Node {
     fn as_ref(&self) -> &Node {
-        &self.node
+        self
     }
 }
 
@@ -369,51 +369,34 @@ impl Node {
 }
 
 // ---------------------------------------------------------------------
-// Element
+// Node — typed-builder / renderer-protocol surface
 // ---------------------------------------------------------------------
 
-/// An element node — a `Node` paired with the typed-builder /
-/// renderer-protocol surface used by `leptos_cocoa`. Every arena
-/// entry is structurally an Element-shaped Node, distinguished only
-/// by the concrete NSView subclass + default style applied at
-/// creation time.
-///
-/// `cocoa_dom` only knows about three Element shapes directly:
-/// generic containers ([`Element::create_container`]), text labels
-/// ([`Element::create_text`]), and placeholder markers
-/// ([`Element::create_placeholder`]). Every other control — buttons,
-/// sliders, text fields, etc. — is constructed by the typed builder
-/// that owns it in `leptos_cocoa`, which allocates its own NSView
-/// subclass and hands it to [`Node::from_view`] / [`Element::from_view`].
-#[derive(Clone, Debug)]
-pub struct Element {
-    node: Node,
-}
+/// Backwards-compatibility alias. Element used to be a distinct wrapper
+/// over `Node`; after the kind-discriminant + Text/Placeholder
+/// unification, the wrapper had no remaining state. The two were
+/// merged: `Node` is now the single user-facing type for every
+/// AppKit-backed arena entry.
+pub type Element = Node;
 
-impl Element {
-    /// Wrap a `Node`. There is no longer any kind discriminant — every
-    /// arena entry is structurally an Element-shaped Node, distinguished
-    /// only by the concrete NSView subclass + default style applied at
-    /// creation time.
-    pub fn from_node_unchecked(node: Node) -> Self {
-        Element { node }
+impl Node {
+    /// Identity. Kept (along with [`Self::into_node`] and
+    /// [`Self::from_node_unchecked`]) so the pre-unification call
+    /// style `el.as_node()` / `el.into_node()` /
+    /// `Element::from_node_unchecked(n)` keeps working. New code can
+    /// just use the Node directly.
+    pub fn as_node(&self) -> &Node {
+        self
     }
 
-    /// Typed entry point for builders: register a concrete NSView
-    /// subclass under a fresh arena entry and wrap it as an Element.
-    /// Used by every typed-builder `Render::build` in `leptos_cocoa`.
-    pub fn from_view<V>(
-        tree: &TreeRef,
-        view: Retained<V>,
-        default_style: Style,
-        default_meta: CocoaMeta,
-    ) -> Self
-    where
-        V: AsRef<NSView> + Message,
-    {
-        Element {
-            node: Node::from_view(tree, view, default_style, default_meta),
-        }
+    /// Identity. See [`Self::as_node`].
+    pub fn into_node(self) -> Node {
+        self
+    }
+
+    /// Identity. See [`Self::as_node`].
+    pub fn from_node_unchecked(node: Node) -> Node {
+        node
     }
 
     /// Generic flipped container (FlippedView, default Taffy style).
@@ -430,30 +413,10 @@ impl Element {
         let view: Retained<NSView> = unsafe {
             Retained::cast_unchecked(FlippedView::new(mtm))
         };
-        Element::from_view(tree, view, Style::default(), CocoaMeta::default())
+        Node::from_view(tree, view, Style::default(), CocoaMeta::default())
     }
 
-
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
-    }
-
-    pub fn ns_view(&self) -> &NSView {
-        self.node.ns_view()
-    }
-
-    /// Get a new `Retained<NSView>` (retain). See
-    /// [`Node::ns_view_retained`] — use this in callback captures
-    /// to avoid forming a Node ↔ handlers cycle.
-    pub fn ns_view_retained(&self) -> Retained<NSView> {
-        self.node.ns_view_retained()
-    }
-
-    /// The NSView that *actually* parents this element's children.
+    /// The NSView that *actually* parents this node's children.
     /// For most tags this is just `self.ns_view()`. For
     /// `<scroll_view>` it's the NSScrollView's documentView — a
     /// FlippedView we install at construction. Routing through this
@@ -468,7 +431,7 @@ impl Element {
     /// be misrouted into the NSTextView.
     pub fn subview_parent(&self) -> Retained<NSView> {
         let direct = self.ns_view();
-        let routes_to_doc = self.node.with_meta(|m| m.is_scroll_view);
+        let routes_to_doc = self.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
             if let Some(scroll) =
                 downcast::<objc2_app_kit::NSScrollView>(direct)
@@ -663,7 +626,7 @@ impl Element {
         if content_changed {
             // Intrinsic size may have changed; trigger a relayout
             // pass so the frame catches up to the new content.
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -718,7 +681,7 @@ impl Element {
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
         // NSButton is an NSControl, so on_control_action covers it;
         // the inner fn no-ops on non-NSControl nodes.
-        crate::event::on_control_action(&self.node, cb);
+        crate::event::on_control_action(self, cb);
     }
 
     /// Wire a callback that fires when an NSControl's value changes
@@ -728,7 +691,7 @@ impl Element {
     /// This is the generic version of [`on_click`]; use it for
     /// slider/popup-style controls where "click" is misleading.
     pub fn on_action(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_control_action(&self.node, cb);
+        crate::event::on_control_action(self, cb);
     }
 
     /// Wire a unit-payload callback that fires whenever a control's
@@ -740,10 +703,10 @@ impl Element {
         // Text fields go through the delegate fan-out so we can
         // stack multiple handlers (matches on_text_change's pattern).
         if downcast::<NSTextField>(self.ns_view()).is_some() {
-            crate::event::on_text_field_change(&self.node, move |_| cb());
+            crate::event::on_text_field_change(self, move |_| cb());
             return;
         }
-        crate::event::on_control_action(&self.node, cb);
+        crate::event::on_control_action(self, cb);
     }
 
     /// Wire a callback that fires whenever the text content of a
@@ -752,7 +715,7 @@ impl Element {
     /// supported — each call appends to the field's fan-out
     /// delegate.
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_change(&self.node, cb);
+        crate::event::on_text_field_change(self, cb);
     }
 
     /// Install hover tracking. `cb(true)` fires when the cursor
@@ -760,7 +723,7 @@ impl Element {
     /// exits. Single handler per element — combine into one
     /// closure if you need to fan out.
     pub fn on_hover(&self, cb: impl FnMut(bool) + 'static) {
-        crate::event::on_hover(&self.node, cb);
+        crate::event::on_hover(self, cb);
     }
 
     /// Wire a callback that fires when the user commits an edit
@@ -1073,7 +1036,7 @@ impl Element {
                 }
             }
         }
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     fn read_font_point_size(&self) -> Option<f64> {
@@ -1180,7 +1143,7 @@ impl Element {
         } else {
             NSCellImagePosition::ImageOnly
         });
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     /// Toggle the `intrinsic_width = FromContent` opt-in on an
@@ -1195,10 +1158,10 @@ impl Element {
     pub fn set_intrinsic_width_from_content(&self, on: bool) {
         if downcast::<NSTextField>(self.ns_view()).is_some() {
             crate::layout::mark_intrinsic_width_from_content(
-                &self.node,
+                self,
                 on,
             );
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -1249,7 +1212,7 @@ impl Element {
             // 0 = "as many as needed"; the truncate modes are
             // effectively single-line via setUsesSingleLineMode.
             f.setMaximumNumberOfLines(0);
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
             return;
         }
         // NSTextView lives inside an NSScrollView (our <text_view>
@@ -1278,7 +1241,7 @@ impl Element {
                         // default. Keep the existing geometry — we
                         // only touch line-break mode.
                     }
-                    crate::layout::schedule_relayout(&self.node);
+                    crate::layout::schedule_relayout(self);
                 }
             }
         }
@@ -1655,13 +1618,13 @@ impl Element {
     /// (Return key or focus loss — `controlTextDidEndEditing:`).
     /// Receives the field's current value. No-op on non-NSTextField.
     pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_end_editing(&self.node, cb);
+        crate::event::on_text_field_end_editing(self, cb);
     }
 
     /// Wire a callback that fires when the text field gains focus
     /// (`controlTextDidBeginEditing:`). No-op on non-NSTextField.
     pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_focus(&self.node, cb);
+        crate::event::on_text_field_focus(self, cb);
     }
 
     /// Wire a callback that fires when the text field loses focus
@@ -1669,7 +1632,7 @@ impl Element {
     /// `on_text_end_editing` but with no value payload). No-op
     /// on non-NSTextField.
     pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_blur(&self.node, cb);
+        crate::event::on_text_field_blur(self, cb);
     }
 
     /// Wire a keydown observer on a text field. Fires on
@@ -1680,7 +1643,7 @@ impl Element {
         &self,
         cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
-        crate::event::on_text_field_keydown(&self.node, cb);
+        crate::event::on_text_field_keydown(self, cb);
     }
 
     /// Wire a keyup observer on a text field. AppKit's field-
@@ -1691,7 +1654,7 @@ impl Element {
         &self,
         cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
-        crate::event::on_text_field_keyup(&self.node, cb);
+        crate::event::on_text_field_keyup(self, cb);
     }
 
     /// Load an image into an `<image_view>` from a file path on
@@ -1712,7 +1675,7 @@ impl Element {
         let image =
             NSImage::initWithContentsOfFile(NSImage::alloc(), &path_str);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     /// Load an image into an `<image_view>` from in-memory bytes.
@@ -1732,14 +1695,14 @@ impl Element {
         };
         let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
             iv.setImage(None);
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
             return;
         };
         use objc2::AllocAnyThread;
         let data = NSData::with_bytes(bytes);
         let image = NSImage::initWithData(NSImage::alloc(), &data);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     /// Set an `<image_view>` to render an SF Symbol by name (e.g.
@@ -1761,7 +1724,7 @@ impl Element {
         };
         let image = sf_symbol_image(name);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     /// Set an image view's tint color. Applied via
@@ -1791,7 +1754,7 @@ impl Element {
         // on this Node's handlers so its lifecycle tracks the
         // scroll-view Node (not the documentView, which has no
         // Rust wrapper).
-        crate::event::on_text_view_change(&self.node, cb);
+        crate::event::on_text_view_change(self, cb);
     }
 
     /// Set the editability of the NSTextView inside a `<text_view>`
@@ -1910,10 +1873,10 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Element: text-label & placeholder constructors
+// Node: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-impl Element {
+impl Node {
     /// Build a text-label Element — a non-editable, non-bordered
     /// NSTextField (AppKit's standard "label" configuration).
     ///
@@ -1943,25 +1906,18 @@ impl Element {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Element {
-            node: Node::from_view(
-                tree,
-                view,
-                style,
-                CocoaMeta::default(),
-            ),
-        }
+        Node::from_view(tree, view, style, CocoaMeta::default())
     }
 
-    /// Update the displayed string on a text-label Element. No-op if
+    /// Update the displayed string on a text-label Node. No-op if
     /// the backing view isn't an NSTextField.
     pub fn set_text(&self, content: &str) {
-        let view = self.node.ns_view();
+        let view = self.ns_view();
         if let Some(field) = downcast::<NSTextField>(view) {
             field.setStringValue(&NSString::from_str(content));
         }
         // Content changed → intrinsic size may have changed too.
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     /// Build a placeholder Element — a hidden, zero-sized NSView used
@@ -1993,14 +1949,7 @@ impl Element {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Element {
-            node: Node::from_view(
-                tree,
-                view,
-                style,
-                CocoaMeta::default(),
-            ),
-        }
+        Node::from_view(tree, view, style, CocoaMeta::default())
     }
 }
 
@@ -2152,27 +2101,13 @@ impl fmt::Debug for WeakNode {
 
 // ---- WeakElement ----------------------------------------------------
 
-/// Weak counterpart to [`Element`]. See [`WeakNode`] for the rationale.
-#[derive(Clone, Debug)]
-pub struct WeakElement {
-    node: WeakNode,
-}
+/// Backwards-compatibility alias — see [`Element`] / [`WeakNode`].
+pub type WeakElement = WeakNode;
 
-impl Element {
-    /// Get a non-owning weak handle for cycle-safe closure capture.
-    pub fn weak(&self) -> WeakElement {
-        WeakElement { node: self.node.downgrade() }
-    }
-}
-
-impl WeakElement {
-    /// Try to recover a strong `Element`. Returns `None` if all
-    /// strong references have dropped.
-    pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().map(Element::from_node_unchecked)
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
+impl Node {
+    /// Convenience alias for [`Node::downgrade`] — historical name
+    /// from when `Element` was a distinct wrapper.
+    pub fn weak(&self) -> WeakNode {
+        self.downgrade()
     }
 }

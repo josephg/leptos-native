@@ -16,14 +16,12 @@
 //!
 //! See the crate-level docs for the threading contract.
 
-use crate::layout::{Dimension, IosMeta, LayoutHandle, NodeId, Style, TreeRef};
+use crate::layout::{IosMeta, LayoutHandle, NodeId, Style, TreeRef};
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
     MainThreadOnly, Message,
 };
-use objc2_ui_kit::{
-    UIButton, UIControl, UITextField, UITextInputTraits, UIView,
-};
+use objc2_ui_kit::{UIButton, UIControl, UITextField, UIView};
 use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, fmt, rc::Rc};
@@ -128,17 +126,30 @@ impl fmt::Debug for Node {
     }
 }
 
-impl AsRef<Node> for Element {
+impl AsRef<Node> for Node {
     fn as_ref(&self) -> &Node {
-        &self.node
+        self
     }
 }
 
 impl Node {
-    /// Allocate a fresh arena entry into `tree` and return a Node
-    /// owning it. The view is retained twice — once on `NodeInner`
-    /// for fast `&UIView` access, once in the arena `NodeData::view`
-    /// for layout / drop ordering.
+    /// Typed registration primitive: hand in a concrete UIView
+    /// subclass, get back a `Node` owning a fresh arena entry. Used
+    /// by every typed-builder construction path in `leptos_uikit`
+    /// and by [`Node::create_text`] / [`Node::create_placeholder`].
+    pub fn from_view<V>(
+        tree: &TreeRef,
+        view: Retained<V>,
+        default_style: Style,
+        default_meta: IosMeta,
+    ) -> Self
+    where
+        V: AsRef<UIView> + Message,
+    {
+        Self::create_in_tree(tree, view, default_style, default_meta)
+    }
+
+    /// Legacy alias for [`Self::from_view`].
     pub(crate) fn create_in_tree<V>(
         tree: &TreeRef,
         view: Retained<V>,
@@ -276,298 +287,55 @@ impl Node {
 }
 
 // ---------------------------------------------------------------------
-// Element
+// Node — typed-builder / renderer-protocol surface
 // ---------------------------------------------------------------------
 
-#[derive(Clone, Debug)]
-pub struct Element {
-    node: Node,
-}
+/// Backwards-compatibility alias. `Element` used to be a distinct
+/// wrapper over `Node`; after the kind-discriminant + Text/Placeholder
+/// unification, the wrapper had no remaining state. `Node` is now
+/// the single user-facing type for every UIView-backed arena entry.
+pub type Element = Node;
 
-impl Element {
-    /// Wrap a `Node`. There is no longer any kind discriminant — every
-    /// arena entry is structurally an Element-shaped Node.
-    pub fn from_node_unchecked(node: Node) -> Self {
-        Element { node }
+impl Node {
+    /// Identity. Kept (along with [`Self::into_node`] /
+    /// [`Self::from_node_unchecked`]) so the pre-unification call
+    /// style (`el.as_node()`, `el.into_node()`,
+    /// `Element::from_node_unchecked(n)`) keeps compiling.
+    pub fn as_node(&self) -> &Node {
+        self
     }
 
-    pub fn create(tree: &TreeRef, tag: &str) -> Self {
+    /// Identity. See [`Self::as_node`].
+    pub fn into_node(self) -> Node {
+        self
+    }
+
+    /// Identity. See [`Self::as_node`].
+    pub fn from_node_unchecked(node: Node) -> Node {
+        node
+    }
+
+    /// Generic UIView container (default style). Used by
+    /// `<view>` / `<stack>` builders and by `RootViewController`
+    /// for the content root.
+    pub fn create_container(tree: &TreeRef) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(tree, tag, mtm)
+        Self::create_container_with(tree, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, tag: &str, mtm: MainThreadMarker) -> Self {
-        use crate::layout::{FlexDirection, Style};
+    pub fn create_container_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
-
         let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
-
-        let (view, default_style): (Retained<UIView>, Style) = match tag {
-            "button" => {
-                let b = UIButton::buttonWithType(
-                    objc2_ui_kit::UIButtonType::System,
-                    mtm,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(b) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "switch" => {
-                use objc2_ui_kit::UISwitch;
-                let sw = UISwitch::initWithFrame(
-                    UISwitch::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(sw) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "label" => {
-                use objc2_ui_kit::UILabel;
-                let l = UILabel::initWithFrame(
-                    UILabel::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(l) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "text_field" => {
-                let tf = UITextField::initWithFrame(
-                    UITextField::alloc(mtm),
-                    frame,
-                );
-                tf.setBorderStyle(objc2_ui_kit::UITextBorderStyle::RoundedRect);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(tf) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "secure_text_field" => {
-                let tf = UITextField::initWithFrame(
-                    UITextField::alloc(mtm),
-                    frame,
-                );
-                tf.setSecureTextEntry(true);
-                tf.setBorderStyle(objc2_ui_kit::UITextBorderStyle::RoundedRect);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(tf) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "slider" => {
-                use objc2_ui_kit::UISlider;
-                let sl = UISlider::initWithFrame(
-                    UISlider::alloc(mtm),
-                    frame,
-                );
-                sl.setContinuous(true);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(sl) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "date_picker" => {
-                use objc2_ui_kit::UIDatePicker;
-                let dp = UIDatePicker::initWithFrame(
-                    UIDatePicker::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(dp) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "stepper" => {
-                use objc2_ui_kit::UIStepper;
-                let st = UIStepper::initWithFrame(
-                    UIStepper::alloc(mtm),
-                    frame,
-                );
-                st.setAutorepeat(true);
-                st.setContinuous(true);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(st) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "progress_indicator" => {
-                use objc2_ui_kit::UIProgressView;
-                let pv = UIProgressView::initWithProgressViewStyle(
-                    UIProgressView::alloc(mtm),
-                    objc2_ui_kit::UIProgressViewStyle::Default,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(pv) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "image_view" => {
-                use objc2_ui_kit::UIImageView;
-                let iv = UIImageView::initWithFrame(
-                    UIImageView::alloc(mtm),
-                    frame,
-                );
-                iv.setContentMode(objc2_ui_kit::UIViewContentMode::ScaleAspectFit);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(iv) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "pop_up_button" => {
-                let b = UIButton::buttonWithType(
-                    objc2_ui_kit::UIButtonType::System,
-                    mtm,
-                );
-                b.setShowsMenuAsPrimaryAction(true);
-                b.setChangesSelectionAsPrimaryAction(true);
-                let v: Retained<UIView> =
-                    unsafe { Retained::cast_unchecked(b) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "color_well" => {
-                use objc2_ui_kit::UIColorWell;
-                let cw = UIColorWell::initWithFrame(
-                    UIColorWell::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<UIView> =
-                    unsafe { Retained::cast_unchecked(cw) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "segmented_control" => {
-                use objc2_ui_kit::UISegmentedControl;
-                let sc = UISegmentedControl::initWithFrame(
-                    UISegmentedControl::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(sc) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "scroll_view" => {
-                use objc2_ui_kit::UIScrollView;
-                let scroll = UIScrollView::initWithFrame(
-                    UIScrollView::alloc(mtm),
-                    frame,
-                );
-                scroll.setShowsVerticalScrollIndicator(true);
-                scroll.setShowsHorizontalScrollIndicator(false);
-
-                // Content view — all children go here.
-                let content = UIView::initWithFrame(
-                    UIView::alloc(mtm),
-                    frame,
-                );
-                scroll.addSubview(&content);
-
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(scroll) };
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Column;
-                s.flex_basis = Dimension::length(0.0);
-                s.min_size.height = Dimension::length(0.0);
-                s.overflow = taffy::Point {
-                    x: taffy::Overflow::Hidden,
-                    y: taffy::Overflow::Hidden,
-                };
-                (v, s)
-            }
-            "text_view" => {
-                use objc2_ui_kit::UITextView;
-                let tv = UITextView::initWithFrame(
-                    UITextView::alloc(mtm),
-                    frame,
-                );
-                tv.setEditable(true);
-                tv.setSelectable(true);
-                let v: Retained<UIView> = unsafe { Retained::cast_unchecked(tv) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "stack_view" | "vstack" | "view" => {
-                let v: Retained<UIView> = UIView::initWithFrame(
-                    UIView::alloc(mtm),
-                    frame,
-                );
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Column;
-                (v, s)
-            }
-            "hstack" => {
-                let v: Retained<UIView> = UIView::initWithFrame(
-                    UIView::alloc(mtm),
-                    frame,
-                );
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Row;
-                (v, s)
-            }
-            "grid" => {
-                let v: Retained<UIView> = UIView::initWithFrame(
-                    UIView::alloc(mtm),
-                    frame,
-                );
-                let mut s = Style::default();
-                s.display = crate::layout::Display::Grid;
-                (v, s)
-            }
-            _ => {
-                let v: Retained<UIView> = UIView::initWithFrame(
-                    UIView::alloc(mtm),
-                    frame,
-                );
-                (v, Style::default())
-            }
-        };
-
-        let mut default_meta = IosMeta::default();
-        if tag == "scroll_view" {
-            default_meta.is_scroll_view = true;
-        }
-
-        let node = Node::create_in_tree(
-            tree,
-            view,
-            default_style,
-            default_meta,
-        );
-
-        Element { node }
+        let view: Retained<UIView> = UIView::initWithFrame(UIView::alloc(mtm), frame);
+        Node::from_view(tree, view, Style::default(), IosMeta::default())
     }
 
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
-    }
-
-    pub fn ui_view(&self) -> &UIView {
-        self.node.ui_view()
-    }
-
-    /// Get a new `Retained<UIView>` (retain). See
-    /// [`Node::ui_view_retained`] — use this in callback captures
-    /// to avoid forming a Node ↔ handlers cycle.
-    pub fn ui_view_retained(&self) -> Retained<UIView> {
-        self.node.ui_view_retained()
-    }
 
     /// The UIView that *actually* parents this element's children.
     pub fn subview_parent(&self) -> Retained<UIView> {
         let direct = self.ui_view();
-        let routes_to_doc = self.node.with_meta(|m| m.is_scroll_view);
+        let routes_to_doc = self.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
             if let Some(scroll) =
                 downcast::<objc2_ui_kit::UIScrollView>(direct)
@@ -708,7 +476,7 @@ impl Element {
             }
         }
         if content_changed {
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -743,38 +511,38 @@ impl Element {
     pub fn on_click(&self, cb: impl FnMut() + 'static) {
         let view = self.ui_view();
         if downcast::<UIControl>(view).is_some() {
-            crate::event::on_control_action(&self.node, cb);
+            crate::event::on_control_action(self, cb);
         } else {
-            crate::event::on_tap_gesture(&self.node, cb);
+            crate::event::on_tap_gesture(self, cb);
         }
     }
 
     pub fn on_action(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_control_action(&self.node, cb);
+        crate::event::on_control_action(self, cb);
     }
 
     pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
         if downcast::<UITextField>(self.ui_view()).is_some() {
-            crate::event::on_text_field_change(&self.node, move |_| cb());
+            crate::event::on_text_field_change(self, move |_| cb());
             return;
         }
-        crate::event::on_control_action(&self.node, cb);
+        crate::event::on_control_action(self, cb);
     }
 
     pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_change(&self.node, cb);
+        crate::event::on_text_field_change(self, cb);
     }
 
     pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_end_editing(&self.node, cb);
+        crate::event::on_text_field_end_editing(self, cb);
     }
 
     pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_focus(&self.node, cb);
+        crate::event::on_text_field_focus(self, cb);
     }
 
     pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_blur(&self.node, cb);
+        crate::event::on_text_field_blur(self, cb);
     }
 
     pub fn on_text_keydown(
@@ -919,7 +687,7 @@ impl Element {
                 Some(&ns),
                 objc2_ui_kit::UIControlState::Normal,
             );
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -938,7 +706,7 @@ impl Element {
                     Some(&ns),
                     objc2_ui_kit::UIControlState::Normal,
                 );
-                crate::layout::schedule_relayout(&self.node);
+                crate::layout::schedule_relayout(self);
             }
         }
     }
@@ -967,7 +735,7 @@ impl Element {
             return;
         };
         let cw_for_cb: Retained<UIColorWell> = cw.retain();
-        crate::event::on_control_action(&self.node, move || {
+        crate::event::on_control_action(self, move || {
             if let Some(c) = cw_for_cb.selectedColor() {
                 if let Some(color) = crate::Color::from_uicolor(&c) {
                     cb(color);
@@ -1073,7 +841,7 @@ impl Element {
             applied = true;
         }
         if applied {
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -1215,7 +983,7 @@ impl Element {
         &self,
         cb: impl FnMut(String) + 'static,
     ) {
-        crate::event::on_text_view_change(&self.node, cb);
+        crate::event::on_text_view_change(self, cb);
     }
 
     pub fn set_text_view_editable(&self, editable: bool) {
@@ -1257,7 +1025,7 @@ impl Element {
         let image =
             UIImage::imageWithContentsOfFile(&path_str);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     pub fn set_image_view_bytes(&self, bytes: Option<&[u8]>) {
@@ -1268,13 +1036,13 @@ impl Element {
         };
         let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
             iv.setImage(None);
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
             return;
         };
         let data = NSData::with_bytes(bytes);
         let image = UIImage::imageWithData(&data);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
     fn sf_symbol_image(name: &str) -> Option<objc2::rc::Retained<objc2_ui_kit::UIImage>> {
@@ -1294,12 +1062,12 @@ impl Element {
                 image.as_deref(),
                 objc2_ui_kit::UIControlState::Normal,
             );
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
             return;
         }
         if let Some(iv) = downcast::<objc2_ui_kit::UIImageView>(view) {
             iv.setImage(image.as_deref());
-            crate::layout::schedule_relayout(&self.node);
+            crate::layout::schedule_relayout(self);
         }
     }
 
@@ -1363,11 +1131,11 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Element: text-label & placeholder constructors
+// Node: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-impl Element {
-    /// Build a text-label Element — a UILabel. Used by the renderer's
+impl Node {
+    /// Build a text-label Node — a UILabel. Used by the renderer's
     /// `create_text_node`, which is the `Render` impl for `&str` /
     /// `String` / numerics.
     pub fn create_text(tree: &TreeRef, content: &str) -> Self {
@@ -1392,27 +1160,20 @@ impl Element {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Element {
-            node: Node::create_in_tree(
-                tree,
-                view,
-                style,
-                IosMeta::default(),
-            ),
-        }
+        Node::from_view(tree, view, style, IosMeta::default())
     }
 
-    /// Update the displayed string on a text-label Element. No-op if
+    /// Update the displayed string on a text-label Node. No-op if
     /// the backing view isn't a UILabel.
     pub fn set_text(&self, content: &str) {
-        let view = self.node.ui_view();
+        let view = self.ui_view();
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
             label.setText(Some(&NSString::from_str(content)));
         }
-        crate::layout::schedule_relayout(&self.node);
+        crate::layout::schedule_relayout(self);
     }
 
-    /// Build a placeholder Element — a hidden, zero-sized UIView used
+    /// Build a placeholder Node — a hidden, zero-sized UIView used
     /// by the renderer's control-flow primitives (`Render for ()`,
     /// tuple/iterator/keyed end-markers) as a stable mount anchor.
     pub fn create_placeholder(tree: &TreeRef) -> Self {
@@ -1438,14 +1199,7 @@ impl Element {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Element {
-            node: Node::create_in_tree(
-                tree,
-                view,
-                style,
-                IosMeta::default(),
-            ),
-        }
+        Node::from_view(tree, view, style, IosMeta::default())
     }
 }
 
@@ -1503,23 +1257,12 @@ impl fmt::Debug for WeakNode {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct WeakElement {
-    node: WeakNode,
-}
+/// Backwards-compat alias for [`WeakNode`] — see [`Element`].
+pub type WeakElement = WeakNode;
 
-impl Element {
-    pub fn weak(&self) -> WeakElement {
-        WeakElement { node: self.node.downgrade() }
-    }
-}
-
-impl WeakElement {
-    pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().map(Element::from_node_unchecked)
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
+impl Node {
+    /// Convenience alias for [`Node::downgrade`] (historical name).
+    pub fn weak(&self) -> WeakNode {
+        self.downgrade()
     }
 }

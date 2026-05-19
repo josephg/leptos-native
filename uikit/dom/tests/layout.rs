@@ -42,7 +42,7 @@ fn make_root_with_size(width: f64, height: f64) -> (ios_dom::layout::TreeRef, El
     let _mtm = common::test_mtm();
     let tree = new_tree();
 
-    let root = Element::create(&tree, "vstack");
+    let root = Element::create_vstack(&tree);
     // Pin the root's size in its style so layout has something to
     // distribute against.
     root.as_node().with_style_mut(|s| {
@@ -67,7 +67,7 @@ fn label_in_vstack_has_nonzero_height() {
     let (tree, root) = make_root_with_size(320.0, 480.0);
     set_padding(root.as_node(), 12.0);
 
-    let label = Element::create(&tree, "label");
+    let label = Element::create_label(&tree).0;
     label.set_string_attribute(StringAttr::Title, "Hello, iOS!");
     root.insert_node(label.as_node(), None);
 
@@ -107,14 +107,14 @@ fn buttons_in_hstack_have_natural_size() {
 
     let (tree, root) = make_root_with_size(320.0, 200.0);
 
-    let hstack = Element::create(&tree, "hstack");
+    let hstack = Element::create_hstack(&tree);
     root.insert_node(hstack.as_node(), None);
 
-    let b1 = Element::create(&tree, "button");
+    let b1 = Element::create_button(&tree).0;
     b1.set_string_attribute(StringAttr::Title, "OK");
     hstack.insert_node(b1.as_node(), None);
 
-    let b2 = Element::create(&tree, "button");
+    let b2 = Element::create_button(&tree).0;
     b2.set_string_attribute(StringAttr::Title, "Cancel");
     hstack.insert_node(b2.as_node(), None);
 
@@ -157,14 +157,14 @@ fn vstack_label_plus_hstack_has_full_height() {
     let (tree, root) = make_root_with_size(320.0, 480.0);
     set_padding(root.as_node(), 12.0);
 
-    let label = Element::create(&tree, "label");
+    let label = Element::create_label(&tree).0;
     label.set_string_attribute(StringAttr::Title, "Count: 0");
     root.insert_node(label.as_node(), None);
 
-    let hstack = Element::create(&tree, "hstack");
+    let hstack = Element::create_hstack(&tree);
     root.insert_node(hstack.as_node(), None);
     for title in ["-1", "Reset", "+1"] {
-        let b = Element::create(&tree, "button");
+        let b = Element::create_button(&tree).0;
         b.set_string_attribute(StringAttr::Title, title);
         hstack.insert_node(b.as_node(), None);
     }

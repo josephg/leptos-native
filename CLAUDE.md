@@ -338,9 +338,9 @@ that point.
 
 Same shape as `cocoa/dom/`. Modules:
 
-- `node.rs` — `Element::create(tag)` maps tag names to GTK widget
-  classes (`<button>` → `gtk::Button`, `<vstack>`/`<hstack>` /
-  `<view>` / `<grid>` → `gtk::Box`, etc.).
+- `node.rs` + `make_view.rs` — typed per-control constructors
+  (`Node::create_button`, `create_label`, `create_vstack`, ...). Each
+  builder calls one constructor; no tag-string dispatch.
 - `layout.rs` — same `LayoutBackend` plug-in pattern as cocoa.
   Plus `taffy_layout.rs` which exposes Taffy as a custom
   `gtk::LayoutManager`, installed per container at mount time.
@@ -802,13 +802,17 @@ explicitly.
     default Style, call `Element::from_view`) + facade re-export
     in `cocoa/leptos_cocoa/src/element_macos.rs` +
     `impl_add_any_attr_for_leaf!` line for the new builder.
-  - gtk: builder in `gtk/leptos_gtk/src/gtk/element.rs` + tag
-    handling in `gtk/dom/src/node.rs::Element::create` + facade
-    re-export in `gtk/leptos_gtk/src/element_gtk.rs` +
+  - gtk: builder in `gtk/leptos_gtk/src/gtk/element.rs` + typed
+    constructor `Element::create_<tag>` in `gtk/dom/src/make_view.rs`
+    (alloc the gtk widget, build default Style, call
+    `Node::from_view`) + facade re-export in
+    `gtk/leptos_gtk/src/element_gtk.rs` +
     `impl_add_any_attr_for_leaf!` (or container panic-on-spread).
-  - ios: builder in `uikit/leptos_uikit/src/ios/element.rs` + tag
-    handling in `uikit/dom/src/node.rs::Element::create_with` +
-    facade re-export in `uikit/leptos_uikit/src/element_ios.rs` +
+  - ios: builder in `uikit/leptos_uikit/src/ios/element.rs` + typed
+    constructor `Element::create_<tag>` in `uikit/dom/src/make_view.rs`
+    (alloc the UIView subclass, build default Style, call
+    `Node::from_view`) + facade re-export in
+    `uikit/leptos_uikit/src/element_ios.rs` +
     `impl_add_any_attr_for_leaf!`.
 - **If you add a new event:**
   - cocoa: `EventDescriptor` impl + `PendingHandler` variant in

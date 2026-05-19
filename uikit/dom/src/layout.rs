@@ -518,28 +518,24 @@ impl renderer::LayoutNodeOps for Node {
     }
 }
 
-// iOS Element impls — `set_tool_tip` uses the default no-op
-// (UIView has no hover tooltips).
-impl renderer::LayoutElement for crate::node::Element {
+// iOS Node impls — `set_tool_tip` uses the default no-op (UIView
+// has no hover tooltips).
+impl renderer::LayoutElement for Node {
     type Node = Node;
     fn as_node(&self) -> &Self::Node {
-        crate::node::Element::as_node(self)
+        self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        crate::node::Element::set_bool_attribute(
-            self,
-            crate::node::BoolAttr::Hidden,
-            hidden,
-        );
+        Node::set_bool_attribute(self, crate::node::BoolAttr::Hidden, hidden);
     }
     // `set_clip`: iOS hasn't wired UIView::clipsToBounds yet, so
     // `overflow=Hidden` is layout-only on this port (Taffy
-    // auto-min-size becomes 0, no visual clip). Override when
-    // clip support lands.
+    // auto-min-size becomes 0, no visual clip). Override when clip
+    // support lands.
 }
-impl renderer::UniversalElement for crate::node::Element {
+impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        crate::node::Element::set_alpha(self, alpha)
+        Node::set_alpha(self, alpha)
     }
 }
 

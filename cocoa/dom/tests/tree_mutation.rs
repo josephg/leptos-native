@@ -36,8 +36,8 @@ fn into_node_round_trip() {
     let tree = cocoa_dom::layout::new_tree();
     let el = Element::create_button(&tree).0;
     let original_ptr: *const objc2_app_kit::NSView = el.ns_view();
-    let n = el.into_node();
-    let el2 = Element::from_node_unchecked(n);
+    let n = el;
+    let el2 = n;
     let after_ptr: *const objc2_app_kit::NSView = el2.ns_view();
     assert_eq!(
         original_ptr, after_ptr,

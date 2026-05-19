@@ -720,43 +720,39 @@ impl renderer::LayoutNodeOps for Node {
 
 // `LayoutElement` / `UniversalElement` / `DecorationElement` impls let
 // `renderer::apply_layout` / `apply_universal` / `apply_decoration`
-// install reactive setters against a `cocoa_dom::Element` generically.
-impl renderer::LayoutElement for crate::node::Element {
+// install reactive setters against a `cocoa_dom::Node` generically.
+impl renderer::LayoutElement for Node {
     type Node = Node;
     fn as_node(&self) -> &Self::Node {
-        crate::node::Element::as_node(self)
+        self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        crate::node::Element::set_bool_attribute(
-            self,
-            crate::node::BoolAttr::Hidden,
-            hidden,
-        );
+        Node::set_bool_attribute(self, crate::node::BoolAttr::Hidden, hidden);
     }
     fn set_clip(&self, clip: bool) {
-        set_clip(self.as_node(), clip);
+        set_clip(self, clip);
     }
 }
-impl renderer::UniversalElement for crate::node::Element {
+impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        crate::node::Element::set_alpha(self, alpha)
+        Node::set_alpha(self, alpha)
     }
     fn set_tool_tip(&self, tip: &str) {
-        crate::node::Element::set_tool_tip(self, tip)
+        Node::set_tool_tip(self, tip)
     }
 }
-impl renderer::DecorationElement<crate::Color> for crate::node::Element {
+impl renderer::DecorationElement<crate::Color> for Node {
     fn set_background_color(&self, color: crate::Color) {
-        set_background_color(self.as_node(), color);
+        set_background_color(self, color);
     }
     fn set_corner_radius(&self, radius: f32) {
-        set_corner_radius(self.as_node(), radius);
+        set_corner_radius(self, radius);
     }
     fn set_border_width(&self, width: f32) {
-        set_border_width(self.as_node(), width);
+        set_border_width(self, width);
     }
     fn set_border_color(&self, color: crate::Color) {
-        set_border_color(self.as_node(), color);
+        set_border_color(self, color);
     }
 }
 

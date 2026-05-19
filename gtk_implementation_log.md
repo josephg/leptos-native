@@ -6,6 +6,34 @@ top.
 
 ---
 
+## 2026-05-19 — Typed element constructors + Element/Node unification (port mirror)
+
+Mirrored two cocoa refactors landed earlier the same day:
+
+1. Removed the `match tag { ... }` body in `Element::create` — each
+   builder now calls a uniquely-named typed constructor
+   (`Node::create_button`, `create_label`, `create_vstack`, ...)
+   from the new `gtk/dom/src/make_view.rs`. `Node::from_view` is the
+   shared registration primitive. See cocoa's
+   `implementation_log.md` entry for the full rationale.
+
+2. Unified `Element` and `Node` into a single type. `pub type
+   Element = Node;` aliased for backwards-compat; `as_node` /
+   `into_node` / `from_node_unchecked` kept as identity methods so
+   existing call sites work unchanged. `WeakElement` is now a type
+   alias for `WeakNode`. `Mountable<Dom>` / `CastFrom<Node>` /
+   `LayoutElement` / `UniversalElement` impls collapsed to single
+   `Node` impls.
+
+GTK-specific note: the `container_widget()` helper moved from
+`node.rs` to `make_view.rs` (pub(crate)); `node.rs` imports it for
+the legacy `Node::create_container` entry point.
+
+`Renderer::create_element(tag, namespace)` was unused inside the
+workspace and got deleted in step 1.
+
+---
+
 ## 2026-05-19 — Node refactor part 2 (port mirror)
 
 Mirrored the cocoa changes; see `implementation_log.md` for the

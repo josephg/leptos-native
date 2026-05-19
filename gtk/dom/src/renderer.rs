@@ -82,14 +82,6 @@ impl Renderer {
         text
     }
 
-    pub fn create_element(
-        tree: &crate::layout::TreeRef,
-        tag: &str,
-        _namespace: Option<&str>,
-    ) -> Element {
-        Element::create(tree, tag)
-    }
-
     pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Element {
         Element::create_text(tree, text)
     }
@@ -207,14 +199,8 @@ impl Renderer {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<Node> for Element {
-    fn cast_from(node: Node) -> Option<Element> {
-        Some(Element::from_node_unchecked(node))
-    }
-}
-
-impl CastFrom<Element> for Element {
-    fn cast_from(source: Element) -> Option<Element> {
+impl CastFrom<Node> for Node {
+    fn cast_from(source: Node) -> Option<Node> {
         Some(source)
     }
 }

@@ -34,6 +34,7 @@ pub mod event;
 pub mod interval;
 pub mod key_event;
 pub mod layout;
+mod make_view;
 pub mod node;
 pub mod objc_enums;
 pub mod renderer;

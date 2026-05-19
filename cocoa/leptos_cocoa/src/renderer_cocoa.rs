@@ -229,24 +229,6 @@ impl Mountable<Dom> for Node {
     }
 
     fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}
-
-impl Mountable<Dom> for Element {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        insert_before_node(self.as_node(), child)
-    }
-
-    fn elements(&self) -> Vec<Element> {
         vec![self.clone()]
     }
 }

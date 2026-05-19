@@ -41,7 +41,7 @@ pub fn open_window(
 
     // Build a fresh tree, then create the content root inside it.
     let tree = layout::new_tree();
-    let content_root = Element::create(&tree, "vstack");
+    let content_root = Element::create_vstack(&tree);
     layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.

@@ -5,6 +5,39 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-19 — Unified `Element` and `Node`
+
+After the kind-discriminant + Text/Placeholder unification (earlier
+2026-05-19 entry below), `Element` was literally `struct Element {
+node: Node }` with no extra fields and no invariants. The Renderer
+impl already had `type Text = Element; type Placeholder = Element;`.
+`CastFrom<Node> for Element` always returned `Some(...)`. The wrapper
+bought us nothing but namespacing.
+
+Merged into a single type:
+
+- All `impl Element { ... }` blocks moved to `impl Node { ... }`.
+- `pub struct Element` deleted.
+- `pub type Element = Node;` left in place as a backwards-compat
+  alias so existing `Element` callsites in cocoa_dom + leptos_cocoa
+  keep working without a mass rename.
+- `as_node(&self) -> &Node` / `into_node(self) -> Node` /
+  `from_node_unchecked(Node) -> Node` kept as identity methods on
+  Node so the pre-unification call style (`el.as_node()`,
+  `Element::from_node_unchecked(n)`) compiles unchanged.
+- `WeakElement` is now `pub type WeakElement = WeakNode;`.
+- `Mountable<Dom>` impls for Node and Element collapsed to one
+  (using the visible-element semantics: `elements()` returns
+  `vec![self.clone()]`, not the empty vec the old Node impl returned).
+
+The Renderer trait in `common/renderer` still has separate
+`type Element` / `type Text` / `type Placeholder` associated types —
+those are web-DOM-shaped and the native ports already collapse all
+three to `Node`. Removing them from the trait is a follow-up that
+touches GTK and UIKit too.
+
+---
+
 ## 2026-05-19 — Removed tag-string dispatch from element construction
 
 `Element::create(tree, "button")` and `Element::create_with(tree, tag,
