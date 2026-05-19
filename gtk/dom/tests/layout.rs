@@ -22,7 +22,7 @@ use gtk_dom::{layout, Element};
 /// new shape.
 fn fresh_tree(root: &Element) -> layout::TreeRef {
     let tree = root.as_node().tree_id().unwrap().0;
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
     tree
 }
 

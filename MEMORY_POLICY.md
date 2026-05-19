@@ -31,7 +31,9 @@ piece of state**.
 For our purposes:
 
 - **Rust is authoritative for view-tree lifetime.** Nodes, Elements,
-  bundles, Effects — these die when their last Rust handle drops.
+  arena entries, Effects — these die when their last Rust handle
+  drops (or, for arena entries, when reachability says they're
+  unreachable from any root + any external `Node`).
 - **ObjC retains are scaffolding.** They keep AppKit/UIKit happy
   while Rust holds the master reference. When the Rust master drops,
   ObjC must also release. `objc2::rc::Retained<T>` represents a `+1`
@@ -313,6 +315,11 @@ with `is_borrowed = false`):
    Node clones in handler closures calling `tree.decref` →
    `tree.with_node` → `state.borrow()`) and panic with "RefCell
    already mutably borrowed". See `LayoutTree::remove` comments.
+   `remove` also walks the entry's `children` and recursively
+   removes any with `refcount == 0` (transitive reachability GC —
+   cleans up "internal" arena entries created via
+   `tree.new_internal_leaf`, like cocoa's scroll-view documentView
+   wrapper).
 4. `NodeData` field-drop order (`handlers` before `view`) fires
    `NodeHandlers::Drop`:
    - **Drop text-field / text-view delegate `Retained`s first**
@@ -363,8 +370,8 @@ NSMenuItem / NSToolbarItem directly. The pattern there:
   1. Nils `setTarget:` / `setAction:` on the NSObject first.
   2. Then drops the field (releasing the `Retained`).
 
-Same shape as the bundle's `Drop`, just hand-rolled because there's no
-shared `Node`.
+Same shape as `NodeHandlers::Drop`, just hand-rolled because there's
+no shared `Node` / arena entry to attach to.
 
 ---
 
@@ -481,9 +488,12 @@ here — when in doubt, prefer the `Element` route and inline
 typed-`Retained` capture only for pure numeric / boolean setters.
 
 Never reach for `el.clone()` to *avoid* understanding the lifecycle.
-Use it deliberately when (a) the closure isn't in a handler bundle
-and (b) you need an Element-layer side effect that has no typed
-analogue.
+Use it deliberately when (a) the closure isn't going into the
+arena's `NodeHandlers` (i.e. not stored via `on_click` /
+`on_text_change` / etc.) and (b) you need an Element-layer side
+effect that has no typed analogue. If the closure IS destined for
+`NodeHandlers`, capture `Retained<NSSpecificSubclass>` or use
+`el.weak()` → `upgrade()` instead.
 
 ---
 
@@ -597,8 +607,9 @@ When adding a new feature, ask in order:
 2. **If it's a callback closure, what does it capture?** → §3 rule.
 3. **Am I calling an ObjC setDelegate-style method?** → §4 wrap in
    autoreleasepool.
-4. **How does it get dropped?** → §5 (main-thread, bundle's `Drop`
-   nils first, then releases).
+4. **How does it get dropped?** → §5 (main-thread, arena entry's
+   `NodeData::handlers` Drop nils setTarget/setDelegate first,
+   then releases).
 5. **If it's a reactive effect, what does the Effect's closure
    capture?** → same as §3.
 
@@ -617,9 +628,9 @@ shape. The unified policy:
 
 - Makes new controls a copy of existing controls. No design work
   per element.
-- Concentrates the AppKit/UIKit weirdness in two places (the bundle
-  `Drop` and the `setDelegate`-pool rule) where it can be tested
-  once and trusted.
+- Concentrates the AppKit/UIKit weirdness in two places
+  (`NodeHandlers::Drop` and the `setDelegate`-pool rule) where it
+  can be tested once and trusted.
 - Makes leak tests reusable: the same `leak_lifecycle` shape
   catches every regression across every control, because every
   control uses the same ownership skeleton.

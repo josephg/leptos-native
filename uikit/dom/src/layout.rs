@@ -84,14 +84,18 @@ fn layout_debug_enabled() -> bool {
 // Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
 
-/// Backwards-compatible no-op: arena allocation now happens eagerly
-/// in `Element::create_with` (and `Text` / `Placeholder`). Just
-/// publishes `node.id` as root if no root is set yet.
-pub fn register_in_tree(node: &Node, tree: &TreeRef) {
+/// Mark `node` as the tree's root, if no root is set yet.
+///
+/// Arena allocation happens eagerly in `Element::create_with` (and
+/// `Text` / `Placeholder`). This just publishes `node.id` as
+/// `tree.root` — the deferred-relayout scheduler and the
+/// `compute_layout` entry points read it. Silent no-op if a root
+/// is already set (first wins).
+pub fn set_as_root(node: &Node, tree: &TreeRef) {
     let Some((node_tree, id)) = node.tree_id() else { return };
     debug_assert!(
         Rc::ptr_eq(&node_tree, tree),
-        "register_in_tree called with a tree that doesn't own this node"
+        "set_as_root called with a tree that doesn't own this node"
     );
     let mut root = tree.root.borrow_mut();
     if root.is_none() {

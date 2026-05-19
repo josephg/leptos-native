@@ -20,7 +20,7 @@ use renderer::attrs::GridLine;
 
 fn fresh_tree(root: &Element) -> layout::TreeRef {
     let tree = layout::new_tree();
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
     tree
 }
 

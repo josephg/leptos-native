@@ -52,7 +52,7 @@ fn mount_into_host<V: Render<Dom> + 'static>(
         "view",
         common::test_mtm(),
     );
-    cocoa_dom::layout::register_in_tree(host.as_node(), &tree);
+    cocoa_dom::layout::set_as_root(host.as_node(), &tree);
     let mut state = view.build(&tree);
     state.mount(&host, None);
     (host, state)

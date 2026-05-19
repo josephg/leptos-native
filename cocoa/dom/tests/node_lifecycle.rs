@@ -309,6 +309,41 @@ fn decref_on_nonexistent_is_noop() {
     tree.incref(id); // no panic
 }
 
+/// Verifies the new_internal_leaf + transitive-reachability-GC
+/// mechanism: an internal child (no Node) is automatically removed
+/// when its parent is removed.
+fn scroll_view_wrapper_is_cleaned_up_when_parent_drops() {
+    let _mtm = common::test_mtm();
+    let tree = layout::new_tree();
+    let scroll = Element::create(&tree, "scroll_view");
+    let scroll_id = scroll.as_node().tree_id().unwrap().1;
+    let wrapper_id = scroll
+        .as_node()
+        .with_meta(|m| m.child_taffy_parent)
+        .expect("scroll_view allocates a wrapper");
+
+    // Both exist.
+    assert!(tree.style(scroll_id).is_some());
+    assert!(tree.style(wrapper_id).is_some());
+    assert_eq!(
+        tree.refcount_for_test(wrapper_id),
+        Some(0),
+        "internal wrapper starts at refcount=0"
+    );
+
+    // Drop the scroll_view. The wrapper has refcount=0 and parent
+    // becomes None; the transitive sweep in tree.remove cleans it up.
+    drop(scroll);
+    assert!(
+        tree.style(scroll_id).is_none(),
+        "scroll_view entry removed"
+    );
+    assert!(
+        tree.style(wrapper_id).is_none(),
+        "wrapper (refcount=0, orphaned) auto-removed by reachability GC"
+    );
+}
+
 // =====================================================================
 // 8. NSView identity stable across repeated accesses
 // =====================================================================
@@ -471,6 +506,7 @@ fn main() {
         ("detached_orphan_with_handles_stays", detached_orphan_with_handles_stays),
         ("decref_below_zero_is_safe", decref_below_zero_is_safe),
         ("decref_on_nonexistent_is_noop", decref_on_nonexistent_is_noop),
+        ("scroll_view_wrapper_is_cleaned_up_when_parent_drops", scroll_view_wrapper_is_cleaned_up_when_parent_drops),
         ("ns_view_pointer_stable", ns_view_pointer_stable),
         ("weak_node_upgrades_while_node_alive", weak_node_upgrades_while_node_alive),
         ("weak_node_upgrade_fails_after_drop", weak_node_upgrade_fails_after_drop),

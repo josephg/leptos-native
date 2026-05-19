@@ -13,7 +13,7 @@ use objc2_foundation::NSSize;
 /// this — root.compute_layout panics if the node isn't registered.
 fn fresh_tree(root: &Element) -> layout::TreeRef {
     let (tree, _) = root.as_node().tree_id().expect("element has tree");
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
     tree
 }
 

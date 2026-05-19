@@ -168,7 +168,7 @@ pub struct NodeContext<B: LayoutBackend> {
 /// its [`LayoutHandle`].
 pub struct LayoutTree<B: LayoutBackend> {
     state: RefCell<LayoutState<B>>,
-    /// Set by the port's `register_in_tree` helper the first time a
+    /// Set by the port's `set_as_root` helper the first time a
     /// tree gets a node. Tracked explicitly so dispatched relayout
     /// callbacks can find the root without walking — walking via
     /// `parent(id)` would panic if any intermediate id has been
@@ -336,6 +336,38 @@ impl<B: LayoutBackend> LayoutTree<B> {
         }))
     }
 
+    /// Like [`Self::new_leaf`], but the new entry starts with
+    /// `refcount = 0`. Use this for internal arena entries that
+    /// no `Node` will ever own — typically helper nodes
+    /// (e.g. cocoa's `<scroll_view>` documentView wrapper) that
+    /// are kept alive solely by their parent edge. When the
+    /// parent gets removed, the reachability sweep inside
+    /// [`Self::remove`] (refcount=0 + parent=None) will collect
+    /// them automatically, no explicit `tree.remove(child)` needed.
+    ///
+    /// Be careful: if you call this and never `add_child` it to
+    /// a parent, the entry is immediately eligible for removal —
+    /// it'll stick around until the next sweep runs, but you
+    /// shouldn't rely on it being there.
+    pub fn new_internal_leaf(
+        &self,
+        style: Style,
+        view: B::View,
+        meta: B::NodeMeta,
+        handlers: B::Handlers,
+    ) -> NodeId {
+        let id = NodeId::from(self.with_state_mut(|s| {
+            let key = s.nodes.insert(NodeData::new(style, view, meta, handlers));
+            // Default refcount is 1; flip to 0 so reachability GC
+            // owns this entry's lifetime.
+            if let Some(n) = s.nodes.get(key) {
+                n.refcount.set(0);
+            }
+            key
+        }));
+        id
+    }
+
     /// Increment the refcount on `id`. No-op if `id` doesn't exist.
     /// Called from `Node::clone` to record that another strong
     /// handle now points at this entry.
@@ -394,8 +426,16 @@ impl<B: LayoutBackend> LayoutTree<B> {
     }
 
     /// Remove a node from the tree. Detaches it from any parent it
-    /// was under; orphans its descendants. Callers typically remove
-    /// leaves first today.
+    /// was under; orphans its descendants — and recursively removes
+    /// any orphaned child whose `refcount` is `0` (no external
+    /// `Node` handle).
+    ///
+    /// The recursive sweep is what lets internal-only entries
+    /// (created via [`Self::new_internal_leaf`]) clean up
+    /// automatically when their parent goes away. Without it,
+    /// such entries would leak (refcount stuck at 0, parent
+    /// going from `Some` to `None`, but nothing triggers the
+    /// removal).
     ///
     /// Marks the (former) parent dirty so its cached flex layout
     /// is invalidated — without this, `compute_layout` would return
@@ -411,29 +451,42 @@ impl<B: LayoutBackend> LayoutTree<B> {
         //
         // The fix: take the `NodeData` out, return it from the
         // closure, drop it AFTER the borrow releases.
-        let (parent, removed) = self.with_state_mut(|s| {
+        let (parent, removed, orphans_to_sweep) = self.with_state_mut(|s| {
             let Some((parent, kids)) = s
                 .nodes
                 .get(key(id))
                 .map(|n| (n.parent, n.children.clone()))
             else {
-                return (None, None);
+                return (None, None, Vec::new());
             };
             if let Some(p) = parent {
                 if let Some(p_data) = s.nodes.get_mut(key(p)) {
                     p_data.children.retain(|c| *c != id);
                 }
             }
+            // Orphan children, collecting any with refcount=0 for
+            // the post-borrow sweep.
+            let mut orphans = Vec::new();
             for c in kids {
                 if let Some(c_data) = s.nodes.get_mut(key(c)) {
                     c_data.parent = None;
+                    if c_data.refcount.get() == 0 {
+                        orphans.push(c);
+                    }
                 }
             }
             let removed = s.nodes.remove(key(id));
-            (parent, removed)
+            (parent, removed, orphans)
         });
         // `removed` drops here — outside the borrow. Safe to re-enter.
         drop(removed);
+        // Transitive reachability GC: remove any orphaned children
+        // whose only lifeline was the parent edge we just severed.
+        // Recurses through `self.remove`, so cascades correctly
+        // through chains of internal entries.
+        for orphan in orphans_to_sweep {
+            self.remove(orphan);
+        }
         if let Some(p) = parent {
             self.mark_dirty(p);
         }
