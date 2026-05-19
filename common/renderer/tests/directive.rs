@@ -1,7 +1,7 @@
 //! Tests for the generic `IntoDirective` trait + `pack` / `run_all`
 //! helpers. Uses a fake `Element` type to avoid any platform deps.
 
-use leptos_apple_shared::directive::{pack, run_all, IntoDirective};
+use renderer::directive::{pack, run_all, IntoDirective};
 use std::sync::{Arc, Mutex};
 
 /// Stand-in for `cocoa_dom::Element` / `ios_dom::Element`. Cheap to

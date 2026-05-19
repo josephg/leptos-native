@@ -1,6 +1,6 @@
 //! `use:directive=param` macro plumbing for gtk builders. The
 //! generic `pack` and `run_all` helpers live in
-//! `leptos_apple_shared::directive` (despite the name, the module is
-//! platform-neutral).
+//! `renderer::directive`; this module just re-exports them at the
+//! path the gtk builders import from.
 
-pub(crate) use leptos_apple_shared::directive::{pack, run_all};
+pub(crate) use renderer::directive::{pack, run_all};
