@@ -3,7 +3,7 @@
 //! Tree storage and Taffy integration live in [`renderer`];
 //! this file plugs GTK-specific types into it via [`GtkBackend`].
 //! The shape mirrors `cocoa_dom::layout`: per-element wrappers
-//! ([`register_in_tree`], [`attach_child`], the `set_*` setters)
+//! ([`set_as_root`], [`attach_child`], the `set_*` setters)
 //! route through the new [`Node`] accessors (`with_style`,
 //! `tree_id`) and dispatch into
 //! the shared tree.
@@ -79,15 +79,18 @@ pub fn new_tree() -> TreeRef {
 // Per-Node helpers — read/write Node state via its accessors.
 // ---------------------------------------------------------------------
 
-/// Backwards-compatible no-op: arena allocation now happens eagerly
-/// in `Element::create` (and `Text` / `Placeholder`). Registration of
-/// the tree root still needs to happen — we just publish the node id
-/// as root if no root is set yet.
-pub fn register_in_tree(node: &Node, tree: &TreeRef) {
+/// Mark `node` as the tree's root, if no root is set yet.
+///
+/// Arena allocation happens eagerly in `Element::create` (and
+/// `Text` / `Placeholder`), so this no longer does any registration
+/// work. It just publishes the node id as `tree.root` — which the
+/// GTK measure/allocate driver reads to find what to lay out. If
+/// a root is already set, this is a silent no-op (first wins).
+pub fn set_as_root(node: &Node, tree: &TreeRef) {
     let Some((node_tree, id)) = node.tree_id() else { return };
     debug_assert!(
         Rc::ptr_eq(&node_tree, tree),
-        "register_in_tree called with a tree that doesn't own this node"
+        "set_as_root called with a tree that doesn't own this node"
     );
     let mut root = tree.root.borrow_mut();
     if root.is_none() {

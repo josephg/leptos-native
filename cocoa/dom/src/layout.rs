@@ -2,7 +2,7 @@
 //!
 //! The actual tree storage and Taffy integration live in
 //! [`renderer`]; this file plugs cocoa-specific types into it
-//! via [`CocoaBackend`]. The wrappers below — `register_in_tree`,
+//! via [`CocoaBackend`]. The wrappers below — `set_as_root`,
 //! `attach_child`, `compute_layout`, the `set_*` setters — route
 //! through the new [`Node`] accessors (`with_style`, `with_meta`,
 //! `tree_id`) and dispatch into the shared tree.
@@ -188,17 +188,19 @@ pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
     wrapper_style
 }
 
-/// Backwards-compatible no-op: arena allocation now happens eagerly
-/// in `Element::create_with` (and `Text` / `Placeholder`'s
-/// constructors). Registration of the tree root still needs to
-/// happen — `attach_child` did this previously by walking through
-/// `register_in_tree`, but with eager allocation we just publish
-/// the node id as root if no root is set yet.
-pub fn register_in_tree(node: &Node, tree: &TreeRef) {
+/// Mark `node` as the tree's root, if no root is set yet.
+///
+/// Arena allocation happens eagerly in `Element::create_with` (and
+/// `Text` / `Placeholder`'s constructors), so this no longer does
+/// any registration work. It just publishes the node id as `tree.root`
+/// — which the deferred-relayout scheduler reads to find what to
+/// run `compute_layout` against. If a root is already set, this is
+/// a silent no-op (the first registration wins).
+pub fn set_as_root(node: &Node, tree: &TreeRef) {
     let Some((node_tree, id)) = node.tree_id() else { return };
     debug_assert!(
         Rc::ptr_eq(&node_tree, tree),
-        "register_in_tree called with a tree that doesn't own this node"
+        "set_as_root called with a tree that doesn't own this node"
     );
     let mut root = tree.root.borrow_mut();
     if root.is_none() {

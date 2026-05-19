@@ -184,25 +184,11 @@ impl Drop for NodeInner {
             // before view) handles ObjC delegate nilling while
             // the view is still live.
             //
-            // Drop the scroll-view documentView wrapper if we owned
-            // one. This is LOAD-BEARING: the wrapper is a pure
-            // internal arena entry created via `tree.new_leaf`
-            // (refcount=1 default) but no `Node` ever points at it,
-            // so its refcount never reaches 0 through normal
-            // decref. Without this explicit removal the wrapper
-            // would leak. The wrapper has no NodeHandlers (default
-            // `B::Handlers`), so dropping it is cheap.
-            //
-            // (A cleaner long-term fix would be a `tree.new_internal_leaf`
-            // variant that starts at refcount=0 — combined with a
-            // reachability sweep on the parent-removed children — so
-            // we wouldn't need this explicit dance. See the cleanup
-            // recommendations list.)
-            if let Some(wrapper) =
-                self.tree.meta(self.id).and_then(|m| m.child_taffy_parent)
-            {
-                self.tree.remove(wrapper);
-            }
+            // Scroll-view documentView wrappers are now allocated
+            // via `tree.new_internal_leaf` (refcount=0) — they're
+            // collected automatically by the transitive reachability
+            // sweep in `tree.remove` once their parent (this node)
+            // goes away. No explicit removal needed here.
             self.tree.decref(self.id);
         }
     }
@@ -340,15 +326,9 @@ impl Node {
     /// accessors on this Node will see a missing arena entry and
     /// silently no-op.
     pub fn teardown(&self) {
-        // Drop any scroll-view wrapper first.
-        if let Some(wrapper) = self
-            .inner
-            .tree
-            .meta(self.inner.id)
-            .and_then(|m| m.child_taffy_parent)
-        {
-            self.inner.tree.remove(wrapper);
-        }
+        // `tree.remove` recursively GCs orphaned children with
+        // refcount=0 (the scroll-view wrapper case), so we don't
+        // need to remove it explicitly here.
         self.inner.tree.remove(self.inner.id);
         self.ns_view().removeFromSuperview();
     }
@@ -832,7 +812,11 @@ impl Element {
                     crate::layout::ScrollAxis::Vertical,
                 );
                 let (_, parent_id) = node.tree_id().expect("just created");
-                let wrapper_id = tree.new_leaf(
+                // Internal entry: no `Node` ever owns the wrapper, so
+                // start refcount=0. The reachability GC in
+                // `tree.remove` cleans it up automatically when its
+                // parent (the scroll_view) goes away.
+                let wrapper_id = tree.new_internal_leaf(
                     wrapper_style,
                     SendWrapper::new(doc),
                     CocoaMeta::default(),
@@ -1815,7 +1799,7 @@ impl Element {
 
     /// Configure an `<scroll_view>`'s scroll axis. Stashes the
     /// choice on the Node's meta (read by
-    /// `cocoa_dom::layout::register_in_tree` when allocating the
+    /// `cocoa_dom::layout::set_as_root` when allocating the
     /// documentView wrapper) and sets sensible scroller-visibility
     /// defaults for the chosen axis. The explicit
     /// `set_has_*_scroller` setters can still be used to override

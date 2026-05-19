@@ -28,7 +28,7 @@
 mod common;
 
 use ios_dom::{
-    layout::{compute_layout, new_tree, register_in_tree, set_padding},
+    layout::{compute_layout, new_tree, set_as_root, set_padding},
     Element, StringAttr,
 };
 use objc2::runtime::AnyObject;
@@ -52,7 +52,7 @@ fn make_root_with_size(width: f64, height: f64) -> (ios_dom::layout::TreeRef, El
         };
     });
 
-    register_in_tree(root.as_node(), &tree);
+    set_as_root(root.as_node(), &tree);
     (tree, root)
 }
 

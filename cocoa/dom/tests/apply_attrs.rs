@@ -33,7 +33,7 @@ fn fresh_tree(root: &Element) -> layout::TreeRef {
     // Element is already in a tree (eager allocation); just publish
     // it as the root if it isn't already.
     let (tree, _) = root.as_node().tree_id().expect("element has tree");
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
     tree
 }
 

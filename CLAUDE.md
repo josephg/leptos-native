@@ -235,19 +235,24 @@ are backed by `NSView` (and subclasses like `NSButton`,
   plugs cocoa-specific types into it via `CocoaBackend`
   (`measure_leaf` reads `intrinsicContentSize`, `first_baseline`
   reads `firstBaselineOffsetFromTop`, plus a scroll-view second-pass
-  hook). Each window has its own tree; every `Node` carries a
-  `LayoutHandle { tree, node_id }`. Layout recompute is **manual** —
-  AppKit doesn't auto-reflow, so `set_attribute` / `set_text` /
+  hook). Each window has its own tree; every `Node` is a thin
+  handle (`Rc<NodeInner { tree, id, kind, view, is_borrowed }>`)
+  pointing into the arena. Layout recompute is **manual** — AppKit
+  doesn't auto-reflow, so `set_attribute` / `set_text` /
   `attach_child` / etc. each call `schedule_relayout`, which dedupes
-  via thread-local `PENDING` and dispatches one `compute_layout`
-  pass per main-loop tick. **Always `tree.mark_dirty(node_id)`
-  when content changes** (otherwise Taffy's measure cache is stale).
+  via the per-tree `relayout_queued: Cell<bool>` flag and dispatches
+  one `compute_layout` pass per main-loop tick. **Always
+  `tree.mark_dirty(node_id)` when content changes** (otherwise
+  Taffy's measure cache is stale).
 - **Events** (`src/event.rs`): NSButton uses `ActionTarget`
   (target/action). NSTextField uses a single `TextFieldDelegate`
   that fans out to `Vec<Box<dyn FnMut(String)>>` for both
   `controlTextDidChange:` (input) and `controlTextDidEndEditing:`
-  (change). Each per-view delegate retain is stashed in a
-  thread-local store (entries currently leak; see `tests_macos.md`).
+  (change). Each per-view delegate retain lives in the arena's
+  `NodeData::handlers` slot (`NodeHandlers` struct); deterministic
+  cleanup when the last `Node` clone drops via
+  `tree.decref(id)` → arena removes the entry → `NodeHandlers::Drop`
+  nils setTarget/setDelegate and releases the retains.
 - **Spawner** (`src/spawner.rs`): `any_spawner::CustomExecutor`
   backed by `DispatchQueue::main()`. Pin soundness: don't add an
   outer `Pin` — the inner `Pin<Box<dyn Future>>` already has a
@@ -455,10 +460,19 @@ window-builder-based.
 ## Shared layout & attribute plumbing (`common/`)
 
 - **`common/renderer`** — `LayoutTree<B>` is a generic Taffy
-  storage tree owning per-node style/cache/layout/parent/children/
-  view/meta. Each port implements `LayoutBackend` to supply its
+  storage tree owning per-node
+  style/cache/layout/parent/children/handlers/view/meta plus a
+  refcount. Each port implements `LayoutBackend` to supply its
   platform view type plus three operations (measure a leaf, query
-  baseline, apply a frame). Layout *driving* (when to call
+  baseline, apply a frame). Allocation comes via `tree.new_leaf`
+  (refcount=1 — the caller's `Node` handle) or `tree.new_internal_leaf`
+  (refcount=0 — for entries no `Node` owns, kept alive solely by
+  their parent edge; e.g. cocoa's scroll-view documentView wrapper).
+  Removal is via `tree.remove(id)` (eager) or implicit through
+  `tree.decref(id)` when refcount→0 AND parent==None.
+  `tree.remove` transitively GCs any orphaned children whose
+  refcount=0, so internal entries clean up automatically when
+  their parent goes away. Layout *driving* (when to call
   `compute_layout`, how to dispatch to the main thread) is left to
   each port. Re-exports Taffy's `Display`, `FlexDirection`,
   `AlignItems`, `GridAutoFlow`, etc., plus the track-sizing helpers
@@ -719,10 +733,11 @@ shouldn't be refactored.
   intrinsic sizing (titles get clipped: "Reset" → "Rese").
 - **Layout recompute is manual**: AppKit doesn't auto-reflow, so
   `set_attribute` / `set_text` / `attach_child` / etc. each call
-  `schedule_relayout`, which dedupes via thread-local `PENDING` and
-  dispatches one `compute_layout` pass per main-loop tick.
-  **Always `tree.mark_dirty(node_id)` when content changes**
-  (otherwise Taffy's measure cache is stale).
+  `schedule_relayout`, which dedupes via the per-tree
+  `relayout_queued: Cell<bool>` flag and dispatches one
+  `compute_layout` pass per main-loop tick. **Always
+  `tree.mark_dirty(node_id)` when content changes** (otherwise
+  Taffy's measure cache is stale).
 - **Two click handlers on one NSControl panic at build time.**
   NSControl has a single target/action slot. We deliberately don't
   fan out (Vec-of-closures + a wrapper class would add allocations

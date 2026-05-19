@@ -250,7 +250,7 @@ define_class!(
                     Dim::Pct(1.0),
                 );
             }
-            crate::layout::register_in_tree(content_root.as_node(), &tree);
+            crate::layout::set_as_root(content_root.as_node(), &tree);
 
             let root_vc = RootViewController::new(mtm, content_root.clone());
             root_vc.setView(Some(content_root.ui_view()));

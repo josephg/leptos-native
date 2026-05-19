@@ -575,7 +575,7 @@ fn build_pane(
     let tree = layout::new_tree();
     let root = Element::create_with(&tree, "view", mtm);
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
 
     // **Keep** `translatesAutoresizingMaskIntoConstraints = true`
     // (the default). NSSplitViewController sets each pane's frame

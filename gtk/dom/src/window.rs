@@ -57,7 +57,7 @@ pub fn open_window(
     // Publish the content_root as the tree's root and install our
     // TaffyLayout as its layout manager (`is_root=true` so its
     // `allocate` runs `compute_layout`).
-    layout::register_in_tree(content_root.as_node(), &tree);
+    layout::set_as_root(content_root.as_node(), &tree);
     let root_id = content_root
         .as_node()
         .tree_id()

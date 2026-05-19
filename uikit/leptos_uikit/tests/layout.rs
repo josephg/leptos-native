@@ -41,7 +41,7 @@ where
 
     let root = ios_dom::Element::create("vstack");
     let tree = ios_dom::layout::new_tree();
-    ios_dom::layout::register_in_tree(root.as_node(), &tree);
+    ios_dom::layout::set_as_root(root.as_node(), &tree);
 
     let mut state = view.build();
     state.mount(&root, None);

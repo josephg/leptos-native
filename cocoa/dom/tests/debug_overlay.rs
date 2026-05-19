@@ -40,7 +40,7 @@ fn overlay_does_not_shift_children() {
         layout::FlexDirection::Row,
     );
     let tree = layout::new_tree();
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
 
     // Install the overlay BEFORE adding children — same order
     // window.rs does.
@@ -80,7 +80,7 @@ fn overlay_does_not_shift_marker_inserts() {
         layout::FlexDirection::Row,
     );
     let tree = layout::new_tree();
-    layout::register_in_tree(root.as_node(), &tree);
+    layout::set_as_root(root.as_node(), &tree);
 
     let any: &objc2::runtime::AnyObject = root.ns_view().as_ref();
     let flipped = any.downcast_ref::<FlippedView>().unwrap();
