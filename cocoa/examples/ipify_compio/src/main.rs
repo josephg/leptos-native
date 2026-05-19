@@ -37,7 +37,7 @@ use compio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use std::sync::Arc;
 
 async fn fetch_ip_via_compio(d: Arc<Dispatcher>) -> Result<String, String> {

@@ -16,7 +16,7 @@
 //!
 //! End-user code depends on the platform crate as `leptos = { package
 //! = "leptos_cocoa" | "leptos_uikit" | … }`. The platform crate
-//! re-exports everything here under `::leptos::*`, plus its own
+//! re-exports everything here under `::leptos_native::*`, plus its own
 //! element builders (`button`, `vstack`, `<text_field>`, etc.) and
 //! a `Dom` unit type that is the `Renderer` for that target.
 //!
@@ -25,7 +25,7 @@
 //! - [`IntoView<R>`] — every type that can be rendered. Generic over
 //!   `R: Renderer` so the same view trees work across platforms; each
 //!   platform crate provides a non-generic specialization
-//!   (`pub trait IntoView: leptos::IntoView<Dom>`) so user code writes
+//!   (`pub trait IntoView: leptos_native::IntoView<Dom>`) so user code writes
 //!   `impl IntoView` without the `<R>` parameter.
 //! - [`children`] — typed children props (`TypedChildren<T, R>`,
 //!   `TypedChildrenFn<T, R>`, `TypedChildrenMut<T, R>`) plus the
@@ -51,7 +51,7 @@
 //!
 //! ```ignore
 //! // Cargo.toml: leptos = { package = "leptos_cocoa", path = "..." }
-//! use leptos::prelude::*;
+//! use leptos_native::prelude::*;
 //!
 //! #[component]
 //! fn Counter(initial: i32) -> impl IntoView {
@@ -109,10 +109,10 @@
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(fn_traits))]
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(unboxed_closures))]
 
-extern crate self as leptos;
+extern crate self as leptos_native;
 
 /// Identity trait the `leptos_macro` view!{} expansion emits as
-/// `::leptos::prelude::IntoAttributeValue::into_attribute_value(...)`
+/// `::leptos_native::prelude::IntoAttributeValue::into_attribute_value(...)`
 /// around attribute values. Upstream this normalised values into a
 /// SSR-friendly `AttributeValue` shape; on native the value is
 /// already the right type so the trait is a no-op identity.

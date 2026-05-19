@@ -2,7 +2,7 @@
 //!
 //! The user-facing crate. End-user examples write
 //! `leptos = { package = "leptos_uikit", path = ... }` in their
-//! Cargo.toml, then `use leptos::prelude::*` resolves to the
+//! Cargo.toml, then `use leptos_native::prelude::*` resolves to the
 //! UIKit-specialized prelude here.
 //!
 //! Mirror of `cocoa/leptos_cocoa/src/lib.rs`; see commentary there.
@@ -18,8 +18,8 @@ pub mod keys;
 pub mod mount;
 pub mod renderer_ios;
 
-/// Aliased path for `leptos::mount_ios::run` so existing iOS example
-/// code (`leptos::mount_ios::run(...)`) keeps compiling under the
+/// Aliased path for `leptos_native::mount_ios::run` so existing iOS example
+/// code (`leptos_native::mount_ios::run(...)`) keeps compiling under the
 /// `leptos = { package = "leptos_uikit", ... }` shape.
 pub mod mount_ios {
     pub use crate::mount::*;
@@ -30,31 +30,31 @@ pub use renderer_ios::Dom;
 /// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
 pub type AnyView = renderer::view::AnyView<Dom>;
 
-/// iOS-pinned alias of [`leptos::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+/// iOS-pinned alias of [`leptos_native::children::ChildrenFn`].
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
 
 pub mod attr {
     pub use crate::keys::*;
 }
 
-pub use leptos as core;
+pub use leptos_native as core;
 
-pub use leptos::component;
-pub use leptos::reactive;
-pub use leptos::__reexports;
-pub use leptos::children;
-pub use leptos::context;
+pub use leptos_native::component;
+pub use leptos_native::reactive;
+pub use leptos_native::__reexports;
+pub use leptos_native::children;
+pub use leptos_native::context;
 #[doc(hidden)]
-pub use leptos::typed_builder;
+pub use leptos_native::typed_builder;
 #[doc(hidden)]
-pub use leptos::typed_builder_macro;
-pub use leptos::callback;
+pub use leptos_native::typed_builder_macro;
+pub use leptos_native::callback;
 
 pub mod tachys {
     pub use ::renderer::view;
 
     /// Re-export of the iOS builders + helpers, for the
-    /// `::leptos::tachys::ios::*` paths some user code references
+    /// `::leptos_native::tachys::ios::*` paths some user code references
     /// directly.
     pub mod ios {
         pub use crate::ios::*;
@@ -76,10 +76,10 @@ pub mod tachys {
     }
 }
 
-/// UIKit-specialized [`IntoView`](leptos::IntoView). Pins R to [`Dom`]
+/// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`Dom`]
 /// so user code writes `impl IntoView` (no R param visible).
-pub trait IntoView: leptos::IntoView<Dom> {}
-impl<T: leptos::IntoView<Dom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<Dom> {}
+impl<T: leptos_native::IntoView<Dom>> IntoView for T {}
 
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our UIKit-specialized

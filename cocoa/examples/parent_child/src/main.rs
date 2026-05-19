@@ -8,7 +8,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[derive(Copy, Clone)]
     pub struct ToggleContext(WriteSignal<bool>);

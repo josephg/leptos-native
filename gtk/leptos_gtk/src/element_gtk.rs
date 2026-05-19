@@ -1,7 +1,7 @@
 //! Macro-facing facade for `tachys::html::element` on Linux.
 //!
 //! Re-exposes element constructors at the path the `view!{}` macro
-//! expects (`::leptos::tachys::html::element::<tag>()`), backed by
+//! expects (`::leptos_native::tachys::html::element::<tag>()`), backed by
 //! the GTK builders in `crate::gtk::element`.
 
 #![allow(missing_docs)]

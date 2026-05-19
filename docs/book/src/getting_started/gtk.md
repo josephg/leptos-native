@@ -42,7 +42,7 @@ leptos = { package = "leptos_gtk", path = "../leptos-mac/gtk/leptos_gtk" }
 ```
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {

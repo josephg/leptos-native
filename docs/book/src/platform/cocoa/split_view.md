@@ -5,7 +5,7 @@ own Taffy layout tree and can be independently collapsed,
 resized, or pinned.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 mount_to_split_window("Notes", (900.0, 600.0), || view! {
     <split_view>

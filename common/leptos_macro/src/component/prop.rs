@@ -145,14 +145,14 @@ impl ToTokens for TypedBuilderOpts<'_> {
             if !self.strip_option {
                 let ty = &self.ty;
                 quote! {
-                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> #ty {
+                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos_native::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> #ty {
                         value.into_reactive_value()
                     },
                 }
             } else {
                 let ty = unwrap_option(self.ty);
                 quote! {
-                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> Option<#ty> {
+                    fn transform<__IntoReactiveValueMarker>(value: impl ::leptos_native::prelude::IntoReactiveValue<#ty, __IntoReactiveValueMarker>) -> Option<#ty> {
                         Some(value.into_reactive_value())
                     },
                 }

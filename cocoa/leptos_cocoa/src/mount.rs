@@ -155,7 +155,7 @@ where
     V: Render<Dom> + 'static,
 {
     let mtm = MainThreadMarker::new()
-        .expect("leptos::mount::run must be called from the main thread");
+        .expect("leptos_native::mount::run must be called from the main thread");
 
     let (app, delegate) = init_app(mtm);
 

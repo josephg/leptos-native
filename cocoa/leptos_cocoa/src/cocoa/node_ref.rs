@@ -3,7 +3,7 @@
 //! reactive attributes / events: focus a text field, scroll a
 //! container, query the underlying NSView for sizing.
 //!
-//! Mirrors the upstream `leptos::NodeRef<HtmlInputElement>` API
+//! Mirrors the upstream `leptos_native::NodeRef<HtmlInputElement>` API
 //! shape but is monomorphic — there's only one element type on
 //! macOS (`cocoa_dom::Element`), so no `<E>` parameter is
 //! needed.

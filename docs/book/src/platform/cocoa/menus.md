@@ -6,7 +6,7 @@ the top of the view tree — a sibling of `<window>` — and
 renders in the system menu bar at the top of the screen.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 run(|| view! {
     <menu_bar>

@@ -1,7 +1,7 @@
 //! Macro-facing facade for `tachys::html::element` on macOS.
 //!
 //! Re-exposes element constructors at the path the `view!{}` macro
-//! expects (`::leptos::tachys::html::element::<tag>()`), backed by
+//! expects (`::leptos_native::tachys::html::element::<tag>()`), backed by
 //! the Cocoa builders in `tachys::cocoa::element`.
 //!
 //! This is "Option 2" from the Stage-5-part-3 design: the macro
@@ -40,7 +40,7 @@ pub use crate::cocoa::menu::{menu, menu_bar, menu_item, menu_separator};
 
 // `<window>` — top-level NSWindow builder. Until menu support landed,
 // examples used `window()` directly (imported from
-// `leptos::tachys::cocoa::window`); the `<window>` macro path was
+// `leptos_native::tachys::cocoa::window`); the `<window>` macro path was
 // unused. Re-exposing it here lets a single `view!{}` invocation host
 // both `<menu_bar>` and `<window>` siblings.
 pub use crate::cocoa::window::window;

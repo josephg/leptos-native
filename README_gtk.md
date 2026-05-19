@@ -10,7 +10,7 @@ Layout is via [Taffy](https://github.com/DioxusLabs/taffy)
 flexbox, plugged into GTK's `LayoutManager` protocol.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {

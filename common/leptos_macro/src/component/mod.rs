@@ -184,7 +184,7 @@ impl ToTokens for Model {
                  * However, until
                  * https://github.com/tokio-rs/tracing/pull/1819 is
                  * merged (?), you can't provide an alternate path for
-                 * `tracing` (e.g. ::leptos::tracing), which means that
+                 * `tracing` (e.g. ::leptos_native::tracing), which means that
                  * if you're going to use the macro you *must* have
                  * `tracing` in your Cargo.toml.
                  *
@@ -198,7 +198,7 @@ impl ToTokens for Model {
                 let instrument = cfg!(feature = "trace-components").then(|| quote! {
                     #[cfg_attr(
                         feature = "tracing",
-                        ::leptos::tracing::instrument(level = "info", name = #trace_name, skip_all)
+                        ::leptos_native::tracing::instrument(level = "info", name = #trace_name, skip_all)
                     )]
                 });
 
@@ -208,7 +208,7 @@ impl ToTokens for Model {
                         #instrument
                     },
                     quote! {
-                        let __span = ::leptos::tracing::Span::current();
+                        let __span = ::leptos_native::tracing::Span::current();
                     },
                     quote! {
                         #[cfg(debug_assertions)]
@@ -218,7 +218,7 @@ impl ToTokens for Model {
                         quote!()
                     } else {
                         quote! {
-                            ::leptos::leptos_dom::tracing_props![#prop_names];
+                            ::leptos_native::leptos_dom::tracing_props![#prop_names];
                         }
                     },
                 )
@@ -239,8 +239,8 @@ impl ToTokens for Model {
             body_expr
         } else if cfg!(feature = "__internal_erase_components") {
             quote! {
-                ::leptos::prelude::IntoMaybeErased::into_maybe_erased(
-                    ::leptos::reactive::graph::untrack_with_diagnostics(
+                ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(
+                    ::leptos_native::reactive::graph::untrack_with_diagnostics(
                         move || {
                             #tracing_guard_expr
                             #tracing_props_expr
@@ -251,7 +251,7 @@ impl ToTokens for Model {
             }
         } else {
             quote! {
-                ::leptos::reactive::graph::untrack_with_diagnostics(
+                ::leptos_native::reactive::graph::untrack_with_diagnostics(
                     move || {
                         #tracing_guard_expr
                         #tracing_props_expr
@@ -289,15 +289,15 @@ impl ToTokens for Model {
             #[doc = #builder_name_doc]
             #[doc = ""]
             #docs_and_prop_docs
-            #[derive(::leptos::typed_builder_macro::TypedBuilder)]
+            #[derive(::leptos_native::typed_builder_macro::TypedBuilder)]
             //#[builder(doc)]
-            #[builder(crate_module_path=::leptos::typed_builder)]
+            #[builder(crate_module_path=::leptos_native::typed_builder)]
             #[allow(non_snake_case)]
             #vis struct #props_name #impl_generics #where_clause {
                 #prop_builder_fields
             }
 
-            impl #impl_generics ::leptos::component::Props for #props_name #generics #where_clause {
+            impl #impl_generics ::leptos_native::component::Props for #props_name #generics #where_clause {
                 type Builder = #props_builder_name #generics;
 
                 fn builder() -> Self::Builder {

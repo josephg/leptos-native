@@ -134,7 +134,7 @@ The fix: **keep the `JoinHandle` and abort it on unmount.**
 to wake with a cancellation error; the task is dropped immediately,
 and everything it captured drops with it.
 
-`leptos::prelude::on_cleanup` registers a closure to run when the
+`leptos_native::prelude::on_cleanup` registers a closure to run when the
 current component's Owner disposes — that's the unmount hook we
 need:
 

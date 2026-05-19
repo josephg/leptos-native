@@ -44,7 +44,7 @@ leptos = { package = "leptos_cocoa", path = "../leptos-mac/cocoa/leptos_cocoa" }
 Replace `src/main.rs`:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {

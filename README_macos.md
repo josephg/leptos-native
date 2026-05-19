@@ -9,7 +9,7 @@ state. Layout is via [Taffy](https://github.com/DioxusLabs/taffy)
 flexbox.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {
@@ -130,7 +130,7 @@ port by aliasing `leptos = { package = "leptos_<port>" }`.
 Then in `src/main.rs`:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn App() -> impl IntoView {
@@ -149,7 +149,7 @@ Multi-window apps use `run` directly (see
 
 ```rust
 fn main() {
-    leptos::mount::run(|| (
+    leptos_native::mount::run(|| (
         window().title("Main").size(640.0, 480.0).child(view! { <Main/> }),
         window().title("Inspector").size(280.0, 600.0).child(view! { <Inspector/> }),
     ));

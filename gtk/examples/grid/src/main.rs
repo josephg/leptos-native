@@ -3,7 +3,7 @@
 //! same shape as the cocoa / iOS grid examples.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     pub fn main() {
         mount_to_window(

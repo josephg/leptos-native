@@ -1,5 +1,5 @@
 [package]
-name = "leptos"
+name = "leptos_native"
 version = "0.1.0"
 authors = ["Greg Johnston", "Seph Gentle"]
 license = "MIT"

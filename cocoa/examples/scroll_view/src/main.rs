@@ -11,7 +11,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     fn rect(color: Color, w: f32, h: f32, label_text: String) -> impl IntoView {
         view! {

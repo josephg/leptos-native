@@ -4,7 +4,7 @@
 inside it and shows a fallback view instead.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn ParseDemo() -> impl IntoView {
@@ -114,7 +114,7 @@ errors at once.
 
 ## Custom error types
 
-Any error that `Into`s into `leptos::Error` works:
+Any error that `Into`s into `leptos_native::Error` works:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -124,7 +124,7 @@ enum MyError {
 }
 
 // `thiserror::Error` already gives you Display, so .map_err and
-// `?` propagate fine. Convert to leptos::Error at the boundary.
+// `?` propagate fine. Convert to leptos_native::Error at the boundary.
 ```
 
 ## What boundaries don't do

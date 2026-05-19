@@ -19,7 +19,7 @@ takes a child, parent, or has any visual presence, it has these.
 `Edges` lets you set per-side:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 padding=Edges::axis(16.0, 8.0)         // horiz=16, vert=8
 padding=Edges::trbl(8.0, 16.0, 8.0, 16.0) // top, right, bottom, left

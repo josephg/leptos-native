@@ -7,7 +7,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     // ---- palette ----------------------------------------------------
 
@@ -107,7 +107,7 @@ mod app {
     /// pair so the caller can bind both: `bind:mouse_hover=raw`
     /// + `background_color=bg`.
     fn card_hover_bg() -> (RwSignal<bool>, impl Fn() -> Color + Send + Sync + Copy + 'static) {
-        use leptos::cocoa::animation::{ease_in_out, with_animation};
+        use leptos_native::cocoa::animation::{ease_in_out, with_animation};
         let raw = RwSignal::new(false);
         let progress = RwSignal::new(0.0_f64);
         Effect::new(move |_| {

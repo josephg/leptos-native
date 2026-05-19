@@ -4,7 +4,7 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Demo() -> impl IntoView {
@@ -38,7 +38,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos::mount_ios::run(|| view! { <Demo /> });
+        leptos_native::mount_ios::run(|| view! { <Demo /> });
     }
 
 }

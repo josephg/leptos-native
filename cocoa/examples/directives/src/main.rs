@@ -4,7 +4,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     pub fn log_build(_el: Element) {
         eprintln!("[directive] log_build: element built");

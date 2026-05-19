@@ -4,7 +4,7 @@ An iOS app's entry point is `run`:
 
 ```rust
 fn main() {
-    leptos::mount_ios::run(|| view! { <Root /> });
+    leptos_native::mount_ios::run(|| view! { <Root /> });
 }
 ```
 

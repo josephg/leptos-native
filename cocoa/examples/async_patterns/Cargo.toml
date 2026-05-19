@@ -8,7 +8,7 @@ publish = false
 # `default-members` so it's skipped by bare `cargo build`.
 
 [dependencies]
-leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 leptos_apple_shared = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

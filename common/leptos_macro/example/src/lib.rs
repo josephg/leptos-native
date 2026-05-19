@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 pub fn TestComponent(

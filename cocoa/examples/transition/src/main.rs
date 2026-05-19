@@ -5,7 +5,7 @@
 //!
 //! Counts ≤ 0 trigger an error caught by ErrorBoundary.
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use serde::Deserialize;
 use thiserror::Error;
 

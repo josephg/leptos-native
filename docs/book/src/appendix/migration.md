@@ -97,7 +97,7 @@ These would fit the architecture but haven't been built:
   in the native fork.
 - **Native entry points.** `mount_to_window` (Cocoa, GTK),
   `mount_to_split_window` (Cocoa), `run` (all), and
-  `leptos::mount_ios::run` (iOS). On Cocoa these return an
+  `leptos_native::mount_ios::run` (iOS). On Cocoa these return an
   `AppHandle` that the user's `main` binds and `.run()`s — see
   [Cocoa Overview](../platform/cocoa/README.md#apphandle-and-the-run-chain).
 - **Native attributes.** `bind:checked`, `sf_symbol`,

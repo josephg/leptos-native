@@ -1,4 +1,4 @@
-pub use leptos::*;
+pub use leptos_native::*;
 use miniserde::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;

@@ -6,7 +6,7 @@
 //! code paths in tachys::renderer::gtk.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Counters() -> impl IntoView {

@@ -206,12 +206,12 @@ where
         let app: gtk4::Application = gio::Application::default()
             .expect(
                 "MenuBar::build called with no default gio::Application — \
-                 use leptos::run() to set one up before building views.",
+                 use leptos_native::run() to set one up before building views.",
             )
             .downcast::<gtk4::Application>()
             .expect(
                 "default gio::Application is not a gtk::Application — \
-                 this should be impossible inside leptos::run().",
+                 this should be impossible inside leptos_native::run().",
             );
 
         let bar = dom_menu::menu_bar(&app);

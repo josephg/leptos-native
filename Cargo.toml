@@ -4,7 +4,7 @@ members = [
   # common (renderer-agnostic)
   "common/renderer",
   "common/leptos_macro",
-  "common/leptos",
+  "common/leptos_native",
   "apple_shared",
   "cocoa/leptos_cocoa",
   "gtk/leptos_gtk",
@@ -85,7 +85,7 @@ members = [
 default-members = [
   "common/renderer",
   "common/leptos_macro",
-  "common/leptos",
+  "common/leptos_native",
   "apple_shared",
   "cocoa/leptos_cocoa",
   "cocoa/dom",
@@ -153,7 +153,7 @@ rust-version = "1.88"
 # --- workspace member crates (path-pinned) ---
 renderer = { path = "./common/renderer", version = "0.1.0" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
-leptos = { path = "./common/leptos", version = "0.1.0" }
+leptos_native = { path = "./common/leptos_native", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
 leptos_gtk = { path = "./gtk/leptos_gtk", version = "0.1.0" }
 leptos_apple_shared = { path = "./apple_shared", version = "0.1.0" }

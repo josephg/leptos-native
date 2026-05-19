@@ -118,7 +118,7 @@ apple_shared/                    # bits shared between cocoa & uikit
 
 Each example pulls in **exactly one** of `leptos_cocoa` /
 `leptos_gtk` / `leptos_uikit` under the alias `leptos = { package =
-"leptos_<port>" }`, so example code uses `leptos::prelude::*` and
+"leptos_<port>" }`, so example code uses `leptos_native::prelude::*` and
 the macro paths resolve to that port's `tachys` shim. There is no
 shared `leptos` crate that switches backends via feature flag.
 
@@ -299,8 +299,8 @@ enforces it at runtime.
 ### `cocoa/leptos_cocoa/src/{element,event,svg}_macos.rs` — macro facades
 
 The `view!{}` macro emits paths like
-`::leptos::tachys::html::element::button()`,
-`::leptos::tachys::html::event::on(event::click, handler)`, etc.
+`::leptos_native::tachys::html::element::button()`,
+`::leptos_native::tachys::html::event::on(event::click, handler)`, etc.
 `leptos_cocoa` has a `pub mod tachys { ... }` in `lib.rs` that
 re-exposes those paths, backed by the cocoa builders. **Don't
 change the macro** — just expand the facades when adding new tags

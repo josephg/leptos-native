@@ -2,7 +2,7 @@
 //!
 //! The user-facing crate. End-user examples write
 //! `leptos = { package = "leptos_cocoa", path = ... }` in their
-//! Cargo.toml, then `use leptos::prelude::*` resolves to the
+//! Cargo.toml, then `use leptos_native::prelude::*` resolves to the
 //! cocoa-specialized prelude here.
 //!
 //! The [`Dom`] unit type is this crate's [`renderer::Renderer`] impl.
@@ -26,14 +26,14 @@ pub use renderer_cocoa::Dom;
 /// mismatched concrete types).
 pub type AnyView = renderer::view::AnyView<Dom>;
 
-/// Cocoa-pinned alias of [`leptos::children::ChildrenFn`]. Lets
+/// Cocoa-pinned alias of [`leptos_native::children::ChildrenFn`]. Lets
 /// slot definitions write `children: ChildrenFn` without the
 /// `<Dom>` type parameter.
-pub type ChildrenFn = ::leptos::children::ChildrenFn<Dom>;
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
 
-/// Bind/attribute keys re-exported under the `leptos::attr` path the
-/// `bind:foo=value` macro syntax expands to (`::leptos::attr::Value`,
-/// `::leptos::attr::Checked`).
+/// Bind/attribute keys re-exported under the `leptos_native::attr` path the
+/// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
+/// `::leptos_native::attr::Checked`).
 pub mod attr {
     pub use crate::keys::*;
 }
@@ -42,30 +42,30 @@ pub mod attr {
 // User-facing surface
 //
 // Exposed under the names the leptos_macro view!{} expansion expects
-// (`::leptos::tachys::html::element::*`, `::leptos::prelude::*`, etc.)
+// (`::leptos_native::tachys::html::element::*`, `::leptos_native::prelude::*`, etc.)
 // when this crate is brought in as `leptos = { package = "leptos_cocoa" }`.
 // ---------------------------------------------------------------------
 
 /// Re-export of the renderer-agnostic core (Show, For, IntoView, etc.).
 /// Examples that want a specific item not in the prelude can reach for
-/// it via `leptos::core::...` (e.g. `core::IntoView`).
-pub use leptos as core;
+/// it via `leptos_native::core::...` (e.g. `core::IntoView`).
+pub use leptos_native as core;
 
 // Re-exports the `#[component]` macro emits paths into.
-pub use leptos::component;
-pub use leptos::reactive;
-pub use leptos::__reexports;
-pub use leptos::children;
-pub use leptos::context;
+pub use leptos_native::component;
+pub use leptos_native::reactive;
+pub use leptos_native::__reexports;
+pub use leptos_native::children;
+pub use leptos_native::context;
 #[doc(hidden)]
-pub use leptos::typed_builder;
+pub use leptos_native::typed_builder;
 #[doc(hidden)]
-pub use leptos::typed_builder_macro;
-pub use leptos::callback;
+pub use leptos_native::typed_builder_macro;
+pub use leptos_native::callback;
 
 /// View-tree machinery + element builders + events under the path
 /// shape the `view!{}` macro emits
-/// (`::leptos::tachys::html::element::*`, `::leptos::tachys::view::*`).
+/// (`::leptos_native::tachys::html::element::*`, `::leptos_native::tachys::view::*`).
 ///
 /// The web Leptos macro additionally routed tags whose names are real
 /// SVG elements (`<switch>`, ...) through `tachys::svg::*` and emitted
@@ -74,8 +74,8 @@ pub use leptos::callback;
 /// every tag through `tachys::html::element::*`.
 ///
 /// User code reaching for a builder directly (no `view!{}`) should
-/// import it from this path (`leptos::tachys::html::element::button`,
-/// ...) or from `leptos::prelude` if the prelude re-exports it.
+/// import it from this path (`leptos_native::tachys::html::element::button`,
+/// ...) or from `leptos_native::prelude` if the prelude re-exports it.
 pub mod tachys {
     pub use ::renderer::view;
 
@@ -96,16 +96,16 @@ pub mod tachys {
     }
 }
 
-/// Cocoa-specialized [`IntoView`](leptos::IntoView). Pinning R to
+/// Cocoa-specialized [`IntoView`](leptos_native::IntoView). Pinning R to
 /// [`Dom`] lets user code write `impl IntoView` (the type parameter
 /// is resolved at the trait boundary) without sprinkling `<Dom>` —
 /// or worse, `<R: Renderer>` — through every component signature.
-pub trait IntoView: leptos::IntoView<Dom> {}
-impl<T: leptos::IntoView<Dom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<Dom> {}
+impl<T: leptos_native::IntoView<Dom>> IntoView for T {}
 
 /// User prelude — the items end-user examples bring into scope.
 ///
-/// Built around `use leptos::prelude::*;` resolving to this module
+/// Built around `use leptos_native::prelude::*;` resolving to this module
 /// when the example's `Cargo.toml` aliases `leptos = "leptos_cocoa"`.
 /// The contents fall into these groups:
 ///
@@ -130,8 +130,8 @@ impl<T: leptos::IntoView<Dom>> IntoView for T {}
 /// - **Native helpers**: `local_storage`, `set_interval`,
 ///   `KeyEvent`, `Storage`.
 ///
-/// Anything not listed lives at `leptos::core::*` (the inner
-/// `common/leptos` crate, re-exported as `core`) or `leptos::reactive::*`
+/// Anything not listed lives at `leptos_native::core::*` (the inner
+/// `common/leptos` crate, re-exported as `core`) or `leptos_native::reactive::*`
 /// (reactive_graph). The prelude only pulls in the day-to-day surface.
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our cocoa-specialized

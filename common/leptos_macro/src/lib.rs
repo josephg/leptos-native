@@ -33,7 +33,7 @@ mod slot;
 ///
 /// 1. Text content should be provided as a Rust string, i.e., double-quoted:
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// view! { <p>"Here’s some text"</p> }
 /// # }
@@ -41,7 +41,7 @@ mod slot;
 ///
 /// 2. Self-closing tags need an explicit `/` as in XML/XHTML
 /// ```rust,compile_fail
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # fn test() -> impl IntoView {
 /// // ❌ not like this
@@ -50,7 +50,7 @@ mod slot;
 /// # }
 /// ```
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// // ✅ add that slash
 /// view! { <input type="text" name="name" /> }
@@ -60,7 +60,7 @@ mod slot;
 /// 3. Components (functions annotated with `#[component]`) can be inserted as camel-cased tags. (Generics
 ///    on components are specified as `<Component<T>/>`, not the turbofish `<Component::<T>/>`.)
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # #[component]
 /// # fn Counter(initial_value: i32) -> impl IntoView { view! { <p></p>} }
@@ -82,7 +82,7 @@ mod slot;
 ///    Unlike in JSX, attribute values are not required to be in braces, but braces can be used and may improve this LSP support.
 ///
 /// ```rust,ignore
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # fn test() -> impl IntoView {
 /// let (count, set_count) = create_signal(0);
@@ -102,7 +102,7 @@ mod slot;
 /// 5. Event handlers can be added with `on:` attributes. In most cases, the events are given the correct type
 ///    based on the event name.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// view! {
 ///   <button on:click=|ev| {
@@ -118,7 +118,7 @@ mod slot;
 ///    that returns a primitive or JsValue). They can also take an `Option`, in which case `Some` sets the property
 ///    and `None` deletes the property.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let (name, set_name) = create_signal("Alice".to_string());
 ///
@@ -136,7 +136,7 @@ mod slot;
 ///
 /// 7. Classes can be toggled with `class:` attributes, which take a `bool` (or a signal that returns a `bool`).
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let (count, set_count) = create_signal(2);
 /// view! { <div class:hidden-div={move || count.get() < 3}>"Now you see me, now you don’t."</div> }
@@ -145,7 +145,7 @@ mod slot;
 ///
 /// Class names can include dashes, and since v0.5.0 can include a dash-separated segment of only numbers.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let (count, set_count) = create_signal(2);
 /// view! { <div class:hidden-div-25={move || count.get() < 3}>"Now you see me, now you don’t."</div> }
@@ -154,7 +154,7 @@ mod slot;
 ///
 /// Class names cannot include special symbols.
 /// ```rust,compile_fail
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let (count, set_count) = create_signal(2);
 /// // class:hidden-[div]-25 is invalid attribute name
@@ -164,7 +164,7 @@ mod slot;
 ///
 /// However, you can pass arbitrary class names using the syntax `class=("name", value)`.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let (count, set_count) = create_signal(2);
 /// // this allows you to use CSS frameworks that include complex class names
@@ -180,7 +180,7 @@ mod slot;
 ///
 /// 8. Individual styles can also be set with `style:` or `style=("property-name", value)` syntax.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # fn test() -> impl IntoView {
 /// let (x, set_x) = create_signal(0);
@@ -201,10 +201,10 @@ mod slot;
 /// 9. You can use the `node_ref` or `_ref` attribute to store a reference to its DOM element in a
 ///    [NodeRef](https://docs.rs/leptos/latest/leptos/prelude/struct.NodeRef.html) to use later.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # fn test() -> impl IntoView {
-/// use leptos::html::Input;
+/// use leptos_native::html::Input;
 ///
 /// let (value, set_value) = signal(0);
 /// let my_input = NodeRef::<Input>::new();
@@ -218,7 +218,7 @@ mod slot;
 ///    `class = {/* ... */},` argument after ``. This is useful for injecting a class
 ///    provided by a scoped styling library.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// # fn test() -> impl IntoView {
 /// let class = "mycustomclass";
@@ -234,7 +234,7 @@ mod slot;
 ///     element. Be careful: this HTML will not be escaped, so you should ensure that it
 ///     only contains trusted input.
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # fn test() -> impl IntoView {
 /// let html = "<p>This HTML will be injected.</p>";
 /// view! {
@@ -245,7 +245,7 @@ mod slot;
 ///
 /// Here’s a simple example that shows off several of these features, put together
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// pub fn SimpleCounter() -> impl IntoView {
 ///     // create a reactive signal with the initial value
 ///     let (value, set_value) = create_signal(0);
@@ -348,7 +348,7 @@ fn view_macro_impl(tokens: TokenStream, template: bool) -> TokenStream {
 
     if template {
         quote! {
-            ::leptos::prelude::ViewTemplate::new(#output)
+            ::leptos_native::prelude::ViewTemplate::new(#output)
         }
     } else {
         output
@@ -408,7 +408,7 @@ pub fn include_view(tokens: TokenStream) -> TokenStream {
 /// Here’s how you would define and use a simple Leptos component which can accept custom properties for a name and age:
 ///
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// use std::time::Duration;
 ///
 /// #[component]
@@ -456,7 +456,7 @@ pub fn include_view(tokens: TokenStream) -> TokenStream {
 ///    a particular tag is a component, not an HTML element.
 ///
 /// ```
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// // PascalCase: Generated component will be called MyComponent
 /// #[component]
 /// fn MyComponent() -> impl IntoView {}
@@ -472,7 +472,7 @@ pub fn include_view(tokens: TokenStream) -> TokenStream {
 ///    type aliases. If you want to iterate over the children, you can take `ChildrenFragment`.
 ///
 /// ```
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// #[component]
 /// fn ComponentWithChildren(children: ChildrenFragment) -> impl IntoView {
 ///     view! {
@@ -520,7 +520,7 @@ pub fn include_view(tokens: TokenStream) -> TokenStream {
 ///   fields in component function parameters (see example below).
 ///
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// #[component]
 /// pub fn MyComponent(
@@ -630,7 +630,7 @@ fn component_macro(
 ///
 /// Here’s how you would define and use a simple Leptos component which can accept a custom slot:
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// use std::time::Duration;
 ///
 /// #[slot]
@@ -670,7 +670,7 @@ fn component_macro(
 ///
 /// ```compile_error
 /// // ❌ This won't work
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// #[slot]
 /// struct SlotWithChildren {
@@ -696,7 +696,7 @@ fn component_macro(
 ///
 /// ```
 /// // ✅ Do this instead
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 ///
 /// #[slot]
 /// struct SlotWithChildren {
@@ -755,7 +755,7 @@ pub fn params_derive(
 /// Can be used to access deeply nested fields within a global state object.
 ///
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # use leptos_macro::slice;
 ///
 /// #[derive(Default)]
@@ -787,7 +787,7 @@ pub fn slice(input: TokenStream) -> TokenStream {
 /// Can be used to access deeply nested fields within a global state object.
 ///
 /// ```rust
-/// # use leptos::prelude::*;
+/// # use leptos_native::prelude::*;
 /// # use leptos_macro::memo;
 ///
 /// #[derive(Default)]

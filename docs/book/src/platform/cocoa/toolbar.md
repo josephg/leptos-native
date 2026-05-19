@@ -6,7 +6,7 @@ tree; it walks up the view chain at mount time to find the
 containing NSWindow.
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 run(|| view! {
     <window title="Notes" size=WindowSize(800.0, 600.0)>
@@ -54,7 +54,7 @@ yet. For dynamic item sets, drive the toolbar via a
 [`ToolbarHandle`](#toolbarhandle) and an `Effect`:
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 let toolbar = ToolbarHandle::new();
 let docs = RwSignal::new(Vec::<Doc>::new());

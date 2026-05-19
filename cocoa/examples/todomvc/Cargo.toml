@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-leptos = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
 cocoa_dom = { path = "../../dom" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

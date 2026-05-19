@@ -8,12 +8,12 @@ mod yew;
 
 #[bench]
 fn leptos_todomvc_ssr(b: &mut Bencher) {
-    use ::leptos::*;
+    use ::leptos_native::*;
     let runtime = create_runtime();
     b.iter(|| {
-        use crate::todomvc::leptos::*;
+        use crate::todomvc::leptos_native::*;
 
-        let html = ::leptos::ssr::render_to_string(|| {
+        let html = ::leptos_native::ssr::render_to_string(|| {
             view! { <TodoMVC todos=Todos::new()/> }
         });
         assert!(html.len() > 1);
@@ -23,7 +23,7 @@ fn leptos_todomvc_ssr(b: &mut Bencher) {
 
 #[bench]
 fn tachys_todomvc_ssr(b: &mut Bencher) {
-    use ::leptos::*;
+    use ::leptos_native::*;
     let runtime = create_runtime();
     b.iter(|| {
         use crate::todomvc::tachys::*;
@@ -73,10 +73,10 @@ fn yew_todomvc_ssr(b: &mut Bencher) {
 #[bench]
 fn leptos_todomvc_ssr_with_1000(b: &mut Bencher) {
     b.iter(|| {
-        use self::leptos::*;
-        use ::leptos::*;
+        use self::leptos_native::*;
+        use ::leptos_native::*;
 
-        let html = ::leptos::ssr::render_to_string(|| {
+        let html = ::leptos_native::ssr::render_to_string(|| {
             view! {
                 <TodoMVC todos=Todos::new_with_1000()/>
             }
@@ -87,7 +87,7 @@ fn leptos_todomvc_ssr_with_1000(b: &mut Bencher) {
 
 #[bench]
 fn tachys_todomvc_ssr_with_1000(b: &mut Bencher) {
-    use ::leptos::*;
+    use ::leptos_native::*;
     let runtime = create_runtime();
     b.iter(|| {
         use crate::todomvc::tachys::*;
@@ -134,12 +134,12 @@ fn yew_todomvc_ssr_with_1000(b: &mut Bencher) {
 
 #[bench]
 fn tera_todomvc_ssr(b: &mut Bencher) {
-    use ::leptos::*;
+    use ::leptos_native::*;
     let runtime = create_runtime();
     b.iter(|| {
-        use crate::todomvc::leptos::*;
+        use crate::todomvc::leptos_native::*;
 
-        let html = ::leptos::ssr::render_to_string(|| {
+        let html = ::leptos_native::ssr::render_to_string(|| {
             view! { <TodoMVC todos=Todos::new()/> }
         });
         assert!(html.len() > 1);

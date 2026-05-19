@@ -2,8 +2,8 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
-    use leptos::tachys::html::{
+    use leptos_native::prelude::*;
+    use leptos_native::tachys::html::{
         element::{button, hstack, label, vstack},
         event::click,
     };

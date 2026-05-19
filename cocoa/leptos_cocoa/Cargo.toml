@@ -13,7 +13,7 @@ name = "leptos_cocoa"
 [dependencies]
 renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
-leptos = { workspace = true }
+leptos_native = { workspace = true }
 leptos_macro = { workspace = true }
 leptos_apple_shared = { workspace = true }
 either_of = { workspace = true }

@@ -13,11 +13,11 @@ from a `Vec` in a loop), import the event marker explicitly so
 `on(event::action, …)` resolves:
 
 ```rust
-use leptos::tachys::html::event;
+use leptos_native::tachys::html::event;
 ```
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 fn main() {
     run("org.example.menu_demo", |app| {

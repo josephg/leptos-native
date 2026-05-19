@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-leptos = { package = "leptos_gtk", path = "../../leptos_gtk", features = ["debug-overlay"] }
+leptos_native = { package = "leptos_gtk", path = "../../leptos_gtk", features = ["debug-overlay"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

@@ -38,7 +38,7 @@ attributes:
 | `justify_items`       | `JustifyItems`        | Per-child main-axis alignment override.|
 | `wrap`                | `FlexWrap`            | `Wrap`, `NoWrap`, `WrapReverse`.       |
 
-The enum names match Taffy's exports; you can `use leptos::prelude::*`
+The enum names match Taffy's exports; you can `use leptos_native::prelude::*`
 and write `AlignItems::Center` directly.
 
 ## Child attributes

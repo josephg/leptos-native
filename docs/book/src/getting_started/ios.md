@@ -50,7 +50,7 @@ leptos = { package = "leptos_uikit", path = "../leptos-mac/uikit/leptos_uikit" }
 ```
 
 ```rust
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 
 #[component]
 fn Counter(initial: i32) -> impl IntoView {
@@ -68,7 +68,7 @@ fn Counter(initial: i32) -> impl IntoView {
 }
 
 fn main() {
-    leptos::mount_ios::run(|| view! { <Counter initial=0 /> });
+    leptos_native::mount_ios::run(|| view! { <Counter initial=0 /> });
 }
 ```
 

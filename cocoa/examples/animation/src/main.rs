@@ -9,8 +9,8 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::cocoa::animation::{ease_in_out, spring, with_animation};
-    use leptos::prelude::*;
+    use leptos_native::cocoa::animation::{ease_in_out, spring, with_animation};
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn Demo() -> impl IntoView {

@@ -2,10 +2,10 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     pub fn main() {
-        leptos::mount_ios::run(|| {
+        leptos_native::mount_ios::run(|| {
             let counter = RwSignal::new(0);
             view! {
                 <grid

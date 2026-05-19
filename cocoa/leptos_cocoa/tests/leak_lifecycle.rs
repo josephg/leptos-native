@@ -18,7 +18,7 @@ use cocoa_dom::event::{
     handler_store_size_for_test, text_field_store_size_for_test,
     text_view_store_size_for_test,
 };
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use leptos_cocoa::cocoa::bind::BindAttribute;
 use leptos_cocoa::cocoa::element::{button, hstack, label, text_field, text_view, vstack};
 use leptos_cocoa::event_macos::{click, on};
@@ -292,8 +292,8 @@ fn composite_tree_drop_without_unmount_clears_all() {
 /// in this crate's tests). Push 100 rows, clear them, drop. Stores
 /// must return to baseline.
 fn for_diff_add_then_clear_clears_handlers() {
-    use leptos::control_flow::{For, ForProps};
-    use leptos::prelude::*;
+    use leptos_native::control_flow::{For, ForProps};
+    use leptos_native::prelude::*;
     use leptos_cocoa::cocoa::element::{hstack, label, vstack};
     use std::marker::PhantomData;
     let _mtm = common::test_mtm();
@@ -378,7 +378,7 @@ fn for_diff_add_then_clear_clears_handlers() {
 /// dance.
 fn either_toggle_clears_handlers() {
     use either_of::Either;
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use leptos_cocoa::cocoa::element::{label, vstack};
     let _mtm = common::test_mtm();
 
@@ -440,8 +440,8 @@ fn either_toggle_clears_handlers() {
 /// `move_cmds` path is what we're stressing here — see the audit
 /// in plan A4 for the suspected overwrite-without-unmount case.
 fn for_diff_shuffle_then_clear_clears_handlers() {
-    use leptos::control_flow::{For, ForProps};
-    use leptos::prelude::*;
+    use leptos_native::control_flow::{For, ForProps};
+    use leptos_native::prelude::*;
     use leptos_cocoa::cocoa::element::{hstack, label, vstack};
     use std::marker::PhantomData;
     let _mtm = common::test_mtm();

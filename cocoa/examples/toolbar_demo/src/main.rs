@@ -36,7 +36,7 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     pub fn main() {
         mount_to_split_window("Toolbar Demo", (900.0, 560.0), || {
@@ -300,7 +300,7 @@ mod app {
                                                 .icon(Icon::sf_symbol("circle.fill"))
                                                 .tool_tip("Inserted at runtime")
                                                 .on(
-                                                    leptos::tachys::html::event::action,
+                                                    leptos_native::tachys::html::event::action,
                                                     move |_| {
                                                         println!("dynamic {id} clicked");
                                                     },

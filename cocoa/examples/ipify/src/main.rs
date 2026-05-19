@@ -16,7 +16,7 @@
 //! be polled from any thread, so our main-thread executor picks it
 //! up when tokio completes the task. No oneshot needed.
 
-use leptos::prelude::*;
+use leptos_native::prelude::*;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]

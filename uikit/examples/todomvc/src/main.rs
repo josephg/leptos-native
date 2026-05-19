@@ -16,7 +16,7 @@
 
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;
 
@@ -195,7 +195,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos::mount_ios::run(|| view! { <TodoMVC /> });
+        leptos_native::mount_ios::run(|| view! { <TodoMVC /> });
     }
 
 }

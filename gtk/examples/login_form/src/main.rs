@@ -5,7 +5,7 @@
 //! `bind:value`, `bind:checked`, `Memo`, `enabled=closure`.
 
 mod app {
-    use leptos::prelude::*;
+    use leptos_native::prelude::*;
 
     #[component]
     pub fn LoginForm() -> impl IntoView {
