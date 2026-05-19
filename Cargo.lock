@@ -1716,7 +1716,6 @@ dependencies = [
  "gtk4",
  "gtk_dom",
  "leptos",
- "leptos_apple_shared",
  "leptos_macro",
  "oco_ref",
  "reactive_graph",

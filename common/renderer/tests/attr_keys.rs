@@ -1,6 +1,6 @@
 //! Tests for the `AttributeKey` marker types.
 
-use leptos_apple_shared::attr_keys::{AttributeKey, Checked, Value};
+use renderer::attr_keys::{AttributeKey, Checked, Value};
 
 #[test]
 fn value_key_name() {

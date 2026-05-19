@@ -333,7 +333,7 @@ Users have to remember "for `Result<T, E>` use `<view>`, not
 PopUpButton and SegmentedControl use `bind:selection=`, while every
 other bind uses `bind:value=`. Looking at the keys module, `Selection`
 is a separate marker type that only lives in cocoa (`Value` and
-`Checked` are shared via `apple_shared::attr_keys`).
+`Checked` are shared via `renderer::attr_keys`).
 
 The distinction is arguably useful — selection is a different concept
 from value — but downstream, "what do I bind to a popup?" is one more

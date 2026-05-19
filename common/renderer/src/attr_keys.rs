@@ -1,5 +1,5 @@
-//! Attribute-key marker types used by the `bind:` machinery in each
-//! port. Vendored from the deleted `tachys::html::attribute::*`.
+//! Attribute-key marker types used by the `bind:` machinery in
+//! each port. Vendored from the deleted `tachys::html::attribute::*`.
 //!
 //! Native targets use these markers solely to disambiguate
 //! `BindAttribute<Key, Sig>` impls per-control (so a control can say

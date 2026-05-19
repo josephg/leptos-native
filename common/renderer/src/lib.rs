@@ -62,6 +62,18 @@ pub mod menu;
 /// `From<(i32, i32)>` and `From<(f64, f64)>` impls.
 pub mod window;
 
+/// `use:directive=param` plumbing — the `IntoDirective` trait
+/// plus `pack` / `run_all` helpers for builders' directive Vec.
+/// Generic over element type; each port re-exports binding the
+/// generic `E` to its own `Element`.
+pub mod directive;
+
+/// Attribute-key marker types used by the `bind:` machinery in
+/// each port (`Value`, `Checked`, `AttributeKey`). Used solely to
+/// disambiguate `BindAttribute<Key, Sig>` impls per-control; never
+/// read or written as a real element attribute.
+pub mod attr_keys;
+
 // Mirror the old `native_layout` crate root: re-export every layout
 // + setters item at the renderer root so consumer paths
 // (`use renderer::{Style, set_padding, LayoutNodeOps}`) match the
