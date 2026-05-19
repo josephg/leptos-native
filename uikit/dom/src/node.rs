@@ -81,13 +81,6 @@ impl BoolAttr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeKind {
-    Element,
-    Text,
-    Placeholder,
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -99,8 +92,7 @@ pub enum NodeKind {
 /// parent=None) decides whether to actually free the entry.
 ///
 /// For closure-capture patterns that need to refer back to a node
-/// without forming reference cycles, use [`WeakNode`] /
-/// [`WeakElement`] / [`WeakText`] / [`WeakPlaceholder`].
+/// without forming reference cycles, use [`WeakNode`] / [`WeakElement`].
 #[derive(Clone)]
 pub struct Node {
     inner: SendWrapper<Rc<NodeInner>>,
@@ -109,7 +101,6 @@ pub struct Node {
 pub(crate) struct NodeInner {
     tree: TreeRef,
     id: NodeId,
-    kind: NodeKind,
     /// Cached `Retained<UIView>` so `ui_view() -> &UIView` doesn't
     /// need an arena borrow. Adds one ObjC retain per `NodeInner`
     /// (the arena's `NodeData::view` is the other retain).
@@ -130,7 +121,6 @@ impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ptr: *const UIView = &*self.inner.view;
         f.debug_struct("Node")
-            .field("kind", &self.inner.kind)
             .field("id", &self.inner.id)
             .field("ptr", &ptr)
             .field("borrowed", &self.inner.is_borrowed)
@@ -144,18 +134,6 @@ impl AsRef<Node> for Element {
     }
 }
 
-impl AsRef<Node> for Text {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
-impl AsRef<Node> for Placeholder {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
 impl Node {
     /// Allocate a fresh arena entry into `tree` and return a Node
     /// owning it. The view is retained twice — once on `NodeInner`
@@ -164,7 +142,6 @@ impl Node {
     pub(crate) fn create_in_tree<V>(
         tree: &TreeRef,
         view: Retained<V>,
-        kind: NodeKind,
         default_style: Style,
         default_meta: IosMeta,
     ) -> Self
@@ -186,7 +163,6 @@ impl Node {
         let inner = NodeInner {
             tree: tree.clone(),
             id,
-            kind,
             view,
             is_borrowed: false,
         };
@@ -198,7 +174,6 @@ impl Node {
     /// `Drop` does NOT remove the arena entry.
     pub fn from_view_with_handle<V>(
         view: Retained<V>,
-        kind: NodeKind,
         handle: LayoutHandle,
     ) -> Self
     where
@@ -208,7 +183,6 @@ impl Node {
         let inner = NodeInner {
             tree: handle.tree,
             id: handle.node_id,
-            kind,
             view,
             is_borrowed: true,
         };
@@ -221,10 +195,6 @@ impl Node {
 
     pub fn ui_view_retained(&self) -> Retained<UIView> {
         self.inner.view.clone()
-    }
-
-    pub fn kind(&self) -> NodeKind {
-        self.inner.kind
     }
 
     pub fn ptr_eq(&self, other: &Node) -> bool {
@@ -315,12 +285,9 @@ pub struct Element {
 }
 
 impl Element {
+    /// Wrap a `Node`. There is no longer any kind discriminant — every
+    /// arena entry is structurally an Element-shaped Node.
     pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Element,
-            "Element::from_node_unchecked called with a non-Element node"
-        );
         Element { node }
     }
 
@@ -571,7 +538,6 @@ impl Element {
         let node = Node::create_in_tree(
             tree,
             view,
-            NodeKind::Element,
             default_style,
             default_meta,
         );
@@ -1397,31 +1363,24 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Text
+// Element: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-#[derive(Clone, Debug)]
-pub struct Text {
-    node: Node,
-}
-
-impl Text {
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Text,
-            "Text::from_node_unchecked called with a non-Text node"
-        );
-        Text { node }
-    }
-
-    pub fn create(tree: &TreeRef, content: &str) -> Self {
+impl Element {
+    /// Build a text-label Element — a UILabel. Used by the renderer's
+    /// `create_text_node`, which is the `Render` impl for `&str` /
+    /// `String` / numerics.
+    pub fn create_text(tree: &TreeRef, content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(tree, content, mtm)
+        Self::create_text_with(tree, content, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, content: &str, mtm: MainThreadMarker) -> Self {
+    pub fn create_text_with(
+        tree: &TreeRef,
+        content: &str,
+        mtm: MainThreadMarker,
+    ) -> Self {
         use objc2_ui_kit::UILabel;
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
@@ -1433,25 +1392,18 @@ impl Text {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Text {
+        Element {
             node: Node::create_in_tree(
                 tree,
                 view,
-                NodeKind::Text,
                 style,
                 IosMeta::default(),
             ),
         }
     }
 
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
-    }
-
+    /// Update the displayed string on a text-label Element. No-op if
+    /// the backing view isn't a UILabel.
     pub fn set_text(&self, content: &str) {
         let view = self.node.ui_view();
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
@@ -1459,35 +1411,20 @@ impl Text {
         }
         crate::layout::schedule_relayout(&self.node);
     }
-}
 
-// ---------------------------------------------------------------------
-// Placeholder
-// ---------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-pub struct Placeholder {
-    node: Node,
-}
-
-impl Placeholder {
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Placeholder,
-            "Placeholder::from_node_unchecked called with a \
-             non-Placeholder node"
-        );
-        Placeholder { node }
-    }
-
-    pub fn create(tree: &TreeRef) -> Self {
+    /// Build a placeholder Element — a hidden, zero-sized UIView used
+    /// by the renderer's control-flow primitives (`Render for ()`,
+    /// tuple/iterator/keyed end-markers) as a stable mount anchor.
+    pub fn create_placeholder(tree: &TreeRef) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_with(tree, mtm)
+        Self::create_placeholder_with(tree, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
+    pub fn create_placeholder_with(
+        tree: &TreeRef,
+        mtm: MainThreadMarker,
+    ) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
 
         let view = UIView::initWithFrame(
@@ -1501,23 +1438,14 @@ impl Placeholder {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Placeholder {
+        Element {
             node: Node::create_in_tree(
                 tree,
                 view,
-                NodeKind::Placeholder,
                 style,
                 IosMeta::default(),
             ),
         }
-    }
-
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
     }
 }
 
@@ -1588,67 +1516,7 @@ impl Element {
 
 impl WeakElement {
     pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Element {
-                Some(Element::from_node_unchecked(node))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct WeakText {
-    node: WeakNode,
-}
-
-impl Text {
-    pub fn weak(&self) -> WeakText {
-        WeakText { node: self.node.downgrade() }
-    }
-}
-
-impl WeakText {
-    pub fn upgrade(&self) -> Option<Text> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Text {
-                Some(Text { node })
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct WeakPlaceholder {
-    node: WeakNode,
-}
-
-impl Placeholder {
-    pub fn weak(&self) -> WeakPlaceholder {
-        WeakPlaceholder { node: self.node.downgrade() }
-    }
-}
-
-impl WeakPlaceholder {
-    pub fn upgrade(&self) -> Option<Placeholder> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Placeholder {
-                Some(Placeholder { node })
-            } else {
-                None
-            }
-        })
+        self.node.upgrade().map(Element::from_node_unchecked)
     }
 
     pub fn is_alive(&self) -> bool {

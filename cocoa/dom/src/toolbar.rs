@@ -753,7 +753,7 @@ pub fn search_toolbar_item(
     identifier: &str,
     mtm: MainThreadMarker,
 ) -> SearchToolbarItem {
-    use crate::node::{Node, NodeKind};
+    use crate::node::Node;
 
     let id_ns = NSString::from_str(identifier);
     let id_ref: &NSToolbarItemIdentifier = unsafe {
@@ -785,10 +785,9 @@ pub fn search_toolbar_item(
     // to hold the search field's handler/style storage and let
     // Drop run normally.
     let tree = crate::layout::new_tree();
-    let node = Node::create_in_tree(
+    let node = Node::from_view(
         &tree,
         search_field,
-        NodeKind::Element,
         taffy::Style::default(),
         crate::layout::CocoaMeta::default(),
     );

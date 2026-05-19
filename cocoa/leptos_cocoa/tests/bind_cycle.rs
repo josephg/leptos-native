@@ -36,7 +36,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let tree = cocoa_dom::layout::new_tree();
-        let text_field = Element::create_with(&tree, "text_field", mtm);
+        let text_field = Element::create_text_field(&tree).0;
 
         // First set — establishes baseline.
         text_field.set_attribute("value", "hello");
@@ -75,7 +75,7 @@ fn set_bool_attribute_with_same_value_idempotent() {
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let tree = cocoa_dom::layout::new_tree();
-        let checkbox = Element::create_with(&tree, "checkbox", mtm);
+        let checkbox = Element::create_checkbox(&tree).0;
 
         checkbox.set_bool_attribute(BoolAttr::Checked, true);
         let any: &objc2::runtime::AnyObject = checkbox.ns_view().as_ref();

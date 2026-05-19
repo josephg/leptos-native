@@ -5,7 +5,7 @@
 
 mod common;
 
-use cocoa_dom::{Element, NodeKind, Text};
+use cocoa_dom::Element;
 
 // ---------------------------------------------------------------------
 // Identity / round-trip
@@ -14,7 +14,7 @@ use cocoa_dom::{Element, NodeKind, Text};
 fn ptr_eq_true_for_clones() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create(&tree, "view");
+    let el = Element::create_container(&tree);
     let a = el.as_node().clone();
     let b = el.as_node().clone();
     assert!(a.ptr_eq(&b), "clones should pointer-eq");
@@ -23,8 +23,8 @@ fn ptr_eq_true_for_clones() {
 fn ptr_eq_false_for_distinct() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let a = Element::create(&tree, "view");
-    let b = Element::create(&tree, "view");
+    let a = Element::create_container(&tree);
+    let b = Element::create_container(&tree);
     assert!(
         !a.as_node().ptr_eq(b.as_node()),
         "distinct Elements should not pointer-eq"
@@ -34,7 +34,7 @@ fn ptr_eq_false_for_distinct() {
 fn into_node_round_trip() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create(&tree, "button");
+    let el = Element::create_button(&tree).0;
     let original_ptr: *const objc2_app_kit::NSView = el.ns_view();
     let n = el.into_node();
     let el2 = Element::from_node_unchecked(n);
@@ -42,26 +42,6 @@ fn into_node_round_trip() {
     assert_eq!(
         original_ptr, after_ptr,
         "into_node + from_node_unchecked should preserve NSView identity"
-    );
-    assert_eq!(el2.as_node().kind(), NodeKind::Element);
-}
-
-#[allow(unreachable_code)]
-fn from_node_unchecked_panics_on_wrong_kind() {
-    let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let t = Text::create(&tree, "x");
-    let n = t.into_node();
-    // Passing a Text node into Element::from_node_unchecked should
-    // panic — the kind enum is checked.
-    let result = std::panic::catch_unwind(
-        std::panic::AssertUnwindSafe(move || {
-            let _ = Element::from_node_unchecked(n);
-        }),
-    );
-    assert!(
-        result.is_err(),
-        "from_node_unchecked should panic on a non-Element node"
     );
 }
 
@@ -72,9 +52,9 @@ fn from_node_unchecked_panics_on_wrong_kind() {
 fn insert_node_appends_when_marker_none() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
-    let a = Element::create(&tree, "button");
-    let b = Element::create(&tree, "button");
+    let parent = Element::create_container(&tree);
+    let a = Element::create_button(&tree).0;
+    let b = Element::create_button(&tree).0;
 
     parent.insert_node(a.as_node(), None);
     parent.insert_node(b.as_node(), None);
@@ -88,10 +68,10 @@ fn insert_node_appends_when_marker_none() {
 fn insert_node_before_marker_places_correctly() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
-    let a = Element::create(&tree, "button");
-    let b = Element::create(&tree, "button");
-    let c = Element::create(&tree, "button");
+    let parent = Element::create_container(&tree);
+    let a = Element::create_button(&tree).0;
+    let b = Element::create_button(&tree).0;
+    let c = Element::create_button(&tree).0;
 
     // Initial order: a, c
     parent.insert_node(a.as_node(), None);
@@ -116,9 +96,9 @@ fn insert_node_moves_existing_child() {
     // new parent removes it from the old.
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent_a = Element::create(&tree, "view");
-    let parent_b = Element::create(&tree, "view");
-    let child = Element::create(&tree, "button");
+    let parent_a = Element::create_container(&tree);
+    let parent_b = Element::create_container(&tree);
+    let child = Element::create_button(&tree).0;
 
     parent_a.insert_node(child.as_node(), None);
     assert_eq!(parent_a.ns_view().subviews().len(), 1);
@@ -136,8 +116,8 @@ fn insert_node_moves_existing_child() {
 fn remove_child_returns_some_for_actual_child() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
-    let child = Element::create(&tree, "button");
+    let parent = Element::create_container(&tree);
+    let child = Element::create_button(&tree).0;
     parent.insert_node(child.as_node(), None);
 
     let removed = parent.remove_child(child.as_node());
@@ -148,9 +128,9 @@ fn remove_child_returns_some_for_actual_child() {
 fn remove_child_returns_none_for_non_child() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
-    let actual = Element::create(&tree, "button");
-    let stranger = Element::create(&tree, "button");
+    let parent = Element::create_container(&tree);
+    let actual = Element::create_button(&tree).0;
+    let stranger = Element::create_button(&tree).0;
     parent.insert_node(actual.as_node(), None);
 
     let removed = parent.remove_child(stranger.as_node());
@@ -167,10 +147,10 @@ fn remove_child_returns_none_for_non_child() {
 fn clear_children_removes_all() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
+    let parent = Element::create_container(&tree);
     for _ in 0..5 {
         parent.insert_node(
-            Element::create(&tree, "button").as_node(),
+            Element::create_button(&tree).0.as_node(),
             None,
         );
     }
@@ -183,7 +163,7 @@ fn clear_children_removes_all() {
 fn clear_children_on_empty_is_no_op() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create(&tree, "view");
+    let parent = Element::create_container(&tree);
     parent.clear_children();
     parent.clear_children();
     assert_eq!(parent.ns_view().subviews().len(), 0);
@@ -195,10 +175,6 @@ fn main() {
         ("ptr_eq_true_for_clones", ptr_eq_true_for_clones),
         ("ptr_eq_false_for_distinct", ptr_eq_false_for_distinct),
         ("into_node_round_trip", into_node_round_trip),
-        (
-            "from_node_unchecked_panics_on_wrong_kind",
-            from_node_unchecked_panics_on_wrong_kind,
-        ),
         // insert_node
         (
             "insert_node_appends_when_marker_none",

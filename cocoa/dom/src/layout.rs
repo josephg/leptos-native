@@ -143,7 +143,7 @@ fn layout_debug_enabled() -> bool {
 /// the wrapper grow to content on the scroll axis and stay pinned
 /// to the viewport on the cross axis.
 ///
-/// Called from `Element::create_with` at allocation time and from
+/// Called from `Element::create_<tag>` at allocation time and from
 /// `Element::set_scroll_axis` when the axis changes.
 pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
     // The wrapper uses `position: Absolute` rather than
@@ -190,7 +190,7 @@ pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
 
 /// Mark `node` as the tree's root, if no root is set yet.
 ///
-/// Arena allocation happens eagerly in `Element::create_with` (and
+/// Arena allocation happens eagerly in `Element::create_<tag>` (and
 /// `Text` / `Placeholder`'s constructors), so this no longer does
 /// any registration work. It just publishes the node id as `tree.root`
 /// — which the deferred-relayout scheduler reads to find what to
@@ -208,7 +208,7 @@ pub fn set_as_root(node: &Node, tree: &TreeRef) {
     }
 }
 
-pub(crate) fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
+pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<objc2_app_kit::NSScrollView>()
         .and_then(|s| s.documentView())
@@ -279,7 +279,6 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
         };
         let root_node = crate::node::Node::from_view_with_handle(
             root_view.clone(),
-            crate::node::NodeKind::Element,
             root_handle,
         );
         let size = root_view.frame().size;

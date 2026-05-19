@@ -225,10 +225,14 @@ Three layers, lowest first.
 
 ### `cocoa/dom/` — DOM-shaped façade over AppKit (crate `cocoa_dom`)
 
-The lowest layer. Provides `Node`, `Element`, `Text`, `Placeholder`
-types that loosely mirror their `web_sys` equivalents in shape but
-are backed by `NSView` (and subclasses like `NSButton`,
-`NSTextField`). Owns:
+The lowest layer. Provides `Node` and `Element` types that mirror
+the shape of their `web_sys` equivalents but are backed by `NSView`
+(and subclasses like `NSButton`, `NSTextField`). The renderer's
+"text node" and "placeholder" varieties are just Element
+constructors (`Element::create_text`, `Element::create_placeholder`);
+there's no distinct wrapper type for them — the per-port renderer
+wrapper aliases `type Text = Element` / `type Placeholder = Element`.
+Owns:
 
 - **Layout** (`src/layout.rs`): the storage tree itself lives in
   `common/renderer` (`LayoutTree<CocoaBackend>`); this file
@@ -236,7 +240,7 @@ are backed by `NSView` (and subclasses like `NSButton`,
   (`measure_leaf` reads `intrinsicContentSize`, `first_baseline`
   reads `firstBaselineOffsetFromTop`, plus a scroll-view second-pass
   hook). Each window has its own tree; every `Node` is a thin
-  handle (`Rc<NodeInner { tree, id, kind, view, is_borrowed }>`)
+  handle (`Rc<NodeInner { tree, id, view, is_borrowed }>`)
   pointing into the arena. Layout recompute is **manual** — AppKit
   doesn't auto-reflow, so `set_attribute` / `set_text` /
   `attach_child` / etc. each call `schedule_relayout`, which dedupes
@@ -793,8 +797,10 @@ explicitly.
 
 - **If you add a new control:**
   - cocoa: builder in `cocoa/leptos_cocoa/src/cocoa/element.rs` +
-    tag handling in `cocoa/dom/src/node.rs::Element::create_with` +
-    facade re-export in `cocoa/leptos_cocoa/src/element_macos.rs` +
+    typed constructor `Element::create_<tag>` in
+    `cocoa/dom/src/make_view.rs` (alloc the concrete NSView, build
+    default Style, call `Element::from_view`) + facade re-export
+    in `cocoa/leptos_cocoa/src/element_macos.rs` +
     `impl_add_any_attr_for_leaf!` line for the new builder.
   - gtk: builder in `gtk/leptos_gtk/src/gtk/element.rs` + tag
     handling in `gtk/dom/src/node.rs::Element::create` + facade

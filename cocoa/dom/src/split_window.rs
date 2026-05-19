@@ -573,7 +573,7 @@ fn build_pane(
 ) -> Pane {
     // Pane root: a FlippedView with its own Taffy tree.
     let tree = layout::new_tree();
-    let root = Element::create_with(&tree, "view", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_as_root(root.as_node(), &tree);
 

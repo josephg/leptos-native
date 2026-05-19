@@ -10,7 +10,7 @@
 //!
 //! All style / meta / handler state lives in the arena's `NodeData`.
 //! Accessors (`with_style`, `with_meta`, `with_handlers_mut`) route
-//! straight to the arena. Allocation is eager: `Element::create_with`
+//! straight to the arena. Allocation is eager: `Element::create_<tag>`
 //! takes a `tree: &TreeRef` and allocates an arena entry up front.
 //! See `crate::layout` for the attach/relayout helpers and
 //! `MEMORY_POLICY.md` for the ownership rules.
@@ -18,7 +18,7 @@
 //! See the crate-level docs for the threading contract.
 
 use crate::layout::{
-    CocoaMeta, Dimension, LayoutHandle, NodeId, Style, TreeRef,
+    CocoaMeta, LayoutHandle, NodeId, Style, TreeRef,
 };
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
@@ -100,18 +100,6 @@ impl BoolAttr {
     }
 }
 
-/// Distinguishes the three node varieties tachys cares about.
-///
-/// In the web DOM these correspond to Element / Text / Comment nodes.
-/// We keep the distinction so `CastFrom<Node>` round-trips can validate
-/// that a Node was originally created as an Element vs Text vs Placeholder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeKind {
-    Element,
-    Text,
-    Placeholder,
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -121,8 +109,6 @@ pub enum NodeKind {
 /// Every Node clone shares **one** `Rc<NodeInner>` carrying:
 ///   * `(tree, id)` — the arena and the entry id (stable for the
 ///     entry's lifetime).
-///   * `kind` — Element / Text / Placeholder discriminant for
-///     `CastFrom<Node>` round-trips.
 ///   * `view: Retained<NSView>` — cached so `ns_view() -> &NSView`
 ///     doesn't touch the arena's RefCell. The arena entry has its
 ///     own retain too; the two stay in lockstep.
@@ -146,7 +132,7 @@ pub enum NodeKind {
 ///
 /// For closure-capture patterns that want to refer back to a node
 /// from a handler without forming the Element-capture cycle, use
-/// [`WeakNode`] / [`WeakElement`] / [`WeakText`] / [`WeakPlaceholder`].
+/// [`WeakNode`] / [`WeakElement`].
 #[derive(Clone)]
 pub struct Node {
     inner: SendWrapper<Rc<NodeInner>>,
@@ -157,7 +143,6 @@ pub(crate) struct NodeInner {
     tree: TreeRef,
     /// Stable arena id for this node.
     id: NodeId,
-    kind: NodeKind,
     /// Cached `Retained<NSView>` so `ns_view() -> &NSView` doesn't
     /// need an arena borrow. Adds one ObjC retain per `NodeInner`
     /// (the arena's `NodeData::view` is the other retain) — small
@@ -198,7 +183,6 @@ impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let ptr: *const NSView = &*self.inner.view;
         f.debug_struct("Node")
-            .field("kind", &self.inner.kind)
             .field("id", &self.inner.id)
             .field("ptr", &ptr)
             .field("borrowed", &self.inner.is_borrowed)
@@ -212,30 +196,22 @@ impl AsRef<Node> for Element {
     }
 }
 
-impl AsRef<Node> for Text {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
-impl AsRef<Node> for Placeholder {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
 impl Node {
     /// Allocate a fresh arena entry into `tree` and return a Node
     /// owning it. The view is retained twice — once on `NodeInner`
     /// for fast `&NSView` access, once in the arena `NodeData::view`
     /// for layout / drop ordering.
     ///
-    /// Only used internally by [`Element::create_with`],
-    /// [`Text::create_with`], and [`Placeholder::create_with`].
-    pub(crate) fn create_in_tree<V>(
+    /// The typed registration primitive: hand in a concrete NSView
+    /// subclass, get back a `Node` owning a fresh arena entry. Used
+    /// by every typed-builder construction path in `leptos_cocoa`
+    /// (e.g. each builder allocates its own NSButton / NSTextField /
+    /// NSScrollView, then calls `Node::from_view`), and by the
+    /// renderer-protocol primitives [`Element::create_text`] and
+    /// [`Element::create_placeholder`].
+    pub fn from_view<V>(
         tree: &TreeRef,
         view: Retained<V>,
-        kind: NodeKind,
         default_style: Style,
         default_meta: CocoaMeta,
     ) -> Self
@@ -257,7 +233,6 @@ impl Node {
         let inner = NodeInner {
             tree: tree.clone(),
             id,
-            kind,
             view,
             is_borrowed: false,
         };
@@ -275,7 +250,6 @@ impl Node {
     /// root Node.
     pub fn from_view_with_handle<V>(
         view: Retained<V>,
-        kind: NodeKind,
         handle: LayoutHandle,
     ) -> Self
     where
@@ -285,7 +259,6 @@ impl Node {
         let inner = NodeInner {
             tree: handle.tree,
             id: handle.node_id,
-            kind,
             view,
             is_borrowed: true,
         };
@@ -306,10 +279,6 @@ impl Node {
     /// Node → handlers → closure).
     pub fn ns_view_retained(&self) -> Retained<NSView> {
         self.inner.view.clone()
-    }
-
-    pub fn kind(&self) -> NodeKind {
-        self.inner.kind
     }
 
     /// Pointer-equality check (same underlying NSView object).
@@ -403,434 +372,67 @@ impl Node {
 // Element
 // ---------------------------------------------------------------------
 
-/// An element node — anything created by [`Element::create`] for a given
-/// tag. Wraps a `Node` whose kind is `NodeKind::Element`.
+/// An element node — a `Node` paired with the typed-builder /
+/// renderer-protocol surface used by `leptos_cocoa`. Every arena
+/// entry is structurally an Element-shaped Node, distinguished only
+/// by the concrete NSView subclass + default style applied at
+/// creation time.
+///
+/// `cocoa_dom` only knows about three Element shapes directly:
+/// generic containers ([`Element::create_container`]), text labels
+/// ([`Element::create_text`]), and placeholder markers
+/// ([`Element::create_placeholder`]). Every other control — buttons,
+/// sliders, text fields, etc. — is constructed by the typed builder
+/// that owns it in `leptos_cocoa`, which allocates its own NSView
+/// subclass and hands it to [`Node::from_view`] / [`Element::from_view`].
 #[derive(Clone, Debug)]
 pub struct Element {
     node: Node,
 }
 
 impl Element {
-    /// Wrap a `Node` whose kind has already been verified as
-    /// `Element`. Panics in both debug and release if the kind is
-    /// wrong — the check is a single enum compare, and the cost of
-    /// silently allowing a Text/Placeholder to masquerade as an
-    /// Element is much higher (silent no-ops in `set_attribute`).
+    /// Wrap a `Node`. There is no longer any kind discriminant — every
+    /// arena entry is structurally an Element-shaped Node, distinguished
+    /// only by the concrete NSView subclass + default style applied at
+    /// creation time.
     pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Element,
-            "Element::from_node_unchecked called with a non-Element node"
-        );
         Element { node }
     }
 
-    /// Construct an element by tag name into `tree`. Allocates an
-    /// arena entry eagerly; the resulting Node refers to it directly.
-    ///
-    /// Tag names map to AppKit view classes; see the crate root for
-    /// the supported set.
-    ///
-    /// # Panics
-    /// Off the main thread.
-    pub fn create(tree: &TreeRef, tag: &str) -> Self {
+    /// Typed entry point for builders: register a concrete NSView
+    /// subclass under a fresh arena entry and wrap it as an Element.
+    /// Used by every typed-builder `Render::build` in `leptos_cocoa`.
+    pub fn from_view<V>(
+        tree: &TreeRef,
+        view: Retained<V>,
+        default_style: Style,
+        default_meta: CocoaMeta,
+    ) -> Self
+    where
+        V: AsRef<NSView> + Message,
+    {
+        Element {
+            node: Node::from_view(tree, view, default_style, default_meta),
+        }
+    }
+
+    /// Generic flipped container (FlippedView, default Taffy style).
+    /// Used by `cocoa_dom::window` / `cocoa_dom::split_window` for
+    /// the content root, and by leptos_cocoa's Stack / view builders.
+    pub fn create_container(tree: &TreeRef) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
-        Self::create_with(tree, tag, mtm)
+        Self::create_container_with(tree, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, tag: &str, mtm: MainThreadMarker) -> Self {
-        use crate::{
-            flipped_view::FlippedView,
-            layout::{FlexDirection, Style},
+    pub fn create_container_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
+        use crate::{flipped_view::FlippedView, layout::Style};
+        let view: Retained<NSView> = unsafe {
+            Retained::cast_unchecked(FlippedView::new(mtm))
         };
-
-        // Default frame is a sentinel; layout overwrites it.
-        let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
-
-        // For each tag, decide:
-        //   1. Which AppKit class to instantiate.
-        //   2. Whether the view is a layout container (needs flipped
-        //      coords + a layout-friendly default Taffy style).
-        let (view, default_style): (Retained<NSView>, Style) = match tag {
-            "button" => {
-                // Use `buttonWithTitle:target:action:` rather than
-                // `initWithFrame:` — the former produces a properly-
-                // styled push button (rounded bezel, ~32px tall,
-                // sensible intrinsic size). Direct `initWithFrame`
-                // gave us a button with a default bezel whose
-                // intrinsic was a too-small 20px tall × text-only
-                // wide, so titles like "Reset" rendered as "Rese".
-                //
-                // Title and target/action are set later via
-                // `set_attribute("title", ...)` and `on_click(...)`.
-                let b = unsafe {
-                    NSButton::buttonWithTitle_target_action(
-                        &NSString::from_str(""),
-                        None,
-                        None,
-                        mtm,
-                    )
-                };
-                let v: Retained<NSView> = unsafe { Retained::cast_unchecked(b) };
-                (v, Style::default())
-            }
-            "checkbox" => {
-                // `checkboxWithTitle:target:action:` produces an
-                // NSButton pre-configured as a switch (checkbox bezel,
-                // sensible intrinsic). Title and target/action are set
-                // later via attributes / on_click.
-                let b = unsafe {
-                    NSButton::checkboxWithTitle_target_action(
-                        &NSString::from_str(""),
-                        None,
-                        None,
-                        mtm,
-                    )
-                };
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(b) };
-                // Don't shrink — clipping a checkbox label looks bad.
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "label" => {
-                // `wrappingLabelWithString:` is AppKit's dedicated
-                // multiline-label initializer (10.12+). It pre-
-                // configures the cell for word-wrapping; combined
-                // with `preferredMaxLayoutWidth` set during measure
-                // (see `cocoa_dom::layout::measure_leaf`) the field
-                // reports a wrapped intrinsic content size for
-                // whatever width the parent gives it.
-                let l = NSTextField::wrappingLabelWithString(
-                    &NSString::from_str(""),
-                    mtm,
-                );
-                let v: Retained<NSView> = unsafe { Retained::cast_unchecked(l) };
-                // No hardcoded size — measured via NSTextField's
-                // intrinsic. Never shrink: NSTextField doesn't clip
-                // its text content, so a frame shorter than the text
-                // height results in text overflowing into siblings'
-                // space.
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "text_field" => {
-                let tf = NSTextField::initWithFrame(
-                    NSTextField::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<NSView> = unsafe { Retained::cast_unchecked(tf) };
-                // Same as `label`: measured via NSTextField intrinsic,
-                // never shrink (editable content shouldn't get clipped
-                // by sibling overlap).
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "slider" => {
-                use objc2_app_kit::NSSlider;
-                let s = NSSlider::initWithFrame(NSSlider::alloc(mtm), frame);
-                // Continuous: fire target/action on every drag-update,
-                // not just on mouse-up. Web-equivalent expectation
-                // (input event firing while sliding).
-                s.setContinuous(true);
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(s) };
-                // Sliders have a defined intrinsic height; let the
-                // parent decide width via the cross-axis stretch.
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "pop_up_button" => {
-                use objc2_app_kit::NSPopUpButton;
-                let p = NSPopUpButton::initWithFrame_pullsDown(
-                    NSPopUpButton::alloc(mtm),
-                    frame,
-                    false,
-                );
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(p) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "date_picker" => {
-                use objc2_app_kit::NSDatePicker;
-                let dp = NSDatePicker::initWithFrame(
-                    NSDatePicker::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(dp) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "stepper" => {
-                use objc2_app_kit::NSStepper;
-                let st = NSStepper::initWithFrame(
-                    NSStepper::alloc(mtm),
-                    frame,
-                );
-                // Wrap negative steps around max (web-shaped); user
-                // can disable via setValueWraps if they want clamp
-                // behavior.
-                st.setValueWraps(false);
-                // Continuous = fire on every drag tick, not just on
-                // mouse-up. Matches slider's default; consistent
-                // expectation for live-update controls.
-                st.setAutorepeat(true);
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(st) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "progress_indicator" => {
-                use objc2_app_kit::NSProgressIndicator;
-                let pi = NSProgressIndicator::initWithFrame(
-                    NSProgressIndicator::alloc(mtm),
-                    frame,
-                );
-                // Default: bar style, determinate, 0..1 range.
-                // `indeterminate=true` switches to spinner; user-
-                // controllable via the builder's `.indeterminate(b)`.
-                pi.setMinValue(0.0);
-                pi.setMaxValue(1.0);
-                pi.setIndeterminate(false);
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(pi) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "color_well" => {
-                use objc2_app_kit::NSColorWell;
-                let cw = NSColorWell::initWithFrame(
-                    NSColorWell::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(cw) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "segmented_control" => {
-                use objc2_app_kit::NSSegmentedControl;
-                let sc = NSSegmentedControl::initWithFrame(
-                    NSSegmentedControl::alloc(mtm),
-                    frame,
-                );
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(sc) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "scroll_view" => {
-                // NSScrollView wrapping a FlippedView documentView.
-                // Children added via `insert_node` are routed to the
-                // documentView via `Element::subview_parent`. The
-                // scroll view's *outer* frame is whatever the parent
-                // gives it (the viewport); the documentView is sized
-                // separately in a second `compute_layout` pass with
-                // `MaxContent` height — see
-                // `compute_layout_scroll_views` in layout.rs.
-                use objc2_app_kit::NSScrollView;
-                let scroll = NSScrollView::initWithFrame(
-                    NSScrollView::alloc(mtm),
-                    frame,
-                );
-                scroll.setHasVerticalScroller(true);
-                scroll.setHasHorizontalScroller(false);
-                scroll.setBorderType(
-                    objc2_app_kit::NSBorderType::NoBorder,
-                );
-
-                let doc: Retained<NSView> = unsafe {
-                    Retained::cast_unchecked(FlippedView::new(mtm))
-                };
-                scroll.setDocumentView(Some(&doc));
-
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(scroll) };
-                // CSS pattern for "shrinkable scroll container":
-                //   flex-basis: 0; min-height: 0; overflow: hidden.
-                // Without flex_basis=0, the flex algorithm would
-                // start scroll_view at its content size (e.g. 538
-                // tall for a list of 30 rows), and flex-grow can't
-                // bring it back down — outer ancestors would then
-                // grow past the window. With flex_basis=0 and
-                // min_size=0, scroll_view collapses to nothing by
-                // default and only the user's flex_grow / explicit
-                // height grows it back to the viewport.
-                let mut s = Style::default();
-                s.flex_direction = FlexDirection::Column;
-                s.flex_basis = Dimension::length(0.0);
-                s.min_size.height = Dimension::length(0.0);
-                s.overflow = taffy::Point {
-                    x: taffy::Overflow::Hidden,
-                    y: taffy::Overflow::Hidden,
-                };
-                (v, s)
-            }
-            "image_view" => {
-                use objc2_app_kit::{NSImageView, NSImageScaling};
-                let iv = NSImageView::initWithFrame(
-                    NSImageView::alloc(mtm),
-                    frame,
-                );
-                // Default to scaling-down-only with aspect ratio
-                // preserved — images larger than the frame fit
-                // inside; smaller images render at native size.
-                iv.setImageScaling(
-                    NSImageScaling::ScaleProportionallyDown,
-                );
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(iv) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "text_view" => {
-                // NSTextView is multi-line, rich-text-capable text
-                // editing. Standard AppKit pattern is to embed it
-                // inside an NSScrollView so overflow scrolls
-                // (NSTextView itself doesn't scroll). We wrap the
-                // scroll view and treat the contained text view as
-                // an internal implementation detail; setters route
-                // through `documentView()` (see `set_string_attribute`
-                // for `StringAttr::Value`).
-                //
-                // Limitations of this v1:
-                //   * No event hooks (NSTextViewDelegate is a
-                //     separate protocol from
-                //     NSControlTextEditingDelegate). Add when
-                //     needed.
-                //   * Plain text only (`setRichText(false)`).
-                use objc2_app_kit::{NSScrollView, NSTextView};
-                let scroll = NSScrollView::initWithFrame(
-                    NSScrollView::alloc(mtm),
-                    frame,
-                );
-                scroll.setHasVerticalScroller(true);
-                scroll.setHasHorizontalScroller(false);
-                scroll.setBorderType(objc2_app_kit::NSBorderType::BezelBorder);
-
-                let tv = NSTextView::initWithFrame(
-                    NSTextView::alloc(mtm),
-                    frame,
-                );
-                tv.setEditable(true);
-                tv.setSelectable(true);
-                tv.setRichText(false);
-                tv.setImportsGraphics(false);
-                scroll.setDocumentView(Some(&tv));
-
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(scroll) };
-                // Don't shrink past content; multi-line editing
-                // surfaces shouldn't get squeezed by sibling
-                // overlap.
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "secure_text_field" => {
-                use objc2_app_kit::NSSecureTextField;
-                let tf = NSSecureTextField::initWithFrame(
-                    NSSecureTextField::alloc(mtm),
-                    frame,
-                );
-                // Cast straight to NSView; downstream code that
-                // downcasts to NSTextField still works because
-                // NSSecureTextField IS-A NSTextField.
-                let v: Retained<NSView> =
-                    unsafe { Retained::cast_unchecked(tf) };
-                let mut s = Style::default();
-                s.flex_shrink = 0.0;
-                (v, s)
-            }
-            "stack" => {
-                // Canonical linear-layout primitive — flexbox with no
-                // axis preset (the builder layer chooses Row/Column
-                // via the vstack()/hstack() entry points).
-                let v: Retained<NSView> = unsafe {
-                    Retained::cast_unchecked(FlippedView::new(mtm))
-                };
-                (v, Style::default())
-            }
-            "grid" => {
-                // 2-D grid container backed by Taffy's grid algorithm.
-                // Template tracks / gap / placement attrs are applied
-                // by the higher-level builder; this just establishes
-                // the container.
-                let v: Retained<NSView> = unsafe {
-                    Retained::cast_unchecked(FlippedView::new(mtm))
-                };
-                let mut s = Style::default();
-                s.display = crate::layout::Display::Grid;
-                (v, s)
-            }
-            // Anything unknown → generic flipped container.
-            _ => {
-                let v: Retained<NSView> = unsafe {
-                    Retained::cast_unchecked(FlippedView::new(mtm))
-                };
-                (v, Style::default())
-            }
-        };
-
-        // Initial meta — scroll_view flag set here so the wrapper
-        // allocation below sees it consistently.
-        let mut default_meta = CocoaMeta::default();
-        if tag == "scroll_view" {
-            default_meta.is_scroll_view = true;
-        }
-
-        let node = Node::create_in_tree(
-            tree,
-            view,
-            NodeKind::Element,
-            default_style,
-            default_meta,
-        );
-
-        // <scroll_view> allocates a second Taffy leaf backed by the
-        // NSScrollView's documentView. Children added at the AppKit
-        // layer are routed to this wrapper at the Taffy layer (see
-        // `taffy_child_parent` in layout.rs), so the user's children
-        // are laid out inside it.
-        if tag == "scroll_view" {
-            if let Some(doc) = crate::layout::scroll_view_document(node.ns_view()) {
-                let wrapper_style = crate::layout::build_scroll_wrapper_style(
-                    crate::layout::ScrollAxis::Vertical,
-                );
-                let (_, parent_id) = node.tree_id().expect("just created");
-                // Internal entry: no `Node` ever owns the wrapper, so
-                // start refcount=0. The reachability GC in
-                // `tree.remove` cleans it up automatically when its
-                // parent (the scroll_view) goes away.
-                let wrapper_id = tree.new_internal_leaf(
-                    wrapper_style,
-                    SendWrapper::new(doc),
-                    CocoaMeta::default(),
-                    crate::event::NodeHandlers::default(),
-                );
-                tree.add_child(parent_id, wrapper_id);
-                node.with_meta_mut(|m| {
-                    m.child_taffy_parent = Some(wrapper_id);
-                });
-            }
-        }
-
-        Element { node }
+        Element::from_view(tree, view, Style::default(), CocoaMeta::default())
     }
+
 
     pub fn as_node(&self) -> &Node {
         &self.node
@@ -1807,7 +1409,7 @@ impl Element {
     ///
     /// Must be called before the element joins a layout tree —
     /// builder code calls this from `Render::build` between
-    /// `Element::create("scroll_view")` and the first mount.
+    /// `Element::create_scroll_view` and the first mount.
     /// No-op on non-scroll-view elements.
     pub fn set_scroll_axis(&self, axis: crate::layout::ScrollAxis) {
         use crate::layout::ScrollAxis;
@@ -1828,7 +1430,7 @@ impl Element {
         // `min_size.height: 0` here. Those defaults are what prevent
         // the scroll_view's content from inflating ancestor flex
         // containers via intrinsic sizing — see the comment in
-        // `Element::create_with` for "scroll_view". To size a
+        // `Element::create_<tag>` for "scroll_view". To size a
         // horizontal scroll_view, use `min_height` (or `flex_grow`
         // with a bounded parent), the same way vertical scroll_views
         // size today. `height=N` alone won't work on a scroll_view
@@ -1843,7 +1445,7 @@ impl Element {
 
         // Rewrite the documentView wrapper's Taffy style so the new
         // axis takes effect. Wrapper id was stashed on meta at
-        // `Element::create_with` time.
+        // `Element::create_<tag>` time.
         let wrapper = node.with_meta(|m| m.child_taffy_parent);
         if let (Some(wid), Some((tree, _))) = (wrapper, node.tree_id()) {
             tree.set_style(wid, crate::layout::build_scroll_wrapper_style(axis));
@@ -2308,36 +1910,26 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Text
+// Element: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-/// A text node. Backed by a non-editable, non-bordered NSTextField
-/// (AppKit's standard "label" configuration).
-#[derive(Clone, Debug)]
-pub struct Text {
-    node: Node,
-}
-
-impl Text {
-    /// Wrap a `Node` whose kind has already been verified as `Text`.
-    /// Panics in debug *and* release if the kind is wrong — see
-    /// [`Element::from_node_unchecked`] for rationale.
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Text,
-            "Text::from_node_unchecked called with a non-Text node"
-        );
-        Text { node }
-    }
-
-    pub fn create(tree: &TreeRef, content: &str) -> Self {
+impl Element {
+    /// Build a text-label Element — a non-editable, non-bordered
+    /// NSTextField (AppKit's standard "label" configuration).
+    ///
+    /// Used by the renderer's `create_text_node`, which is the
+    /// `Render` impl for `&str` / `String` / numerics.
+    pub fn create_text(tree: &TreeRef, content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
-        Self::create_with(tree, content, mtm)
+        Self::create_text_with(tree, content, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, content: &str, mtm: MainThreadMarker) -> Self {
+    pub fn create_text_with(
+        tree: &TreeRef,
+        content: &str,
+        mtm: MainThreadMarker,
+    ) -> Self {
         let label = NSTextField::labelWithString(
             &NSString::from_str(content),
             mtm,
@@ -2351,77 +1943,45 @@ impl Text {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Text {
-            node: Node::create_in_tree(
+        Element {
+            node: Node::from_view(
                 tree,
                 view,
-                NodeKind::Text,
                 style,
                 CocoaMeta::default(),
             ),
         }
     }
 
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
-    }
-
-    /// Update the displayed string.
+    /// Update the displayed string on a text-label Element. No-op if
+    /// the backing view isn't an NSTextField.
     pub fn set_text(&self, content: &str) {
         let view = self.node.ns_view();
-        // We created this as an NSTextField; downcast and set its value.
         if let Some(field) = downcast::<NSTextField>(view) {
             field.setStringValue(&NSString::from_str(content));
         }
         // Content changed → intrinsic size may have changed too.
-        // Schedule a relayout pass so the label's frame catches up.
         crate::layout::schedule_relayout(&self.node);
     }
-}
 
-// ---------------------------------------------------------------------
-// Placeholder
-// ---------------------------------------------------------------------
-
-/// A placeholder node — has a position in the tree but no visible
-/// representation. Used by tachys to anchor dynamic content (the moral
-/// equivalent of an HTML comment node used as a marker).
-///
-/// Backed by an empty hidden NSView. Default Taffy style is
-/// `position: absolute; size: 0×0` so it doesn't take a slot in the
-/// parent's flex layout (tachys' `Render for ()` builds Placeholders;
-/// without the absolute positioning, every empty `()` would offset
-/// its siblings by `gap`).
-#[derive(Clone, Debug)]
-pub struct Placeholder {
-    node: Node,
-}
-
-impl Placeholder {
-    /// Wrap a `Node` whose kind has already been verified as
-    /// `Placeholder`. Panics in debug *and* release if the kind is
-    /// wrong — see [`Element::from_node_unchecked`] for rationale.
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Placeholder,
-            "Placeholder::from_node_unchecked called with a \
-             non-Placeholder node"
-        );
-        Placeholder { node }
-    }
-
-    pub fn create(tree: &TreeRef) -> Self {
+    /// Build a placeholder Element — a hidden, zero-sized NSView used
+    /// by the renderer's control-flow primitives (`Render for ()`,
+    /// tuple/iterator/keyed end-markers) as a stable mount anchor.
+    ///
+    /// Default Taffy style is `position: absolute; size: 0×0` so the
+    /// marker doesn't take a slot in the parent's flex layout —
+    /// without that, every empty `()` would offset its siblings by
+    /// `gap`.
+    pub fn create_placeholder(tree: &TreeRef) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
-        Self::create_with(tree, mtm)
+        Self::create_placeholder_with(tree, mtm)
     }
 
-    pub fn create_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
+    pub fn create_placeholder_with(
+        tree: &TreeRef,
+        mtm: MainThreadMarker,
+    ) -> Self {
         let view = NSView::initWithFrame(
             NSView::alloc(mtm),
             NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0)),
@@ -2433,23 +1993,14 @@ impl Placeholder {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Placeholder {
-            node: Node::create_in_tree(
+        Element {
+            node: Node::from_view(
                 tree,
                 view,
-                NodeKind::Placeholder,
                 style,
                 CocoaMeta::default(),
             ),
         }
-    }
-
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
     }
 }
 
@@ -2532,8 +2083,8 @@ fn splice_subview_before(parent: &NSView, child: &NSView, marker: &NSView) {
 // fuzzer flags it as a leak. `MEMORY_POLICY.md` §3 prohibits this
 // pattern.
 //
-// `WeakNode` / `WeakElement` / `WeakText` / `WeakPlaceholder` are the
-// safe alternative. They hold a `Weak<NodeInner>` — non-owning — and
+// `WeakNode` / `WeakElement` are the safe alternative. They hold a
+// `Weak<NodeInner>` — non-owning — and
 // expose `.upgrade() -> Option<...>` to recover a strong handle at
 // fire time:
 //
@@ -2599,7 +2150,7 @@ impl fmt::Debug for WeakNode {
     }
 }
 
-// ---- WeakElement / WeakText / WeakPlaceholder -----------------------
+// ---- WeakElement ----------------------------------------------------
 
 /// Weak counterpart to [`Element`]. See [`WeakNode`] for the rationale.
 #[derive(Clone, Debug)]
@@ -2616,76 +2167,9 @@ impl Element {
 
 impl WeakElement {
     /// Try to recover a strong `Element`. Returns `None` if all
-    /// strong references have dropped, OR if the underlying Node's
-    /// kind isn't `Element` (defensive — matches `WeakText` /
-    /// `WeakPlaceholder` behavior; only matters if someone
-    /// hand-constructs a `WeakElement` from a non-Element Node).
+    /// strong references have dropped.
     pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Element {
-                Some(Element::from_node_unchecked(node))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-/// Weak counterpart to [`Text`]. See [`WeakNode`] for the rationale.
-#[derive(Clone, Debug)]
-pub struct WeakText {
-    node: WeakNode,
-}
-
-impl Text {
-    pub fn weak(&self) -> WeakText {
-        WeakText { node: self.node.downgrade() }
-    }
-}
-
-impl WeakText {
-    pub fn upgrade(&self) -> Option<Text> {
-        self.node.upgrade().and_then(|node| {
-            // Validate kind for safety: should always succeed since
-            // we only constructed WeakText from a Text.
-            if node.kind() == NodeKind::Text {
-                Some(Text { node })
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-/// Weak counterpart to [`Placeholder`]. See [`WeakNode`] for the rationale.
-#[derive(Clone, Debug)]
-pub struct WeakPlaceholder {
-    node: WeakNode,
-}
-
-impl Placeholder {
-    pub fn weak(&self) -> WeakPlaceholder {
-        WeakPlaceholder { node: self.node.downgrade() }
-    }
-}
-
-impl WeakPlaceholder {
-    pub fn upgrade(&self) -> Option<Placeholder> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Placeholder {
-                Some(Placeholder { node })
-            } else {
-                None
-            }
-        })
+        self.node.upgrade().map(Element::from_node_unchecked)
     }
 
     pub fn is_alive(&self) -> bool {

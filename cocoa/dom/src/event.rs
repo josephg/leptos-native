@@ -103,7 +103,7 @@ impl Drop for LiveTracker {
 ///
 /// The `view` field is a back-reference to the NSView whose target
 /// / delegate slots the handlers populated. It's `None` until
-/// [`Self::attach_view`] is called — `Node::create_in_tree` wires
+/// [`Self::attach_view`] is called — `Node::from_view` wires
 /// it up eagerly so that handlers
 /// installed pre-mount also get the disconnect-on-drop guarantee.
 #[derive(Default)]

@@ -5,7 +5,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Element, NodeKind, Text};
+use gtk_dom::{gtk::prelude::*, Element};
 
 // ---------------------------------------------------------------------
 // Identity / round-trip
@@ -39,22 +39,6 @@ fn into_node_round_trip() {
     assert_eq!(
         original_ptr, after_ptr,
         "into_node + from_node_unchecked should preserve widget identity"
-    );
-    assert_eq!(el2.as_node().kind(), NodeKind::Element);
-}
-
-fn from_node_unchecked_panics_on_wrong_kind() {
-    let tree = gtk_dom::layout::new_tree();
-    let t = Text::create(&tree, "x");
-    let n = t.into_node();
-    let result = std::panic::catch_unwind(
-        std::panic::AssertUnwindSafe(move || {
-            let _ = Element::from_node_unchecked(n);
-        }),
-    );
-    assert!(
-        result.is_err(),
-        "from_node_unchecked should panic on a non-Element node"
     );
 }
 
@@ -207,10 +191,6 @@ fn main() {
         ("ptr_eq_true_for_clones", ptr_eq_true_for_clones),
         ("ptr_eq_false_for_distinct", ptr_eq_false_for_distinct),
         ("into_node_round_trip", into_node_round_trip),
-        (
-            "from_node_unchecked_panics_on_wrong_kind",
-            from_node_unchecked_panics_on_wrong_kind,
-        ),
         // insert_node
         (
             "insert_node_appends_when_marker_none",

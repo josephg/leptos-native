@@ -153,7 +153,6 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
         };
         let root_node = crate::node::Node::from_view_with_handle(
             root_view.clone(),
-            crate::node::NodeKind::Element,
             root_handle,
         );
         let size = root_view.frame().size;

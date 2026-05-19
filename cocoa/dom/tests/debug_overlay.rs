@@ -34,7 +34,7 @@ fn frame_eq(view: &NSView, x: f64, y: f64, w: f64, h: f64) {
 /// because the overlay shifted subview indices.
 fn overlay_does_not_shift_children() {
     let mtm = common::test_mtm();
-    let root = Element::create_with(&tree, "view", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     layout::set_flex_direction(
         root.as_node(),
         layout::FlexDirection::Row,
@@ -50,8 +50,8 @@ fn overlay_does_not_shift_children() {
         .expect("\"view\" tag should produce a FlippedView");
     debug_overlay::install(flipped, &tree, mtm);
 
-    let a = Element::create_with(&tree, "view", mtm);
-    let b = Element::create_with(&tree, "view", mtm);
+    let a = Element::create_container_with(&tree, mtm);
+    let b = Element::create_container_with(&tree, mtm);
     layout::set_width(a.as_node(), 100.0);
     layout::set_height(a.as_node(), 50.0);
     layout::set_width(b.as_node(), 200.0);
@@ -74,7 +74,7 @@ fn overlay_does_not_shift_children() {
 /// land at wrong Taffy indices.
 fn overlay_does_not_shift_marker_inserts() {
     let mtm = common::test_mtm();
-    let root = Element::create_with(&tree, "view", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     layout::set_flex_direction(
         root.as_node(),
         layout::FlexDirection::Row,
@@ -86,9 +86,9 @@ fn overlay_does_not_shift_marker_inserts() {
     let flipped = any.downcast_ref::<FlippedView>().unwrap();
     debug_overlay::install(flipped, &tree, mtm);
 
-    let a = Element::create_with(&tree, "view", mtm);
-    let b = Element::create_with(&tree, "view", mtm);
-    let c = Element::create_with(&tree, "view", mtm);
+    let a = Element::create_container_with(&tree, mtm);
+    let b = Element::create_container_with(&tree, mtm);
+    let c = Element::create_container_with(&tree, mtm);
     for (el, w) in [(&a, 50.0), (&b, 60.0), (&c, 70.0)] {
         layout::set_width(el.as_node(), w);
         layout::set_height(el.as_node(), 40.0);

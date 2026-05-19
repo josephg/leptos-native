@@ -41,14 +41,14 @@ fn create_text_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Text::create(&tree, "hi");
+            let _ = gtk_dom::Element::create_text(&tree, "hi");
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Text::create off main should have panicked"
+        "Element::create_text off main should have panicked"
     );
 }
 
@@ -60,14 +60,14 @@ fn create_placeholder_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Placeholder::create(&tree);
+            let _ = gtk_dom::Element::create_placeholder(&tree);
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Placeholder::create off main should have panicked"
+        "Element::create_placeholder off main should have panicked"
     );
 }
 

@@ -86,14 +86,6 @@ impl BoolAttr {
     }
 }
 
-/// Distinguishes the three node varieties tachys cares about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeKind {
-    Element,
-    Text,
-    Placeholder,
-}
-
 /// The core node wrapper — a thin handle into a `LayoutTree` arena.
 ///
 /// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
@@ -108,8 +100,7 @@ pub enum NodeKind {
 /// alive even with zero external Node handles.
 ///
 /// For closure-capture patterns that need to refer back to a node
-/// without forming reference cycles, use [`WeakNode`] /
-/// [`WeakElement`] / [`WeakText`] / [`WeakPlaceholder`].
+/// without forming reference cycles, use [`WeakNode`] / [`WeakElement`].
 #[derive(Clone)]
 pub struct Node {
     inner: SendWrapper<Rc<NodeInner>>,
@@ -118,7 +109,6 @@ pub struct Node {
 pub(crate) struct NodeInner {
     tree: TreeRef,
     id: NodeId,
-    kind: NodeKind,
     /// Cached `gtk::Widget` so `widget() -> &gtk::Widget` doesn't
     /// have to borrow the arena's RefCell. Widget clone is a cheap
     /// gobject refcount bump; the arena's `NodeData::view` holds the
@@ -141,7 +131,6 @@ impl Drop for NodeInner {
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node")
-            .field("kind", &self.inner.kind)
             .field("type", &self.inner.widget.type_().name())
             .field("id", &self.inner.id)
             .field("borrowed", &self.inner.is_borrowed)
@@ -155,18 +144,6 @@ impl AsRef<Node> for Element {
     }
 }
 
-impl AsRef<Node> for Text {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
-impl AsRef<Node> for Placeholder {
-    fn as_ref(&self) -> &Node {
-        &self.node
-    }
-}
-
 impl Node {
     /// Allocate a fresh arena entry into `tree` and return a Node
     /// owning it. The widget is shared with the arena via a
@@ -174,7 +151,6 @@ impl Node {
     pub fn create_in_tree<W>(
         tree: &TreeRef,
         widget: W,
-        kind: NodeKind,
         default_style: Style,
     ) -> Self
     where
@@ -187,7 +163,6 @@ impl Node {
         let inner = NodeInner {
             tree: tree.clone(),
             id,
-            kind,
             widget,
             is_borrowed: false,
         };
@@ -201,7 +176,6 @@ impl Node {
     /// `Drop` does NOT remove the arena entry.
     pub fn from_widget_with_handle<W>(
         widget: W,
-        kind: NodeKind,
         handle: LayoutHandle,
     ) -> Self
     where
@@ -211,7 +185,6 @@ impl Node {
         let inner = NodeInner {
             tree: handle.tree,
             id: handle.node_id,
-            kind,
             widget,
             is_borrowed: true,
         };
@@ -228,10 +201,6 @@ impl Node {
     /// callers that need ownership of a widget should just clone.
     pub fn into_widget(self) -> gtk4::Widget {
         self.inner.widget.clone()
-    }
-
-    pub fn kind(&self) -> NodeKind {
-        self.inner.kind
     }
 
     // ---- Accessor surface ------------------------------------------
@@ -298,14 +267,9 @@ pub struct Element {
 }
 
 impl Element {
-    /// Wrap a `Node` whose kind has already been verified as
-    /// `Element`. Panics if the kind is wrong.
+    /// Wrap a `Node`. There is no longer any kind discriminant — every
+    /// arena entry is structurally an Element-shaped Node.
     pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Element,
-            "Element::from_node_unchecked called with a non-Element node"
-        );
         Element { node }
     }
 
@@ -400,7 +364,7 @@ impl Element {
             }
         };
 
-        let node = Node::create_in_tree(tree, widget, NodeKind::Element, default_style);
+        let node = Node::create_in_tree(tree, widget, default_style);
         Element { node }
     }
 
@@ -819,46 +783,28 @@ impl Element {
 }
 
 // ---------------------------------------------------------------------
-// Text
+// Element: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-#[derive(Clone, Debug)]
-pub struct Text {
-    node: Node,
-}
-
-impl Text {
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Text,
-            "Text::from_node_unchecked called with a non-Text node"
-        );
-        Text { node }
-    }
-
-    pub fn create(tree: &TreeRef, content: &str) -> Self {
+impl Element {
+    /// Build a text-label Element — a `gtk::Label` configured for
+    /// left-aligned word-wrap. Used by the renderer's `create_text_node`,
+    /// which is the `Render` impl for `&str` / `String` / numerics.
+    pub fn create_text(tree: &TreeRef, content: &str) -> Self {
         let label = gtk4::Label::new(Some(content));
         label.set_xalign(0.0);
         label.set_wrap(true);
         label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut style = Style::default();
         style.flex_shrink = 0.0;
-        Text {
-            node: Node::create_in_tree(tree, label, NodeKind::Text, style),
+        Element {
+            node: Node::create_in_tree(tree, label, style),
         }
     }
 
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
-    }
-
-    /// Update the displayed string. No-ops if the value hasn't
-    /// changed.
+    /// Update the displayed string on a text-label Element. No-op if
+    /// the backing widget isn't a `gtk::Label` or the value is
+    /// unchanged.
     pub fn set_text(&self, content: &str) {
         if let Some(label) =
             self.node.widget().downcast_ref::<gtk4::Label>()
@@ -869,32 +815,15 @@ impl Text {
             }
         }
     }
-}
 
-// ---------------------------------------------------------------------
-// Placeholder
-// ---------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-pub struct Placeholder {
-    node: Node,
-}
-
-impl Placeholder {
-    pub fn from_node_unchecked(node: Node) -> Self {
-        assert_eq!(
-            node.kind(),
-            NodeKind::Placeholder,
-            "Placeholder::from_node_unchecked called with a \
-             non-Placeholder node"
-        );
-        Placeholder { node }
-    }
-
-    pub fn create(tree: &TreeRef) -> Self {
-        // Use a hidden Label (not a Box) so attempts to mount under a
-        // placeholder error at the GTK layer rather than silently
-        // succeeding.
+    /// Build a placeholder Element — a hidden, zero-sized `gtk::Label`
+    /// used by the renderer's control-flow primitives (`Render for ()`,
+    /// tuple/iterator/keyed end-markers) as a stable mount anchor.
+    ///
+    /// We use a hidden Label (not a Box) so attempts to mount under a
+    /// placeholder error at the GTK layer rather than silently
+    /// succeeding.
+    pub fn create_placeholder(tree: &TreeRef) -> Self {
         let widget = gtk4::Label::new(None::<&str>);
         widget.set_visible(false);
 
@@ -903,17 +832,9 @@ impl Placeholder {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Placeholder {
-            node: Node::create_in_tree(tree, widget, NodeKind::Placeholder, style),
+        Element {
+            node: Node::create_in_tree(tree, widget, style),
         }
-    }
-
-    pub fn as_node(&self) -> &Node {
-        &self.node
-    }
-
-    pub fn into_node(self) -> Node {
-        self.node
     }
 }
 
@@ -1061,69 +982,7 @@ impl Element {
 
 impl WeakElement {
     pub fn upgrade(&self) -> Option<Element> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Element {
-                Some(Element::from_node_unchecked(node))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-/// Weak counterpart to [`Text`].
-#[derive(Clone, Debug)]
-pub struct WeakText {
-    node: WeakNode,
-}
-
-impl Text {
-    pub fn weak(&self) -> WeakText {
-        WeakText { node: self.node.downgrade() }
-    }
-}
-
-impl WeakText {
-    pub fn upgrade(&self) -> Option<Text> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Text {
-                Some(Text { node })
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.node.is_alive()
-    }
-}
-
-/// Weak counterpart to [`Placeholder`].
-#[derive(Clone, Debug)]
-pub struct WeakPlaceholder {
-    node: WeakNode,
-}
-
-impl Placeholder {
-    pub fn weak(&self) -> WeakPlaceholder {
-        WeakPlaceholder { node: self.node.downgrade() }
-    }
-}
-
-impl WeakPlaceholder {
-    pub fn upgrade(&self) -> Option<Placeholder> {
-        self.node.upgrade().and_then(|node| {
-            if node.kind() == NodeKind::Placeholder {
-                Some(Placeholder { node })
-            } else {
-                None
-            }
-        })
+        self.node.upgrade().map(Element::from_node_unchecked)
     }
 
     pub fn is_alive(&self) -> bool {

@@ -10,7 +10,7 @@
 //! setting, hydration tree walking) are present so the type-checker is
 //! happy, but they panic with `unimplemented!()` if actually called.
 
-use crate::node::{Element, Node, Placeholder, Text};
+use crate::node::{Element, Node};
 use objc2_ui_kit::UIEvent;
 use objc2::rc::Retained;
 use send_wrapper::SendWrapper;
@@ -98,15 +98,15 @@ impl Renderer {
         Element::create(tree, tag)
     }
 
-    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Text {
-        Text::create(tree, text)
+    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Element {
+        Element::create_text(tree, text)
     }
 
-    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Placeholder {
-        Placeholder::create(tree)
+    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Element {
+        Element::create_placeholder(tree)
     }
 
-    pub fn set_text(node: &Text, text: &str) {
+    pub fn set_text(node: &Element, text: &str) {
         node.set_text(text);
     }
 
@@ -214,40 +214,16 @@ impl Renderer {
 }
 
 // ---------------------------------------------------------------------
-// CastFrom impls (orphan rule — Node/Element/Text/Placeholder are local
-// to ios_dom; CastFrom is from `renderer`, which has no local-type
-// reference, so the impls have to live here).
+// CastFrom impls (orphan rule — Node/Element are local to ios_dom;
+// CastFrom is from `renderer`, which has no local-type reference, so
+// the impls have to live here).
 // ---------------------------------------------------------------------
 
-use crate::node::NodeKind;
 use renderer::renderer::CastFrom;
 
 impl CastFrom<Node> for Element {
     fn cast_from(node: Node) -> Option<Element> {
-        match node.kind() {
-            NodeKind::Element => Some(Element::from_node_unchecked(node)),
-            _ => None,
-        }
-    }
-}
-
-impl CastFrom<Node> for Text {
-    fn cast_from(node: Node) -> Option<Text> {
-        match node.kind() {
-            NodeKind::Text => Some(Text::from_node_unchecked(node)),
-            _ => None,
-        }
-    }
-}
-
-impl CastFrom<Node> for Placeholder {
-    fn cast_from(node: Node) -> Option<Placeholder> {
-        match node.kind() {
-            NodeKind::Placeholder => {
-                Some(Placeholder::from_node_unchecked(node))
-            }
-            _ => None,
-        }
+        Some(Element::from_node_unchecked(node))
     }
 }
 

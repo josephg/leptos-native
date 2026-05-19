@@ -5,6 +5,89 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-19 — Removed tag-string dispatch from element construction
+
+`Element::create(tree, "button")` and `Element::create_with(tree, tag,
+mtm)` are gone. The 18-arm `match tag { ... }` in `node.rs` that
+turned a tag string into a concrete NSView subclass — and then cast
+back to `Retained<NSView>` for storage — was a static → dynamic →
+static U-turn: the caller (a typed builder like `Button::build`)
+already knew it wanted an NSButton, the callee landed back at
+`NSButton::buttonWithTitle_target_action`, and the string in between
+served only to defeat dead-code elimination (every binary linked the
+construction code for every control, used or not).
+
+### What replaced it
+
+- `Node::from_view<V>(tree, view, style, meta) -> Node` (was
+  `pub(crate) fn create_in_tree`) — the typed registration primitive.
+  Hand it a `Retained<NSConcrete>`, get back a Node owning a fresh
+  arena entry.
+- `Element::from_view` — same shape, returns an Element wrapper.
+- `cocoa/dom/src/make_view.rs` — one `Element::create_<tag>(tree)`
+  method per control. Each allocates its concrete subclass
+  (`NSButton::buttonWithTitle_target_action(...)`, `NSStepper::initWithFrame(...)`,
+  etc.), builds the default `Style`, and calls `Element::from_view`.
+  Returns `(Element, Retained<NSConcrete>)` so callers that want a
+  typed handle to the underlying view can keep it.
+- `Element::create_container` / `create_container_with` — generic
+  FlippedView for `<view>` / `<stack>` / `<vstack>` / `<hstack>`
+  builders and for `window.rs` / `split_window.rs`.
+- `Element::create_grid` — FlippedView + `display: Grid`.
+- `Element::create_text` / `Element::create_placeholder` are
+  unchanged; they already used the typed-constructor pattern (they're
+  the renderer-protocol primitives, called from `Renderer::create_text_node`
+  / `create_placeholder`).
+
+`Renderer::create_element(tag, namespace)` was also removed — it was
+the web-shaped string-keyed entry point on the renderer trait, and
+nothing inside the workspace called it.
+
+### Why constructors live in `cocoa_dom`, not `leptos_cocoa`
+
+First instinct was to put each control's construction code inside its
+builder in `cocoa/leptos_cocoa/src/cocoa/element.rs` (literally
+"the Button impl emits an NSButton"). That works for builders, but
+the cocoa_dom test suite (`cocoa/dom/tests/element_creation.rs` etc.)
+also needs to allocate concrete controls to test layout / events /
+attribute setters at the cocoa_dom layer — and cocoa_dom can't
+depend on leptos_cocoa.
+
+Compromise: typed constructors live in `cocoa_dom::make_view` as
+`impl Element` methods. The Button builder calls
+`Element::create_button(tree)`; the test suite calls the same. Each
+typed method is uniquely named, so dead-code elimination still works
+(a binary that doesn't use `<stepper>` doesn't link
+`Element::create_stepper`). The string dispatch is gone either way.
+
+### Migration notes
+
+- All 16 builders in `cocoa/leptos_cocoa/src/cocoa/element.rs` now
+  call `CocoaElement::create_<tag>(tree)` directly.
+- All 12 test files in `cocoa/dom/tests/` migrated mechanically.
+  "view" / "vstack" / "stack" callsites became
+  `Element::create_container(tree)`; specific control tags became
+  `Element::create_<tag>(tree).0`.
+- The `unknown_tag_falls_back_to_view` test was deleted — the
+  fallback no longer exists, and tag typos are now compile errors.
+- `cocoa/leptos_cocoa/tests/switch.rs` was the only place that
+  genuinely passed a dynamic `tag: &str` through; rewired to
+  `create_container_with(tree, mtm)` since it always passed `"view"`.
+
+### Not touched
+
+- `StringAttr` / `BoolAttr` enum dispatch + `set_attribute(&str, &str)`.
+  Those stay — the renderer-trait `set_attribute(node, name, value)`
+  is genuinely a type-erased entry point used by macro-spread attrs,
+  and the enums are shared across multiple control classes
+  (`Title` / `Value` / `Placeholder` span NSButton, NSControl,
+  NSTextField).
+- GTK and UIKit ports. Same antipattern exists in
+  `gtk/dom/src/node.rs` and `uikit/dom/src/node.rs`; will mirror in
+  follow-up PRs once cocoa is validated.
+
+---
+
 ## 2026-05-19 — Node refactor part 2: true arena handles + WeakElement
 
 Picked up where the 2026-05-18 entry left off. The post-05-18 design

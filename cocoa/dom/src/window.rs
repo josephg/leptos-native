@@ -161,7 +161,7 @@ pub fn open_window(
     // wants to fill the window vertically too, they add
     // `flex_grow=1` to it.
     let tree = layout::new_tree();
-    let content_root = Element::create_with(&tree, "view", mtm);
+    let content_root = Element::create_container_with(&tree, mtm);
     layout::set_flex_direction(
         content_root.as_node(),
         layout::FlexDirection::Column,

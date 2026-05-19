@@ -10,18 +10,23 @@
 
 #![allow(missing_docs)]
 
-use cocoa_dom::{NodeKind, Renderer as CocoaRenderer};
+use cocoa_dom::Renderer as CocoaRenderer;
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
 };
 
 // Re-export the concrete tree types under the names tachys/leptos/
-// the platform expects.
+// the platform expects. `Text` and `Placeholder` are aliases for
+// `Element` — the renderer trait wants distinct associated types,
+// but on native they're all NSView-backed Elements; the only thing
+// distinguishing a "text node" or "placeholder" from a regular
+// Element is the NSView subclass + default style applied at creation.
 pub use cocoa_dom::{
-    ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
-    TemplateElement, Text,
+    ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
 };
+pub type Text = Element;
+pub type Placeholder = Element;
 
 /// The Cocoa renderer surface — implements [`renderer::Renderer`].
 ///
@@ -35,22 +40,22 @@ impl RendererTrait for Dom {
     type Backend = cocoa_dom::layout::CocoaBackend;
     type Node = Node;
     type Element = Element;
-    type Text = Text;
-    type Placeholder = Placeholder;
+    type Text = Element;
+    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         CocoaRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &cocoa_dom::layout::TreeRef, text: &str) -> Text {
+    fn create_text_node(tree: &cocoa_dom::layout::TreeRef, text: &str) -> Element {
         CocoaRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder(tree: &cocoa_dom::layout::TreeRef) -> Placeholder {
+    fn create_placeholder(tree: &cocoa_dom::layout::TreeRef) -> Element {
         CocoaRenderer::create_placeholder(tree)
     }
 
-    fn set_text(node: &Text, text: &str) {
+    fn set_text(node: &Element, text: &str) {
         CocoaRenderer::set_text(node, text);
     }
 
@@ -97,11 +102,7 @@ impl RendererTrait for Dom {
             tree: h.tree.clone(),
             node_id: parent_id,
         };
-        Some(Node::from_view_with_handle(
-            parent_view,
-            cocoa_dom::NodeKind::Element,
-            parent_handle,
-        ))
+        Some(Node::from_view_with_handle(parent_view, parent_handle))
     }
 
     fn first_child(node: &Node) -> Option<Node> {
@@ -176,11 +177,7 @@ pub(crate) fn synthesise_parent_element(
         tree: h.tree.clone(),
         node_id: parent_id,
     };
-    let parent_node = Node::from_view_with_handle(
-        parent_view,
-        NodeKind::Element,
-        parent_handle,
-    );
+    let parent_node = Node::from_view_with_handle(parent_view, parent_handle);
     Element::from_node_unchecked(parent_node)
 }
 
@@ -191,10 +188,9 @@ pub(crate) fn synthesise_parent_element(
 // `Dom` parameter, so the impls are valid here).
 // ---------------------------------------------------------------------
 
-/// Shared body for [`Mountable::insert_before_this`] across the leaf
-/// types here — `Node`, `Element`, `Text`, `Placeholder`. Walks the
-/// NSView's superview, synthesises a parent `Element` wrapper, mounts
-/// `child` before `before` in that parent.
+/// Shared body for [`Mountable::insert_before_this`] across `Node`
+/// and `Element`. Walks the NSView's superview, synthesises a parent
+/// `Element` wrapper, mounts `child` before `before` in that parent.
 ///
 /// Returns `false` if `before` has no superview (it's detached or is
 /// the window's root content view). Callers fall back to mounting at
@@ -252,42 +248,6 @@ impl Mountable<Dom> for Element {
 
     fn elements(&self) -> Vec<Element> {
         vec![self.clone()]
-    }
-}
-
-impl Mountable<Dom> for Text {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        insert_before_node(self.as_node(), child)
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}
-
-impl Mountable<Dom> for Placeholder {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        insert_before_node(self.as_node(), child)
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
     }
 }
 

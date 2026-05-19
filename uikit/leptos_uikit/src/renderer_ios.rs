@@ -6,16 +6,22 @@
 
 #![allow(missing_docs)]
 
-use ios_dom::{NodeKind, Renderer as IosRenderer};
+use ios_dom::Renderer as IosRenderer;
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
 };
 
+// `Text` and `Placeholder` are aliases for `Element` — the renderer
+// trait wants distinct associated types, but on native they're all
+// UIView-backed Elements; the only thing distinguishing a "text node"
+// or "placeholder" from a regular Element is the UIView subclass +
+// default style applied at creation.
 pub use ios_dom::{
-    ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
-    TemplateElement, Text,
+    ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
 };
+pub type Text = Element;
+pub type Placeholder = Element;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Dom;
@@ -24,22 +30,22 @@ impl RendererTrait for Dom {
     type Backend = ios_dom::layout::IosBackend;
     type Node = Node;
     type Element = Element;
-    type Text = Text;
-    type Placeholder = Placeholder;
+    type Text = Element;
+    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         IosRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &ios_dom::layout::TreeRef, text: &str) -> Text {
+    fn create_text_node(tree: &ios_dom::layout::TreeRef, text: &str) -> Element {
         IosRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder(tree: &ios_dom::layout::TreeRef) -> Placeholder {
+    fn create_placeholder(tree: &ios_dom::layout::TreeRef) -> Element {
         IosRenderer::create_placeholder(tree)
     }
 
-    fn set_text(node: &Text, text: &str) {
+    fn set_text(node: &Element, text: &str) {
         IosRenderer::set_text(node, text);
     }
 
@@ -144,11 +150,7 @@ fn synthesise_parent_element(
          tree — every node is now arena-resident from creation, so this \
          should be unreachable",
     );
-    let parent_node = Node::from_view_with_handle(
-        parent_view,
-        NodeKind::Element,
-        handle,
-    );
+    let parent_node = Node::from_view_with_handle(parent_view, handle);
     Element::from_node_unchecked(parent_node)
 }
 
@@ -200,38 +202,3 @@ impl Mountable<Dom> for Element {
     }
 }
 
-impl Mountable<Dom> for Text {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}
-
-impl Mountable<Dom> for Placeholder {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}

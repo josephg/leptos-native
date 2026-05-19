@@ -34,7 +34,7 @@ fn baseline_compute_clears_dirty() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
 
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
@@ -47,12 +47,12 @@ fn attach_child_marks_parent_dirty() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
 
-    let child = Element::create_with(&tree, "button", mtm);
+    let child = Element::create_button(&tree).0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
 
     assert!(
@@ -68,9 +68,9 @@ fn detach_child_marks_parent_dirty() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_with(&tree, "button", mtm);
+    let child = Element::create_button(&tree).0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
@@ -90,9 +90,9 @@ fn set_text_marks_node_dirty() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_with(&tree, "label", mtm);
+    let child = Element::create_label(&tree).0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&tree, &child));
@@ -112,7 +112,7 @@ fn set_style_width_marks_node_dirty() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
@@ -148,9 +148,9 @@ fn attach_child_is_idempotent() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_with(&tree, "button", mtm);
+    let child = Element::create_button(&tree).0;
 
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     assert_eq!(child_count(&tree, &root), 1);
@@ -167,10 +167,10 @@ fn insert_child_at_is_idempotent() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
-    let a = Element::create_with(&tree, "button", mtm);
-    let b = Element::create_with(&tree, "button", mtm);
+    let a = Element::create_button(&tree).0;
+    let b = Element::create_button(&tree).0;
 
     cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 0);
     cocoa_dom::layout::insert_child_at(root.as_node(), b.as_node(), 1);
@@ -206,12 +206,12 @@ fn reorder_cascade_does_not_duplicate_edges() {
     let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
     let tree = fresh_tree();
-    let root = Element::create_with(&tree, "vstack", mtm);
+    let root = Element::create_container_with(&tree, mtm);
     set_as_root(root.as_node(), &tree);
 
-    let a = Element::create_with(&tree, "button", mtm);
-    let b = Element::create_with(&tree, "button", mtm);
-    let c = Element::create_with(&tree, "button", mtm);
+    let a = Element::create_button(&tree).0;
+    let b = Element::create_button(&tree).0;
+    let c = Element::create_button(&tree).0;
     cocoa_dom::layout::attach_child(root.as_node(), a.as_node());
     cocoa_dom::layout::attach_child(root.as_node(), b.as_node());
     cocoa_dom::layout::attach_child(root.as_node(), c.as_node());

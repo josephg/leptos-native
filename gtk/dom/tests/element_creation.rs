@@ -6,14 +6,13 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Element, NodeKind};
+use gtk_dom::{gtk::prelude::*, Element};
 
 fn view_is_a_box() {
     let tree = gtk_dom::layout::new_tree();
     // `<view>` is a generic flexbox container, backed by gtk::Box
     // (with our TaffyLayout swapped in once mounted).
     let el = Element::create(&tree, "view");
-    assert_eq!(el.as_node().kind(), NodeKind::Element);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
@@ -38,7 +37,6 @@ fn stack_is_a_box() {
 fn button_is_gtk_button() {
     let tree = gtk_dom::layout::new_tree();
     let el = Element::create(&tree, "button");
-    assert_eq!(el.as_node().kind(), NodeKind::Element);
     assert!(el.widget().is::<gtk_dom::gtk::Button>());
 }
 
@@ -105,32 +103,6 @@ fn unknown_tag_falls_back_to_view() {
     let el = Element::create(&tree, "totally_made_up_zzz");
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
     assert!(!el.widget().is::<gtk_dom::gtk::Button>());
-    assert_eq!(el.as_node().kind(), NodeKind::Element);
-}
-
-fn kind_is_always_element() {
-    let tree = gtk_dom::layout::new_tree();
-    for tag in [
-        "view",
-        "button",
-        "checkbox",
-        "label",
-        "text_field",
-        "secure_text_field",
-        "slider",
-        "pop_up_button",
-        "stack_view",
-        "stack",
-        "totally_unknown_xyz",
-    ] {
-        let el = Element::create(&tree, tag);
-        assert_eq!(
-            el.as_node().kind(),
-            NodeKind::Element,
-            "tag {:?} should produce NodeKind::Element",
-            tag
-        );
-    }
 }
 
 fn main() {
@@ -151,6 +123,5 @@ fn main() {
         ("slider_is_gtk_scale", slider_is_gtk_scale),
         ("pop_up_button_is_drop_down", pop_up_button_is_drop_down),
         ("unknown_tag_falls_back_to_view", unknown_tag_falls_back_to_view),
-        ("kind_is_always_element", kind_is_always_element),
         ]);
 }

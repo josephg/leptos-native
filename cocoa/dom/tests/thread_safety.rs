@@ -27,7 +27,7 @@ fn create_off_main_panics() {
             // because TreeRef is `!Send`; the mtm check inside
             // `Element::create` panics before tree access.
             let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Element::create(&tree, "button");
+            let _ = cocoa_dom::Element::create_button(&tree).0;
         });
         if let Err(e) = result {
             let msg = if let Some(s) = e.downcast_ref::<&'static str>() {
@@ -53,20 +53,20 @@ fn create_off_main_panics() {
     );
 }
 
-/// `Text::create` and `Placeholder::create` go through the same
-/// MainThreadMarker check.
+/// `Element::create_text` and `Element::create_placeholder` go through
+/// the same MainThreadMarker check.
 fn create_text_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Text::create(&tree, "hi");
+            let _ = cocoa_dom::Element::create_text(&tree, "hi");
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Text::create off main should have panicked"
+        "Element::create_text off main should have panicked"
     );
 }
 
@@ -74,14 +74,14 @@ fn create_placeholder_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Placeholder::create(&tree);
+            let _ = cocoa_dom::Element::create_placeholder(&tree);
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Placeholder::create off main should have panicked"
+        "Element::create_placeholder off main should have panicked"
     );
 }
 

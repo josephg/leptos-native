@@ -2,10 +2,12 @@
 //! port — `leptos_cocoa` builds on top of this. User code talks to
 //! `leptos_cocoa::prelude::*` rather than to this crate directly.
 //!
-//! Provides [`Node`], [`Element`], [`Text`], and [`Placeholder`] types
-//! that loosely mirror their `web_sys` equivalents in shape but are
-//! backed directly by `NSView` (and subclasses like `NSButton`,
-//! `NSTextField`). Plus the AppKit lifecycle glue (`init_app`,
+//! Provides [`Node`] and [`Element`] types that mirror the shape of
+//! their `web_sys` equivalents but are backed directly by `NSView`
+//! (and subclasses like `NSButton`, `NSTextField`). The renderer's
+//! "text node" and "placeholder" varieties are just Element
+//! constructors ([`Element::create_text`], [`Element::create_placeholder`])
+//! — there's no distinct wrapper type for them. Plus the AppKit lifecycle glue (`init_app`,
 //! `run_loop`, `open_window`), the Taffy layout bridge (per-window
 //! `TaffyTree` + `compute_layout` + `intrinsicContentSize` measure
 //! callback), event-handler installation (`on_click`, `on_text_change`,
@@ -38,6 +40,7 @@ pub mod icon;
 pub mod interval;
 pub mod key_event;
 pub mod layout;
+mod make_view;
 pub mod menu;
 pub mod node;
 pub mod objc_enums;
@@ -57,8 +60,7 @@ pub use interval::{
 };
 pub use key_event::KeyEvent;
 pub use node::{
-    BoolAttr, Element, Node, NodeKind, Placeholder, StringAttr, Text,
-    WeakElement, WeakNode, WeakPlaceholder, WeakText,
+    BoolAttr, Element, Node, StringAttr, WeakElement, WeakNode,
 };
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};

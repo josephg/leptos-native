@@ -12,18 +12,23 @@
 #![allow(missing_docs)]
 
 use gtk4::prelude::*;
-use gtk_dom::{NodeKind, Renderer as GtkRenderer};
+use gtk_dom::Renderer as GtkRenderer;
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
 };
 
 // Re-export the concrete tree types under the names the platform
-// expects.
+// expects. `Text` and `Placeholder` are aliases for `Element` — the
+// renderer trait wants distinct associated types, but on native
+// they're all widget-backed Elements; the only thing distinguishing
+// a "text node" or "placeholder" from a regular Element is the
+// widget subclass + default style applied at creation.
 pub use gtk_dom::{
-    ClassList, CssStyleDeclaration, Element, Event, Node, Placeholder,
-    TemplateElement, Text,
+    ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
 };
+pub type Text = Element;
+pub type Placeholder = Element;
 
 /// The GTK renderer surface — implements [`renderer::Renderer`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -33,22 +38,22 @@ impl RendererTrait for Dom {
     type Backend = gtk_dom::layout::GtkBackend;
     type Node = Node;
     type Element = Element;
-    type Text = Text;
-    type Placeholder = Placeholder;
+    type Text = Element;
+    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         GtkRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &gtk_dom::layout::TreeRef, text: &str) -> Text {
+    fn create_text_node(tree: &gtk_dom::layout::TreeRef, text: &str) -> Element {
         GtkRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder(tree: &gtk_dom::layout::TreeRef) -> Placeholder {
+    fn create_placeholder(tree: &gtk_dom::layout::TreeRef) -> Element {
         GtkRenderer::create_placeholder(tree)
     }
 
-    fn set_text(node: &Text, text: &str) {
+    fn set_text(node: &Element, text: &str) {
         GtkRenderer::set_text(node, text);
     }
 
@@ -165,11 +170,7 @@ fn synthesise_parent_element(
          tree — every node is now arena-resident from creation, so this \
          should be unreachable",
     );
-    let parent_node = Node::from_widget_with_handle(
-        parent_widget,
-        NodeKind::Element,
-        handle,
-    );
+    let parent_node = Node::from_widget_with_handle(parent_widget, handle);
     Element::from_node_unchecked(parent_node)
 }
 
@@ -221,38 +222,3 @@ impl Mountable<Dom> for Element {
     }
 }
 
-impl Mountable<Dom> for Text {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}
-
-impl Mountable<Dom> for Placeholder {
-    fn unmount(&mut self) {
-        self.as_node().teardown();
-    }
-
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
-        <Dom as RendererTrait>::insert_node(parent, self.as_node(), marker);
-    }
-
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
-    }
-
-    fn elements(&self) -> Vec<Element> {
-        Vec::new()
-    }
-}

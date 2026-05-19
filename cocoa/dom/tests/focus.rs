@@ -28,7 +28,7 @@ fn init_app_once(mtm: cocoa_dom::MainThreadMarker) {
 fn focus_unmounted_returns_false() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     assert!(
         !el.focus(),
         "an element not in a window can't be focused"
@@ -38,7 +38,7 @@ fn focus_unmounted_returns_false() {
 fn blur_unmounted_returns_false() {
     let _mtm = common::test_mtm();
     let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create(&tree, "text_field");
+    let el = Element::create_text_field(&tree).0;
     assert!(!el.blur(), "no window → no blur");
 }
 
@@ -48,7 +48,7 @@ fn focus_mounted_text_field_succeeds() {
     let win =
         cocoa_dom::window::open_window("focus-test", (320.0, 200.0), mtm);
 
-    let field = Element::create(&win.tree, "text_field");
+    let field = Element::create_text_field(&win.tree).0;
     win.content_root.insert_node(field.as_node(), None);
 
     // Before focus: nobody is first responder (or the window itself).
@@ -77,7 +77,7 @@ fn blur_clears_focus() {
     let win =
         cocoa_dom::window::open_window("blur-test", (320.0, 200.0), mtm);
 
-    let field = Element::create(&win.tree, "text_field");
+    let field = Element::create_text_field(&win.tree).0;
     win.content_root.insert_node(field.as_node(), None);
 
     field.focus();
@@ -102,7 +102,7 @@ fn focus_on_button_works() {
     let win =
         cocoa_dom::window::open_window("button-focus", (320.0, 200.0), mtm);
 
-    let button = Element::create(&win.tree, "button");
+    let button = Element::create_button(&win.tree).0;
     win.content_root.insert_node(button.as_node(), None);
 
     // Whether AppKit accepts focus on a button depends on

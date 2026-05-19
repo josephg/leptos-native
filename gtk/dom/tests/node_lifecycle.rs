@@ -14,7 +14,7 @@
 
 mod common;
 
-use gtk_dom::{layout, Element, Node, NodeKind};
+use gtk_dom::{layout, Element, Node};
 
 // =====================================================================
 // 1. Fresh nodes are in their tree from creation
@@ -94,11 +94,7 @@ fn borrowed_node_drop_does_not_remove_arena_entry() {
 
     let handle = owner.as_node().mounted_handle().unwrap();
     let widget = owner.as_node().widget().clone();
-    let borrowed = Node::from_widget_with_handle(
-        widget,
-        NodeKind::Element,
-        handle,
-    );
+    let borrowed = Node::from_widget_with_handle(widget, handle);
     assert!(borrowed.tree_id().is_some(), "borrowed Node has tree_id");
 
     drop(borrowed);
@@ -256,12 +252,12 @@ fn weak_node_upgrade_fails_after_drop() {
     assert!(weak.upgrade().is_none(), "upgrade returns None");
 }
 
-fn weak_element_round_trips_kind() {
+fn weak_element_upgrade_round_trips() {
     let tree = layout::new_tree();
     let el = Element::create(&tree, "button");
     let weak = el.weak();
     let recovered = weak.upgrade().expect("alive");
-    assert_eq!(recovered.as_node().kind(), gtk_dom::NodeKind::Element);
+    assert!(recovered.as_node().ptr_eq(el.as_node()));
 }
 
 // =====================================================================
@@ -285,6 +281,6 @@ fn main() {
         ("widget_pointer_stable", widget_pointer_stable),
         ("weak_node_upgrades_while_node_alive", weak_node_upgrades_while_node_alive),
         ("weak_node_upgrade_fails_after_drop", weak_node_upgrade_fails_after_drop),
-        ("weak_element_round_trips_kind", weak_element_round_trips_kind),
+        ("weak_element_upgrade_round_trips", weak_element_upgrade_round_trips),
     ]);
 }
