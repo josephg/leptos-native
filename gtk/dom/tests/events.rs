@@ -8,7 +8,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, BoolAttr, Element};
+use gtk_dom::{gtk::prelude::*, Element};
 use std::cell::Cell;
 use std::rc::Rc;
 

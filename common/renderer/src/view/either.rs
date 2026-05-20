@@ -18,13 +18,13 @@ impl<R: Renderer, S: Mountable<R>> Mountable<R> for EitherState<R, S> {
     fn unmount(&mut self) {
         self.inner.unmount();
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         self.inner.mount(parent, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         self.inner.insert_before_this(child)
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.inner.elements()
     }
 }
@@ -78,7 +78,7 @@ where
             Either::Right(b) => b.unmount(),
         }
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         match self {
             Either::Left(a) => a.mount(parent, marker),
             Either::Right(b) => b.mount(parent, marker),
@@ -90,7 +90,7 @@ where
             Either::Right(b) => b.insert_before_this(child),
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         match self {
             Either::Left(a) => a.elements(),
             Either::Right(b) => b.elements(),
@@ -140,13 +140,13 @@ macro_rules! impl_either_of {
             fn unmount(&mut self) {
                 match self { $( $name::$var(v) => v.unmount(), )+ }
             }
-            fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+            fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
                 match self { $( $name::$var(v) => v.mount(parent, marker), )+ }
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
                 match self { $( $name::$var(v) => v.insert_before_this(child), )+ }
             }
-            fn elements(&self) -> Vec<R::Element> {
+            fn elements(&self) -> Vec<R::Node> {
                 match self { $( $name::$var(v) => v.elements(), )+ }
             }
         }

@@ -80,13 +80,13 @@ where
         self.state.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         self.state.mount(parent, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: &R::Element,
+        parent: &R::Node,
         marker: Option<&R::Node>,
     ) -> bool {
         self.state.try_mount(parent, marker)
@@ -96,7 +96,7 @@ where
         self.state.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.state.elements()
     }
 }

@@ -41,7 +41,7 @@ fn into_node_round_trip() {
     let after_ptr: *const objc2_app_kit::NSView = el2.ns_view();
     assert_eq!(
         original_ptr, after_ptr,
-        "into_node + from_node_unchecked should preserve NSView identity"
+        "into_node should preserve NSView identity (Node = Element)"
     );
 }
 

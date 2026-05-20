@@ -5,7 +5,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, BoolAttr, Element};
+use gtk_dom::{gtk::prelude::*, Element};
 use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {

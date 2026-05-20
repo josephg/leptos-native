@@ -228,10 +228,9 @@ impl Node {
 pub type Element = Node;
 
 impl Node {
-    /// Identity. Kept (along with [`Self::into_node`] /
-    /// [`Self::from_node_unchecked`]) so the pre-unification call
-    /// style (`el.as_node()`, `el.into_node()`,
-    /// `Element::from_node_unchecked(n)`) keeps compiling.
+    /// Identity. Kept (along with [`Self::into_node`]) so the
+    /// pre-unification call style `el.as_node()` / `el.into_node()`
+    /// keeps compiling — new code can just use the Node directly.
     pub fn as_node(&self) -> &Node {
         self
     }
@@ -239,11 +238,6 @@ impl Node {
     /// Identity. See [`Self::as_node`].
     pub fn into_node(self) -> Node {
         self
-    }
-
-    /// Identity. See [`Self::as_node`].
-    pub fn from_node_unchecked(node: Node) -> Node {
-        node
     }
 
     /// Generic flexbox container (gtk::Box-backed). Used by
@@ -330,9 +324,9 @@ impl Node {
         // widget's child chain so the Taffy index matches.
         let idx = child_index_in_parent(parent, child_widget);
         if let Some(idx) = idx {
-            crate::layout::insert_child_at(self.as_node(), child, idx);
+            crate::layout::insert_child_at(self, child, idx);
         } else {
-            crate::layout::attach_child(self.as_node(), child);
+            crate::layout::attach_child(self, child);
         }
         true
     }
@@ -352,7 +346,7 @@ impl Node {
         } else {
             child_widget.unparent();
         }
-        crate::layout::detach_child(self.as_node(), child);
+        crate::layout::detach_child(self, child);
         Some(child.clone())
     }
 

@@ -92,8 +92,8 @@ where
     R: Renderer,
 {
     tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
-    parent: Option<R::Element>,
-    marker: R::Placeholder,
+    parent: Option<R::Node>,
+    marker: R::Node,
     hashed_items: FxIndexSet<K>,
     rendered_items: Vec<Option<V::State>>,
 }
@@ -179,7 +179,7 @@ where
         self.parent = None;
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         self.parent = Some(parent.clone());
         self.marker.mount(parent, marker);
         for state in self.rendered_items.iter_mut().flatten() {
@@ -198,7 +198,7 @@ where
         self.marker.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.rendered_items
             .iter()
             .flatten()
@@ -339,8 +339,8 @@ fn group_adjacent_moves(moved: Vec<DiffOpMove>) -> Vec<DiffOpMove> {
 
 fn apply_diff<R, T, V, VF>(
     tree: &TreeRef<R::Backend>,
-    parent: Option<&R::Element>,
-    marker: &R::Placeholder,
+    parent: Option<&R::Node>,
+    marker: &R::Node,
     diff: Diff,
     children: &mut Vec<Option<V::State>>,
     view_fn: &VF,

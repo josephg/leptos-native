@@ -45,7 +45,7 @@ where
         // insets applied; this pass is just to avoid a one-frame
         // flash of unsized content.
         let size = window.frame().size;
-        ios_dom::layout::compute_layout(content_root.as_node(), size);
+        ios_dom::layout::compute_layout(content_root, size);
     });
 
     uiapplication_main()

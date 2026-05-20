@@ -128,7 +128,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         if let Some(inner) = &self.inner {
             inner.with_value_mut(|t| t.mount(parent, marker));
         }
@@ -143,7 +143,7 @@ where
         }
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.inner
             .as_ref()
             .and_then(|inner| inner.with_value_mut(|t| t.elements()))

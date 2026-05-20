@@ -93,7 +93,7 @@ where
     states: Vec<T>,
     /// Marker placeholder so new items can be inserted-before a known node
     /// rather than appended-after the last known item.
-    marker: R::Placeholder,
+    marker: R::Node,
 }
 
 impl<R, T> Mountable<R> for VecState<T, R>
@@ -108,7 +108,7 @@ where
         self.marker.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         for state in self.states.iter_mut() {
             state.mount(parent, marker);
         }
@@ -124,7 +124,7 @@ where
         self.marker.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.states
             .iter()
             .flat_map(|item| item.elements())

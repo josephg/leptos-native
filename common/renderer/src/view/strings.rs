@@ -7,7 +7,7 @@ use crate::renderer::{CastFrom, Renderer};
 use std::{borrow::Cow, rc::Rc, sync::Arc};
 
 pub struct StrState<'a, R: Renderer> {
-    pub(crate) node: R::Text,
+    pub(crate) node: R::Node,
     str: &'a str,
 }
 
@@ -30,12 +30,12 @@ impl<R: Renderer> Mountable<R> for StrState<'_, R> {
     fn unmount(&mut self) {
         R::remove(self.node.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.node.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.node.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.node.as_ref()));
             true
@@ -43,13 +43,13 @@ impl<R: Renderer> Mountable<R> for StrState<'_, R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
 
 pub struct StringState<R: Renderer> {
-    node: R::Text,
+    node: R::Node,
     str: String,
 }
 
@@ -70,12 +70,12 @@ impl<R: Renderer> Mountable<R> for StringState<R> {
     fn unmount(&mut self) {
         R::remove(self.node.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.node.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.node.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.node.as_ref()));
             true
@@ -83,13 +83,13 @@ impl<R: Renderer> Mountable<R> for StringState<R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
 
 pub struct CowStrState<'a, R: Renderer> {
-    node: R::Text,
+    node: R::Node,
     str: Cow<'a, str>,
 }
 
@@ -110,12 +110,12 @@ impl<R: Renderer> Mountable<R> for CowStrState<'_, R> {
     fn unmount(&mut self) {
         R::remove(self.node.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.node.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.node.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.node.as_ref()));
             true
@@ -123,13 +123,13 @@ impl<R: Renderer> Mountable<R> for CowStrState<'_, R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
 
 pub struct RcStrState<R: Renderer> {
-    node: R::Text,
+    node: R::Node,
     str: Rc<str>,
 }
 
@@ -150,12 +150,12 @@ impl<R: Renderer> Mountable<R> for RcStrState<R> {
     fn unmount(&mut self) {
         R::remove(self.node.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.node.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.node.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.node.as_ref()));
             true
@@ -163,13 +163,13 @@ impl<R: Renderer> Mountable<R> for RcStrState<R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
 
 pub struct ArcStrState<R: Renderer> {
-    node: R::Text,
+    node: R::Node,
     str: Arc<str>,
 }
 
@@ -190,12 +190,12 @@ impl<R: Renderer> Mountable<R> for ArcStrState<R> {
     fn unmount(&mut self) {
         R::remove(self.node.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.node.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.node.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.node.as_ref()));
             true
@@ -203,7 +203,7 @@ impl<R: Renderer> Mountable<R> for ArcStrState<R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }

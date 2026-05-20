@@ -34,11 +34,10 @@ fn into_node_round_trip() {
     let el = Element::create_button(&tree).0;
     let original_ptr = el.widget().as_ptr();
     let n = el.into_node();
-    let el2 = Element::from_node_unchecked(n);
-    let after_ptr = el2.widget().as_ptr();
+    let after_ptr = n.widget().as_ptr();
     assert_eq!(
         original_ptr, after_ptr,
-        "into_node + from_node_unchecked should preserve widget identity"
+        "into_node should preserve widget identity (Node = Element)"
     );
 }
 

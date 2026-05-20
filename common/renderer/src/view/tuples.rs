@@ -10,7 +10,7 @@ use crate::renderer::{CastFrom, Renderer};
 /// that need a placeholder (see `view::result`); not emitted by
 /// `() : Render<R>` itself, which is a no-op.
 pub struct UnitState<R: Renderer> {
-    placeholder: R::Placeholder,
+    placeholder: R::Node,
 }
 
 impl<R: Renderer> UnitState<R> {
@@ -42,11 +42,11 @@ impl<R: Renderer> Render<R> for () {
 /// would break intrinsic-size measurement on the parent control.
 impl<R: Renderer> Mountable<R> for () {
     fn unmount(&mut self) {}
-    fn mount(&mut self, _parent: &R::Element, _marker: Option<&R::Node>) {}
+    fn mount(&mut self, _parent: &R::Node, _marker: Option<&R::Node>) {}
     fn insert_before_this(&self, _child: &mut dyn Mountable<R>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
@@ -55,12 +55,12 @@ impl<R: Renderer> Mountable<R> for UnitState<R> {
     fn unmount(&mut self) {
         R::remove(self.placeholder.as_ref());
     }
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.placeholder.as_ref(), marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.placeholder.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.placeholder.as_ref()));
             true
@@ -68,7 +68,7 @@ impl<R: Renderer> Mountable<R> for UnitState<R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
@@ -97,14 +97,14 @@ macro_rules! impl_render_tuple {
             fn unmount(&mut self) {
                 $( self.$idx.unmount(); )+
             }
-            fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+            fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
                 $( self.$idx.mount(parent, marker); )+
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
                 $( if self.$idx.insert_before_this(child) { return true; } )+
                 false
             }
-            fn elements(&self) -> Vec<R::Element> {
+            fn elements(&self) -> Vec<R::Node> {
                 let mut out = Vec::new();
                 $( out.extend(self.$idx.elements()); )+
                 out

@@ -5,6 +5,72 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-20 — Flow cleanups: phantom drop, apply_common helper, Renderer trait collapse
+
+A small series of mechanical cleanups landed after the post-refactor
+flow audit.
+
+- **`_attrs: PhantomData<AttrState>` dropped from `ElementState`.**
+  The `AttrState` type parameter was always `()` — a phantom slot
+  left over from upstream's `add_any_attr` typed-attribute pipeline
+  which the fork doesn't use. `ElementState<AttrState, ChildState>`
+  → `ElementState<ChildState>`. Touches the struct, the
+  `Mountable<Dom>` impl, and ~17 `type State = ElementState<…, …>`
+  associated-type declarations per port.
+
+- **`Element::from_node_unchecked` deleted.** Identity function on
+  `Node` after the unification; the three real callers
+  (`synthesise_parent_element` in each port's `renderer_*.rs` and a
+  couple of tests) now use the Node directly.
+
+- **`Element::as_node` / `Element::into_node` retained.** Started
+  out trying to delete them too, but stripping `.as_node()` globally
+  via sed produced 120+ "expected &Node, found Node" errors across
+  tests and examples (the methods returned `&Node` references; the
+  callers had to be migrated to bare `&var`). The identity
+  methods are 4 lines each and harmless — keep them.
+
+- **`apply_common` helper.** Every typed builder ends with a
+  3-or-4-line cascade calling `apply_decoration` /
+  `apply_universal` / `apply_text` / `apply_layout` on its shared
+  attribute structs. Collapsed into a single helper
+  (`apply_common(el, decoration, universal, text_or_None, layout)`)
+  that each builder calls once. Net delete ~50 lines across the 14
+  cocoa builders; mirrored to gtk and ios with port-appropriate
+  signatures (gtk has no text or decoration, ios uses a separate
+  `apply_chrome` helper). Ordering is normalized to `decoration →
+  universal → text → layout` (layout last so `hidden=Display::None`
+  fires after the visual chrome is in place).
+
+- **`wire_attr!` sweep on Button.** Replaced ~50 lines of
+  `if let Some(x) = self.foo { let el_for = el.clone(); if let
+  Some(eff) = install(x, move |v| el_for.set_X(v)) { effects.push(eff); }
+  }` boilerplate with 4 `wire_attr!(effects, el, self.foo, |n, v|
+  n.set_X(v))` macro calls. Other builders still have the inline
+  pattern; sweeping them is mechanical and a follow-up grind.
+
+- **`Renderer` trait associated-type collapse.** Removed `type
+  Element`, `type Text`, `type Placeholder` from the trait. All
+  three native ports already aliased them to `Node`; the trait
+  is now just `type Node` (plus the existing bounds:
+  `AsRef<Self::Node> + CastFrom<Self::Node> + Mountable<Self> +
+  Clone + 'static`). Every `Self::Element` / `Self::Text` /
+  `Self::Placeholder` / `R::Element` / etc. in the renderer view
+  machinery → `Self::Node` / `R::Node` (~84 sites). The
+  `pub type Text = Element; pub type Placeholder = Element;`
+  aliases in each port's `renderer_*.rs` retained for any external
+  spelling.
+
+- **`PendingHandler` enum + `apply_text` to renderer crate**
+  deferred: the former entangles with menu-action discrimination
+  (the `Action` variant has a distinct routing path through
+  `MenuItem::build`); the latter requires a new `TextElement`
+  trait with port-generic `C` / `A` type params (cocoa Color vs
+  gtk RGB vs ios UIColor, NSTextAlignment vs Pango align vs UIKit
+  align). Cost > benefit for now.
+
+---
+
 ## 2026-05-19 — Direct typed attribute setters; removed `StringAttr` / `BoolAttr`
 
 The chain `set_attribute(&str, &str)` → `set_string_attribute(StringAttr, &str)`

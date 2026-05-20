@@ -37,9 +37,6 @@ pub struct Dom;
 impl RendererTrait for Dom {
     type Backend = gtk_dom::layout::GtkBackend;
     type Node = Node;
-    type Element = Element;
-    type Text = Element;
-    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         GtkRenderer::intern(text)
@@ -163,7 +160,7 @@ fn synthesise_parent_element(
          should be unreachable",
     );
     let parent_node = Node::from_widget_with_handle(parent_widget, handle);
-    Element::from_node_unchecked(parent_node)
+    parent_node
 }
 
 // ---------------------------------------------------------------------

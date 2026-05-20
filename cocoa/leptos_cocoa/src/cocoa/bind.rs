@@ -41,7 +41,7 @@ fn typed_view<T>(el: &CocoaElement, ctx: &'static str) -> Retained<T>
 where
     T: objc2::Message + objc2::DowncastTarget,
 {
-    el.as_node()
+    el
         .ns_view_retained()
         .downcast::<T>()
         .unwrap_or_else(|_| {

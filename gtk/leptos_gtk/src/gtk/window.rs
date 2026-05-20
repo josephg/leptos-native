@@ -105,7 +105,7 @@ where
         opened.gtk_window.connect_close_request(move |_| {
             if let Some(mut children) = children_slot.borrow_mut().take() {
                 children.unmount();
-                content_root_for_cleanup.as_node().teardown();
+                content_root_for_cleanup.teardown();
             }
             glib::Propagation::Proceed
         });

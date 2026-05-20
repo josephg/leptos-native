@@ -139,6 +139,38 @@ fn apply_text(el: &CocoaElement, attrs: CocoaText) -> Vec<RenderEffect<()>> {
 
 use renderer::apply_layout;
 
+/// Apply the four "always there" attribute structs every builder
+/// owns: `decoration`, `universal`, optional `text` (for leaf
+/// controls), and `layout`. Ordering is significant:
+///
+/// 1. `decoration` — background_color / corner_radius / border —
+///    pure visual layer, no layout impact.
+/// 2. `universal` — alpha + tooltip. Also no layout.
+/// 3. `text` (when present) — text_color / alignment / font_size on
+///    controls that render text. Some controls (e.g. Stepper) layer
+///    extra effects (`bold`) after this; those stay in the builder.
+/// 4. `layout` LAST because `hidden=Display::None` lives in
+///    `LayoutAttrs` and the Taffy display flip needs to happen after
+///    the visual chrome is in place.
+///
+/// The macro consolidates the 3-or-4-line apply-cascade tail of
+/// every `Render::build` into one call.
+fn apply_common(
+    el: &CocoaElement,
+    decoration: CocoaDecoration,
+    universal: UniversalAttrs,
+    text: Option<CocoaText>,
+    layout: LayoutAttrs,
+) -> Vec<RenderEffect<()>> {
+    let mut effects = apply_decoration(el, decoration);
+    effects.extend(apply_universal(el, universal));
+    if let Some(text) = text {
+        effects.extend(apply_text(el, text));
+    }
+    effects.extend(apply_layout(el, layout));
+    effects
+}
+
 /// `wire_attr!(effects, el, opt_value, setter)` — DRY out the
 /// `if let Some(v) = self.foo { ... install ... effects.push ... }`
 /// pattern that every `Render::build` repeats per attribute. The
@@ -151,7 +183,7 @@ macro_rules! wire_attr {
         if let Some(__v) = $opt {
             let __e = $el.clone();
             let __setter = $setter;
-            if let Some(__eff) = install(__v, move |__val| __setter(__e.as_node(), __val))
+            if let Some(__eff) = install(__v, move |__val| __setter(&__e, __val))
             {
                 $effects.push(__eff);
             }
@@ -166,34 +198,27 @@ macro_rules! wire_attr {
 /// State retained for an element instance between build and rebuild.
 ///
 /// Holds the underlying `cocoa_dom::Element`, any active reactive
-/// effects (so they survive as long as the element is mounted),
-/// the dynamic-attribute state (from `add_any_attr` chains — the
-/// macro's typed-attribute pipeline), and the children's State.
-pub struct ElementState<AttrState, ChildState> {
+/// effects (so they survive as long as the element is mounted), and
+/// the children's State.
+pub struct ElementState<ChildState> {
     /// Pub for test inspection — consider using `Mountable::elements()`
     /// in production code paths instead.
     pub el: CocoaElement,
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    /// Phantom slot where upstream stored the state for the dynamic
-    /// attribute tuple installed via `add_any_attr`. The fork dropped
-    /// that machinery (no SSR, no spread); kept as a phantom so
-    /// existing builder code that passes a unit `()` through the
-    /// type still type-checks.
-    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
 
-impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
-    for ElementState<AttrState, ChildState>
+impl<ChildState: Mountable<Dom>> Mountable<Dom>
+    for ElementState<ChildState>
 {
     fn unmount(&mut self) {
         // Recurse first so children drop their Taffy/handler entries
         // before we drop ours. Then teardown(self.el) removes our own
         // entry and detaches us from our superview.
         self.children.unmount();
-        self.el.as_node().teardown();
+        self.el.teardown();
     }
 
     fn mount(
@@ -204,7 +229,7 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
         // Step 1: insert self.el under parent. If parent has a Taffy
         // tree handle (i.e. is descended from a Window's content_root),
         // this also registers self.el in that tree.
-        parent.insert_node(self.el.as_node(), marker);
+        parent.insert_node(&self.el, marker);
         // Step 2: cascade — mount children under self.el. This is what
         // propagates the tree to descendants. We deliberately don't
         // mount children during build (which would try to attach them
@@ -214,7 +239,7 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        crate::renderer_cocoa::insert_before_node(self.el.as_node(), child)
+        crate::renderer_cocoa::insert_before_node(&self.el, child)
     }
 
     fn elements(&self) -> Vec<CocoaElement> {
@@ -442,7 +467,7 @@ impl<Ch> Render<Dom> for Stack<Ch>
 where
     Ch: Render<Dom>,
 {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = CocoaElement::create_container(tree);
@@ -473,7 +498,7 @@ where
         // bind:mouse_hover=signal — one-way hover state writer.
         if let Some(mut setter) = self.pending_bind_mouse_hover {
             cocoa_dom::event::on_hover(
-                el.as_node(),
+                &el,
                 move |entered| setter(entered),
             );
         }
@@ -481,9 +506,7 @@ where
         // (they're LayoutAttrs fields). Decoration attrs go through
         // apply_decoration. `hidden` goes through apply_layout (it
         // toggles Taffy display + NSView isHidden in one place).
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         // Build children but DON'T mount them yet. Mounting is
         // deferred until ElementState::mount runs (when self.el has
@@ -495,7 +518,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -688,7 +710,7 @@ impl<Ch> Render<Dom> for Grid<Ch>
 where
     Ch: Render<Dom>,
 {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = CocoaElement::create_grid(tree);
@@ -697,22 +719,22 @@ where
         // Static template-track lists go straight onto the node (no
         // reactive wrapper — animating the track shape is a v2 thing).
         if let Some(c) = self.columns {
-            set_grid_template_columns(el.as_node(), c);
+            set_grid_template_columns(&el, c);
         }
         if let Some(r) = self.rows {
-            set_grid_template_rows(el.as_node(), r);
+            set_grid_template_rows(&el, r);
         }
         if let Some(c) = self.auto_columns {
-            set_grid_auto_columns(el.as_node(), c);
+            set_grid_auto_columns(&el, c);
         }
         if let Some(r) = self.auto_rows {
-            set_grid_auto_rows(el.as_node(), r);
+            set_grid_auto_rows(&el, r);
         }
 
         if let Some(v) = self.auto_flow {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+                install(v, move |f| set_grid_auto_flow(&e, f))
             {
                 effects.push(eff);
             }
@@ -721,20 +743,20 @@ where
         // Apply shorthand `gap` first so per-axis overrides win.
         if let Some(v) = self.gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.column_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            if let Some(eff) = install(v, move |g| set_column_gap(&e, g))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.row_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_row_gap(&e, g)) {
                 effects.push(eff);
             }
         }
@@ -742,7 +764,7 @@ where
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
+                install(v, move |j| set_justify_items(&e, j))
             {
                 effects.push(eff);
             }
@@ -750,7 +772,7 @@ where
         if let Some(v) = self.align_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(e.as_node(), a))
+                install(v, move |a| set_align_items(&e, a))
             {
                 effects.push(eff);
             }
@@ -758,7 +780,7 @@ where
         if let Some(v) = self.justify_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(e.as_node(), j))
+                install(v, move |j| set_justify_content(&e, j))
             {
                 effects.push(eff);
             }
@@ -766,22 +788,19 @@ where
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
+                install(v, move |a| set_align_content(&e, a))
             {
                 effects.push(eff);
             }
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         let child_state = self.children.build(tree);
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -1023,7 +1042,7 @@ impl WithDecoration for Button {
 impl Render<Dom> for Button
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_button(tree);
@@ -1037,14 +1056,7 @@ where
             effects.push(eff);
         }
 
-        if let Some(enabled) = self.enabled {
-            let el_for_enabled = el.clone();
-            if let Some(eff) = install(enabled, move |b| {
-                el_for_enabled.set_enabled(b);
-            }) {
-                effects.push(eff);
-            }
-        }
+        wire_attr!(effects, el, self.enabled, |n: &CocoaElement, b: bool| n.set_enabled(b));
 
         for h in self.handlers {
             h.apply_to(&el);
@@ -1072,41 +1084,14 @@ where
             // explicit reactive `bordered=...` themselves.
             el.set_button_bordered(false);
         }
-        if let Some(k) = self.key_equivalent {
-            let el_for = el.clone();
-            if let Some(eff) =
-                install(k, move |v| el_for.set_key_equivalent(&v))
-            {
-                effects.push(eff);
-            }
-        }
-        if let Some(c) = self.text_color {
-            let e = el.clone();
-            if let Some(eff) = install(c, move |v| e.set_button_title_color(v)) {
-                effects.push(eff);
-            }
-        }
-        if let Some(b) = self.bold {
-            let e = el.clone();
-            if let Some(eff) = install(b, move |v| e.set_bold(v)) {
-                effects.push(eff);
-            }
-        }
+        wire_attr!(effects, el, self.key_equivalent, |n: &CocoaElement, k: String| n.set_key_equivalent(&k));
+        wire_attr!(effects, el, self.text_color, |n: &CocoaElement, c: cocoa_dom::Color| n.set_button_title_color(c));
+        wire_attr!(effects, el, self.bold, |n: &CocoaElement, b: bool| n.set_bold(b));
         // SF symbol AFTER title is wired, so `set_button_sf_symbol`
         // can read `button.title().length()` to pick the right
         // `imagePosition`.
-        if let Some(sym) = self.sf_symbol {
-            let e = el.clone();
-            if let Some(eff) =
-                install(sym, move |s| e.set_button_sf_symbol(&s))
-            {
-                effects.push(eff);
-            }
-        }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        wire_attr!(effects, el, self.sf_symbol, |n: &CocoaElement, s: String| n.set_button_sf_symbol(&s));
+        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1120,7 +1105,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1262,7 +1246,7 @@ impl WithText for Checkbox {
 impl Render<Dom> for Checkbox
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_checkbox(tree);
@@ -1299,10 +1283,7 @@ where
             h.apply_to(&el);
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1314,7 +1295,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1479,7 +1459,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 impl Render<Dom> for Slider
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_slider(tree);
@@ -1550,9 +1530,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1564,7 +1542,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1701,7 +1678,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 impl Render<Dom> for PopUpButton
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_pop_up_button(tree);
@@ -1750,9 +1727,7 @@ where
             h.apply_to(&el);
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1764,7 +1739,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1966,7 +1940,7 @@ impl Label {
 impl Render<Dom> for Label
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_label(tree);
@@ -2066,7 +2040,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2335,7 +2308,7 @@ impl TextField {
 impl Render<Dom> for TextField
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = if self.secure {
@@ -2413,10 +2386,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2428,7 +2398,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2576,7 +2545,7 @@ impl DatePicker {
 impl Render<Dom> for DatePicker
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_date_picker(tree);
@@ -2639,9 +2608,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2653,7 +2620,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2783,7 +2749,7 @@ impl WithUniversal for Stepper {
 impl Render<Dom> for Stepper
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_stepper(tree);
@@ -2843,9 +2809,7 @@ where
             }
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2857,7 +2821,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2964,7 +2927,7 @@ impl ProgressIndicator {
 impl Render<Dom> for ProgressIndicator
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_progress_indicator(tree);
@@ -3002,9 +2965,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3016,7 +2977,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -3132,7 +3092,7 @@ impl WithUniversal for ColorWell {
 impl Render<Dom> for ColorWell
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_color_well(tree);
@@ -3172,9 +3132,7 @@ where
             }
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3186,7 +3144,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -3323,7 +3280,7 @@ impl SegmentedControl {
 impl Render<Dom> for SegmentedControl
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_segmented_control(tree);
@@ -3375,9 +3332,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3389,7 +3344,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -3509,7 +3463,7 @@ impl<Ch> Render<Dom> for ScrollView<Ch>
 where
     Ch: Render<Dom>,
 {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_scroll_view(tree);
@@ -3545,9 +3499,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         // Same cascade pattern as View: defer child mount to
         // ElementState::mount, so the tree-aware insert_node
@@ -3557,7 +3509,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -3693,7 +3644,7 @@ impl WithUniversal for ImageView {
 impl Render<Dom> for ImageView
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_image_view(tree);
@@ -3734,9 +3685,7 @@ where
             }
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3748,7 +3697,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -3853,7 +3801,7 @@ impl WithText for TextView {
 impl Render<Dom> for TextView
 where
 {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let (el, _) = CocoaElement::create_text_view(tree);
@@ -3891,10 +3839,7 @@ where
             effects.push(eff);
         }
 
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3906,7 +3851,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }

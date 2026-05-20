@@ -412,7 +412,7 @@ where
 
         // Initial layout against the contentView's current size.
         let content_size = opened.content_root.ns_view().frame().size;
-        layout::compute_layout(opened.content_root.as_node(), content_size);
+        layout::compute_layout(&opened.content_root, content_size);
 
         // Show the window after layout so we don't flash an empty one.
         opened.show(mtm);
@@ -427,7 +427,7 @@ where
         let mut on_close = self.on_close;
         let _ = opened.delegate.install_close_handler(Box::new(move || {
             children.unmount();
-            content_root_for_cleanup.as_node().teardown();
+            content_root_for_cleanup.teardown();
             if let Some(mut cb) = on_close.take() {
                 cb();
             }

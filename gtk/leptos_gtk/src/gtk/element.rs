@@ -32,24 +32,43 @@ use renderer::view::{Mountable, Render};
 // `gtk_dom::layout` (orphan rule).
 use gtk_dom::layout::{apply_layout, apply_universal};
 
+/// Apply the two "always there" attribute structs every builder
+/// owns: `universal` then `layout`. Layout LAST because
+/// `hidden=Display::None` lives in `LayoutAttrs` and the Taffy
+/// display flip needs to happen after the visual chrome.
+///
+/// The GTK port has no `apply_text` or `apply_decoration` helpers
+/// today — text styling goes through CSS providers (not wired) and
+/// background-color / borders are likewise CSS-driven. Mirror of
+/// cocoa's `apply_common` (3-arg variant for ports without those
+/// extras).
+fn apply_common(
+    el: &GtkElement,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
+) -> Vec<RenderEffect<()>> {
+    let mut effects = apply_universal(el, universal);
+    effects.extend(apply_layout(el, layout));
+    effects
+}
+
 // ---------------------------------------------------------------------
 // Generic State machinery
 // ---------------------------------------------------------------------
 
 /// State retained for an element instance between build and rebuild.
-pub struct ElementState<AttrState, ChildState> {
+pub struct ElementState<ChildState> {
     pub el: GtkElement,
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
 
-impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
-    for ElementState<AttrState, ChildState>
+impl<ChildState: Mountable<Dom>> Mountable<Dom>
+    for ElementState<ChildState>
 {
     fn unmount(&mut self) {
         self.children.unmount();
-        self.el.as_node().teardown();
+        self.el.teardown();
     }
 
     fn mount(
@@ -60,11 +79,11 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
         // Insert self.el under parent. If parent has a Taffy tree
         // handle, this also registers self.el (and recursively, on
         // the next mount, our children) into the tree.
-        parent.insert_node(self.el.as_node(), marker);
+        parent.insert_node(&self.el, marker);
 
         // If this element is a container, install our TaffyLayout
         // now that it's registered.
-        let node = self.el.as_node();
+        let node = &self.el;
         if let Some(h) = node.mounted_handle() {
             if gtk_dom::node::is_container_widget(self.el.widget()) {
                 gtk_dom::node::install_taffy_layout_for_container(
@@ -103,14 +122,14 @@ fn apply_flex_item_extras(
     let mut out = Vec::new();
     if let Some(v) = shrink {
         let e = el.clone();
-        if let Some(eff) = install(v, move |s| set_flex_shrink(e.as_node(), s))
+        if let Some(eff) = install(v, move |s| set_flex_shrink(&e, s))
         {
             out.push(eff);
         }
     }
     if let Some(v) = basis {
         let e = el.clone();
-        if let Some(eff) = install(v, move |b| set_flex_basis(e.as_node(), b))
+        if let Some(eff) = install(v, move |b| set_flex_basis(&e, b))
         {
             out.push(eff);
         }
@@ -279,7 +298,7 @@ impl<Ch> Render<Dom> for Stack<Ch>
 where
     Ch: Render<Dom>,
 {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_stack(tree);
@@ -291,21 +310,21 @@ where
         {
             let e = el.clone();
             if let Some(eff) = install(direction, move |d| {
-                set_flex_direction(e.as_node(), d)
+                set_flex_direction(&e, d)
             }) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.justify_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(e.as_node(), j))
+                install(v, move |j| set_justify_content(&e, j))
             {
                 effects.push(eff);
             }
@@ -313,7 +332,7 @@ where
         if let Some(v) = self.align {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(e.as_node(), a))
+                install(v, move |a| set_align_items(&e, a))
             {
                 effects.push(eff);
             }
@@ -321,7 +340,7 @@ where
         if let Some(v) = self.wrap {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |w| set_flex_wrap(e.as_node(), w))
+                install(v, move |w| set_flex_wrap(&e, w))
             {
                 effects.push(eff);
             }
@@ -329,7 +348,7 @@ where
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
+                install(v, move |a| set_align_content(&e, a))
             {
                 effects.push(eff);
             }
@@ -337,14 +356,13 @@ where
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
+                install(v, move |j| set_justify_items(&e, j))
             {
                 effects.push(eff);
             }
         }
         effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         // Build children but DON'T mount them yet — same cascade
         // pattern as the cocoa port. Mounting is deferred until
@@ -354,7 +372,6 @@ where
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -504,55 +521,55 @@ impl<Ch> Render<Dom> for Grid<Ch>
 where
     Ch: Render<Dom>,
 {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_grid(tree);
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
-            set_grid_template_columns(el.as_node(), c);
+            set_grid_template_columns(&el, c);
         }
         if let Some(r) = self.rows {
-            set_grid_template_rows(el.as_node(), r);
+            set_grid_template_rows(&el, r);
         }
         if let Some(c) = self.auto_columns {
-            set_grid_auto_columns(el.as_node(), c);
+            set_grid_auto_columns(&el, c);
         }
         if let Some(r) = self.auto_rows {
-            set_grid_auto_rows(el.as_node(), r);
+            set_grid_auto_rows(&el, r);
         }
         if let Some(v) = self.auto_flow {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+                install(v, move |f| set_grid_auto_flow(&e, f))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.column_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            if let Some(eff) = install(v, move |g| set_column_gap(&e, g))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.row_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_row_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
+                install(v, move |j| set_justify_items(&e, j))
             {
                 effects.push(eff);
             }
@@ -560,7 +577,7 @@ where
         if let Some(v) = self.align_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(e.as_node(), a))
+                install(v, move |a| set_align_items(&e, a))
             {
                 effects.push(eff);
             }
@@ -568,7 +585,7 @@ where
         if let Some(v) = self.justify_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(e.as_node(), j))
+                install(v, move |j| set_justify_content(&e, j))
             {
                 effects.push(eff);
             }
@@ -576,20 +593,18 @@ where
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
+                install(v, move |a| set_align_content(&e, a))
             {
                 effects.push(eff);
             }
         }
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         let child_state = self.children.build(tree);
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -694,7 +709,7 @@ impl WithUniversal for Button {
 }
 
 impl Render<Dom> for Button {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_button(tree).0;
@@ -720,8 +735,7 @@ impl Render<Dom> for Button {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -732,7 +746,6 @@ impl Render<Dom> for Button {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -846,7 +859,7 @@ impl WithUniversal for Checkbox {
 }
 
 impl Render<Dom> for Checkbox {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_checkbox(tree).0;
@@ -876,8 +889,7 @@ impl Render<Dom> for Checkbox {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -888,7 +900,6 @@ impl Render<Dom> for Checkbox {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1002,7 +1013,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 }
 
 impl Render<Dom> for Slider {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_slider(tree).0;
@@ -1036,8 +1047,7 @@ impl Render<Dom> for Slider {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1048,7 +1058,6 @@ impl Render<Dom> for Slider {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1148,7 +1157,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 }
 
 impl Render<Dom> for PopUpButton {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_pop_up_button(tree).0;
@@ -1181,8 +1190,7 @@ impl Render<Dom> for PopUpButton {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1193,7 +1201,6 @@ impl Render<Dom> for PopUpButton {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1274,7 +1281,7 @@ impl WithUniversal for Label {
 }
 
 impl Render<Dom> for Label {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = GtkElement::create_label(tree).0;
@@ -1291,8 +1298,7 @@ impl Render<Dom> for Label {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1303,7 +1309,6 @@ impl Render<Dom> for Label {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1436,7 +1441,7 @@ impl WithUniversal for TextField {
 }
 
 impl Render<Dom> for TextField {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
 
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = if self.secure {
@@ -1480,8 +1485,7 @@ impl Render<Dom> for TextField {
             h.apply_to(&el);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1492,7 +1496,6 @@ impl Render<Dom> for TextField {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }

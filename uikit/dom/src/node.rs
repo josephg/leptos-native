@@ -244,10 +244,9 @@ impl Node {
 pub type Element = Node;
 
 impl Node {
-    /// Identity. Kept (along with [`Self::into_node`] /
-    /// [`Self::from_node_unchecked`]) so the pre-unification call
-    /// style (`el.as_node()`, `el.into_node()`,
-    /// `Element::from_node_unchecked(n)`) keeps compiling.
+    /// Identity. Kept (along with [`Self::into_node`]) so the
+    /// pre-unification call style `el.as_node()` / `el.into_node()`
+    /// keeps compiling — new code can just use the Node directly.
     pub fn as_node(&self) -> &Node {
         self
     }
@@ -255,11 +254,6 @@ impl Node {
     /// Identity. See [`Self::as_node`].
     pub fn into_node(self) -> Node {
         self
-    }
-
-    /// Identity. See [`Self::as_node`].
-    pub fn from_node_unchecked(node: Node) -> Node {
-        node
     }
 
     /// Generic UIView container (default style). Used by
@@ -304,7 +298,7 @@ impl Node {
         match marker {
             None => {
                 parent.addSubview(child_view);
-                crate::layout::attach_child(self.as_node(), child);
+                crate::layout::attach_child(self, child);
             }
             Some(marker) => {
                 let marker_view = marker.ui_view();
@@ -320,7 +314,7 @@ impl Node {
                     }
                 }
                 crate::layout::insert_child_at(
-                    self.as_node(),
+                    self,
                     child,
                     child_index,
                 );
@@ -344,7 +338,7 @@ impl Node {
             return None;
         }
         child_view.removeFromSuperview();
-        crate::layout::detach_child(self.as_node(), child);
+        crate::layout::detach_child(self, child);
         Some(child.clone())
     }
 

@@ -122,7 +122,7 @@ impl<R: Renderer> Mountable<R> for AnyViewState<R> {
         self.inner.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         self.inner.mount(parent, marker);
     }
 
@@ -130,7 +130,7 @@ impl<R: Renderer> Mountable<R> for AnyViewState<R> {
         self.inner.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.inner.elements()
     }
 }

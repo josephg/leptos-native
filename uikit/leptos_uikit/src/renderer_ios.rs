@@ -29,9 +29,6 @@ pub struct Dom;
 impl RendererTrait for Dom {
     type Backend = ios_dom::layout::IosBackend;
     type Node = Node;
-    type Element = Element;
-    type Text = Element;
-    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         IosRenderer::intern(text)
@@ -143,7 +140,7 @@ fn synthesise_parent_element(
          should be unreachable",
     );
     let parent_node = Node::from_view_with_handle(parent_view, handle);
-    Element::from_node_unchecked(parent_node)
+    parent_node
 }
 
 // ---------------------------------------------------------------------

@@ -51,15 +51,15 @@ use std::{cell::RefCell, future::Future, rc::Rc};
 /// to `mount` against `parent`/`marker` if the placeholder has no
 /// real presence to splice before.
 fn splice_in_place<R, S>(
-    placeholder: &mut R::Placeholder,
+    placeholder: &mut R::Node,
     state: &mut S,
-    parent: Option<&R::Element>,
+    parent: Option<&R::Node>,
     marker: Option<&R::Node>,
 ) where
     R: Renderer,
     S: Mountable<R>,
 {
-    let inserted = <R::Placeholder as Mountable<R>>::insert_before_this(
+    let inserted = <R::Node as Mountable<R>>::insert_before_this(
         placeholder,
         state as &mut dyn Mountable<R>,
     );
@@ -68,7 +68,7 @@ fn splice_in_place<R, S>(
             state.mount(parent, marker);
         }
     }
-    <R::Placeholder as Mountable<R>>::unmount(placeholder);
+    <R::Node as Mountable<R>>::unmount(placeholder);
 }
 
 /// Wraps a future so it can be rendered as a view. Built via
@@ -108,8 +108,8 @@ where
     /// somewhere; remember where so the future's continuation can
     /// splice the resolved view next to it.
     Pending {
-        placeholder: R::Placeholder,
-        parent: Option<R::Element>,
+        placeholder: R::Node,
+        parent: Option<R::Node>,
         marker: Option<R::Node>,
     },
     /// Future has resolved and the inner view is mounted.
@@ -215,7 +215,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         let mut guard = self.inner.borrow_mut();
         match &mut *guard {
             SuspendInner::Pending { placeholder, parent: p, marker: m } => {
@@ -241,7 +241,7 @@ where
         }
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         let guard = self.inner.borrow();
         match &*guard {
             SuspendInner::Pending { placeholder, .. } => {

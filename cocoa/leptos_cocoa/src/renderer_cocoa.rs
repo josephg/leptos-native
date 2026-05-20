@@ -39,9 +39,6 @@ pub struct Dom;
 impl RendererTrait for Dom {
     type Backend = cocoa_dom::layout::CocoaBackend;
     type Node = Node;
-    type Element = Element;
-    type Text = Element;
-    type Placeholder = Element;
 
     fn intern(text: &str) -> &str {
         CocoaRenderer::intern(text)
@@ -170,7 +167,7 @@ pub(crate) fn synthesise_parent_element(
         node_id: parent_id,
     };
     let parent_node = Node::from_view_with_handle(parent_view, parent_handle);
-    Element::from_node_unchecked(parent_node)
+    parent_node
 }
 
 // ---------------------------------------------------------------------

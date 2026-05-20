@@ -65,7 +65,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         if let Some(inner) = &mut self.inner {
             inner.mount(parent, marker);
         }
@@ -78,7 +78,7 @@ where
             .unwrap_or(false)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.inner.as_ref().map(Mountable::elements).unwrap_or_default()
     }
 }
@@ -94,7 +94,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         if let Some(inner) = self {
             inner.mount(parent, marker);
         }
@@ -106,7 +106,7 @@ where
             .unwrap_or(false)
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         self.as_ref().map(Mountable::elements).unwrap_or_default()
     }
 }

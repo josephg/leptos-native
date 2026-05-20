@@ -105,6 +105,24 @@ fn apply_text(el: &IosElement, attrs: IosText) -> Vec<RenderEffect<()>> {
 // `LayoutElement` impl for `IosElement` is in `ios_dom::layout`.
 use ios_dom::layout::apply_layout;
 
+/// Apply the always-present `universal` (+ optional `text`) and
+/// `layout` cascade tail every typed builder runs. Layout LAST
+/// because `hidden=Display::None` lives in `LayoutAttrs`. iOS-port
+/// counterpart to cocoa's `apply_common`.
+fn apply_common(
+    el: &IosElement,
+    universal: UniversalAttrs,
+    text: Option<IosText>,
+    layout: LayoutAttrs,
+) -> Vec<RenderEffect<()>> {
+    let mut effects = apply_universal(el, universal);
+    if let Some(text) = text {
+        effects.extend(apply_text(el, text));
+    }
+    effects.extend(apply_layout(el, layout));
+    effects
+}
+
 /// Apply chrome attributes — background color, corner radius,
 /// border width + color. All four sit on the underlying UIView
 /// (or its CALayer); each is reactive via `MaybeReactive`.
@@ -153,19 +171,18 @@ fn apply_chrome(
 // ElementState — generic state for every builder
 // ---------------------------------------------------------------------
 
-pub struct ElementState<AttrState, ChildState> {
+pub struct ElementState<ChildState> {
     pub el: IosElement,
     pub(crate) _effects: Vec<RenderEffect<()>>,
-    pub(crate) _attrs: std::marker::PhantomData<AttrState>,
     pub(crate) children: ChildState,
 }
 
-impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
-    for ElementState<AttrState, ChildState>
+impl<ChildState: Mountable<Dom>> Mountable<Dom>
+    for ElementState<ChildState>
 {
     fn unmount(&mut self) {
         self.children.unmount();
-        self.el.as_node().teardown();
+        self.el.teardown();
     }
 
     fn mount(
@@ -173,7 +190,7 @@ impl<AttrState, ChildState: Mountable<Dom>> Mountable<Dom>
         parent: &IosElement,
         marker: Option<&ios_dom::Node>,
     ) {
-        parent.insert_node(self.el.as_node(), marker);
+        parent.insert_node(&self.el, marker);
         self.children.mount(&self.el, None);
     }
 
@@ -385,20 +402,20 @@ impl<Ch> WithUniversal for View<Ch> {
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
 
 impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_vstack(tree);
         let mut effects = Vec::new();
         if let Some(dir) = self.flex_direction {
-            set_flex_direction(el.as_node(), dir);
+            set_flex_direction(&el, dir);
         }
         if let Some(g) = self.gap {
-            set_gap(el.as_node(), g);
+            set_gap(&el, g);
         }
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
+                install(v, move |a| set_align_content(&e, a))
             {
                 effects.push(eff);
             }
@@ -406,18 +423,18 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
+                install(v, move |j| set_justify_items(&e, j))
             {
                 effects.push(eff);
             }
         }
         if let Some(r) = self.aspect_ratio {
-            set_aspect_ratio(el.as_node(), r);
+            set_aspect_ratio(&el, r);
         }
         if self.position_absolute {
-            ios_dom::layout::set_position(el.as_node(), Position::Absolute);
+            ios_dom::layout::set_position(&el, Position::Absolute);
             set_inset(
-                el.as_node(),
+                &el,
                 self.inset_top,
                 self.inset_right,
                 self.inset_bottom,
@@ -431,8 +448,7 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
             self.border_width,
             self.border_color,
         ));
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
         let child_state = self.children.build(tree);
         for handler in self.handlers {
             handler.apply_to(&el);
@@ -441,7 +457,6 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -647,27 +662,27 @@ impl<Ch> WithUniversal for Grid<Ch> {
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
 
 impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_grid(tree);
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
-            set_grid_template_columns(el.as_node(), c);
+            set_grid_template_columns(&el, c);
         }
         if let Some(r) = self.rows {
-            set_grid_template_rows(el.as_node(), r);
+            set_grid_template_rows(&el, r);
         }
         if let Some(c) = self.auto_columns {
-            set_grid_auto_columns(el.as_node(), c);
+            set_grid_auto_columns(&el, c);
         }
         if let Some(r) = self.auto_rows {
-            set_grid_auto_rows(el.as_node(), r);
+            set_grid_auto_rows(&el, r);
         }
         if let Some(v) = self.auto_flow {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |f| set_grid_auto_flow(e.as_node(), f))
+                install(v, move |f| set_grid_auto_flow(&e, f))
             {
                 effects.push(eff);
             }
@@ -675,27 +690,27 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         // Shorthand gap first; per-axis overrides win.
         if let Some(v) = self.gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.column_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_column_gap(e.as_node(), g))
+            if let Some(eff) = install(v, move |g| set_column_gap(&e, g))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.row_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_row_gap(e.as_node(), g)) {
+            if let Some(eff) = install(v, move |g| set_row_gap(&e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(e.as_node(), j))
+                install(v, move |j| set_justify_items(&e, j))
             {
                 effects.push(eff);
             }
@@ -703,7 +718,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.align_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(e.as_node(), a))
+                install(v, move |a| set_align_items(&e, a))
             {
                 effects.push(eff);
             }
@@ -711,7 +726,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.justify_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(e.as_node(), j))
+                install(v, move |j| set_justify_content(&e, j))
             {
                 effects.push(eff);
             }
@@ -719,7 +734,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(e.as_node(), a))
+                install(v, move |a| set_align_content(&e, a))
             {
                 effects.push(eff);
             }
@@ -732,8 +747,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
             self.border_width,
             self.border_color,
         ));
-        effects.extend(apply_layout(&el, self.layout));
-        effects.extend(apply_universal(&el, self.universal));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
         let child_state = self.children.build(tree);
         for handler in self.handlers {
             handler.apply_to(&el);
@@ -742,7 +756,6 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -839,7 +852,7 @@ impl WithText for Button {
 
 
 impl Render<Dom> for Button {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_button(tree).0;
         let mut effects = Vec::new();
@@ -874,9 +887,7 @@ impl Render<Dom> for Button {
         }
         for f in self.pending_spreads { f(&el); }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -885,7 +896,6 @@ impl Render<Dom> for Button {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -966,7 +976,7 @@ impl WithText for Label {
 
 
 impl Render<Dom> for Label {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_label(tree).0;
         let mut effects = Vec::new();
@@ -989,9 +999,7 @@ impl Render<Dom> for Label {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1000,7 +1008,6 @@ impl Render<Dom> for Label {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1108,7 +1115,7 @@ impl WithText for TextField {
 
 
 impl Render<Dom> for TextField {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = if self.secure {
             IosElement::create_secure_text_field(tree).0
@@ -1152,9 +1159,7 @@ impl Render<Dom> for TextField {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1164,7 +1169,6 @@ impl Render<Dom> for TextField {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1253,7 +1257,7 @@ impl WithUniversal for Switch {
 
 
 impl Render<Dom> for Switch {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_switch(tree).0;
         let mut effects = Vec::new();
@@ -1288,8 +1292,7 @@ impl Render<Dom> for Switch {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1299,7 +1302,6 @@ impl Render<Dom> for Switch {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1387,7 +1389,7 @@ impl WithUniversal for Slider {
 
 
 impl Render<Dom> for Slider {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_slider(tree).0;
         let mut effects = Vec::new();
@@ -1424,8 +1426,7 @@ impl Render<Dom> for Slider {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1435,7 +1436,6 @@ impl Render<Dom> for Slider {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1529,7 +1529,7 @@ impl WithUniversal for Stepper {
 
 
 impl Render<Dom> for Stepper {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_stepper(tree).0;
         let mut effects = Vec::new();
@@ -1565,8 +1565,7 @@ impl Render<Dom> for Stepper {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1576,7 +1575,6 @@ impl Render<Dom> for Stepper {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1628,7 +1626,7 @@ impl WithUniversal for ProgressIndicator {
 
 
 impl Render<Dom> for ProgressIndicator {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_progress_indicator(tree).0;
         let mut effects = Vec::new();
@@ -1640,8 +1638,7 @@ impl Render<Dom> for ProgressIndicator {
             effects.push(eff);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1651,7 +1648,6 @@ impl Render<Dom> for ProgressIndicator {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1746,7 +1742,7 @@ impl WithUniversal for ImageView {
 
 
 impl Render<Dom> for ImageView {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_image_view(tree).0;
         let mut effects = Vec::new();
@@ -1791,8 +1787,7 @@ impl Render<Dom> for ImageView {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1802,7 +1797,6 @@ impl Render<Dom> for ImageView {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -1888,7 +1882,7 @@ impl WithUniversal for SegmentedControl {
 
 
 impl Render<Dom> for SegmentedControl {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_segmented_control(tree).0;
         let mut effects = Vec::new();
@@ -1922,8 +1916,7 @@ impl Render<Dom> for SegmentedControl {
         for f in self.pending_spreads { f(&el); }
 
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1933,7 +1926,6 @@ impl Render<Dom> for SegmentedControl {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2020,7 +2012,7 @@ impl WithUniversal for PopUpButton {
 }
 
 impl Render<Dom> for PopUpButton {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_pop_up_button(tree).0;
         let mut effects = Vec::new();
@@ -2072,8 +2064,7 @@ impl Render<Dom> for PopUpButton {
         }
         for f in self.pending_spreads { f(&el); }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2082,7 +2073,6 @@ impl Render<Dom> for PopUpButton {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2158,7 +2148,7 @@ impl WithUniversal for ColorWell {
 }
 
 impl Render<Dom> for ColorWell {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_color_well(tree).0;
         let mut effects = Vec::new();
@@ -2189,8 +2179,7 @@ impl Render<Dom> for ColorWell {
         }
         for f in self.pending_spreads { f(&el); }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2199,7 +2188,6 @@ impl Render<Dom> for ColorWell {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2298,7 +2286,7 @@ impl WithUniversal for DatePicker {
 
 
 impl Render<Dom> for DatePicker {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_date_picker(tree).0;
         let mut effects = Vec::new();
@@ -2355,8 +2343,7 @@ impl Render<Dom> for DatePicker {
             }
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2366,7 +2353,6 @@ impl Render<Dom> for DatePicker {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }
@@ -2437,7 +2423,7 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
 }
 
 impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
-    type State = ElementState<(), Ch::State>;
+    type State = ElementState<Ch::State>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_scroll_view(tree).0;
         let mut effects = Vec::new();
@@ -2459,15 +2445,13 @@ impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
             }
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, None, self.layout));
 
         let child_state = self.children.build(tree);
 
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: child_state,
         }
     }
@@ -2538,7 +2522,7 @@ impl WithText for TextView {
 
 
 impl Render<Dom> for TextView {
-    type State = ElementState<(), ()>;
+    type State = ElementState<()>;
     fn build(self, tree: &TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
         let el = IosElement::create_text_view(tree).0;
         let mut effects = Vec::new();
@@ -2568,9 +2552,7 @@ impl Render<Dom> for TextView {
             effects.push(eff);
         }
 
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2580,7 +2562,6 @@ impl Render<Dom> for TextView {
         ElementState {
             el,
             _effects: effects,
-            _attrs: std::marker::PhantomData,
             children: (),
         }
     }

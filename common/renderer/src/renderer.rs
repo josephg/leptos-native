@@ -17,22 +17,15 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     type Backend: LayoutBackend;
 
     /// The basic type of node in the view tree.
-    type Node: Mountable<Self> + Clone + 'static;
-    /// A visible element in the view tree.
-    type Element: AsRef<Self::Node>
-        + CastFrom<Self::Node>
-        + Mountable<Self>
-        + Clone
-        + 'static;
-    /// A text node in the view tree.
-    type Text: AsRef<Self::Node>
-        + CastFrom<Self::Node>
-        + Mountable<Self>
-        + Clone
-        + 'static;
-    /// A placeholder node, which can be inserted into the tree but does not
-    /// appear (e.g., a comment node in the DOM).
-    type Placeholder: AsRef<Self::Node>
+    ///
+    /// Native ports collapse the old web-DOM `Element` / `Text` /
+    /// `Placeholder` associated types into a single `Node` — every
+    /// arena entry is structurally Element-shaped, and text-label /
+    /// placeholder distinctions are just different default styles +
+    /// concrete view classes set at construction time. Builder code
+    /// that wants a Node back from a `&Node` (e.g. for `mount_before`)
+    /// uses [`CastFrom::cast_from`].
+    type Node: AsRef<Self::Node>
         + CastFrom<Self::Node>
         + Mountable<Self>
         + Clone
@@ -45,30 +38,30 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     }
 
     /// Creates a new text node in the given layout tree.
-    fn create_text_node(tree: &crate::TreeRef<Self::Backend>, text: &str) -> Self::Text;
+    fn create_text_node(tree: &crate::TreeRef<Self::Backend>, text: &str) -> Self::Node;
 
     /// Creates a new placeholder node in the given layout tree.
-    fn create_placeholder(tree: &crate::TreeRef<Self::Backend>) -> Self::Placeholder;
+    fn create_placeholder(tree: &crate::TreeRef<Self::Backend>) -> Self::Node;
 
     /// Sets the text content of a text node.
-    fn set_text(node: &Self::Text, text: &str);
+    fn set_text(node: &Self::Node, text: &str);
     
     /// Inserts `new_child` into `parent` before `marker`. If `marker` is
     /// `None`, appends to the end.
     fn insert_node(
-        parent: &Self::Element,
+        parent: &Self::Node,
         new_child: &Self::Node,
         marker: Option<&Self::Node>,
     );
 
     /// Removes `child` from `parent` and returns it.
     fn remove_node(
-        parent: &Self::Element,
+        parent: &Self::Node,
         child: &Self::Node,
     ) -> Option<Self::Node>;
 
     /// Removes all children from `parent`.
-    fn clear_children(parent: &Self::Element);
+    fn clear_children(parent: &Self::Node);
 
     /// Removes a node from its parent.
     fn remove(node: &Self::Node);
@@ -94,7 +87,7 @@ pub trait Renderer: Send + Sized + Debug + 'static {
         M: Mountable<Self>,
     {
         if let Some(parent) =
-            Self::get_parent(before).and_then(Self::Element::cast_from)
+            Self::get_parent(before).and_then(Self::Node::cast_from)
         {
             new_child.mount(&parent, Some(before));
             true

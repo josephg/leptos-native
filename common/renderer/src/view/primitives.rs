@@ -8,7 +8,7 @@ use crate::renderer::{CastFrom, Renderer};
 /// Retained state for a primitive — the platform Text node plus the last
 /// value, so rebuild can skip the platform call when the value is unchanged.
 pub struct PrimitiveState<R: Renderer, T> {
-    text: R::Text,
+    text: R::Node,
     last: T,
 }
 
@@ -44,13 +44,13 @@ impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
         R::remove(self.text.as_ref());
     }
 
-    fn mount(&mut self, parent: &R::Element, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
         R::insert_node(parent, self.text.as_ref(), marker);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         if let Some(parent) = R::get_parent(self.text.as_ref())
-            .and_then(R::Element::cast_from)
+            .and_then(R::Node::cast_from)
         {
             child.mount(&parent, Some(self.text.as_ref()));
             true
@@ -59,7 +59,7 @@ impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
         }
     }
 
-    fn elements(&self) -> Vec<R::Element> {
+    fn elements(&self) -> Vec<R::Node> {
         Vec::new()
     }
 }
