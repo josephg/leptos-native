@@ -33,23 +33,23 @@ fn main() {
     let count = RwSignal::new(0_i32);
 
     // ---- build the view (hand-placed frames; no taffy at this level) ----
-    let label = Element::create_text_with(&opened.tree, "Count: 0", mtm);
-    set_frame(label.as_node().ns_view(), 20.0, 140.0, 280.0, 24.0);
+    let label = Element::create_text_with("Count: 0", mtm);
+    set_frame(&label.as_node().ns_view(), 20.0, 140.0, 280.0, 24.0);
     opened.content_root.insert_node(label.as_node(), None);
 
-    let dec = Element::create_button(&opened.tree).0;
+    let dec = Element::create_button().0;
     dec.set_title("-1");
-    set_frame(dec.ns_view(), 20.0, 80.0, 80.0, 32.0);
+    set_frame(&dec.ns_view(), 20.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(dec.as_node(), None);
 
-    let reset = Element::create_button(&opened.tree).0;
+    let reset = Element::create_button().0;
     reset.set_title("Reset");
-    set_frame(reset.ns_view(), 120.0, 80.0, 80.0, 32.0);
+    set_frame(&reset.ns_view(), 120.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(reset.as_node(), None);
 
-    let inc = Element::create_button(&opened.tree).0;
+    let inc = Element::create_button().0;
     inc.set_title("+1");
-    set_frame(inc.ns_view(), 220.0, 80.0, 80.0, 32.0);
+    set_frame(&inc.ns_view(), 220.0, 80.0, 80.0, 32.0);
     opened.content_root.insert_node(inc.as_node(), None);
 
     // ---- wire signal → label ----

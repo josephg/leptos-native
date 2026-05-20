@@ -313,7 +313,7 @@ where
 {
     type State = WindowState;
 
-    fn build(self, _outer_tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let mtm = MainThreadMarker::new()
             .expect("Window::build must run on the main thread");
 
@@ -407,12 +407,12 @@ where
         // the outer_tree passed in belongs to whatever
         // window/scene the Window itself was constructed under,
         // which is irrelevant here.
-        let mut children = self.children.build(&opened.tree);
+        let mut children = self.children.build();
         children.mount(&opened.content_root, None);
 
         // Initial layout against the contentView's current size.
         let content_size = opened.content_root.ns_view().frame().size;
-        layout::compute_layout(&opened.content_root, content_size);
+        layout::compute_layout(opened.content_root, content_size);
 
         // Show the window after layout so we don't flash an empty one.
         opened.show(mtm);

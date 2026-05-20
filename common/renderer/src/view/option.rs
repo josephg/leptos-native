@@ -3,19 +3,11 @@
 //! state.
 
 use super::{Mountable, Render};
-use crate::layout::TreeRef;
 use crate::renderer::Renderer;
 
-/// Retained state for `Option<T>`. Carries the tree alongside
-/// the inner state so None → Some rebuild paths can call `build`
-/// without a tree parameter.
-pub struct OptionState<R, T>
-where
-    R: Renderer,
-    T: Render<R>,
-{
-    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
-    inner: Option<T::State>,
+/// Retained state for `Option<T>` — just the inner view's state.
+pub struct OptionState<St> {
+    inner: Option<St>,
 }
 
 impl<R, T> Render<R> for Option<T>
@@ -23,12 +15,11 @@ where
     R: Renderer,
     T: Render<R>,
 {
-    type State = OptionState<R, T>;
+    type State = OptionState<T::State>;
 
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         OptionState {
-            tree: send_wrapper::SendWrapper::new(tree.clone()),
-            inner: self.map(|v| v.build(tree)),
+            inner: self.map(|v| v.build()),
         }
     }
 
@@ -44,7 +35,7 @@ where
         // follow this pattern.
         match (self, state.inner.as_mut()) {
             (Some(new), Some(s)) => new.rebuild(s),
-            (Some(new), None) => state.inner = Some(new.build(&**&state.tree)),
+            (Some(new), None) => state.inner = Some(new.build()),
             (None, Some(s)) => {
                 s.unmount();
                 state.inner = None;
@@ -54,10 +45,10 @@ where
     }
 }
 
-impl<R, T> Mountable<R> for OptionState<R, T>
+impl<R, St> Mountable<R> for OptionState<St>
 where
     R: Renderer,
-    T: Render<R>,
+    St: Mountable<R>,
 {
     fn unmount(&mut self) {
         if let Some(inner) = &mut self.inner {

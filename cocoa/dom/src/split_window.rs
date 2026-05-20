@@ -50,7 +50,7 @@
 //!   action — preserves the system's animation curve.
 
 use crate::{
-    layout::{self, TreeRef},
+    layout,
     node::{Element, Node},
 };
 use objc2::{
@@ -221,8 +221,6 @@ impl Default for PaneSpec {
 /// [`Pane`] handle returned by [`open_split_window`].
 pub struct PaneState {
     pub(crate) root: Node,
-    #[allow(dead_code)] // retained to keep the Taffy tree alive for the pane's lifetime
-    pub(crate) tree: TreeRef,
 }
 
 define_class!(
@@ -247,7 +245,7 @@ define_class!(
             let state = self.ivars();
             let view = state.root.ns_view();
             unsafe {
-                let _: () = msg_send![self, setView: view];
+                let _: () = msg_send![self, setView: &*view];
             }
         }
 
@@ -273,18 +271,14 @@ define_class!(
             if size.width <= 0.0 || size.height <= 0.0 {
                 return;
             }
-            layout::compute_layout_children(&state.root, size);
+            layout::compute_layout_children(state.root, size);
         }
     }
 );
 
 impl PaneViewController {
-    fn new(
-        root: Node,
-        tree: TreeRef,
-        mtm: MainThreadMarker,
-    ) -> Retained<Self> {
-        let alloc = Self::alloc(mtm).set_ivars(PaneState { root, tree });
+    fn new(root: Node, mtm: MainThreadMarker) -> Retained<Self> {
+        let alloc = Self::alloc(mtm).set_ivars(PaneState { root });
         unsafe { msg_send![super(alloc), init] }
     }
 }
@@ -299,7 +293,6 @@ impl PaneViewController {
 /// for the pane's lifetime.
 pub struct Pane {
     pub root: Element,
-    pub tree: TreeRef,
     pub controller: Retained<PaneViewController>,
     pub item: Retained<NSSplitViewItem>,
 }
@@ -571,11 +564,10 @@ fn build_pane(
     vertical: bool,
     mtm: MainThreadMarker,
 ) -> Pane {
-    // Pane root: a FlippedView with its own Taffy tree.
-    let tree = layout::new_tree();
-    let root = Element::create_container_with(&tree, mtm);
+    // Pane root: a FlippedView registered as a layout root.
+    let root = Element::create_container_with(mtm);
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::set_as_root(root.as_node(), &tree);
+    layout::set_as_root(root);
 
     // **Keep** `translatesAutoresizingMaskIntoConstraints = true`
     // (the default). NSSplitViewController sets each pane's frame
@@ -588,11 +580,7 @@ fn build_pane(
     // / `maximumThickness` / `holdingPriority` on the `NSSplitViewItem`.
 
     // Controller wrapping our root view.
-    let controller = PaneViewController::new(
-        root.as_node().clone(),
-        tree.clone(),
-        mtm,
-    );
+    let controller = PaneViewController::new(root, mtm);
     controller.loadViewIfNeeded();
 
     // Split-view item. Pick the constructor that matches the
@@ -655,5 +643,5 @@ fn build_pane(
     // additional constraints each layout pass. Adding our own
     // here would overconstrain the system.
 
-    Pane { root, tree, controller, item }
+    Pane { root, controller, item }
 }

@@ -5,7 +5,7 @@
 //! the AppKit specifics stay in one crate.
 
 use crate::{
-    layout::{self, TreeRef},
+    layout,
     node::{Element, Node},
 };
 use objc2::{
@@ -55,7 +55,7 @@ define_class!(
             // calling this; read the new size off our root NSView and
             // recompute against it.
             let new_size = self.ivars().root.ns_view().frame().size;
-            layout::compute_layout(&self.ivars().root, new_size);
+            layout::compute_layout(self.ivars().root, new_size);
         }
 
         #[unsafe(method(windowWillClose:))]
@@ -105,7 +105,6 @@ impl WindowDelegate {
 pub struct OpenedWindow {
     pub nswindow: Retained<NSWindow>,
     pub content_root: Element,
-    pub tree: TreeRef,
     pub delegate: Retained<WindowDelegate>,
 }
 
@@ -160,8 +159,7 @@ pub fn open_window(
     // Height is still content-sized; if the user's outer container
     // wants to fill the window vertically too, they add
     // `flex_grow=1` to it.
-    let tree = layout::new_tree();
-    let content_root = Element::create_container_with(&tree, mtm);
+    let content_root = Element::create_container_with(mtm);
     layout::set_flex_direction(
         content_root.as_node(),
         layout::FlexDirection::Column,
@@ -177,13 +175,13 @@ pub fn open_window(
         renderer::setters::set_size_width(content_root.as_node(), Dim::Pct(1.0));
         renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
     }
-    layout::set_as_root(content_root.as_node(), &tree);
-    nswindow.setContentView(Some(content_root.ns_view()));
+    layout::set_as_root(content_root);
+    nswindow.setContentView(Some(&content_root.ns_view()));
 
     #[cfg(feature = "debug-overlay")]
     {
         // content_root.ns_view() is a FlippedView for the "view" tag.
-        let view: &objc2_app_kit::NSView = content_root.ns_view();
+        let view = content_root.ns_view();
         let any: &objc2::runtime::AnyObject = view.as_ref();
         let flipped: &crate::flipped_view::FlippedView = any
             .downcast_ref::<crate::flipped_view::FlippedView>()
@@ -191,7 +189,7 @@ pub fn open_window(
                 "debug-overlay: content_root is not a FlippedView — \
                  view tag handling has diverged",
             );
-        crate::debug_overlay::install(flipped, &tree, mtm);
+        crate::debug_overlay::install(flipped, content_root.id(), mtm);
     }
 
     // Resize / close delegate. Pool-wrap the setDelegate call —
@@ -208,7 +206,6 @@ pub fn open_window(
     OpenedWindow {
         nswindow,
         content_root,
-        tree,
         delegate,
     }
 }

@@ -11,11 +11,11 @@ use objc2_app_kit::NSTextField;
 
 fn text_create_basic() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "hello");
+    let t = Element::create_text("hello");
 
     // Backed by an NSTextField with the given content.
-    let any: &AnyObject = t.as_node().ns_view().as_ref();
+    let __nv = t.as_node().ns_view();
+    let any: &AnyObject = __nv.as_ref();
     let field = any
         .downcast_ref::<NSTextField>()
         .expect("text-label should be backed by NSTextField");
@@ -26,18 +26,18 @@ fn text_create_basic() {
 
 fn text_create_empty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "");
-    let any: &AnyObject = t.as_node().ns_view().as_ref();
+    let t = Element::create_text("");
+    let __nv = t.as_node().ns_view();
+    let any: &AnyObject = __nv.as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
     assert_eq!(field.stringValue().to_string(), "");
 }
 
 fn text_create_multiline_preserves_newlines() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "line one\nline two\nline three");
-    let any: &AnyObject = t.as_node().ns_view().as_ref();
+    let t = Element::create_text("line one\nline two\nline three");
+    let __nv = t.as_node().ns_view();
+    let any: &AnyObject = __nv.as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
     assert_eq!(
         field.stringValue().to_string(),
@@ -47,18 +47,17 @@ fn text_create_multiline_preserves_newlines() {
 
 fn text_set_text_updates_value() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "before");
+    let t = Element::create_text("before");
     t.set_text("after");
-    let any: &AnyObject = t.as_node().ns_view().as_ref();
+    let __nv = t.as_node().ns_view();
+    let any: &AnyObject = __nv.as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
     assert_eq!(field.stringValue().to_string(), "after");
 }
 
 fn placeholder_create_is_hidden_zero_size() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let p = Element::create_placeholder(&tree);
+    let p = Element::create_placeholder();
 
     let view = p.as_node().ns_view();
     // Placeholders shouldn't be visible — they shouldn't intercept

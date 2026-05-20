@@ -11,10 +11,8 @@ use objc2_foundation::NSSize;
 /// Build a fresh layout tree, register `root` as its root, return
 /// the tree handle. Tests that want layout to actually compute need
 /// this — root.compute_layout panics if the node isn't registered.
-fn fresh_tree(root: &Element) -> layout::TreeRef {
-    let (tree, _) = root.as_node().tree_id().expect("element has tree");
-    layout::set_as_root(root.as_node(), &tree);
-    tree
+fn fresh_tree(root: &Element) {
+    layout::set_as_root(root.as_node());
 }
 
 fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
@@ -37,13 +35,12 @@ fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
 
 fn root_fills_available_space() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     let _tree = fresh_tree(&root);
     layout::compute_layout(
         root.as_node(), NSSize::new(400.0, 300.0)
     );
-    frame_eq(root.ns_view(), 0.0, 0.0, 400.0, 300.0);
+    frame_eq(&root.ns_view(), 0.0, 0.0, 400.0, 300.0);
 }
 
 // ---------------------------------------------------------------------
@@ -52,13 +49,12 @@ fn root_fills_available_space() {
 
 fn row_two_children_side_by_side() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     layout::set_width(a.as_node(), 100.0);
     layout::set_height(a.as_node(), 50.0);
     layout::set_width(b.as_node(), 200.0);
@@ -71,8 +67,8 @@ fn row_two_children_side_by_side() {
         root.as_node(), NSSize::new(500.0, 400.0)
     );
 
-    frame_eq(a.ns_view(), 0.0, 0.0, 100.0, 50.0);
-    frame_eq(b.ns_view(), 100.0, 0.0, 200.0, 60.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 100.0, 50.0);
+    frame_eq(&b.ns_view(), 100.0, 0.0, 200.0, 60.0);
 }
 
 // ---------------------------------------------------------------------
@@ -81,15 +77,14 @@ fn row_two_children_side_by_side() {
 
 fn column_two_children_stacked() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Column
     );
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     layout::set_height(a.as_node(), 80.0);
     layout::set_height(b.as_node(), 120.0);
 
@@ -102,8 +97,8 @@ fn column_two_children_stacked() {
 
     // Column + default `align_items: Stretch` makes children fill
     // the cross-axis (width = 300).
-    frame_eq(a.ns_view(), 0.0, 0.0, 300.0, 80.0);
-    frame_eq(b.ns_view(), 0.0, 80.0, 300.0, 120.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 300.0, 80.0);
+    frame_eq(&b.ns_view(), 0.0, 80.0, 300.0, 120.0);
 }
 
 // ---------------------------------------------------------------------
@@ -112,15 +107,14 @@ fn column_two_children_stacked() {
 
 fn padding_inset_applies_to_children() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Column
     );
     layout::set_padding(root.as_node(), 16.0);
     let _tree = fresh_tree(&root);
 
-    let child = Element::create_container(&tree);
+    let child = Element::create_container();
     layout::set_height(child.as_node(), 50.0);
     root.insert_node(child.as_node(), None);
 
@@ -130,7 +124,7 @@ fn padding_inset_applies_to_children() {
 
     // Padding 16 on all sides → child positioned at (16,16),
     // width = 200 - 32 = 168.
-    frame_eq(child.ns_view(), 16.0, 16.0, 168.0, 50.0);
+    frame_eq(&child.ns_view(), 16.0, 16.0, 168.0, 50.0);
 }
 
 // ---------------------------------------------------------------------
@@ -139,16 +133,15 @@ fn padding_inset_applies_to_children() {
 
 fn gap_separates_children() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Column
     );
     layout::set_gap(root.as_node(), 12.0);
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     layout::set_height(a.as_node(), 30.0);
     layout::set_height(b.as_node(), 40.0);
     root.insert_node(a.as_node(), None);
@@ -158,9 +151,9 @@ fn gap_separates_children() {
         root.as_node(), NSSize::new(200.0, 200.0)
     );
 
-    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 30.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 200.0, 30.0);
     // b starts after a's height (30) + gap (12) = y=42.
-    frame_eq(b.ns_view(), 0.0, 42.0, 200.0, 40.0);
+    frame_eq(&b.ns_view(), 0.0, 42.0, 200.0, 40.0);
 }
 
 // ---------------------------------------------------------------------
@@ -169,13 +162,12 @@ fn gap_separates_children() {
 
 fn flex_grow_distributes_leftover() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     // Both grow=1, neither has a width — they should each get half
     // of the available 400.
     layout::set_flex_grow(a.as_node(), 1.0);
@@ -187,14 +179,13 @@ fn flex_grow_distributes_leftover() {
         root.as_node(), NSSize::new(400.0, 100.0)
     );
 
-    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 100.0);
-    frame_eq(b.ns_view(), 200.0, 0.0, 200.0, 100.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 200.0, 100.0);
+    frame_eq(&b.ns_view(), 200.0, 0.0, 200.0, 100.0);
 }
 
 fn justify_content_space_between() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     layout::set_justify_content(
         root.as_node(),
@@ -202,9 +193,9 @@ fn justify_content_space_between() {
     );
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
-    let c = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
+    let c = Element::create_container();
     for el in [&a, &b, &c] {
         layout::set_width(el.as_node(), 60.0);
         layout::set_height(el.as_node(), 40.0);
@@ -214,20 +205,19 @@ fn justify_content_space_between() {
     layout::compute_layout(root.as_node(), NSSize::new(600.0, 100.0));
 
     // 600 - 3*60 = 420 leftover, distributed as gaps between siblings.
-    frame_eq(a.ns_view(), 0.0, 0.0, 60.0, 40.0);
-    frame_eq(b.ns_view(), 270.0, 0.0, 60.0, 40.0);
-    frame_eq(c.ns_view(), 540.0, 0.0, 60.0, 40.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 60.0, 40.0);
+    frame_eq(&b.ns_view(), 270.0, 0.0, 60.0, 40.0);
+    frame_eq(&c.ns_view(), 540.0, 0.0, 60.0, 40.0);
 }
 
 fn align_items_center_centres_cross_axis() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_align_items(root.as_node(), layout::AlignItems::Center);
     let _tree = fresh_tree(&root);
 
-    let child = Element::create_container(&tree);
+    let child = Element::create_container();
     layout::set_width(child.as_node(), 100.0);
     layout::set_height(child.as_node(), 30.0);
     root.insert_node(child.as_node(), None);
@@ -235,18 +225,17 @@ fn align_items_center_centres_cross_axis() {
     layout::compute_layout(root.as_node(), NSSize::new(400.0, 200.0));
 
     // Centred in a 400-wide container: x = (400 - 100) / 2 = 150.
-    frame_eq(child.ns_view(), 150.0, 0.0, 100.0, 30.0);
+    frame_eq(&child.ns_view(), 150.0, 0.0, 100.0, 30.0);
 }
 
 fn flex_grow_unequal_distributes_proportionally() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     layout::set_flex_grow(a.as_node(), 1.0);
     layout::set_flex_grow(b.as_node(), 3.0);
     root.insert_node(a.as_node(), None);
@@ -257,8 +246,8 @@ fn flex_grow_unequal_distributes_proportionally() {
     );
 
     // a: 400 * 1/4 = 100; b: 400 * 3/4 = 300.
-    frame_eq(a.ns_view(), 0.0, 0.0, 100.0, 100.0);
-    frame_eq(b.ns_view(), 100.0, 0.0, 300.0, 100.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 100.0, 100.0);
+    frame_eq(&b.ns_view(), 100.0, 0.0, 300.0, 100.0);
 }
 
 // ---------------------------------------------------------------------
@@ -267,15 +256,14 @@ fn flex_grow_unequal_distributes_proportionally() {
 
 fn nested_containers_inner_fits_within_outer() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let outer = Element::create_container(&tree);
+    let outer = Element::create_container();
     layout::set_flex_direction(
         outer.as_node(), layout::FlexDirection::Column
     );
     layout::set_padding(outer.as_node(), 10.0);
     let _tree = fresh_tree(&outer);
 
-    let inner = Element::create_container(&tree);
+    let inner = Element::create_container();
     layout::set_flex_direction(
         inner.as_node(), layout::FlexDirection::Row
     );
@@ -283,8 +271,8 @@ fn nested_containers_inner_fits_within_outer() {
     layout::set_height(inner.as_node(), 80.0);
     outer.insert_node(inner.as_node(), None);
 
-    let leaf_a = Element::create_container(&tree);
-    let leaf_b = Element::create_container(&tree);
+    let leaf_a = Element::create_container();
+    let leaf_b = Element::create_container();
     layout::set_width(leaf_a.as_node(), 30.0);
     layout::set_width(leaf_b.as_node(), 30.0);
     inner.insert_node(leaf_a.as_node(), None);
@@ -295,10 +283,10 @@ fn nested_containers_inner_fits_within_outer() {
     );
 
     // Outer: full size
-    frame_eq(outer.ns_view(), 0.0, 0.0, 200.0, 300.0);
+    frame_eq(&outer.ns_view(), 0.0, 0.0, 200.0, 300.0);
     // Inner: 10px padding on all sides of outer → (10, 10),
     // width = 200 - 20 = 180, height = 80 (explicit).
-    frame_eq(inner.ns_view(), 10.0, 10.0, 180.0, 80.0);
+    frame_eq(&inner.ns_view(), 10.0, 10.0, 180.0, 80.0);
     // Leafs: inner padding 4 + their own widths (30 each), in
     // outer's frame coordinates is what NSView::frame reports.
     // Each leaf's frame is local to its parent (inner). We
@@ -317,13 +305,12 @@ fn nested_containers_inner_fits_within_outer() {
 
 fn zero_children_no_panic() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     let _tree = fresh_tree(&root);
     layout::compute_layout(
         root.as_node(), NSSize::new(100.0, 100.0)
     );
-    frame_eq(root.ns_view(), 0.0, 0.0, 100.0, 100.0);
+    frame_eq(&root.ns_view(), 0.0, 0.0, 100.0, 100.0);
 }
 
 fn removing_child_collapses_remaining_layout() {
@@ -334,17 +321,16 @@ fn removing_child_collapses_remaining_layout() {
     // explicitly mark_dirty-ing the parent on remove_child /
     // drop_node.
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(),
         layout::FlexDirection::Column,
     );
     let _tree = fresh_tree(&root);
 
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
-    let c = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
+    let c = Element::create_container();
     layout::set_height(a.as_node(), 50.0);
     layout::set_height(b.as_node(), 50.0);
     layout::set_height(c.as_node(), 50.0);
@@ -356,9 +342,9 @@ fn removing_child_collapses_remaining_layout() {
         root.as_node(),
         NSSize::new(200.0, 200.0),
     );
-    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 50.0);
-    frame_eq(b.ns_view(), 0.0, 50.0, 200.0, 50.0);
-    frame_eq(c.ns_view(), 0.0, 100.0, 200.0, 50.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 200.0, 50.0);
+    frame_eq(&b.ns_view(), 0.0, 50.0, 200.0, 50.0);
+    frame_eq(&c.ns_view(), 0.0, 100.0, 200.0, 50.0);
 
     // Remove the middle child — `c` should rise to where `b` was.
     root.remove_child(b.as_node());
@@ -366,8 +352,8 @@ fn removing_child_collapses_remaining_layout() {
         root.as_node(),
         NSSize::new(200.0, 200.0),
     );
-    frame_eq(a.ns_view(), 0.0, 0.0, 200.0, 50.0);
-    frame_eq(c.ns_view(), 0.0, 50.0, 200.0, 50.0);
+    frame_eq(&a.ns_view(), 0.0, 0.0, 200.0, 50.0);
+    frame_eq(&c.ns_view(), 0.0, 50.0, 200.0, 50.0);
 }
 
 fn scroll_view_bounds_parent_to_viewport() {
@@ -379,15 +365,14 @@ fn scroll_view_bounds_parent_to_viewport() {
     // second-pass `compute_layout` sets the documentView's frame to
     // the natural content size for NSScrollView to scroll.
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(),
         layout::FlexDirection::Column,
     );
     let _tree = fresh_tree(&root);
 
-    let scroll = Element::create_scroll_view(&tree).0;
+    let scroll = Element::create_scroll_view().0;
     layout::set_flex_grow(scroll.as_node(), 1.0);
     root.insert_node(scroll.as_node(), None);
 
@@ -395,14 +380,14 @@ fn scroll_view_bounds_parent_to_viewport() {
     // (plus default gap of 0). Without the layout fix this would
     // bubble up to the root and overflow; with it, scroll_view's
     // own frame stays at the viewport size (root's allotted space).
-    let inner = Element::create_container(&tree);
+    let inner = Element::create_container();
     layout::set_flex_direction(
         inner.as_node(),
         layout::FlexDirection::Column,
     );
     scroll.insert_node(inner.as_node(), None);
     for _ in 0..30 {
-        let row = Element::create_container(&tree);
+        let row = Element::create_container();
         layout::set_height(row.as_node(), 16.0);
         inner.insert_node(row.as_node(), None);
     }
@@ -414,11 +399,11 @@ fn scroll_view_bounds_parent_to_viewport() {
 
     // scroll_view's NSView frame = viewport (the 200×200 window
     // minus zero padding). NOT the natural content height (480).
-    frame_eq(scroll.ns_view(), 0.0, 0.0, 200.0, 200.0);
+    frame_eq(&scroll.ns_view(), 0.0, 0.0, 200.0, 200.0);
     // documentView (an NSScrollView's first subview) is the part
     // that grows to natural content height. The window's frame
     // doesn't grow past 200.
-    frame_eq(root.ns_view(), 0.0, 0.0, 200.0, 200.0);
+    frame_eq(&root.ns_view(), 0.0, 0.0, 200.0, 200.0);
 }
 
 fn nested_vstack_collapses_after_removal() {
@@ -428,20 +413,19 @@ fn nested_vstack_collapses_after_removal() {
     // would leave the footer at its original y (because the inner
     // vstack didn't shrink in the cached layout).
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let outer = Element::create_container(&tree);
+    let outer = Element::create_container();
     layout::set_flex_direction(
         outer.as_node(),
         layout::FlexDirection::Column,
     );
     let _tree = fresh_tree(&outer);
 
-    let inner = Element::create_container(&tree);
+    let inner = Element::create_container();
     layout::set_flex_direction(
         inner.as_node(),
         layout::FlexDirection::Column,
     );
-    let footer = Element::create_container(&tree);
+    let footer = Element::create_container();
     layout::set_height(footer.as_node(), 30.0);
 
     // Register parent → child top-down: `attach_child` is a no-op
@@ -450,9 +434,9 @@ fn nested_vstack_collapses_after_removal() {
     outer.insert_node(inner.as_node(), None);
     outer.insert_node(footer.as_node(), None);
 
-    let row_a = Element::create_container(&tree);
-    let row_b = Element::create_container(&tree);
-    let row_c = Element::create_container(&tree);
+    let row_a = Element::create_container();
+    let row_b = Element::create_container();
+    let row_c = Element::create_container();
     layout::set_height(row_a.as_node(), 40.0);
     layout::set_height(row_b.as_node(), 40.0);
     layout::set_height(row_c.as_node(), 40.0);
@@ -467,7 +451,7 @@ fn nested_vstack_collapses_after_removal() {
     );
     // Inner vstack height = 3 rows × 40 = 120, then footer
     // immediately below at y=120.
-    frame_eq(footer.ns_view(), 0.0, 120.0, 300.0, 30.0);
+    frame_eq(&footer.ns_view(), 0.0, 120.0, 300.0, 30.0);
 
     // Remove the middle row — inner should shrink to 80, footer
     // should slide up to y=80.
@@ -476,18 +460,17 @@ fn nested_vstack_collapses_after_removal() {
         outer.as_node(),
         NSSize::new(300.0, 400.0),
     );
-    frame_eq(footer.ns_view(), 0.0, 80.0, 300.0, 30.0);
+    frame_eq(&footer.ns_view(), 0.0, 80.0, 300.0, 30.0);
 }
 
 fn zero_size_available_no_panic() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let root = Element::create_container(&tree);
+    let root = Element::create_container();
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Row
     );
     let _tree = fresh_tree(&root);
-    let child = Element::create_container(&tree);
+    let child = Element::create_container();
     layout::set_width(child.as_node(), 50.0);
     root.insert_node(child.as_node(), None);
 

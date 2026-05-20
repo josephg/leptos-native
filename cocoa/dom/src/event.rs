@@ -542,9 +542,9 @@ impl TextFieldDelegate {
 /// reuse the existing delegate's `SharedHandlers`, so callbacks
 /// of all kinds (input, change, focus, blur, keydown, keyup) fan
 /// out from one delegate in install order.
-fn ensure_text_field_entry(node: &crate::Node) -> SharedHandlers {
+fn ensure_text_field_entry(node: crate::Node) -> SharedHandlers {
     let view = node.ns_view();
-    let field = crate::node::downcast::<NSTextField>(view)
+    let field = crate::node::downcast::<NSTextField>(&view)
         .expect("ensure_text_field_entry: node is not an NSTextField");
     let mtm = MainThreadMarker::new()
         .expect("text-field event installs must run on the main thread");
@@ -588,10 +588,10 @@ fn ensure_text_field_entry(node: &crate::Node) -> SharedHandlers {
 /// Used by both `bind:value` (write-back leg) and `on:input`.
 /// No-op if `node` isn't an NSTextField.
 pub fn on_text_field_change(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(String) + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -601,10 +601,10 @@ pub fn on_text_field_change(
 /// Append a commit observer (fires on return key / focus loss).
 /// Used by `on:change`. No-op if `node` isn't an NSTextField.
 pub fn on_text_field_end_editing(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(String) + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -614,10 +614,10 @@ pub fn on_text_field_end_editing(
 /// Append a focus observer — fires on `controlTextDidBeginEditing:`
 /// (the field gained focus). No-op if `node` isn't an NSTextField.
 pub fn on_text_field_focus(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut() + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -629,10 +629,10 @@ pub fn on_text_field_focus(
 /// with `on_text_field_end_editing` (which carries the value);
 /// blur handlers run after change handlers from the same notif.
 pub fn on_text_field_blur(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut() + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -643,10 +643,10 @@ pub fn on_text_field_blur(
 /// (Enter, Escape, Tab, arrows). See [`KeyEvent`] for the
 /// supported keys.
 pub fn on_text_field_keydown(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(KeyEvent) + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -659,10 +659,10 @@ pub fn on_text_field_keydown(
 /// parity (`on:keyup=…` in upstream examples works without
 /// substitution).
 pub fn on_text_field_keyup(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(KeyEvent) + 'static,
 ) {
-    if crate::node::downcast::<NSTextField>(node.ns_view()).is_none() {
+    if crate::node::downcast::<NSTextField>(&node.ns_view()).is_none() {
         return;
     }
     let handlers = ensure_text_field_entry(node);
@@ -757,13 +757,13 @@ impl TextViewDelegate {
 /// regardless — that's the Node the framework owns. The inner
 /// NSTextView's delegate slot points at our delegate but the
 /// `Retained` lives on the Node, so lifecycle is Rust-driven.
-fn text_view_for_node(node: &crate::Node) -> Option<Retained<NSTextView>> {
+fn text_view_for_node(node: crate::Node) -> Option<Retained<NSTextView>> {
     let view = node.ns_view();
-    if let Some(tv) = crate::node::downcast::<NSTextView>(view) {
+    if let Some(tv) = crate::node::downcast::<NSTextView>(&view) {
         return Some(tv.retain());
     }
     use objc2_app_kit::NSScrollView;
-    let scroll = crate::node::downcast::<NSScrollView>(view)?;
+    let scroll = crate::node::downcast::<NSScrollView>(&view)?;
     let doc = scroll.documentView()?;
     crate::node::downcast::<NSTextView>(&doc).map(|tv| tv.retain())
 }
@@ -774,7 +774,7 @@ fn text_view_for_node(node: &crate::Node) -> Option<Retained<NSTextView>> {
 /// `<text_view>` (NSScrollView-wrapped) nodes — see
 /// [`text_view_for_node`].
 fn ensure_text_view_entry(
-    node: &crate::Node,
+    node: crate::Node,
 ) -> Option<SharedTextViewHandlers> {
     let tv = text_view_for_node(node)?;
     let mtm = MainThreadMarker::new()
@@ -826,7 +826,7 @@ fn ensure_text_view_entry(
 /// an NSTextView (directly or via a wrapping `<text_view>` scroll
 /// view).
 pub fn on_text_view_change(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(String) + 'static,
 ) {
     let Some(handlers) = ensure_text_view_entry(node) else { return };
@@ -856,11 +856,11 @@ pub fn on_text_view_change(
 ///     the bind setter, or add an `Effect` that watches the
 ///     signal.
 pub fn on_control_action(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut() + 'static,
 ) {
     let view = node.ns_view();
-    let Some(control) = crate::node::downcast::<NSControl>(view) else {
+    let Some(control) = crate::node::downcast::<NSControl>(&view) else {
         return;
     };
     let mtm = objc2::MainThreadMarker::new()
@@ -974,7 +974,7 @@ pub fn hover_tracker_store_size_for_test() -> usize {
 /// changes. `ActiveAlways` ensures hover fires regardless of
 /// window key/main state.
 pub fn on_hover(
-    node: &crate::Node,
+    node: crate::Node,
     cb: impl FnMut(bool) + 'static,
 ) {
     let view = node.ns_view();

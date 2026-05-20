@@ -3,18 +3,15 @@
 //! Option<T>'s state lowering.
 
 use super::{Mountable, Render};
-use crate::layout::TreeRef;
 use crate::renderer::Renderer;
 use either_of::*;
 
-/// Wrapper around an `Either*` state that carries the tree so
-/// rebuild can build new branches in-place.
-pub struct EitherState<R: Renderer, S> {
-    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
+/// Wrapper around an `Either*` state.
+pub struct EitherState<S> {
     inner: S,
 }
 
-impl<R: Renderer, S: Mountable<R>> Mountable<R> for EitherState<R, S> {
+impl<R: Renderer, S: Mountable<R>> Mountable<R> for EitherState<S> {
     fn unmount(&mut self) {
         self.inner.unmount();
     }
@@ -35,29 +32,28 @@ where
     A: Render<R>,
     B: Render<R>,
 {
-    type State = EitherState<R, Either<A::State, B::State>>;
+    type State = EitherState<Either<A::State, B::State>>;
 
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let inner = match self {
-            Either::Left(a) => Either::Left(a.build(tree)),
-            Either::Right(b) => Either::Right(b.build(tree)),
+            Either::Left(a) => Either::Left(a.build()),
+            Either::Right(b) => Either::Right(b.build()),
         };
-        EitherState { tree: send_wrapper::SendWrapper::new(tree.clone()), inner }
+        EitherState { inner }
     }
 
     fn rebuild(self, state: &mut Self::State) {
-        let tree = (*state.tree).clone();
-        match (self, &mut state.inner) {
+                match (self, &mut state.inner) {
             (Either::Left(new), Either::Left(old)) => new.rebuild(old),
             (Either::Right(new), Either::Right(old)) => new.rebuild(old),
             (Either::Right(new), Either::Left(old)) => {
-                let mut new_state = new.build(&tree);
+                let mut new_state = new.build();
                 old.insert_before_this(&mut new_state);
                 old.unmount();
                 state.inner = Either::Right(new_state);
             }
             (Either::Left(new), Either::Right(old)) => {
-                let mut new_state = new.build(&tree);
+                let mut new_state = new.build();
                 old.insert_before_this(&mut new_state);
                 old.unmount();
                 state.inner = Either::Left(new_state);
@@ -105,24 +101,23 @@ macro_rules! impl_either_of {
             R: Renderer,
             $($var: Render<R>,)+
         {
-            type State = EitherState<R, $name<$($var::State),+>>;
+            type State = EitherState<$name<$($var::State),+>>;
 
-            fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+            fn build(self) -> Self::State {
                 let inner = match self {
-                    $( $name::$var(v) => $name::$var(v.build(tree)), )+
+                    $( $name::$var(v) => $name::$var(v.build()), )+
                 };
-                EitherState { tree: send_wrapper::SendWrapper::new(tree.clone()), inner }
+                EitherState { inner }
             }
 
             fn rebuild(self, state: &mut Self::State) {
-                let tree = (*state.tree).clone();
-                match (self, &mut state.inner) {
+                                match (self, &mut state.inner) {
                     $(
                         ($name::$var(new), $name::$var(old)) => new.rebuild(old),
                     )+
                     (new, inner_state) => {
                         let mut new_state = match new {
-                            $( $name::$var(v) => $name::$var(v.build(&tree)), )+
+                            $( $name::$var(v) => $name::$var(v.build()), )+
                         };
                         inner_state.insert_before_this(&mut new_state);
                         inner_state.unmount();

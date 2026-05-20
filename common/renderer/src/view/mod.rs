@@ -5,7 +5,6 @@
 //! state, and the resulting `State` impls `Mountable<R>` so it can be
 //! attached to / detached from a parent.
 
-use crate::layout::TreeRef;
 use crate::renderer::Renderer;
 
 mod add_any_attr;
@@ -39,13 +38,11 @@ pub trait Render<R: Renderer>: Sized {
     /// new data.
     type State: Mountable<R>;
 
-    /// Builds the view for the first time. `tree` is the per-window
-    /// arena into which this view's elements should be allocated;
-    /// propagate it to children's `build` calls.
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State;
+    /// Builds the view for the first time. Nodes are allocated into the
+    /// ambient thread-local store (see [`crate::layout::LayoutBackend::with_tree`]).
+    fn build(self) -> Self::State;
 
-    /// Updates the view with new data. The state already carries its
-    /// tree (it was built with one); no tree parameter needed.
+    /// Updates the view with new data, in place.
     fn rebuild(self, _state: &mut Self::State) {}
 }
 

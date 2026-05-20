@@ -7,7 +7,6 @@ mod owned;
 pub use owned::{OwnedView, OwnedViewState};
 
 use crate::{
-    layout::TreeRef,
     renderer::Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
@@ -58,21 +57,17 @@ where
     type State = RenderEffectState<V::State, R>;
 
     #[track_caller]
-    fn build(mut self, tree: &TreeRef<R::Backend>) -> Self::State {
-        // Capture the tree so the RenderEffect closure (which re-runs
-        // on each signal change) can build new states with it.
-        let tree_for_effect = tree.clone();
+    fn build(mut self) -> Self::State {
         let effect = RenderEffect::new(move |prev| {
             let value = self.invoke();
             if let Some(mut state) = prev {
                 value.rebuild(&mut state);
                 state
             } else {
-                value.build(&tree_for_effect)
+                value.build()
             }
         });
         RenderEffectState {
-            tree: send_wrapper::SendWrapper::new(tree.clone()),
             inner: Some(effect),
             _phantom: PhantomData,
         }
@@ -80,8 +75,7 @@ where
 
     #[track_caller]
     fn rebuild(self, state: &mut Self::State) {
-        let tree = (*state.tree).clone();
-        let new = self.build(&tree);
+        let new = self.build();
         let mut old = std::mem::replace(state, new);
         old.insert_before_this(state);
         old.unmount();
@@ -91,29 +85,18 @@ where
 /// Retained view state for a reactive closure. Holds a `RenderEffect<T>`;
 /// dropping the state drops the effect, which auto-cancels the subscription.
 pub struct RenderEffectState<T: 'static, R: Renderer> {
-    /// `SendWrapper` so the state is `Send + Sync` (TreeRef = Rc is
-    /// not). Native runs single-threaded — the wrapper's panic-on-
-    /// off-thread-access is a non-event.
-    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     inner: Option<RenderEffect<T>>,
     _phantom: PhantomData<R>,
 }
 
 impl<T: 'static, R: Renderer> RenderEffectState<T, R> {
-    /// Construct from a tree + already-built effect. Used by
-    /// composite views (e.g. `<ErrorBoundary>`) that need to build
-    /// the RenderEffect themselves.
-    pub fn from_parts(tree: TreeRef<R::Backend>, effect: RenderEffect<T>) -> Self {
+    /// Construct from an already-built effect. Used by composite views
+    /// (e.g. `<ErrorBoundary>`) that build the RenderEffect themselves.
+    pub fn from_parts(effect: RenderEffect<T>) -> Self {
         Self {
-            tree: send_wrapper::SendWrapper::new(tree),
             inner: Some(effect),
             _phantom: PhantomData,
         }
-    }
-
-    /// Clone the tree this state was built with.
-    pub fn tree_ref(&self) -> TreeRef<R::Backend> {
-        (*self.tree).clone()
     }
 }
 

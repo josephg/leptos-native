@@ -26,8 +26,7 @@ fn create_off_main_panics() {
             // The tree is constructed inside the thread closure
             // because TreeRef is `!Send`; the mtm check inside
             // `Element::create` panics before tree access.
-            let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Element::create_button(&tree).0;
+            let _ = cocoa_dom::Element::create_button().0;
         });
         if let Err(e) = result {
             let msg = if let Some(s) = e.downcast_ref::<&'static str>() {
@@ -58,8 +57,7 @@ fn create_off_main_panics() {
 fn create_text_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Element::create_text(&tree, "hi");
+            let _ = cocoa_dom::Element::create_text("hi");
         })
     })
     .join()
@@ -73,8 +71,7 @@ fn create_text_off_main_panics() {
 fn create_placeholder_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let tree = cocoa_dom::layout::new_tree();
-            let _ = cocoa_dom::Element::create_placeholder(&tree);
+            let _ = cocoa_dom::Element::create_placeholder();
         })
     })
     .join()

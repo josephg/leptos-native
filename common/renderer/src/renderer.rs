@@ -9,27 +9,19 @@ use std::fmt::Debug;
 /// Implements the instructions necessary to render an interface on some
 /// platform. Each platform supplies its own `Renderer` impl.
 pub trait Renderer: Send + Sized + Debug + 'static {
-    /// Per-platform layout backend. `Render::build` takes a
-    /// `&TreeRef<Self::Backend>` so each builder can allocate its
-    /// arena entry into the correct window's tree without a hidden
-    /// thread-local. Cocoa sets this to `CocoaBackend`, GTK to
+    /// Per-platform layout backend. The node store is a thread-local
+    /// singleton reached via [`LayoutBackend::with_tree`], so `build`
+    /// takes no tree handle. Cocoa sets this to `CocoaBackend`, GTK to
     /// `GtkBackend`, iOS to `IosBackend`.
     type Backend: LayoutBackend;
 
-    /// The basic type of node in the view tree.
-    ///
-    /// Native ports collapse the old web-DOM `Element` / `Text` /
-    /// `Placeholder` associated types into a single `Node` — every
-    /// arena entry is structurally Element-shaped, and text-label /
-    /// placeholder distinctions are just different default styles +
-    /// concrete view classes set at construction time. Builder code
-    /// that wants a Node back from a `&Node` (e.g. for `mount_before`)
-    /// uses [`CastFrom::cast_from`].
-    type Node: AsRef<Self::Node>
-        + CastFrom<Self::Node>
-        + Mountable<Self>
-        + Clone
-        + 'static;
+    /// The basic type of node in the view tree. Native ports use a
+    /// bare `NodeId` (`Copy + Send`) — every entry is structurally
+    /// Element-shaped, and text-label / placeholder distinctions are
+    /// just different default styles + concrete view classes set at
+    /// construction time. Stale ids resolve to no-ops via the
+    /// generational store key.
+    type Node: Mountable<Self> + Clone + 'static;
 
     /// Interns a string slice, if that's available on this platform and
     /// useful as an optimization.
@@ -37,11 +29,11 @@ pub trait Renderer: Send + Sized + Debug + 'static {
         text
     }
 
-    /// Creates a new text node in the given layout tree.
-    fn create_text_node(tree: &crate::TreeRef<Self::Backend>, text: &str) -> Self::Node;
+    /// Creates a new text node in the ambient node store.
+    fn create_text_node(text: &str) -> Self::Node;
 
-    /// Creates a new placeholder node in the given layout tree.
-    fn create_placeholder(tree: &crate::TreeRef<Self::Backend>) -> Self::Node;
+    /// Creates a new placeholder node in the ambient node store.
+    fn create_placeholder() -> Self::Node;
 
     /// Sets the text content of a text node.
     fn set_text(node: &Self::Node, text: &str);
@@ -86,9 +78,7 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     where
         M: Mountable<Self>,
     {
-        if let Some(parent) =
-            Self::get_parent(before).and_then(Self::Node::cast_from)
-        {
+        if let Some(parent) = Self::get_parent(before) {
             new_child.mount(&parent, Some(before));
             true
         } else {

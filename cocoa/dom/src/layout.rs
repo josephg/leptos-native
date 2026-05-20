@@ -23,7 +23,8 @@ use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use send_wrapper::SendWrapper;
-use std::{rc::Rc, sync::OnceLock};
+use std::cell::RefCell;
+use std::sync::OnceLock;
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -31,7 +32,7 @@ pub use renderer::{
     JustifyItems, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size,
     Style, TrackSizingFunction,
 };
-use renderer::{Layout, LayoutBackend};
+use renderer::{Layout, LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // Cocoa backend
@@ -93,6 +94,13 @@ pub enum ScrollAxis {
     Both,
 }
 
+thread_local! {
+    /// The single per-thread node store for the cocoa port. All
+    /// windows share it; subtrees are partitioned by root id.
+    static TREE: RefCell<LayoutState<CocoaBackend>> =
+        RefCell::new(LayoutState::default());
+}
+
 impl LayoutBackend for CocoaBackend {
     type View = SendWrapper<Retained<NSView>>;
     type NodeMeta = CocoaMeta;
@@ -110,17 +118,53 @@ impl LayoutBackend for CocoaBackend {
     fn first_baseline(view: &Self::View) -> Option<f32> {
         first_baseline_offset(view).map(|b| b as f32)
     }
+
+    fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
+        TREE.with(|t| f(&mut t.borrow_mut()))
+    }
 }
 
-// Aliases so call sites don't have to spell `CocoaBackend` everywhere.
-pub type LayoutTree = renderer::LayoutTree<CocoaBackend>;
-pub type TreeRef = renderer::TreeRef<CocoaBackend>;
-pub type LayoutHandle = renderer::LayoutHandle<CocoaBackend>;
+// ---------------------------------------------------------------------
+// Introspection over the global store (used by tests + debug paths).
+// ---------------------------------------------------------------------
+
+/// Total node count in the per-thread store (orphans included). Used
+/// by leak detectors to verify teardown returns to baseline.
+pub fn node_count() -> usize {
+    renderer::node_count::<CocoaBackend>()
+}
+
+/// The Taffy style for `id`, if present.
+pub fn style(id: NodeId) -> Option<Style> {
+    renderer::style::<CocoaBackend>(id)
+}
+
+/// Children of `id` (cloned).
+pub fn children(id: NodeId) -> Vec<NodeId> {
+    renderer::children::<CocoaBackend>(id)
+}
+
+/// Whether `id`'s cached layout is dirty (or it's absent).
+pub fn dirty(id: NodeId) -> bool {
+    renderer::dirty::<CocoaBackend>(id)
+}
+
+/// Parent of `id`, if attached.
+pub fn parent(id: NodeId) -> Option<NodeId> {
+    renderer::parent::<CocoaBackend>(id)
+}
+
+/// Whether `id` is still present in the store.
+pub fn contains(id: NodeId) -> bool {
+    renderer::contains::<CocoaBackend>(id)
+}
+
+/// Remove `id` and its structural subtree from the store.
+pub fn remove(id: NodeId) {
+    renderer::remove::<CocoaBackend>(id);
+}
+
 pub type NodeContext = renderer::NodeContext<CocoaBackend>;
-
-pub fn new_tree() -> TreeRef {
-    LayoutTree::new()
-}
 
 // ---------------------------------------------------------------------
 // Layout debug logging
@@ -188,24 +232,9 @@ pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
     wrapper_style
 }
 
-/// Mark `node` as the tree's root, if no root is set yet.
-///
-/// Arena allocation happens eagerly in `Element::create_<tag>` (and
-/// `Text` / `Placeholder`'s constructors), so this no longer does
-/// any registration work. It just publishes the node id as `tree.root`
-/// — which the deferred-relayout scheduler reads to find what to
-/// run `compute_layout` against. If a root is already set, this is
-/// a silent no-op (the first registration wins).
-pub fn set_as_root(node: &Node, tree: &TreeRef) {
-    let Some((node_tree, id)) = node.tree_id() else { return };
-    debug_assert!(
-        Rc::ptr_eq(&node_tree, tree),
-        "set_as_root called with a tree that doesn't own this node"
-    );
-    let mut root = tree.root.borrow_mut();
-    if root.is_none() {
-        *root = Some(id);
-    }
+/// Register `node` as a window/scene root for the relayout scheduler.
+pub fn set_as_root(node: impl std::borrow::Borrow<Node>) {
+    renderer::add_root::<CocoaBackend>(node.borrow().id());
 }
 
 pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
@@ -214,20 +243,16 @@ pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
         .and_then(|s| s.documentView())
 }
 
-/// Drop the node and detach it from the tree. Now that `Node::Drop`
-/// already calls `decref` (and removes the scroll-view wrapper),
-/// this method just exists for callers that want a deterministic
-/// detach-now point and to mark the (former) parent dirty so its
-/// flex cache invalidates.
-pub fn drop_node(node: &Node) {
-    let parent = node
-        .tree_id()
-        .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    // Force an eager arena removal (bypass refcount > 0 GC).
+/// Remove the node (and its structural subtree) from the store and
+/// detach its NSView, marking the former parent dirty so its flex
+/// cache invalidates.
+pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
+    let node = *node.borrow();
+    let parent = renderer::parent::<CocoaBackend>(node.id());
     node.teardown();
-    if let Some((tree, pid)) = parent {
-        tree.mark_dirty(pid);
-        schedule_relayout_for_tree(&tree, pid);
+    if let Some(pid) = parent {
+        renderer::mark_dirty::<CocoaBackend>(pid);
+        schedule_relayout_pass();
     }
 }
 
@@ -235,54 +260,37 @@ pub fn drop_node(node: &Node) {
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
 // ---------------------------------------------------------------------
 
-/// Schedule a re-layout of the tree this node belongs to. Marks the
-/// node dirty (required for content changes on leaf controls so the
-/// measure callback re-runs).
-pub fn schedule_relayout(node: &Node) {
-    if let Some((tree, id)) = node.tree_id() {
-        tree.mark_dirty(id);
-        schedule_relayout_for_tree(&tree, id);
-    }
+/// Schedule a re-layout. Marks `node` dirty (required for content
+/// changes on leaf controls so the measure callback re-runs) and
+/// queues a single pass over all roots for the next main-loop tick.
+pub fn schedule_relayout(node: Node) {
+    renderer::mark_dirty::<CocoaBackend>(node.id());
+    schedule_relayout_pass();
 }
 
-fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
-    // Phase 2: snapshot the in-flight animation BEFORE the
-    // dedup check. The deferred compute_layout runs after
-    // CURRENT has been cleared, so we capture here and read at
-    // compute time. Setting unconditionally (even if the dedup
-    // returns early) ensures an animated setter that follows a
-    // non-animated one still gets its animation honoured.
+fn schedule_relayout_pass() {
+    // Snapshot the in-flight animation BEFORE the dedup check — the
+    // deferred compute_layout runs after CURRENT is cleared.
     #[cfg(feature = "animation")]
     crate::animation::capture_for_layout();
 
-    // Dedup: each tree carries its own "is a pass queued?" flag.
-    // Cheap, no global state, no shutdown-order issue.
-    if tree.relayout_queued.replace(true) {
+    // Dedup: one global "is a pass queued?" flag in the store.
+    if renderer::relayout_queued::<CocoaBackend>() {
         return;
     }
-    let tree_weak = SendWrapper::new(Rc::downgrade(tree));
+    renderer::set_relayout_queued::<CocoaBackend>(true);
+
     DispatchQueue::main().exec_async(move || {
-        let weak = tree_weak.take();
-        let Some(tree) = weak.upgrade() else { return };
-
-        tree.relayout_queued.set(false);
-
-        let Some(root_id) = *tree.root.borrow() else { return };
-        let root_view: Retained<NSView> = {
-            let Some(view) = tree.view(root_id) else { return };
-            (*view).clone()
-        };
-
-        let root_handle = LayoutHandle {
-            tree: tree.clone(),
-            node_id: root_id,
-        };
-        let root_node = crate::node::Node::from_view_with_handle(
-            root_view.clone(),
-            root_handle,
-        );
-        let size = root_view.frame().size;
-        compute_layout(&root_node, size);
+        renderer::set_relayout_queued::<CocoaBackend>(false);
+        // Recompute every live root subtree against its view's frame.
+        for root_id in renderer::roots::<CocoaBackend>() {
+            let Some(view) = renderer::view::<CocoaBackend>(root_id) else {
+                continue;
+            };
+            let root_view: Retained<NSView> = (*view).clone();
+            let size = root_view.frame().size;
+            compute_layout(Node::from_id(root_id), size);
+        }
     });
 }
 
@@ -290,51 +298,42 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 // Tree-edge mirroring (called from cocoa_dom::node insert/remove)
 // ---------------------------------------------------------------------
 
-/// Returns `(tree, taffy_parent_id)` for use when attaching children
-/// in the Taffy tree. For `<scroll_view>` this redirects to the
-/// documentView wrapper (`meta.child_taffy_parent`); for everything
-/// else it's the node's own Taffy id.
-fn taffy_child_parent(parent: &Node) -> Option<(TreeRef, NodeId)> {
-    let (tree, node_id) = parent.tree_id()?;
-    let id = parent
+/// The Taffy parent id for attaching children. For `<scroll_view>`
+/// this redirects to the documentView wrapper (`meta.child_taffy_parent`);
+/// otherwise it's the node's own id.
+fn taffy_child_parent(parent: Node) -> NodeId {
+    parent
         .with_meta(|m| m.child_taffy_parent)
-        .unwrap_or(node_id);
-    Some((tree, id))
+        .unwrap_or(parent.id())
 }
 
-pub fn attach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.add_child(parent_id, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = taffy_child_parent(*parent.borrow());
+    renderer::add_child::<CocoaBackend>(parent_id, child.borrow().id());
+    schedule_relayout_pass();
 }
 
-pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
-    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.insert_child_at_index(parent_id, index, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
+    let parent_id = taffy_child_parent(*parent.borrow());
+    renderer::insert_child_at_index::<CocoaBackend>(parent_id, index, child.borrow().id());
+    schedule_relayout_pass();
 }
 
-pub fn detach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = taffy_child_parent(parent) else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.remove_child(parent_id, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = taffy_child_parent(*parent.borrow());
+    renderer::remove_child::<CocoaBackend>(parent_id, child.borrow().id());
+    schedule_relayout_pass();
 }
 
 // ---------------------------------------------------------------------
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    // `Node::with_style_mut` reads the style from the arena, runs
-    // `f`, pushes the updated style back via `tree.set_style`
-    // (which marks the node dirty for the next Taffy pass).
+pub fn update_style(node: Node, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: &Node, style: Style) {
+pub fn set_style(node: Node, style: Style) {
     update_style(node, |s| *s = style);
 }
 
@@ -351,8 +350,8 @@ pub fn set_style(node: &Node, style: Style) {
 /// `NSSplitView` whose Auto-Layout pass already positioned the
 /// FlippedView). Calling this on a pane-root would fight the
 /// outer system and reset origin to `(0, 0)` every tick.
-pub fn compute_layout(root: &Node, available_size: NSSize) {
-    compute_layout_inner(root, available_size, /*apply_root_frame=*/ true)
+pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSize) {
+    compute_layout_inner(*root.borrow(), available_size, /*apply_root_frame=*/ true)
 }
 
 /// Like [`compute_layout`] but **skips writing a frame for the
@@ -360,12 +359,12 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
 /// (NSSplitView's Auto-Layout pass, in practice). Taffy still
 /// computes the layout using `available_size`, and frames are
 /// applied to every descendant.
-pub fn compute_layout_children(root: &Node, available_size: NSSize) {
-    compute_layout_inner(root, available_size, /*apply_root_frame=*/ false)
+pub fn compute_layout_children(root: impl std::borrow::Borrow<Node>, available_size: NSSize) {
+    compute_layout_inner(*root.borrow(), available_size, /*apply_root_frame=*/ false)
 }
 
 fn compute_layout_inner(
-    root: &Node,
+    root: Node,
     available_size: NSSize,
     apply_root_frame: bool,
 ) {
@@ -375,21 +374,20 @@ fn compute_layout_inner(
             available_size.width, available_size.height
         );
     }
-    let Some(handle) = root.mounted_handle() else { return };
+    let root_id = root.id();
+    if !renderer::contains::<CocoaBackend>(root_id) {
+        return;
+    }
 
     let w = available_size.width as f32;
     let h = available_size.height as f32;
 
     // For axes where the root's style.size is `auto`, fill the
-    // available space — otherwise the root would shrink to content
-    // (and any `fr`/percent children would distribute against 0).
-    // Axes where the user has set an explicit size (length, percent)
-    // are LEFT ALONE — this is the fix for the
-    // `reactive_width_drives_size_width` surprise: setting
-    // `width=50.0` on a root used to be silently overwritten on
-    // every relayout tick.
+    // available space — otherwise the root would shrink to content.
+    // Explicit sizes (length, percent) are LEFT ALONE.
     {
-        let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
+        let mut style =
+            renderer::style::<CocoaBackend>(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -400,7 +398,7 @@ fn compute_layout_inner(
             touched = true;
         }
         if touched {
-            handle.tree.set_style(handle.node_id, style);
+            renderer::set_style::<CocoaBackend>(root_id, style);
         }
     }
 
@@ -408,14 +406,14 @@ fn compute_layout_inner(
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    handle.tree.run_layout_pass(handle.node_id, avail);
+    renderer::run_layout_pass::<CocoaBackend>(root_id, avail);
 
-    warn_zero_height_scroll_views(&handle.tree, handle.node_id);
+    warn_zero_height_scroll_views(root_id);
 
     if apply_root_frame {
-        apply_frames(&handle.tree, handle.node_id);
+        apply_frames(root_id);
     } else {
-        apply_frames_descendants_only(&handle.tree, handle.node_id);
+        apply_frames_descendants_only(root_id);
     }
 
     #[cfg(feature = "debug-overlay")]
@@ -433,18 +431,18 @@ fn compute_layout_inner(
 /// dynamic content) and a panic here could crash a user's
 /// production app for a non-showstopper. A blank scroll view is
 /// undesirable but recoverable.
-fn warn_zero_height_scroll_views(tree: &TreeRef, root: NodeId) {
+fn warn_zero_height_scroll_views(root: NodeId) {
     use std::sync::Once;
     static WARNED: Once = Once::new();
 
-    fn visit(tree: &TreeRef, id: NodeId, warned: &Once) {
-        let is_sv = tree
-            .meta(id)
+    fn visit(id: NodeId, warned: &Once) {
+        let is_sv = renderer::meta::<CocoaBackend>(id)
             .map(|m| m.is_scroll_view)
             .unwrap_or(false);
         if is_sv {
-            if let Some(layout) = tree.layout(id) {
-                let has_children = !tree.children(id).is_empty();
+            if let Some(layout) = renderer::layout::<CocoaBackend>(id) {
+                let has_children =
+                    !renderer::children::<CocoaBackend>(id).is_empty();
                 if has_children && layout.size.height < 0.5 {
                     warned.call_once(|| {
                         eprintln!(
@@ -465,40 +463,39 @@ fn warn_zero_height_scroll_views(tree: &TreeRef, root: NodeId) {
                 }
             }
         }
-        let kids = tree.children(id).to_vec();
-        for k in kids {
-            visit(tree, k, warned);
+        for k in renderer::children::<CocoaBackend>(id) {
+            visit(k, warned);
         }
     }
-    visit(tree, root, &WARNED);
+    visit(root, &WARNED);
 }
 
 /// Walk the subtree rooted at `id`, calling `setFrame:` on each
 /// node's NSView with its Taffy-computed layout.
-fn apply_frames(tree: &TreeRef, id: NodeId) {
+fn apply_frames(id: NodeId) {
     #[cfg(feature = "animation")]
     let pending = crate::animation::take_pending_layout_animation();
     #[cfg(not(feature = "animation"))]
     let pending: Option<()> = None;
-    tree.walk_subtree(id, &mut |_id, layout, view| {
+    for (_id, layout, view) in renderer::collect_subtree::<CocoaBackend>(id) {
         set_frame_from_layout(&view, &layout, pending);
-    });
+    }
 }
 
 /// Same as [`apply_frames`] but skips the root id itself — only
 /// descendants get frames assigned. Used by
 /// [`compute_layout_children`] for pane-roots whose outer frame is
 /// owned by Auto-Layout (e.g. NSSplitView panes).
-fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
+fn apply_frames_descendants_only(root_id: NodeId) {
     #[cfg(feature = "animation")]
     let pending = crate::animation::take_pending_layout_animation();
     #[cfg(not(feature = "animation"))]
     let pending: Option<()> = None;
-    tree.walk_subtree(root_id, &mut |id, layout, view| {
+    for (id, layout, view) in renderer::collect_subtree::<CocoaBackend>(root_id) {
         if id != root_id {
             set_frame_from_layout(&view, &layout, pending);
         }
-    });
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -514,14 +511,11 @@ fn apply_frames_descendants_only(tree: &TreeRef, root_id: NodeId) {
 /// Mark this node's NSTextField as "use natural content width."
 /// Default for editable NSTextField is width=0 in the measure pass;
 /// this flag flips that to read `intrinsicContentSize` like a label.
-pub(crate) fn mark_intrinsic_width_from_content(node: &Node, on: bool) {
+pub(crate) fn mark_intrinsic_width_from_content(node: Node, on: bool) {
     node.with_meta_mut(|m| m.intrinsic_width_from_content = on);
-    // with_meta_mut pushes back into the tree for Mounted nodes,
-    // but doesn't mark dirty — the next measure pass needs to see
-    // the new flag, so kick the tree.
-    if let Some((tree, id)) = node.tree_id() {
-        tree.mark_dirty(id);
-    }
+    // with_meta_mut doesn't mark dirty — the next measure pass needs
+    // to see the new flag, so kick the store.
+    renderer::mark_dirty::<CocoaBackend>(node.id());
 }
 
 fn measure_leaf_size(
@@ -708,13 +702,13 @@ fn set_frame_from_layout(
 
 impl renderer::LayoutNodeOps for Node {
     fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
-        update_style(self, f);
+        update_style(*self, f);
     }
     fn schedule_relayout(&self) {
-        schedule_relayout(self);
+        schedule_relayout(*self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        Node::with_style(self, f)
+        Node::with_style(*self, f)
     }
 }
 
@@ -727,32 +721,32 @@ impl renderer::LayoutElement for Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_hidden(self, hidden);
+        Node::set_hidden(*self, hidden);
     }
     fn set_clip(&self, clip: bool) {
-        set_clip(self, clip);
+        set_clip(*self, clip);
     }
 }
 impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        Node::set_alpha(self, alpha)
+        Node::set_alpha(*self, alpha)
     }
     fn set_tool_tip(&self, tip: &str) {
-        Node::set_tool_tip(self, tip)
+        Node::set_tool_tip(*self, tip)
     }
 }
 impl renderer::DecorationElement<crate::Color> for Node {
     fn set_background_color(&self, color: crate::Color) {
-        set_background_color(self, color);
+        set_background_color(*self, color);
     }
     fn set_corner_radius(&self, radius: f32) {
-        set_corner_radius(self, radius);
+        set_corner_radius(*self, radius);
     }
     fn set_border_width(&self, width: f32) {
-        set_border_width(self, width);
+        set_border_width(*self, width);
     }
     fn set_border_color(&self, color: crate::Color) {
-        set_border_color(self, color);
+        set_border_color(*self, color);
     }
 }
 
@@ -774,7 +768,7 @@ pub use renderer::{
 // renderer-agnostic land).
 // ---------------------------------------------------------------------
 
-pub fn set_background_color(node: &Node, color: crate::Color) {
+pub fn set_background_color(node: Node, color: crate::Color) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -795,7 +789,7 @@ pub fn set_background_color(node: &Node, color: crate::Color) {
     }
 }
 
-pub fn set_clip(node: &Node, clip: bool) {
+pub fn set_clip(node: Node, clip: bool) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -813,7 +807,7 @@ pub fn set_clip(node: &Node, clip: bool) {
 /// you need child views to clip to the rounded shape (common on
 /// container stacks; almost never wanted on buttons, where masking
 /// can chew into the rendered title near the corners).
-pub fn set_corner_radius(node: &Node, radius: f32) {
+pub fn set_corner_radius(node: Node, radius: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -835,7 +829,7 @@ pub fn set_corner_radius(node: &Node, radius: f32) {
 /// Set the CALayer border width in points. `0` disables the border.
 /// Border color defaults to opaque black when set the first time;
 /// pair with [`set_border_color`] for non-default colors.
-pub fn set_border_width(node: &Node, width: f32) {
+pub fn set_border_width(node: Node, width: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -863,7 +857,7 @@ pub fn set_border_width(node: &Node, width: f32) {
 /// `transform.translation.{x,y}` from their prior values. Useful
 /// for slide-in / slide-out effects without disturbing layout.
 #[cfg(feature = "animation")]
-pub fn set_translation(node: &Node, tx: f64, ty: f64) {
+pub fn set_translation(node: Node, tx: f64, ty: f64) {
     use objc2_quartz_core::CATransform3D;
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -919,7 +913,7 @@ pub fn set_translation(node: &Node, tx: f64, ty: f64) {
 /// `transform.scale.x` and `transform.scale.y` from their prior
 /// values. Available only with the `animation` Cargo feature.
 #[cfg(feature = "animation")]
-pub fn set_scale(node: &Node, sx: f64, sy: f64) {
+pub fn set_scale(node: Node, sx: f64, sy: f64) {
     use objc2_quartz_core::CATransform3D;
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -966,7 +960,7 @@ pub fn set_scale(node: &Node, sx: f64, sy: f64) {
 
 /// Set the CALayer border color. No effect unless [`set_border_width`]
 /// has been called with a width > 0.
-pub fn set_border_color(node: &Node, color: crate::Color) {
+pub fn set_border_color(node: Node, color: crate::Color) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {

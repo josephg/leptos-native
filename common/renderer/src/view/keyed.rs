@@ -36,7 +36,6 @@
 //! The diff algorithm is unchanged; only the surrounding glue is.
 
 use crate::{
-    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render},
 };
@@ -91,7 +90,6 @@ where
     V: Render<R>,
     R: Renderer,
 {
-    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     parent: Option<R::Node>,
     marker: R::Node,
     hashed_items: FxIndexSet<K>,
@@ -109,7 +107,7 @@ where
 {
     type State = KeyedState<K, V, R>;
 
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let items = self.items.into_iter().flatten();
         let (capacity, _) = items.size_hint();
         let mut hashed_items =
@@ -118,12 +116,11 @@ where
         for (index, item) in items.enumerate() {
             hashed_items.insert((self.key_fn)(&item));
             let view = (self.view_fn)(index, item);
-            rendered_items.push(Some(view.build(tree)));
+            rendered_items.push(Some(view.build()));
         }
         KeyedState {
-            tree: send_wrapper::SendWrapper::new(tree.clone()),
             parent: None,
-            marker: R::create_placeholder(tree),
+            marker: R::create_placeholder(),
             hashed_items,
             rendered_items,
         }
@@ -131,13 +128,11 @@ where
 
     fn rebuild(self, state: &mut Self::State) {
         let KeyedState {
-            tree: tree_wrap,
             parent,
             marker,
             hashed_items,
             rendered_items,
         } = state;
-        let tree: &TreeRef<R::Backend> = &**tree_wrap;
         let new_items = self.items.into_iter().flatten();
         let (capacity, _) = new_items.size_hint();
         let mut new_hashed_items =
@@ -152,7 +147,6 @@ where
         let cmds = diff(hashed_items, &new_hashed_items);
 
         apply_diff::<R, T, V, VF>(
-            tree,
             parent.as_ref(),
             marker,
             cmds,
@@ -185,7 +179,7 @@ where
         for state in self.rendered_items.iter_mut().flatten() {
             // Insert each row before the trailing marker (so subsequent
             // adds keep the marker at the end of the rendered range).
-            state.mount(parent, Some(self.marker.as_ref()));
+            state.mount(parent, Some(&self.marker));
         }
     }
 
@@ -338,7 +332,6 @@ fn group_adjacent_moves(moved: Vec<DiffOpMove>) -> Vec<DiffOpMove> {
 }
 
 fn apply_diff<R, T, V, VF>(
-    tree: &TreeRef<R::Backend>,
     parent: Option<&R::Node>,
     marker: &R::Node,
     diff: Diff,
@@ -397,10 +390,10 @@ fn apply_diff<R, T, V, VF>(
                 state.insert_before_this_or_marker(
                     parent,
                     &mut each_item,
-                    Some(marker.as_ref()),
+                    Some(marker),
                 );
             } else {
-                each_item.try_mount(parent, Some(marker.as_ref()));
+                each_item.try_mount(parent, Some(marker));
             }
         }
         children[to] = Some(each_item);
@@ -409,7 +402,7 @@ fn apply_diff<R, T, V, VF>(
     for DiffOpAdd { at, mode } in add_cmds {
         let item = items[at].take().unwrap();
         let view = view_fn(at, item);
-        let mut state = view.build(tree);
+        let mut state = view.build();
         if let Some(parent) = parent {
             match mode {
                 DiffOpAddMode::Normal => {
@@ -419,14 +412,14 @@ fn apply_diff<R, T, V, VF>(
                         sibling.insert_before_this_or_marker(
                             parent,
                             &mut state,
-                            Some(marker.as_ref()),
+                            Some(marker),
                         );
                     } else {
-                        state.try_mount(parent, Some(marker.as_ref()));
+                        state.try_mount(parent, Some(marker));
                     }
                 }
                 DiffOpAddMode::Append => {
-                    state.try_mount(parent, Some(marker.as_ref()));
+                    state.try_mount(parent, Some(marker));
                 }
             }
         }

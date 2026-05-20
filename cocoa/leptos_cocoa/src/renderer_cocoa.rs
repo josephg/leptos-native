@@ -44,12 +44,12 @@ impl RendererTrait for Dom {
         CocoaRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &cocoa_dom::layout::TreeRef, text: &str) -> Element {
-        CocoaRenderer::create_text_node(tree, text)
+    fn create_text_node(text: &str) -> Element {
+        CocoaRenderer::create_text_node(text)
     }
 
-    fn create_placeholder(tree: &cocoa_dom::layout::TreeRef) -> Element {
-        CocoaRenderer::create_placeholder(tree)
+    fn create_placeholder() -> Element {
+        CocoaRenderer::create_placeholder()
     }
 
     fn set_text(node: &Element, text: &str) {
@@ -77,21 +77,11 @@ impl RendererTrait for Dom {
     }
 
     fn get_parent(node: &Node) -> Option<Node> {
-        // Look up the parent NSView via `superview` and synthesise a
-        // Node wrapping it that's bound to the same Taffy tree as
-        // `node`. Used by `UnitState::insert_before_this` (the
-        // mount-anchor for `<Switch>` and other placeholder-based
-        // control-flow primitives transitioning out of their empty
-        // state) — without a real parent we couldn't mount the new
-        // view, and the transition would silently fail.
-        let parent_view = unsafe { node.ns_view().superview() }?;
-        let h = node.mounted_handle()?;
-        let parent_id = h.tree.parent(h.node_id)?;
-        let parent_handle = cocoa_dom::layout::LayoutHandle {
-            tree: h.tree.clone(),
-            node_id: parent_id,
-        };
-        Some(Node::from_view_with_handle(parent_view, parent_handle))
+        // The parent is a real node in the store; look it up by id.
+        // Used by `UnitState::insert_before_this` (the mount anchor
+        // for `<Switch>` and other placeholder-based control-flow).
+        renderer::layout::parent::<cocoa_dom::layout::CocoaBackend>(node.id())
+            .map(Node::from_id)
     }
 
     fn first_child(node: &Node) -> Option<Node> {
@@ -117,11 +107,9 @@ impl RendererTrait for Dom {
     where
         M: Mountable<Self>,
     {
-        let superview = unsafe { before.ns_view().superview() };
-        let Some(parent_view) = superview else {
+        let Some(parent) = parent_of(before) else {
             return false;
         };
-        let parent = synthesise_parent_element(parent_view, before);
         new_child.mount(&parent, Some(before));
         true
     }
@@ -129,45 +117,24 @@ impl RendererTrait for Dom {
 
 impl Dom {
     /// Mount `new_child` immediately before `before`. Panics if `before`
-    /// has no superview (mirror of `try_mount_before` for callers that
-    /// know there's a parent).
+    /// has no parent (mirror of `try_mount_before`).
     #[track_caller]
     pub fn mount_before<M>(new_child: &mut M, before: &Node)
     where
         M: Mountable<Dom>,
     {
-        let parent_view = unsafe { before.ns_view().superview() }
-            .expect("Dom::mount_before — node has no superview");
-        let parent = synthesise_parent_element(parent_view, before);
+        let parent = parent_of(before)
+            .expect("Dom::mount_before — node has no parent");
         new_child.mount(&parent, Some(before));
     }
 }
 
-/// Build an `Element` wrapper around `parent_view` whose `LayoutHandle`
-/// references the same Taffy tree + the parent `NodeId` that `before`
-/// lives under. If `before` isn't registered in any tree, the parent
-/// wrapper also has no handle — falls back to NSView-only mounting.
-pub(crate) fn synthesise_parent_element(
-    parent_view: cocoa_dom::Retained<cocoa_dom::NSView>,
-    before: &Node,
-) -> Element {
-    use cocoa_dom::layout::LayoutHandle;
-
-    // `before` is always in a tree (eager allocation). If it has no
-    // parent in the Taffy tree (it's the root), fall back to using
-    // `before`'s own handle — the synthesised wrapper will then
-    // attach the new child to the root, which is the correct
-    // behaviour for "before the root" insertions.
-    let h = before.mounted_handle().expect(
-        "synthesise_parent_element: `before` must be in a tree",
-    );
-    let parent_id = h.tree.parent(h.node_id).unwrap_or(h.node_id);
-    let parent_handle = LayoutHandle {
-        tree: h.tree.clone(),
-        node_id: parent_id,
-    };
-    let parent_node = Node::from_view_with_handle(parent_view, parent_handle);
-    parent_node
+/// The parent `Node` of `before` in the store, or `None` if `before`
+/// is a root (or detached). The parent is a real node; no NSView
+/// wrapper synthesis is needed under the thread-local store.
+pub(crate) fn parent_of(before: &Node) -> Option<Node> {
+    renderer::layout::parent::<cocoa_dom::layout::CocoaBackend>(before.id())
+        .map(Node::from_id)
 }
 
 // ---------------------------------------------------------------------
@@ -188,10 +155,9 @@ pub(crate) fn insert_before_node(
     before: &Node,
     child: &mut dyn Mountable<Dom>,
 ) -> bool {
-    let Some(parent_view) = (unsafe { before.ns_view().superview() }) else {
+    let Some(parent) = parent_of(before) else {
         return false;
     };
-    let parent = synthesise_parent_element(parent_view, before);
     child.mount(&parent, Some(before));
     true
 }

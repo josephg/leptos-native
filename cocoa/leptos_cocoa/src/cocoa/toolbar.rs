@@ -436,7 +436,7 @@ where
 {
     type State = ToolbarState<C::State>;
 
-    fn build(self, _tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let mtm = MainThreadMarker::new()
             .expect("Toolbar::build must run on the main thread");
 
@@ -716,8 +716,7 @@ impl ToolbarItem {
             // child its own stub tree so its `build` cascade can
             // register without disturbing the toolbar's owning
             // window tree.
-            let stub_tree = cocoa_dom::layout::new_tree();
-            let state = child.build(&stub_tree);
+            let state = child.build();
             let element = state
                 .elements()
                 .into_iter()
@@ -878,7 +877,7 @@ impl ToolbarMountable for ToolbarItem {
         // state so its reactive effects don't unsubscribe.
         let custom_view_state = self.view_factory.map(|factory| {
             let (element, state) = factory(mtm);
-            item.set_view(Some(element.ns_view()));
+            item.set_view(Some(&element.ns_view()));
             state
         });
 
@@ -1229,7 +1228,8 @@ impl ToolbarMountable for ToolbarSearchItem {
             // element wraps the SAME field NSSearchToolbarItem
             // owns (we read it via `searchField()` in
             // `search_toolbar_item`), so downcast succeeds.
-            let any: &objc2::runtime::AnyObject = el.ns_view().as_ref();
+            let view = el.ns_view();
+            let any: &objc2::runtime::AnyObject = view.as_ref();
             if let Some(sf) = any.downcast_ref::<NSSearchField>() {
                 let sf: objc2::rc::Retained<NSSearchField> = sf.retain();
                 let slot: std::rc::Rc<

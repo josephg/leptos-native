@@ -10,53 +10,41 @@
 mod common;
 
 use cocoa_dom::{
-    layout::{compute_layout, set_as_root, TreeRef},
+    layout::{compute_layout, set_as_root},
     Element,
 };
 use objc2_foundation::NSSize;
 
-fn fresh_tree() -> TreeRef {
-    cocoa_dom::layout::new_tree()
-}
-
-fn dirty_for(tree: &TreeRef, el: &Element) -> bool {
-    let lh = el
-        .as_node()
-        .mounted_handle()
-        .expect("element has no LayoutHandle — wasn't registered");
-    tree.dirty(lh.node_id)
+fn dirty_for(el: &Element) -> bool {
+    cocoa_dom::layout::dirty(el.as_node().id())
 }
 
 /// After `compute_layout`, the root's dirty bit is cleared.
 /// Subsequent mutations need to set it back.
 fn baseline_compute_clears_dirty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
 
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
-    assert!(!dirty_for(&tree, &root), "root still dirty after compute");
+    assert!(!dirty_for(&root), "root still dirty after compute");
 }
 
 /// Inserting a child marks the parent dirty.
 fn attach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
-    assert!(!dirty_for(&tree, &root));
+    assert!(!dirty_for(&root));
 
-    let child = Element::create_button(&tree).0;
+    let child = Element::create_button().0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
 
     assert!(
-        dirty_for(&tree, &root),
+        dirty_for(&root),
         "parent not marked dirty after attach_child"
     );
 }
@@ -65,20 +53,18 @@ fn attach_child_marks_parent_dirty() {
 /// flexbox without the removed child).
 fn detach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
-    let child = Element::create_button(&tree).0;
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
+    let child = Element::create_button().0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
-    assert!(!dirty_for(&tree, &root));
+    assert!(!dirty_for(&root));
 
     cocoa_dom::layout::detach_child(root.as_node(), child.as_node());
 
     assert!(
-        dirty_for(&tree, &root),
+        dirty_for(&root),
         "parent not marked dirty after detach_child"
     );
 }
@@ -87,20 +73,18 @@ fn detach_child_marks_parent_dirty() {
 /// dirty so its measure callback re-runs.
 fn set_text_marks_node_dirty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
-    let child = Element::create_label(&tree).0;
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
+    let child = Element::create_label().0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
-    assert!(!dirty_for(&tree, &child));
+    assert!(!dirty_for(&child));
 
     child.set_value("now I have content");
 
     assert!(
-        dirty_for(&tree, &child),
+        dirty_for(&child),
         "label not marked dirty after text change — measure cache will \
          be stale"
     );
@@ -109,18 +93,16 @@ fn set_text_marks_node_dirty() {
 /// `set_style` (e.g. width / padding) marks the node dirty.
 fn set_style_width_marks_node_dirty() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
-    assert!(!dirty_for(&tree, &root));
+    assert!(!dirty_for(&root));
 
     cocoa_dom::layout::set_width(root.as_node(), 150.0);
 
     assert!(
-        dirty_for(&tree, &root),
+        dirty_for(&root),
         "node not marked dirty after set_width"
     );
 }
@@ -135,28 +117,22 @@ fn set_style_width_marks_node_dirty() {
 // content size and shoving siblings off-screen.
 // ---------------------------------------------------------------------
 
-fn child_count(tree: &TreeRef, parent: &Element) -> usize {
-    let lh = parent
-        .as_node()
-        .mounted_handle()
-        .expect("element has no LayoutHandle");
-    tree.children(lh.node_id).len()
+fn child_count(parent: &Element) -> usize {
+    cocoa_dom::layout::children(parent.as_node().id()).len()
 }
 
 fn attach_child_is_idempotent() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
-    let child = Element::create_button(&tree).0;
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
+    let child = Element::create_button().0;
 
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
-    assert_eq!(child_count(&tree, &root), 1);
+    assert_eq!(child_count(&root), 1);
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     assert_eq!(
-        child_count(&tree, &root),
+        child_count(&root),
         1,
         "attach_child duplicated the parent->child edge"
     );
@@ -164,32 +140,29 @@ fn attach_child_is_idempotent() {
 
 fn insert_child_at_is_idempotent() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
+    let a = Element::create_button().0;
+    let b = Element::create_button().0;
 
     cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 0);
     cocoa_dom::layout::insert_child_at(root.as_node(), b.as_node(), 1);
-    assert_eq!(child_count(&tree, &root), 2);
+    assert_eq!(child_count(&root), 2);
 
     // Re-insert `a` at position 1 — should reorder, not duplicate.
     cocoa_dom::layout::insert_child_at(root.as_node(), a.as_node(), 1);
     assert_eq!(
-        child_count(&tree, &root),
+        child_count(&root),
         2,
         "insert_child_at duplicated the parent->child edge"
     );
 
     // Order should be [b, a] now.
-    let lh = root.as_node().mounted_handle().unwrap();
-    let a_id = a.as_node().tree_id().unwrap().1;
-    let b_id = b.as_node().tree_id().unwrap().1;
+    let a_id = a.as_node().id();
+    let b_id = b.as_node().id();
     assert_eq!(
-        *tree.children(lh.node_id),
+        cocoa_dom::layout::children(root.as_node().id()),
         [b_id, a_id],
         "child order wrong after reorder"
     );
@@ -203,19 +176,17 @@ fn insert_child_at_is_idempotent() {
 /// original three edges — not three edges per row.
 fn reorder_cascade_does_not_duplicate_edges() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
     let mtm = common::test_mtm();
-    let tree = fresh_tree();
-    let root = Element::create_container_with(&tree, mtm);
-    set_as_root(root.as_node(), &tree);
+    let root = Element::create_container_with(mtm);
+    set_as_root(root.as_node());
 
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
-    let c = Element::create_button(&tree).0;
+    let a = Element::create_button().0;
+    let b = Element::create_button().0;
+    let c = Element::create_button().0;
     cocoa_dom::layout::attach_child(root.as_node(), a.as_node());
     cocoa_dom::layout::attach_child(root.as_node(), b.as_node());
     cocoa_dom::layout::attach_child(root.as_node(), c.as_node());
-    assert_eq!(child_count(&tree, &root), 3);
+    assert_eq!(child_count(&root), 3);
 
     // Move `a` to position 2, then a remount cascade re-attaches the
     // others to their existing parent.
@@ -224,7 +195,7 @@ fn reorder_cascade_does_not_duplicate_edges() {
     cocoa_dom::layout::attach_child(root.as_node(), c.as_node());
 
     assert_eq!(
-        child_count(&tree, &root),
+        child_count(&root),
         3,
         "reorder duplicated parent->child edges in Taffy"
     );

@@ -13,8 +13,7 @@ use cocoa_dom::Element;
 
 fn ptr_eq_true_for_clones() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create_container(&tree);
+    let el = Element::create_container();
     let a = el.as_node().clone();
     let b = el.as_node().clone();
     assert!(a.ptr_eq(&b), "clones should pointer-eq");
@@ -22,9 +21,8 @@ fn ptr_eq_true_for_clones() {
 
 fn ptr_eq_false_for_distinct() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let a = Element::create_container(&tree);
-    let b = Element::create_container(&tree);
+    let a = Element::create_container();
+    let b = Element::create_container();
     assert!(
         !a.as_node().ptr_eq(b.as_node()),
         "distinct Elements should not pointer-eq"
@@ -33,12 +31,11 @@ fn ptr_eq_false_for_distinct() {
 
 fn into_node_round_trip() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let original_ptr: *const objc2_app_kit::NSView = el.ns_view();
+    let el = Element::create_button().0;
+    let original_ptr: *const objc2_app_kit::NSView = &*el.ns_view();
     let n = el;
     let el2 = n;
-    let after_ptr: *const objc2_app_kit::NSView = el2.ns_view();
+    let after_ptr: *const objc2_app_kit::NSView = &*el2.ns_view();
     assert_eq!(
         original_ptr, after_ptr,
         "into_node should preserve NSView identity (Node = Element)"
@@ -51,27 +48,25 @@ fn into_node_round_trip() {
 
 fn insert_node_appends_when_marker_none() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
+    let parent = Element::create_container();
+    let a = Element::create_button().0;
+    let b = Element::create_button().0;
 
     parent.insert_node(a.as_node(), None);
     parent.insert_node(b.as_node(), None);
 
     let subs: Vec<_> = parent.ns_view().subviews().iter().collect();
     assert_eq!(subs.len(), 2);
-    assert_eq!(&*subs[0] as *const _, a.ns_view() as *const _);
-    assert_eq!(&*subs[1] as *const _, b.ns_view() as *const _);
+    assert_eq!(&*subs[0] as *const _, &*a.ns_view() as *const _);
+    assert_eq!(&*subs[1] as *const _, &*b.ns_view() as *const _);
 }
 
 fn insert_node_before_marker_places_correctly() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
-    let c = Element::create_button(&tree).0;
+    let parent = Element::create_container();
+    let a = Element::create_button().0;
+    let b = Element::create_button().0;
+    let c = Element::create_button().0;
 
     // Initial order: a, c
     parent.insert_node(a.as_node(), None);
@@ -81,9 +76,9 @@ fn insert_node_before_marker_places_correctly() {
 
     let subs: Vec<_> = parent.ns_view().subviews().iter().collect();
     assert_eq!(subs.len(), 3);
-    assert_eq!(&*subs[0] as *const _, a.ns_view() as *const _);
-    assert_eq!(&*subs[1] as *const _, b.ns_view() as *const _);
-    assert_eq!(&*subs[2] as *const _, c.ns_view() as *const _);
+    assert_eq!(&*subs[0] as *const _, &*a.ns_view() as *const _);
+    assert_eq!(&*subs[1] as *const _, &*b.ns_view() as *const _);
+    assert_eq!(&*subs[2] as *const _, &*c.ns_view() as *const _);
 }
 
 // (insert_node behavior with an "unrelated marker" — i.e. one that
@@ -95,10 +90,9 @@ fn insert_node_moves_existing_child() {
     // NSView semantics: a view has one parent. Inserting it under a
     // new parent removes it from the old.
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent_a = Element::create_container(&tree);
-    let parent_b = Element::create_container(&tree);
-    let child = Element::create_button(&tree).0;
+    let parent_a = Element::create_container();
+    let parent_b = Element::create_container();
+    let child = Element::create_button().0;
 
     parent_a.insert_node(child.as_node(), None);
     assert_eq!(parent_a.ns_view().subviews().len(), 1);
@@ -115,9 +109,8 @@ fn insert_node_moves_existing_child() {
 
 fn remove_child_returns_some_for_actual_child() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
-    let child = Element::create_button(&tree).0;
+    let parent = Element::create_container();
+    let child = Element::create_button().0;
     parent.insert_node(child.as_node(), None);
 
     let removed = parent.remove_child(child.as_node());
@@ -127,10 +120,9 @@ fn remove_child_returns_some_for_actual_child() {
 
 fn remove_child_returns_none_for_non_child() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
-    let actual = Element::create_button(&tree).0;
-    let stranger = Element::create_button(&tree).0;
+    let parent = Element::create_container();
+    let actual = Element::create_button().0;
+    let stranger = Element::create_button().0;
     parent.insert_node(actual.as_node(), None);
 
     let removed = parent.remove_child(stranger.as_node());
@@ -146,11 +138,10 @@ fn remove_child_returns_none_for_non_child() {
 
 fn clear_children_removes_all() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
+    let parent = Element::create_container();
     for _ in 0..5 {
         parent.insert_node(
-            Element::create_button(&tree).0.as_node(),
+            Element::create_button().0.as_node(),
             None,
         );
     }
@@ -162,8 +153,7 @@ fn clear_children_removes_all() {
 
 fn clear_children_on_empty_is_no_op() {
     let _mtm = common::test_mtm();
-    let tree = cocoa_dom::layout::new_tree();
-    let parent = Element::create_container(&tree);
+    let parent = Element::create_container();
     parent.clear_children();
     parent.clear_children();
     assert_eq!(parent.ns_view().subviews().len(), 0);

@@ -300,7 +300,7 @@ where
     // Build and mount the children under the pane's FlippedView.
     // The returned State must be retained for the pane's lifetime
     // — dropping it would unmount and detach NSViews.
-    let mut child_state = children.build(&pane.tree);
+    let mut child_state = children.build();
     child_state.mount(&pane.root, None);
 
     // Reactive collapse: install fires on every signal tick. The

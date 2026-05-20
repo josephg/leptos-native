@@ -18,7 +18,7 @@
 //! The overlay is not registered in Taffy and its `hitTest:` returns
 //! null, so it's transparent to layout and to mouse events.
 
-use crate::{flipped_view::FlippedView, layout::TreeRef};
+use crate::{flipped_view::FlippedView, layout::CocoaBackend};
 use block2::RcBlock;
 use objc2::{
     class, define_class, msg_send,
@@ -64,7 +64,6 @@ thread_local! {
 }
 
 pub struct DebugOverlayIvars {
-    tree: TreeRef,
     root_id: NodeId,
 }
 
@@ -118,7 +117,7 @@ define_class!(
                 0.2, 1.0, 0.4, 0.9,
             );
             let ivars = self.ivars();
-            walk(&ivars.tree, ivars.root_id, NSPoint::ZERO, &mut |cmd| {
+            walk(ivars.root_id, NSPoint::ZERO, &mut |cmd| {
                 match cmd {
                     DrawCmd::Border(r) => {
                         border.setStroke();
@@ -181,16 +180,14 @@ enum DrawCmd {
 }
 
 fn walk(
-    tree: &TreeRef,
     node_id: NodeId,
     offset: NSPoint,
     f: &mut dyn FnMut(DrawCmd),
 ) {
-    walk_inner(tree, node_id, offset, f, true)
+    walk_inner(node_id, offset, f, true)
 }
 
 fn walk_inner(
-    tree: &TreeRef,
     node_id: NodeId,
     offset: NSPoint,
     f: &mut dyn FnMut(DrawCmd),
@@ -205,9 +202,10 @@ fn walk_inner(
     // Padding still comes from Taffy: it's a styled property, not
     // something inferable from the rendered frame.
     let (loc_x, loc_y, size_w, size_h, pad_t, pad_r, pad_b, pad_l, kids, view) = {
-        let layout = tree.layout(node_id).unwrap_or_default();
-        let kids: Vec<NodeId> = tree.children(node_id).to_vec();
-        let view = tree.get_node_context(node_id).map(|c| (*c.view).clone());
+        let layout = renderer::layout::<CocoaBackend>(node_id).unwrap_or_default();
+        let kids: Vec<NodeId> = renderer::children::<CocoaBackend>(node_id);
+        let view = renderer::get_node_context::<CocoaBackend>(node_id)
+            .map(|c| (*c.view).clone());
         let frame = view.as_ref().map(|v| v.frame());
         let (lx, ly, sw, sh) = match frame {
             Some(f) => (f.origin.x, f.origin.y, f.size.width, f.size.height),
@@ -285,7 +283,7 @@ fn walk_inner(
         let frames: Vec<NSRect> = kids
             .iter()
             .map(|id| {
-                tree.get_node_context(*id)
+                renderer::get_node_context::<CocoaBackend>(*id)
                     .map(|c| c.view.frame())
                     .unwrap_or_default()
             })
@@ -328,18 +326,17 @@ fn walk_inner(
     }
 
     for child in kids {
-        walk_inner(tree, child, abs, f, false);
+        walk_inner(child, abs, f, false);
     }
 }
 
 impl DebugOverlayView {
     fn new(
         mtm: MainThreadMarker,
-        tree: TreeRef,
         root_id: NodeId,
     ) -> Retained<Self> {
         let alloc = Self::alloc(mtm)
-            .set_ivars(DebugOverlayIvars { tree, root_id });
+            .set_ivars(DebugOverlayIvars { root_id });
         let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
         let this: Retained<Self> =
             unsafe { msg_send![super(alloc), initWithFrame: frame] };
@@ -365,19 +362,9 @@ pub fn mark_overlays_dirty() {
 
 /// Install a debug overlay over `content_root`, sized to fill it.
 /// Idempotent across windows; each call registers another overlay.
-pub fn install(content_root: &FlippedView, tree: &TreeRef, mtm: MainThreadMarker) {
-    let root_id = {
-        // The content_root's NodeId in `tree` — we look it up via the
-        // tree's stored root rather than poking at the `Node`'s
-        // LayoutHandle (cocoa_dom::node isn't visible here without
-        // a circular dep).
-        tree.root.borrow().expect(
-            "debug_overlay::install: tree has no root yet",
-        )
-    };
-
+pub fn install(content_root: &FlippedView, root_id: NodeId, mtm: MainThreadMarker) {
     let bounds = content_root.bounds();
-    let overlay = DebugOverlayView::new(mtm, tree.clone(), root_id);
+    let overlay = DebugOverlayView::new(mtm, root_id);
     overlay.setFrame(bounds);
 
     // Add as topmost subview of content_root, above all existing

@@ -31,7 +31,6 @@ use crate::{
 use either_of::{Either, EitherOf3, EitherOf4, EitherOf5, EitherOf6, EitherOf7, EitherOf8};
 use leptos_macro::component;
 use renderer::{
-    layout::TreeRef,
     renderer::Renderer,
     view::{AddAnyAttr, ApplyAttr, Render, UnitState},
 };
@@ -63,7 +62,7 @@ pub struct EmptyBranch;
 
 impl<R: Renderer> Render<R> for EmptyBranch {
     type State = UnitState<R>;
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State { UnitState::new(tree) }
+    fn build(self) -> Self::State { UnitState::new() }
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
@@ -116,7 +115,7 @@ where
 impl<R: Renderer, C> Render<R> for Match<C, R> {
     type State = ();
     #[track_caller]
-    fn build(self, _tree: &TreeRef<R::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         panic!(
             "`<Match>` used outside of a `<Switch>`. `<Match>` is \
              only meaningful as a direct child of `<Switch>`; render \

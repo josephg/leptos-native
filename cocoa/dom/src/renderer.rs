@@ -101,12 +101,12 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Element {
-        Element::create_text(tree, text)
+    pub fn create_text_node(text: &str) -> Element {
+        Element::create_text(text)
     }
 
-    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Element {
-        Element::create_placeholder(tree)
+    pub fn create_placeholder() -> Element {
+        Element::create_placeholder()
     }
 
     pub fn set_text(node: &Element, text: &str) {
@@ -135,15 +135,10 @@ impl Renderer {
     }
 
     pub fn remove(node: &Node) {
-        // Mirror `Node::teardown`: drop the Taffy node first so the
-        // tree's node count returns to baseline, then detach the
-        // NSView from its superview. The previous version only did
-        // the second step, leaking one Taffy node per
-        // `UnitState::unmount` (and any other Renderer::remove
-        // caller). Caught by `cocoa_fuzzer`'s post-seed tree-node
-        // count check.
-        crate::layout::drop_node(node);
-        node.ns_view().removeFromSuperview();
+        // `drop_node` detaches the NSView and removes the node (and its
+        // structural subtree) from the store, so the node count returns
+        // to baseline. Caught by `cocoa_fuzzer`'s post-seed check.
+        crate::layout::drop_node(*node);
     }
 
     /// Hydration-only API. Should be unreachable on native — see

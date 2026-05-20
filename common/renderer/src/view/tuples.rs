@@ -1,8 +1,7 @@
 //! `Render<R>` for the unit type and tuples up to size 16.
 
 use super::{Mountable, Render};
-use crate::layout::TreeRef;
-use crate::renderer::{CastFrom, Renderer};
+use crate::renderer::Renderer;
 
 /// Retained state for an `Option`/`Either` empty branch — a real
 /// placeholder node so insertion points stay stable when the branch
@@ -15,8 +14,8 @@ pub struct UnitState<R: Renderer> {
 
 impl<R: Renderer> UnitState<R> {
     /// Build a fresh placeholder-backed unit state in `tree`.
-    pub fn new(tree: &crate::TreeRef<R::Backend>) -> Self {
-        UnitState { placeholder: R::create_placeholder(tree) }
+    pub fn new() -> Self {
+        UnitState { placeholder: R::create_placeholder() }
     }
 }
 
@@ -32,7 +31,7 @@ impl<R: Renderer> UnitState<R> {
 /// Taffy and breaking intrinsic-size measurement.
 impl<R: Renderer> Render<R> for () {
     type State = ();
-    fn build(self, _tree: &TreeRef<R::Backend>) -> Self::State {}
+    fn build(self) -> Self::State {}
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
@@ -53,16 +52,15 @@ impl<R: Renderer> Mountable<R> for () {
 
 impl<R: Renderer> Mountable<R> for UnitState<R> {
     fn unmount(&mut self) {
-        R::remove(self.placeholder.as_ref());
+        R::remove(&self.placeholder);
     }
     fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, self.placeholder.as_ref(), marker);
+        R::insert_node(parent, &self.placeholder, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(self.placeholder.as_ref())
-            .and_then(R::Node::cast_from)
+        if let Some(parent) = R::get_parent(&self.placeholder)
         {
-            child.mount(&parent, Some(self.placeholder.as_ref()));
+            child.mount(&parent, Some(&self.placeholder));
             true
         } else {
             false
@@ -81,8 +79,8 @@ macro_rules! impl_render_tuple {
         {
             type State = ($($T::State,)+);
 
-            fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
-                ( $( self.$idx.build(tree), )+ )
+            fn build(self) -> Self::State {
+                ( $( self.$idx.build(), )+ )
             }
 
             fn rebuild(self, state: &mut Self::State) {

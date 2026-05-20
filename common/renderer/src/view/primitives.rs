@@ -2,8 +2,7 @@
 //! Each renders as a text node displaying the value's `to_string()`.
 
 use super::{Mountable, Render};
-use crate::layout::TreeRef;
-use crate::renderer::{CastFrom, Renderer};
+use crate::renderer::Renderer;
 
 /// Retained state for a primitive — the platform Text node plus the last
 /// value, so rebuild can skip the platform call when the value is unchanged.
@@ -18,8 +17,8 @@ macro_rules! impl_render_primitive {
             impl<R: Renderer> Render<R> for $ty {
                 type State = PrimitiveState<R, $ty>;
 
-                fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
-                    let text = R::create_text_node(tree, &self.to_string());
+                fn build(self) -> Self::State {
+                    let text = R::create_text_node(&self.to_string());
                     PrimitiveState { text, last: self }
                 }
 
@@ -41,18 +40,16 @@ impl_render_primitive!(
 
 impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
     fn unmount(&mut self) {
-        R::remove(self.text.as_ref());
+        R::remove(&self.text);
     }
 
     fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, self.text.as_ref(), marker);
+        R::insert_node(parent, &self.text, marker);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(self.text.as_ref())
-            .and_then(R::Node::cast_from)
-        {
-            child.mount(&parent, Some(self.text.as_ref()));
+        if let Some(parent) = R::get_parent(&self.text) {
+            child.mount(&parent, Some(&self.text));
             true
         } else {
             false

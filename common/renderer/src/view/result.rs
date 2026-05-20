@@ -6,7 +6,6 @@
 //! the error can be cleared on re-render or drop.
 
 use crate::{
-    layout::TreeRef,
     renderer::Renderer,
     view::{Mountable, Render, UnitState},
 };
@@ -20,7 +19,6 @@ where
     R: Renderer,
     T: Render<R>,
 {
-    tree: send_wrapper::SendWrapper<TreeRef<R::Backend>>,
     state: Either<T::State, UnitState<R>>,
     error: Option<throw_error::ErrorId>,
     hook: Option<Arc<dyn ErrorHook>>,
@@ -48,24 +46,19 @@ where
 {
     type State = ResultState<T, R>;
 
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let hook = throw_error::get_error_hook();
         let (state, error) = match self {
-            Ok(view) => (Either::Left(view.build(tree)), None),
+            Ok(view) => (Either::Left(view.build()), None),
             Err(e) => (
                 // Need a real placeholder here so the slot in the tree
                 // is preserved while the error is showing — Render for
                 // `()` is now a no-op (see view::tuples).
-                Either::Right(UnitState::new(tree)),
+                Either::Right(UnitState::new()),
                 Some(throw_error::throw(e.into())),
             ),
         };
-        ResultState {
-            tree: send_wrapper::SendWrapper::new(tree.clone()),
-            state,
-            error,
-            hook,
-        }
+        ResultState { state, error, hook }
     }
 
     fn rebuild(self, state: &mut Self::State) {
@@ -84,7 +77,7 @@ where
             }
             // Ok -> Err: unmount old, mount placeholder, throw error
             (Either::Left(old), Err(err)) => {
-                let mut new_state = UnitState::<R>::new(&state.tree);
+                let mut new_state = UnitState::<R>::new();
                 old.insert_before_this(&mut new_state);
                 old.unmount();
                 state.state = Either::Right(new_state);
@@ -95,7 +88,7 @@ where
                 if let Some(err) = state.error.take() {
                     throw_error::clear(&err);
                 }
-                let mut new_state = new.build(&**&state.tree);
+                let mut new_state = new.build();
                 old.insert_before_this(&mut new_state);
                 old.unmount();
                 state.state = Either::Left(new_state);

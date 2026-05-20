@@ -171,9 +171,8 @@ where
     // tree as the "outer" tree; in practice the top-level view is
     // a `Window` (or tuple of Windows), each of which ignores the
     // outer tree and builds children against its own per-window tree.
-    let stub_tree = cocoa_dom::layout::new_tree();
     let view = f();
-    let state = view.build(&stub_tree);
+    let state = view.build();
 
     AppHandle {
         state: Box::new(state),

@@ -1,5 +1,4 @@
 use renderer::{
-    layout::TreeRef,
     renderer::Renderer,
     view::{AddAnyAttr, ApplyAttr, Render},
 };
@@ -79,8 +78,8 @@ where
 impl<R: Renderer, T: Render<R>> Render<R> for View<T> {
     type State = T::State;
 
-    fn build(self, tree: &TreeRef<R::Backend>) -> Self::State {
-        self.inner.build(tree)
+    fn build(self) -> Self::State {
+        self.inner.build()
     }
 
     fn rebuild(self, state: &mut Self::State) {
