@@ -114,8 +114,8 @@ impl Node {
     /// unparent its widget.
     pub fn teardown(self) {
         if let Some(w) = self.try_widget() {
-            if w.parent().is_some() {
-                w.unparent();
+            if let Some(parent) = w.parent() {
+                detach_child_widget(&parent, &w);
             }
         }
         renderer::remove::<B>(self.id);
@@ -224,13 +224,7 @@ impl Node {
         if child_parent.as_ptr() != parent.as_ptr() {
             return None;
         }
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
-            window.set_child(None::<&gtk4::Widget>);
-        } else if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
-            window.set_child(None::<&gtk4::Widget>);
-        } else {
-            child_widget.unparent();
-        }
+        detach_child_widget(parent, child_widget);
         crate::layout::detach_child(self, *child);
         Some(*child)
     }
@@ -530,6 +524,37 @@ impl Node {
 // ---------------------------------------------------------------------
 
 use crate::make_view::container_widget;
+
+/// Detach `child` from `parent`, using the correct GTK4 API for the
+/// parent's child model.
+///
+/// Most containers (GtkBox and friends) accept a bare
+/// `child.unparent()`. But single-child containers that track their
+/// child via `set_child` — GtkWindow / GtkApplicationWindow, and
+/// GtkOverlay's *main* child — keep an internal child pointer that a
+/// direct `unparent()` does NOT clear. If the child is then freed
+/// (e.g. its `Node` is removed from the store), that pointer dangles
+/// and the parent double-disposes the freed child when it finalizes —
+/// surfacing as `gtk_widget_unparent: assertion 'GTK_IS_WIDGET'
+/// failed` at window/overlay teardown. Detach through the owning API
+/// for those parents instead.
+fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
+    if let Some(win) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
+        win.set_child(None::<&gtk4::Widget>);
+    } else if let Some(win) = parent.downcast_ref::<gtk4::Window>() {
+        win.set_child(None::<&gtk4::Widget>);
+    } else if let Some(overlay) = parent.downcast_ref::<gtk4::Overlay>() {
+        // The main child is owned via set_child; overlay layers added
+        // with `add_overlay` are removed via `remove_overlay`.
+        if overlay.child().map(|c| c.as_ptr()) == Some(child.as_ptr()) {
+            overlay.set_child(None::<&gtk4::Widget>);
+        } else {
+            overlay.remove_overlay(child);
+        }
+    } else {
+        child.unparent();
+    }
+}
 
 /// Append or insert `child` under `parent`.
 fn attach_under(
