@@ -117,5 +117,6 @@ fn main() {
         "Persistent settings",
         (380, 360),
         || view! { <Settings /> },
-    );
+    )
+    .run();
 }

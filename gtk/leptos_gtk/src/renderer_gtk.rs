@@ -25,10 +25,10 @@ use renderer::{
 // a "text node" or "placeholder" from a regular Element is the
 // widget subclass + default style applied at creation.
 pub use gtk_dom::{
-    ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
+    ClassList, CssStyleDeclaration, Event, Node, TemplateElement,
 };
-pub type Text = Element;
-pub type Placeholder = Element;
+pub type Text = Node;
+pub type Placeholder = Node;
 
 /// The GTK renderer surface — implements [`renderer::Renderer`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,31 +42,31 @@ impl RendererTrait for Dom {
         GtkRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &gtk_dom::layout::TreeRef, text: &str) -> Element {
+    fn create_text_node(tree: &gtk_dom::layout::TreeRef, text: &str) -> Node {
         GtkRenderer::create_text_node(tree, text)
     }
 
-    fn create_placeholder(tree: &gtk_dom::layout::TreeRef) -> Element {
+    fn create_placeholder(tree: &gtk_dom::layout::TreeRef) -> Node {
         GtkRenderer::create_placeholder(tree)
     }
 
-    fn set_text(node: &Element, text: &str) {
+    fn set_text(node: &Node, text: &str) {
         GtkRenderer::set_text(node, text);
     }
 
     fn insert_node(
-        parent: &Element,
+        parent: &Node,
         new_child: &Node,
         anchor: Option<&Node>,
     ) {
         GtkRenderer::insert_node(parent, new_child, anchor);
     }
 
-    fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    fn remove_node(parent: &Node, child: &Node) -> Option<Node> {
         GtkRenderer::remove_node(parent, child)
     }
 
-    fn clear_children(parent: &Element) {
+    fn clear_children(parent: &Node) {
         GtkRenderer::clear_children(parent);
     }
 
@@ -141,7 +141,7 @@ impl Dom {
 fn synthesise_parent_element(
     parent_widget: gtk4::Widget,
     before: &Node,
-) -> Element {
+) -> Node {
     use gtk_dom::layout::LayoutHandle;
 
     let parent_handle: Option<LayoutHandle> = before
@@ -172,13 +172,13 @@ impl Mountable<Dom> for Node {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
+    fn mount(&mut self, parent: &Node, marker: Option<&Node>) {
         <Dom as RendererTrait>::insert_node(parent, self, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: &Element,
+        parent: &Node,
         marker: Option<&Node>,
     ) -> bool {
         GtkRenderer::try_insert_node(parent, self, marker)
@@ -188,7 +188,7 @@ impl Mountable<Dom> for Node {
         false
     }
 
-    fn elements(&self) -> Vec<Element> {
+    fn elements(&self) -> Vec<Node> {
         vec![self.clone()]
     }
 }

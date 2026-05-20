@@ -26,7 +26,8 @@ mod app {
             "Counter — view! + #[component]",
             (320, 200),
             || view! { <Counter initial=0 /> },
-        );
+        )
+        .run();
     }
 }
 

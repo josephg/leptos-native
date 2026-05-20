@@ -59,7 +59,8 @@ mod app {
             "Login",
             (360, 260),
             || view! { <LoginForm /> },
-        );
+        )
+        .run();
     }
 }
 

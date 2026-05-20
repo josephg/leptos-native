@@ -7,14 +7,14 @@ mod common;
 
 use gtk_dom::{
     layout::{compute_layout, set_as_root, TreeRef},
-    Element,
+    Node,
 };
 
 fn fresh_tree() -> TreeRef {
     gtk_dom::layout::new_tree()
 }
 
-fn dirty_for(tree: &TreeRef, el: &Element) -> bool {
+fn dirty_for(tree: &TreeRef, el: &Node) -> bool {
     let lh = el
         .as_node()
         .mounted_handle()
@@ -25,7 +25,7 @@ fn dirty_for(tree: &TreeRef, el: &Element) -> bool {
 /// After `compute_layout`, the root's dirty bit is cleared.
 fn baseline_compute_clears_dirty() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
 
     compute_layout(root.as_node(), (200.0, 200.0));
@@ -34,12 +34,12 @@ fn baseline_compute_clears_dirty() {
 
 fn attach_child_marks_parent_dirty() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
 
-    let child = Element::create_button(&tree).0;
+    let child = Node::create_button(&tree).0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
 
     assert!(
@@ -50,9 +50,9 @@ fn attach_child_marks_parent_dirty() {
 
 fn detach_child_marks_parent_dirty() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_button(&tree).0;
+    let child = Node::create_button(&tree).0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
@@ -67,9 +67,9 @@ fn detach_child_marks_parent_dirty() {
 
 fn set_text_marks_node_dirty() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_label(&tree).0;
+    let child = Node::create_label(&tree).0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&tree, &child));
@@ -84,7 +84,7 @@ fn set_text_marks_node_dirty() {
 
 fn set_style_width_marks_node_dirty() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&tree, &root));
@@ -102,7 +102,7 @@ fn set_style_width_marks_node_dirty() {
 // a duplicate parent->child edge in the Taffy tree.
 // ---------------------------------------------------------------------
 
-fn child_count(tree: &TreeRef, parent: &Element) -> usize {
+fn child_count(tree: &TreeRef, parent: &Node) -> usize {
     let lh = parent
         .as_node()
         .mounted_handle()
@@ -112,9 +112,9 @@ fn child_count(tree: &TreeRef, parent: &Element) -> usize {
 
 fn attach_child_is_idempotent() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
-    let child = Element::create_button(&tree).0;
+    let child = Node::create_button(&tree).0;
 
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     assert_eq!(child_count(&tree, &root), 1);
@@ -128,10 +128,10 @@ fn attach_child_is_idempotent() {
 
 fn insert_child_at_is_idempotent() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
+    let a = Node::create_button(&tree).0;
+    let b = Node::create_button(&tree).0;
 
     gtk_dom::layout::insert_child_at(root.as_node(), a.as_node(), 0);
     gtk_dom::layout::insert_child_at(root.as_node(), b.as_node(), 1);
@@ -158,12 +158,12 @@ fn insert_child_at_is_idempotent() {
 
 fn reorder_cascade_does_not_duplicate_edges() {
     let tree = fresh_tree();
-    let root = Element::create_vstack(&tree);
+    let root = Node::create_vstack(&tree);
     set_as_root(root.as_node(), &tree);
 
-    let a = Element::create_button(&tree).0;
-    let b = Element::create_button(&tree).0;
-    let c = Element::create_button(&tree).0;
+    let a = Node::create_button(&tree).0;
+    let b = Node::create_button(&tree).0;
+    let c = Node::create_button(&tree).0;
     gtk_dom::layout::attach_child(root.as_node(), a.as_node());
     gtk_dom::layout::attach_child(root.as_node(), b.as_node());
     gtk_dom::layout::attach_child(root.as_node(), c.as_node());

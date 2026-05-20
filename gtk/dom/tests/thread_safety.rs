@@ -22,14 +22,14 @@ fn create_off_main_panics() {
             // `new_tree()` is main-thread-safe (pure Rust); the panic
             // comes from the GTK widget constructor.
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Element::create_button(&tree).0;
+            let _ = gtk_dom::Node::create_button(&tree).0;
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Element::create off main should have panicked"
+        "Node::create off main should have panicked"
     );
 }
 
@@ -41,14 +41,14 @@ fn create_text_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Element::create_text(&tree, "hi");
+            let _ = gtk_dom::Node::create_text(&tree, "hi");
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Element::create_text off main should have panicked"
+        "Node::create_text off main should have panicked"
     );
 }
 
@@ -60,14 +60,14 @@ fn create_placeholder_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
             let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Element::create_placeholder(&tree);
+            let _ = gtk_dom::Node::create_placeholder(&tree);
         })
     })
     .join()
     .expect("thread join");
     assert!(
         result.is_err(),
-        "Element::create_placeholder off main should have panicked"
+        "Node::create_placeholder off main should have panicked"
     );
 }
 

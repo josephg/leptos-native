@@ -58,7 +58,8 @@ mod app {
             "Checkbox + events demo",
             (420, 320),
             || view! { <Demo /> },
-        );
+        )
+        .run();
     }
 }
 

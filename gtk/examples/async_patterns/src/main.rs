@@ -251,7 +251,8 @@ mod app {
             "async patterns",
             (440, 380),
             || view! { <App /> },
-        );
+        )
+        .run();
     }
 }
 

@@ -14,7 +14,7 @@
 
 mod common;
 
-use gtk_dom::{layout, Element, Node};
+use gtk_dom::{layout, Node};
 
 // =====================================================================
 // 1. Fresh nodes are in their tree from creation
@@ -22,7 +22,7 @@ use gtk_dom::{layout, Element, Node};
 
 fn freshly_created_node_has_tree_id() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let (_, id) = el
         .as_node()
         .tree_id()
@@ -39,7 +39,7 @@ fn freshly_created_node_has_tree_id() {
 
 fn style_mutation_lands_in_arena() {
     let tree = layout::new_tree();
-    let el = Element::create_stack(&tree);
+    let el = Node::create_stack(&tree);
     el.as_node().with_style_mut(|s| s.flex_grow = 7.0);
     let id = el.as_node().tree_id().unwrap().1;
     assert_eq!(tree.style(id).unwrap().flex_grow, 7.0);
@@ -52,7 +52,7 @@ fn style_mutation_lands_in_arena() {
 fn dropping_last_node_clone_removes_arena_entry() {
     let tree = layout::new_tree();
     let id = {
-        let el = Element::create_button(&tree).0;
+        let el = Node::create_button(&tree).0;
         el.as_node().tree_id().unwrap().1
         // `el` drops here.
     };
@@ -64,7 +64,7 @@ fn dropping_last_node_clone_removes_arena_entry() {
 
 fn cloning_node_extends_lifetime() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
 
     let clone = el.as_node().clone();
@@ -89,7 +89,7 @@ fn cloning_node_extends_lifetime() {
 fn borrowed_node_drop_does_not_remove_arena_entry() {
     let tree = layout::new_tree();
 
-    let owner = Element::create_vstack(&tree);
+    let owner = Node::create_vstack(&tree);
     let id = owner.as_node().tree_id().unwrap().1;
 
     let handle = owner.as_node().mounted_handle().unwrap();
@@ -116,7 +116,7 @@ fn borrowed_node_drop_does_not_remove_arena_entry() {
 
 fn new_leaf_starts_at_refcount_one() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     assert_eq!(
         tree.refcount_for_test(id),
@@ -127,7 +127,7 @@ fn new_leaf_starts_at_refcount_one() {
 
 fn incref_increments_refcount() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     tree.incref(id);
     assert_eq!(tree.refcount_for_test(id), Some(2));
@@ -140,8 +140,8 @@ fn incref_increments_refcount() {
 
 fn decref_decrements_but_keeps_alive_if_attached() {
     let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
+    let root = Node::create_vstack(&tree);
+    let child = Node::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -164,8 +164,8 @@ fn decref_decrements_but_keeps_alive_if_attached() {
 
 fn detached_orphan_with_refcount_zero_is_removed() {
     let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
+    let root = Node::create_vstack(&tree);
+    let child = Node::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -182,8 +182,8 @@ fn detached_orphan_with_refcount_zero_is_removed() {
 
 fn detached_orphan_with_handles_stays() {
     let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
+    let root = Node::create_vstack(&tree);
+    let child = Node::create_button(&tree).0;
     layout::attach_child(root.as_node(), child.as_node());
 
     let child_id = child.as_node().tree_id().unwrap().1;
@@ -196,7 +196,7 @@ fn detached_orphan_with_handles_stays() {
 
 fn decref_below_zero_is_safe() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
 
     tree.decref(id);
@@ -206,7 +206,7 @@ fn decref_below_zero_is_safe() {
 
 fn decref_on_nonexistent_is_noop() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let id = el.as_node().tree_id().unwrap().1;
     tree.remove(id);
     tree.decref(id); // no panic
@@ -220,7 +220,7 @@ fn decref_on_nonexistent_is_noop() {
 fn widget_pointer_stable() {
     use gtk4::glib::translate::ToGlibPtr;
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let ptr_before: *mut gtk4::ffi::GtkWidget =
         el.as_node().widget().to_glib_none().0;
     let ptr_after: *mut gtk4::ffi::GtkWidget =
@@ -229,12 +229,12 @@ fn widget_pointer_stable() {
 }
 
 // =====================================================================
-// 7. WeakNode / WeakElement — cycle-safe closure capture (Phase 4)
+// 7. WeakNode / WeakNode — cycle-safe closure capture (Phase 4)
 // =====================================================================
 
 fn weak_node_upgrades_while_node_alive() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let weak = el.as_node().downgrade();
 
     assert!(weak.is_alive(), "weak handle is alive while Node is");
@@ -244,17 +244,17 @@ fn weak_node_upgrades_while_node_alive() {
 
 fn weak_node_upgrade_fails_after_drop() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let weak = el.as_node().downgrade();
     drop(el);
 
-    assert!(!weak.is_alive(), "weak handle is dead after Element drops");
+    assert!(!weak.is_alive(), "weak handle is dead after Node drops");
     assert!(weak.upgrade().is_none(), "upgrade returns None");
 }
 
 fn weak_element_upgrade_round_trips() {
     let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     let weak = el.weak();
     let recovered = weak.upgrade().expect("alive");
     assert!(recovered.as_node().ptr_eq(el.as_node()));

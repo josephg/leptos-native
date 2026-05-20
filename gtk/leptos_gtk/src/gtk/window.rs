@@ -5,7 +5,7 @@ use crate::Dom;
 use gtk4::prelude::*;
 use gtk_dom::{
     window::{open_window, OpenedWindow},
-    Element as GtkElement,
+    Node as GtkElement,
 };
 use renderer::view::{Mountable, Render};
 
@@ -112,8 +112,6 @@ where
 
         WindowState { opened }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 impl Mountable<Dom> for WindowState {

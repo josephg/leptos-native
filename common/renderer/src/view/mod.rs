@@ -46,7 +46,7 @@ pub trait Render<R: Renderer>: Sized {
 
     /// Updates the view with new data. The state already carries its
     /// tree (it was built with one); no tree parameter needed.
-    fn rebuild(self, state: &mut Self::State);
+    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 /// Allows a view's state to be attached to / detached from the platform tree.

@@ -1,4 +1,4 @@
-//! `Element::focus()` / `Element::blur()` integration tests.
+//! `Node::focus()` / `Node::blur()` integration tests.
 //!
 //! These need a `gtk::Window` to exercise — focus is a window-level
 //! concept; an unmounted widget reports `false` for `grab_focus`.
@@ -7,7 +7,7 @@
 
 mod common;
 
-use gtk_dom::Element;
+use gtk_dom::Node;
 
 fn focus_unmounted_returns_false_or_no_panic() {
     let tree = gtk_dom::layout::new_tree();
@@ -15,13 +15,13 @@ fn focus_unmounted_returns_false_or_no_panic() {
     // reflects whether GTK accepted the focus change. Without a
     // window this is normally false; we don't assert, just verify
     // no panic.
-    let el = Element::create_text_field(&tree).0;
+    let el = Node::create_text_field(&tree).0;
     let _ = el.focus();
 }
 
 fn blur_unmounted_returns_false() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_text_field(&tree).0;
+    let el = Node::create_text_field(&tree).0;
     assert!(!el.blur(), "no window → no blur");
 }
 
@@ -32,7 +32,7 @@ fn focus_mounted_text_field_succeeds() {
     // mounted widget hierarchy without entering the main loop.
     let win = gtk_dom::window::open_window(&app, "focus-test", (320, 200));
 
-    let field = Element::create_text_field(&tree).0;
+    let field = Node::create_text_field(&tree).0;
     win.content_root.insert_node(field.as_node(), None);
 
     // grab_focus returns true when GTK accepts the focus request.
@@ -47,7 +47,7 @@ fn blur_clears_focus() {
     let app = gtk_dom::app::init_app("org.test.gtk_dom.blur");
     let win = gtk_dom::window::open_window(&app, "blur-test", (320, 200));
 
-    let field = Element::create_text_field(&tree).0;
+    let field = Node::create_text_field(&tree).0;
     win.content_root.insert_node(field.as_node(), None);
 
     let _ = field.focus();
@@ -60,7 +60,7 @@ fn focus_on_button_works() {
     let app = gtk_dom::app::init_app("org.test.gtk_dom.button-focus");
     let win = gtk_dom::window::open_window(&app, "button-focus", (320, 200));
 
-    let button = Element::create_button(&tree).0;
+    let button = Node::create_button(&tree).0;
     win.content_root.insert_node(button.as_node(), None);
 
     let _ = button.focus();

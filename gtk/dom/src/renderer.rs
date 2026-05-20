@@ -9,7 +9,7 @@
 //! setting, hydration tree walking) panic with `unimplemented!()` if
 //! actually called.
 
-use crate::node::{Element, Node};
+use crate::node::Node;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -82,20 +82,20 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Element {
-        Element::create_text(tree, text)
+    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Node {
+        Node::create_text(tree, text)
     }
 
-    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Element {
-        Element::create_placeholder(tree)
+    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Node {
+        Node::create_placeholder(tree)
     }
 
-    pub fn set_text(node: &Element, text: &str) {
+    pub fn set_text(node: &Node, text: &str) {
         node.set_text(text);
     }
 
     pub fn insert_node(
-        parent: &Element,
+        parent: &Node,
         new_child: &Node,
         anchor: Option<&Node>,
     ) {
@@ -103,14 +103,14 @@ impl Renderer {
     }
 
     pub fn try_insert_node(
-        parent: &Element,
+        parent: &Node,
         new_child: &Node,
         anchor: Option<&Node>,
     ) -> bool {
         parent.try_insert_node(new_child, anchor)
     }
 
-    pub fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    pub fn remove_node(parent: &Node, child: &Node) -> Option<Node> {
         parent.remove_child(child)
     }
 
@@ -143,19 +143,19 @@ impl Renderer {
         eprintln!("[gtk_dom] {node:?}");
     }
 
-    pub fn clear_children(parent: &Element) {
+    pub fn clear_children(parent: &Node) {
         parent.clear_children();
     }
 
     // ---- DOM-only / web-only stubs --------------------------------
 
-    pub fn class_list(_el: &Element) -> ClassList {
+    pub fn class_list(_el: &Node) -> ClassList {
         ClassList
     }
     pub fn add_class(_list: &ClassList, _name: &str) {}
     pub fn remove_class(_list: &ClassList, _name: &str) {}
 
-    pub fn style(_el: &Element) -> CssStyleDeclaration {
+    pub fn style(_el: &Node) -> CssStyleDeclaration {
         CssStyleDeclaration
     }
     pub fn set_css_property(
@@ -166,7 +166,7 @@ impl Renderer {
     }
     pub fn remove_css_property(_style: &CssStyleDeclaration, _name: &str) {}
 
-    pub fn set_inner_html(_el: &Element, _html: &str) {}
+    pub fn set_inner_html(_el: &Node, _html: &str) {}
 
     pub fn get_template<V: 'static>() -> TemplateElement {
         unimplemented!(
@@ -175,7 +175,7 @@ impl Renderer {
         );
     }
 
-    pub fn clone_template(_tpl: &TemplateElement) -> Element {
+    pub fn clone_template(_tpl: &TemplateElement) -> Node {
         unimplemented!(
             "gtk_dom::Renderer::clone_template — <template> cloning is a \
              web-only optimization"

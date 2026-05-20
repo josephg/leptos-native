@@ -57,7 +57,8 @@ mod app {
             "Settings",
             (380, 340),
             || view! { <Settings /> },
-        );
+        )
+        .run();
     }
 }
 

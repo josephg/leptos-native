@@ -160,7 +160,7 @@ pub enum PendingHandler {
 impl PendingHandler {
     /// Install this handler against `el`. No-ops if the underlying
     /// GTK widget doesn't support the event.
-    pub fn apply_to(self, el: &gtk_dom::Element) {
+    pub fn apply_to(self, el: &gtk_dom::Node) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
             PendingHandler::Change(cb) => el.on_value_change(cb),
@@ -196,7 +196,7 @@ pub struct OnAttribute {
 }
 
 impl OnAttribute {
-    pub fn apply(mut self, el: &gtk_dom::Element) {
+    pub fn apply(mut self, el: &gtk_dom::Node) {
         if let Some(h) = self.handler.take() {
             h.apply_to(el);
         }
@@ -208,7 +208,7 @@ impl OnAttribute {
 }
 
 impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
-    fn apply_to(self, el: &gtk_dom::Element) {
+    fn apply_to(self, el: &gtk_dom::Node) {
         OnAttribute::apply(self, el)
     }
 }

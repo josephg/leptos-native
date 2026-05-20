@@ -7,7 +7,7 @@
 //! calling [`OpenedWindow::show`].
 
 use crate::layout::{self, FlexDirection, TreeRef};
-use crate::node::{install_taffy_layout_for_container, Element};
+use crate::node::{install_taffy_layout_for_container, Node};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
@@ -16,7 +16,7 @@ use gtk4::prelude::*;
 /// root of.
 pub struct OpenedWindow {
     pub gtk_window: gtk4::ApplicationWindow,
-    pub content_root: Element,
+    pub content_root: Node,
     pub tree: TreeRef,
 }
 
@@ -41,7 +41,7 @@ pub fn open_window(
 
     // Build a fresh tree, then create the content root inside it.
     let tree = layout::new_tree();
-    let content_root = Element::create_vstack(&tree);
+    let content_root = Node::create_vstack(&tree);
     layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.

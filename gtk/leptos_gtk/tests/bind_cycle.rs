@@ -5,7 +5,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Element};
+use gtk_dom::{gtk::prelude::*, Node};
 use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
@@ -17,7 +17,7 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
         let tree = gtk_dom::layout::new_tree();
-        let text_field = Element::create_text_field(&tree).0;
+        let text_field = Node::create_text_field(&tree).0;
 
         text_field.set_value("hello");
         let after_first = text_field
@@ -43,7 +43,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
 fn set_bool_attribute_with_same_value_idempotent() {
     with_reactive_scope(|| {
         let tree = gtk_dom::layout::new_tree();
-        let checkbox = Element::create_checkbox(&tree).0;
+        let checkbox = Node::create_checkbox(&tree).0;
 
         checkbox.set_checked(true);
         let cb = checkbox

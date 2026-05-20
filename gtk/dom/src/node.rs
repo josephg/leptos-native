@@ -220,13 +220,6 @@ impl Node {
 // ---------------------------------------------------------------------
 // Node — typed-builder / renderer-protocol surface
 // ---------------------------------------------------------------------
-
-/// Backwards-compatibility alias. `Element` used to be a distinct
-/// wrapper over `Node`; after the kind-discriminant + Text/Placeholder
-/// unification, the wrapper had no remaining state. `Node` is now the
-/// single user-facing type for every gtk-backed arena entry.
-pub type Element = Node;
-
 impl Node {
     /// Identity. Kept (along with [`Self::into_node`]) so the
     /// pre-unification call style `el.as_node()` / `el.into_node()`

@@ -1,4 +1,4 @@
-//! Smoke tests for `Element::create` per tag.
+//! Smoke tests for `Node::create` per tag.
 //!
 //! Verifies each tag string maps to a GTK widget class.
 
@@ -6,49 +6,49 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Element};
+use gtk_dom::{gtk::prelude::*, Node};
 
 fn view_is_a_box() {
     let tree = gtk_dom::layout::new_tree();
     // `<view>` is a generic flexbox container, backed by gtk::Box
     // (with our TaffyLayout swapped in once mounted).
-    let el = Element::create_stack(&tree);
+    let el = Node::create_stack(&tree);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn vstack_is_a_box() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_vstack(&tree);
+    let el = Node::create_vstack(&tree);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn hstack_is_a_box() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_hstack(&tree);
+    let el = Node::create_hstack(&tree);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn stack_is_a_box() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_stack(&tree);
+    let el = Node::create_stack(&tree);
     assert!(el.widget().is::<gtk_dom::gtk::Box>());
 }
 
 fn button_is_gtk_button() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_button(&tree).0;
+    let el = Node::create_button(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::Button>());
 }
 
 fn checkbox_is_gtk_check_button() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_checkbox(&tree).0;
+    let el = Node::create_checkbox(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::CheckButton>());
 }
 
 fn label_is_gtk_label() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_label(&tree).0;
+    let el = Node::create_label(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::Label>());
 }
 
@@ -57,7 +57,7 @@ fn label_wraps_by_default() {
     // gtk::Label::wrap defaults to false, but we flip it on at
     // construction so multi-line text behaves like cocoa's
     // wrappingLabelWithString:.
-    let el = Element::create_label(&tree).0;
+    let el = Node::create_label(&tree).0;
     let l = el
         .widget()
         .downcast_ref::<gtk_dom::gtk::Label>()
@@ -67,7 +67,7 @@ fn label_wraps_by_default() {
 
 fn text_field_is_gtk_entry() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_text_field(&tree).0;
+    let el = Node::create_text_field(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::Entry>());
     assert!(
         !el.widget().is::<gtk_dom::gtk::PasswordEntry>(),
@@ -77,13 +77,13 @@ fn text_field_is_gtk_entry() {
 
 fn secure_text_field_is_password_entry() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_secure_text_field(&tree).0;
+    let el = Node::create_secure_text_field(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::PasswordEntry>());
 }
 
 fn slider_is_gtk_scale() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_slider(&tree).0;
+    let el = Node::create_slider(&tree).0;
     let v = el.widget();
     assert!(v.is::<gtk_dom::gtk::Scale>());
     let s = v.downcast_ref::<gtk_dom::gtk::Scale>().unwrap();
@@ -94,7 +94,7 @@ fn slider_is_gtk_scale() {
 
 fn pop_up_button_is_drop_down() {
     let tree = gtk_dom::layout::new_tree();
-    let el = Element::create_pop_up_button(&tree).0;
+    let el = Node::create_pop_up_button(&tree).0;
     assert!(el.widget().is::<gtk_dom::gtk::DropDown>());
 }
 

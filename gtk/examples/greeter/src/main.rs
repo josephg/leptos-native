@@ -31,7 +31,8 @@ mod app {
             "Greeter — bind:value",
             (360, 200),
             || view! { <Greeter /> },
-        );
+        )
+        .run();
     }
 }
 

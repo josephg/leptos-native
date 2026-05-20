@@ -85,7 +85,8 @@ mod app {
             "Counters — dynamic",
             (360, 520),
             || view! { <Counters /> },
-        );
+        )
+        .run();
     }
 }
 

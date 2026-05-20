@@ -29,7 +29,7 @@ fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
     V: Render<leptos_gtk::Dom>,
     V::State: Mountable<leptos_gtk::Dom>,
-    F: FnOnce(&gtk_dom::Element),
+    F: FnOnce(&gtk_dom::Node),
 {
     let app = gtk_dom::app::init_app("org.test.leptos_gtk.layout");
     let opened = gtk_dom::window::open_window(
@@ -37,7 +37,7 @@ where
         "test",
         (size.0 as i32, size.1 as i32),
     );
-    let mut state = view.build();
+    let mut state = view.build(&opened.tree);
     state.mount(&opened.content_root, None);
 
     layout::compute_layout(opened.content_root.as_node(), size);
@@ -50,7 +50,7 @@ where
 /// Walk the Taffy tree under `root` and collect the layouts of all
 /// leaf widgets that match `pred`.
 fn find_leaf_widgets<P>(
-    root: &gtk_dom::Element,
+    root: &gtk_dom::Node,
     mut pred: P,
 ) -> Vec<layout::Layout>
 where
@@ -64,8 +64,8 @@ where
     let mut out = Vec::new();
     walk(&tree, lh.node_id, &mut |id, w| {
         if pred(w) {
-            if let Ok(layout) = tree.tree.borrow().layout(id) {
-                out.push(*layout);
+            if let Some(layout) = tree.layout(id) {
+                out.push(layout);
             }
         }
     });
@@ -76,12 +76,8 @@ fn walk<F>(tree: &layout::TreeRef, id: layout::NodeId, f: &mut F)
 where
     F: FnMut(layout::NodeId, &gtk_dom::gtk::Widget),
 {
-    let (widget, children) = {
-        let t = tree.tree.borrow();
-        let widget = t.get_node_context(id).map(|c| c.widget.clone());
-        let kids = t.children(id).unwrap_or_default();
-        (widget, kids)
-    };
+    let widget = tree.view(id);
+    let children: Vec<_> = tree.children(id).to_vec();
     if let Some(w) = widget {
         f(id, &w);
     }
@@ -159,13 +155,11 @@ fn vstack_label_plus_hstack_has_full_height() {
         with_mounted_view(view, (320.0, 200.0), |root| {
             let lh = root.as_node().mounted_handle().unwrap();
             // First child of the content_root is the outer vstack.
-            let kids = lh.tree.tree.borrow().children(lh.node_id).unwrap();
+            let kids = lh.tree.children(lh.node_id).to_vec();
             assert!(!kids.is_empty(), "content_root has no children");
             let outer_id = kids[0];
-            let outer_layout = *lh
+            let outer_layout = lh
                 .tree
-                .tree
-                .borrow()
                 .layout(outer_id)
                 .expect("outer layout missing");
             assert!(

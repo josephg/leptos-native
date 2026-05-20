@@ -18,7 +18,7 @@ use gtk_dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    Element as GtkElement,
+    Node as GtkElement,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
@@ -375,8 +375,6 @@ where
             children: child_state,
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -608,8 +606,6 @@ where
             children: child_state,
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -749,8 +745,6 @@ impl Render<Dom> for Button {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -903,8 +897,6 @@ impl Render<Dom> for Checkbox {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1061,8 +1053,6 @@ impl Render<Dom> for Slider {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1204,8 +1194,6 @@ impl Render<Dom> for PopUpButton {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1312,8 +1300,6 @@ impl Render<Dom> for Label {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------
@@ -1499,8 +1485,6 @@ impl Render<Dom> for TextField {
             children: (),
         }
     }
-
-    fn rebuild(self, _state: &mut Self::State) {}
 }
 
 // ---------------------------------------------------------------------

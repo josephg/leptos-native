@@ -1,15 +1,15 @@
-//! Tests for the text-label (`Element::create_text`) and placeholder
-//! (`Element::create_placeholder`) constructors on `Element`.
+//! Tests for the text-label (`Node::create_text`) and placeholder
+//! (`Node::create_placeholder`) constructors on `Element`.
 
 #![cfg(feature = "gtk")]
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Element};
+use gtk_dom::{gtk::prelude::*, Node};
 
 fn text_create_basic() {
     let tree = gtk_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "hello");
+    let t = Node::create_text(&tree, "hello");
 
     let l = t
         .as_node()
@@ -21,7 +21,7 @@ fn text_create_basic() {
 
 fn text_create_empty() {
     let tree = gtk_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "");
+    let t = Node::create_text(&tree, "");
     let l = t
         .as_node()
         .widget()
@@ -32,7 +32,7 @@ fn text_create_empty() {
 
 fn text_create_multiline_preserves_newlines() {
     let tree = gtk_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "line one\nline two\nline three");
+    let t = Node::create_text(&tree, "line one\nline two\nline three");
     let l = t
         .as_node()
         .widget()
@@ -43,7 +43,7 @@ fn text_create_multiline_preserves_newlines() {
 
 fn text_set_text_updates_value() {
     let tree = gtk_dom::layout::new_tree();
-    let t = Element::create_text(&tree, "before");
+    let t = Node::create_text(&tree, "before");
     t.set_text("after");
     let l = t
         .as_node()
@@ -55,7 +55,7 @@ fn text_set_text_updates_value() {
 
 fn placeholder_create_is_invisible() {
     let tree = gtk_dom::layout::new_tree();
-    let p = Element::create_placeholder(&tree);
+    let p = Node::create_placeholder(&tree);
 
     let widget = p.as_node().widget();
     // Placeholders shouldn't take any layout space — gtk's
@@ -69,7 +69,7 @@ fn placeholder_backed_by_label_so_children_error() {
     // for placeholders so that a `placeholder.append(child)` attempt
     // would fail at the GTK type level rather than silently mounting
     // an invisible child.
-    let p = Element::create_placeholder(&tree);
+    let p = Node::create_placeholder(&tree);
     assert!(
         p.as_node().widget().is::<gtk_dom::gtk::Label>(),
         "Placeholder should be a gtk::Label so it can't accept children"

@@ -7,7 +7,7 @@
 use crate::gtk::element::{
     Checkbox, Label, PopUpButton, Slider, TextField,
 };
-use gtk_dom::Element as GtkElement;
+use gtk_dom::Node as GtkElement;
 use reactive_graph::{
     effect::RenderEffect,
     signal::RwSignal,
