@@ -30,8 +30,7 @@ fn NoProps() -> impl IntoView {
 fn no_prop_component_builds() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = NoProps().build(&tree);
+        let _ = NoProps().build();
     });
 }
 
@@ -45,8 +44,7 @@ fn WithProp(initial: i32) -> impl IntoView {
 fn required_prop_component_builds() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = WithProp(WithPropProps { initial: 42 }).build(&tree);
+        let _ = WithProp(WithPropProps { initial: 42 }).build();
     });
 }
 
@@ -60,21 +58,19 @@ fn WithOpt(#[prop(optional)] subtitle: Option<String>) -> impl IntoView {
 fn optional_prop_component_builds_without_value() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = WithOpt(WithOptProps::builder().build()).build(&tree);
+        let _ = WithOpt(WithOptProps::builder().build()).build();
     });
 }
 
 fn optional_prop_component_builds_with_value() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
         let _ = WithOpt(
             WithOptProps::builder()
                 .subtitle("hi".to_string())
                 .build(),
         )
-        .build(&tree);
+        .build();
     });
 }
 
@@ -88,8 +84,7 @@ fn WithDefault(#[prop(default = 7)] value: i32) -> impl IntoView {
 fn default_prop_value_used_when_omitted() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = WithDefault(WithDefaultProps::builder().build()).build(&tree);
+        let _ = WithDefault(WithDefaultProps::builder().build()).build();
     });
 }
 
@@ -109,8 +104,7 @@ fn snake_case_fn_yields_pascal_case_component() {
         // The user-visible component is `SnakeNamed`, not
         // `snake_named` — this assertion is at compile time. If the
         // PascalCase rewrite breaks, this stops compiling.
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = SnakeNamed().build(&tree);
+        let _ = SnakeNamed().build();
     });
 }
 
@@ -128,8 +122,7 @@ fn Transparent() -> impl IntoView {
 fn transparent_component_compiles_and_builds() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = Transparent().build(&tree);
+        let _ = Transparent().build();
     });
 }
 
@@ -143,21 +136,19 @@ fn Generic<T: ToString + 'static + Send>(value: T) -> impl IntoView {
 fn generic_component_with_int() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = Generic(GenericProps::builder().value(42i32).build()).build(&tree);
+        let _ = Generic(GenericProps::builder().value(42i32).build()).build();
     });
 }
 
 fn generic_component_with_string() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
         let _ = Generic(
             GenericProps::builder()
                 .value("hi".to_string())
                 .build(),
         )
-        .build(&tree);
+        .build();
     });
 }
 
@@ -176,8 +167,7 @@ fn Outer() -> impl IntoView {
 fn outer_can_invoke_inner_component() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = Outer().build(&tree);
+        let _ = Outer().build();
     });
 }
 
@@ -198,8 +188,7 @@ fn Counter(initial: i32) -> impl IntoView {
 fn counter_component_with_signal_compiles() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let _ = Counter(CounterProps { initial: 0 }).build(&tree);
+        let _ = Counter(CounterProps { initial: 0 }).build();
     });
 }
 
@@ -213,11 +202,10 @@ fn IntoProp(#[prop(into)] label_text: String) -> impl IntoView {
 fn into_prop_accepts_str() {
     let _mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
         let _ = IntoProp(
             IntoPropProps::builder().label_text("static").build(),
         )
-        .build(&tree);
+        .build();
     });
 }
 

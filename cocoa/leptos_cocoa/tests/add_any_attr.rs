@@ -35,11 +35,11 @@ fn add_any_attr_routes_on_click_to_button() {
                 *fired_clone.lock().unwrap() += 1;
             }),));
 
-        let tree = cocoa_dom::layout::new_tree();
-        let st = view.build(&tree);
+        let st = view.build();
 
         // Synthesise a click via the test helper.
-        let any: &objc2::runtime::AnyObject = st.el.ns_view().as_ref();
+        let view = st.el.ns_view();
+        let any: &objc2::runtime::AnyObject = view.as_ref();
         let control: &NSControl = any
             .downcast_ref::<NSControl>()
             .expect("button view is an NSControl");

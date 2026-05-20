@@ -55,7 +55,7 @@ fn show_without_fallback_mounts_on_flip_false_to_true() {
                 .build(),
         );
 
-        let mut state = <_ as Render<Dom>>::build(view, &opened.tree);
+        let mut state = <_ as Render<Dom>>::build(view);
         state.mount(&opened.content_root, None);
         common::pump_run_loop(0.05);
 

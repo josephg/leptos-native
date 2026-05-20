@@ -202,6 +202,16 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
     }
 }
 
+impl<ChildState> Drop for ElementState<ChildState> {
+    /// Safety net for an `ElementState` dropped without `unmount`
+    /// (orphaned before mount, or a panic mid-`build`): free our
+    /// store entry so it doesn't leak. `teardown` (→ `renderer::remove`)
+    /// is idempotent, so this is a no-op after a normal `unmount`.
+    fn drop(&mut self) {
+        self.el.teardown();
+    }
+}
+
 // ---------------------------------------------------------------------
 // view() — generic UIView container
 // ---------------------------------------------------------------------

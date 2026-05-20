@@ -6,6 +6,18 @@ top.
 
 ---
 
+## 2026-05-20 — Post-`NodeId`-refactor polish (port mirror)
+
+Cross-cutting follow-ups logged in `implementation_log.md`. iOS-side:
+added an idempotent **`ElementState::Drop`** (`self.el.teardown()`) as
+a leak safety net for an ElementState dropped without `unmount`, plus
+subtree/orphan `node_count() == baseline` assertions in
+`node_lifecycle` (run on the simulator). No debug overlay on iOS and
+no captured-root relayout scheduler, so the cocoa overlay/teleport
+fixes have no iOS counterpart.
+
+---
+
 ## 2026-05-19 — Direct typed attribute setters (port mirror)
 
 Mirrored the cocoa attribute-setter cleanup. Removed `StringAttr`

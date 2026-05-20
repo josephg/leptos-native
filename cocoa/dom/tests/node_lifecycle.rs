@@ -287,6 +287,76 @@ fn closure_capturing_node_does_not_pin_entry() {
 }
 
 // =====================================================================
+// 9. Whole-window teardown returns the store to its baseline
+// =====================================================================
+
+/// Open a window, mount a small subtree under its content_root, lay it
+/// out, then tear the content_root down (what `WindowState`'s cleanup
+/// closure does on window close). The shared node store must return to
+/// the exact count it had before the window opened — no per-window
+/// leak. This is the deterministic counterpart to the cocoa_fuzzer's
+/// baseline check.
+fn window_teardown_returns_to_baseline() {
+    use objc2_foundation::NSSize;
+
+    let mtm = common::test_mtm();
+    let baseline = layout::node_count();
+
+    let opened = cocoa_dom::window::open_window("leak-test", (320.0, 240.0), mtm);
+
+    // A container with a label and two buttons under content_root.
+    let row = Element::create_container();
+    let b1 = Element::create_button().0;
+    let b2 = Element::create_button().0;
+    layout::attach_child(row.as_node(), b1.as_node());
+    layout::attach_child(row.as_node(), b2.as_node());
+    let label = Element::create_label().0;
+
+    opened.content_root.insert_node(label.as_node(), None);
+    opened.content_root.insert_node(row.as_node(), None);
+
+    layout::compute_layout(opened.content_root.as_node(), NSSize::new(320.0, 240.0));
+
+    assert!(
+        layout::node_count() > baseline,
+        "mounting a subtree grows the store"
+    );
+
+    // Window close path: teardown the content_root (cascades the whole
+    // subtree out of the store), then close the NSWindow.
+    opened.content_root.as_node().teardown();
+    opened.close();
+
+    assert_eq!(
+        layout::node_count(),
+        baseline,
+        "store returned to baseline after window teardown — no leak"
+    );
+}
+
+/// An `ElementState`-style flow where the node is built but never
+/// mounted, then dropped. Here we model it at the dom layer: a node
+/// created and then dropped via `teardown` with no parent. (The
+/// leptos-layer `ElementState::Drop` safety net relies on this same
+/// idempotent teardown.) Confirms an unattached node is fully removed.
+fn unattached_node_teardown_returns_to_baseline() {
+    let _mtm = common::test_mtm();
+    let baseline = layout::node_count();
+
+    let el = Element::create_button().0;
+    assert_eq!(layout::node_count(), baseline + 1);
+
+    // Never attached to any parent — the orphan case. Explicit
+    // teardown frees it.
+    el.as_node().teardown();
+    assert_eq!(
+        layout::node_count(),
+        baseline,
+        "unattached node freed by teardown — no orphan leak"
+    );
+}
+
+// =====================================================================
 // Runner
 // =====================================================================
 
@@ -307,5 +377,7 @@ fn main() {
         ("weak_node_upgrades_while_present", weak_node_upgrades_while_present),
         ("weak_node_upgrade_fails_after_teardown", weak_node_upgrade_fails_after_teardown),
         ("closure_capturing_node_does_not_pin_entry", closure_capturing_node_does_not_pin_entry),
+        ("window_teardown_returns_to_baseline", window_teardown_returns_to_baseline),
+        ("unattached_node_teardown_returns_to_baseline", unattached_node_teardown_returns_to_baseline),
     ]);
 }
