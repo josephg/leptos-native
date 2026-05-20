@@ -177,6 +177,12 @@ where
         let owner = Owner::new();
         owner.set();
 
+        // Start the Chrome DevTools Protocol server if compiled in and
+        // requested at runtime (`LEPTOS_DEVTOOLS` env var). The spawner
+        // and glib main loop are both live by the time `activate` fires.
+        #[cfg(feature = "devtools")]
+        gtk_dom::devtools::start_from_env();
+
         let view = f(app);
         // Stub tree for the top-level build; the actual Window child
         // ignores this and builds against its own per-window tree.

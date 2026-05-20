@@ -21,7 +21,7 @@ impl Node {
         let b = gtk4::Button::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(b.clone(), s);
+        let n = Node::from_view(b.clone(), s).with_tag("button");
         (n, b)
     }
 
@@ -29,7 +29,7 @@ impl Node {
         let c = gtk4::CheckButton::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(c.clone(), s);
+        let n = Node::from_view(c.clone(), s).with_tag("checkbox");
         (n, c)
     }
 
@@ -42,7 +42,7 @@ impl Node {
         l.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(l.clone(), s);
+        let n = Node::from_view(l.clone(), s).with_tag("label");
         (n, l)
     }
 
@@ -50,7 +50,7 @@ impl Node {
         let e = gtk4::Entry::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(e.clone(), s);
+        let n = Node::from_view(e.clone(), s).with_tag("text_field");
         (n, e)
     }
 
@@ -58,7 +58,7 @@ impl Node {
         let e = gtk4::PasswordEntry::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(e.clone(), s);
+        let n = Node::from_view(e.clone(), s).with_tag("secure_text_field");
         (n, e)
     }
 
@@ -72,7 +72,7 @@ impl Node {
         scale.set_draw_value(false);
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(scale.clone(), s);
+        let n = Node::from_view(scale.clone(), s).with_tag("slider");
         (n, scale)
     }
 
@@ -80,7 +80,7 @@ impl Node {
         let dd = gtk4::DropDown::default();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
-        let n = Node::from_view(dd.clone(), s);
+        let n = Node::from_view(dd.clone(), s).with_tag("pop_up_button");
         (n, dd)
     }
 
@@ -89,7 +89,7 @@ impl Node {
         let w = container_widget();
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Row;
-        Node::from_view(w, s)
+        Node::from_view(w, s).with_tag("hstack")
     }
 
     /// Vertical flexbox container (`<vstack>` / `<stack_view>`).
@@ -97,14 +97,14 @@ impl Node {
         let w = container_widget();
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Column;
-        Node::from_view(w, s)
+        Node::from_view(w, s).with_tag("vstack")
     }
 
     /// Bare flexbox container — direction defaults to Row unless the
     /// builder sets it. `<stack>` / `<view>` route here.
     pub fn create_stack() -> Node {
         let w = container_widget();
-        Node::from_view(w, Style::default())
+        Node::from_view(w, Style::default()).with_tag("stack")
     }
 
     /// 2-D grid container backed by Taffy's grid algorithm. Template
@@ -114,7 +114,7 @@ impl Node {
         let w = container_widget();
         let mut s = Style::default();
         s.display = crate::layout::Display::Grid;
-        Node::from_view(w, s)
+        Node::from_view(w, s).with_tag("grid")
     }
 }
 

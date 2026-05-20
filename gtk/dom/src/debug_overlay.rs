@@ -255,28 +255,14 @@ pub fn mark_overlays_dirty() {
     });
 }
 
-/// Wrap `content_root` (the window's existing top-level content
-/// widget) in a `gtk::Overlay`, install our debug widget on top, and
-/// return the new overlay container. The caller is responsible for
-/// setting the overlay as the window's child.
-///
-/// Also installs a key controller on `window` that toggles overlay
-/// visibility on `~`.
-pub fn install(
-    window: &gtk4::ApplicationWindow,
-    content_root: &gtk4::Widget,
-    root_id: NodeId,
-) -> gtk4::Overlay {
-    let overlay = gtk4::Overlay::new();
-    overlay.set_child(Some(content_root));
-
+/// Add the debug overlay widget to an existing `gtk::Overlay` and
+/// install the `~`-toggle key controller on `window`.
+pub fn add_to(overlay: &gtk4::Overlay, window: &gtk4::ApplicationWindow, root_id: NodeId) {
     let widget = DebugOverlayWidget::new(root_id);
     overlay.add_overlay(&widget);
     OVERLAYS.with(|o| o.borrow_mut().push(widget.downgrade()));
 
     install_key_controller(window);
-
-    overlay
 }
 
 fn install_key_controller(window: &gtk4::ApplicationWindow) {

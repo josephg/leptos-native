@@ -172,8 +172,14 @@ pub fn set_style(node: Node, style: Style) {
 /// content changes that affect intrinsic size (button title, label
 /// text) so the cached measurement is invalidated.
 pub fn schedule_relayout(node: Node) {
-    renderer::mark_dirty::<GtkBackend>(node.id());
-    queue_root_resize_for(node.id());
+    schedule_relayout_for(node.id());
+}
+
+/// [`schedule_relayout`] keyed by raw `NodeId`. Used by tooling (the
+/// devtools inspector) that holds ids rather than `Node` handles.
+pub fn schedule_relayout_for(id: NodeId) {
+    renderer::mark_dirty::<GtkBackend>(id);
+    queue_root_resize_for(id);
 }
 
 // ---------------------------------------------------------------------

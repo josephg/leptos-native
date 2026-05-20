@@ -154,6 +154,10 @@ struct NodeData<B: LayoutBackend> {
     final_layout: Layout,
     parent: Option<NodeId>,
     children: Vec<NodeId>,
+    /// Human-readable element kind for debug tooling (devtools, overlay):
+    /// `"button"`, `"vstack"`, … Set once at construction by the port's
+    /// `make_view`; `""` if unset. Never shown to end users.
+    debug_tag_name: &'static str,
     // IMPORTANT: `handlers` MUST come before `view` so it drops first.
     // Port `Handlers` Drop impls nil setTarget/setDelegate on the
     // still-live view to sever AppKit/UIKit dispatch into freed memory.
@@ -171,6 +175,7 @@ impl<B: LayoutBackend> NodeData<B> {
             final_layout: Layout::new(),
             parent: None,
             children: Vec::new(),
+            debug_tag_name: "",
             handlers,
             view,
             meta,
@@ -368,7 +373,35 @@ impl<B: LayoutBackend> LayoutState<B> {
         }
     }
 
+    /// Record the element kind for debug tooling. Set once, just after
+    /// the node is created.
+    pub fn set_debug_tag_name(&mut self, id: NodeId, name: &'static str) {
+        if let Some(node) = self.nodes.get_mut(key(id)) {
+            node.debug_tag_name = name;
+        }
+    }
+
     // -- read accessors -----------------------------------------------
+
+    /// Element kind recorded by the port (`""` if unset).
+    pub fn debug_tag_name(&self, id: NodeId) -> &'static str {
+        self.with_node(id, |n| n.debug_tag_name).unwrap_or("")
+    }
+
+    /// Every live node id, in unspecified order. For debug tree-walking.
+    pub fn all_node_ids(&self) -> Vec<NodeId> {
+        self.nodes.keys().map(NodeId::from).collect()
+    }
+
+    /// Live nodes with no parent — the subtree roots (one per window /
+    /// scene, plus any detached/unattached nodes). For debug tree-walking.
+    pub fn roots(&self) -> Vec<NodeId> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| n.parent.is_none())
+            .map(|(k, _)| NodeId::from(k))
+            .collect()
+    }
 
     /// Final (rounded) layout.
     pub fn layout(&self, id: NodeId) -> Option<Layout> {
@@ -484,6 +517,24 @@ pub fn set_meta<B: LayoutBackend>(id: NodeId, meta: B::NodeMeta) {
 
 pub fn meta<B: LayoutBackend>(id: NodeId) -> Option<B::NodeMeta> {
     B::with_tree(|s| s.meta(id))
+}
+
+pub fn set_debug_tag_name<B: LayoutBackend>(id: NodeId, name: &'static str) {
+    B::with_tree(|s| s.set_debug_tag_name(id, name))
+}
+
+pub fn debug_tag_name<B: LayoutBackend>(id: NodeId) -> &'static str {
+    B::with_tree(|s| s.debug_tag_name(id))
+}
+
+/// Every live node id (unspecified order). For debug tooling.
+pub fn all_node_ids<B: LayoutBackend>() -> Vec<NodeId> {
+    B::with_tree(|s| s.all_node_ids())
+}
+
+/// Subtree roots — live nodes with no parent. For debug tooling.
+pub fn roots<B: LayoutBackend>() -> Vec<NodeId> {
+    B::with_tree(|s| s.roots())
 }
 
 pub fn view<B: LayoutBackend>(id: NodeId) -> Option<B::View> {

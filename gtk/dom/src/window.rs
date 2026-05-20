@@ -61,16 +61,19 @@ pub fn open_window(
         /* is_root */ true,
     );
 
-    #[cfg(feature = "debug-overlay")]
+    // When any overlay feature is on, wrap the content root in a single
+    // `gtk::Overlay` and attach each enabled overlay widget to it.
+    #[cfg(any(feature = "debug-overlay", feature = "devtools"))]
     {
-        let overlay = crate::debug_overlay::install(
-            &gtk_window,
-            &content_root.widget(),
-            root_id,
-        );
+        let overlay = gtk4::Overlay::new();
+        overlay.set_child(Some(&content_root.widget()));
+        #[cfg(feature = "debug-overlay")]
+        crate::debug_overlay::add_to(&overlay, &gtk_window, root_id);
+        #[cfg(feature = "devtools")]
+        crate::highlight::add_to(&overlay, root_id);
         gtk_window.set_child(Some(&overlay));
     }
-    #[cfg(not(feature = "debug-overlay"))]
+    #[cfg(not(any(feature = "debug-overlay", feature = "devtools")))]
     {
         gtk_window.set_child(Some(&content_root.widget()));
     }

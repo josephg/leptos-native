@@ -29,7 +29,11 @@ pub mod app;
 pub mod color;
 #[cfg(feature = "debug-overlay")]
 pub mod debug_overlay;
+#[cfg(feature = "devtools")]
+pub mod devtools;
 pub mod event;
+#[cfg(feature = "devtools")]
+pub mod highlight;
 pub mod layout;
 pub mod main_thread;
 mod make_view;

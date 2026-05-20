@@ -19,6 +19,10 @@ gtk = ["dep:gtk4", "dep:glib", "dep:gio", "dep:any_spawner", "dep:taffy"]
 # the `~` key. See `gtk_dom::debug_overlay`. Off by default — flip on
 # per-binary in the example's Cargo.toml when debugging layout.
 debug-overlay = ["gtk"]
+# Chrome DevTools Protocol server: inspect & live-edit the layout tree
+# from Chrome DevTools. Requires `gtk`. Started at runtime via the
+# `LEPTOS_DEVTOOLS` env var. See `gtk_dom::devtools`.
+devtools = ["gtk", "dep:leptos_devtools", "dep:futures"]
 
 [dependencies]
 renderer = { workspace = true }
@@ -28,6 +32,8 @@ glib = { workspace = true, default-features = true, optional = true }
 gio = { workspace = true, default-features = true, optional = true }
 any_spawner = { workspace = true, features = ["glib"], optional = true }
 taffy = { workspace = true, optional = true }
+leptos_devtools = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }

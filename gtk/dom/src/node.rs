@@ -74,6 +74,13 @@ impl Node {
         self.id
     }
 
+    /// Record the element kind for debug tooling (devtools inspector).
+    /// Cheap and harmless in release; set once at construction.
+    pub fn with_tag(self, tag: &'static str) -> Self {
+        renderer::set_debug_tag_name::<B>(self.id, tag);
+        self
+    }
+
     /// The underlying `gtk::Widget` (owned clone — cheap gobject
     /// refcount bump). Main-thread only. Panics if the node is gone.
     pub fn widget(self) -> gtk4::Widget {
@@ -133,7 +140,7 @@ impl Node {
 
     /// Generic flexbox container (gtk::Box-backed).
     pub fn create_container() -> Self {
-        Node::from_view(container_widget(), Style::default())
+        Node::from_view(container_widget(), Style::default()).with_tag("container")
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
@@ -492,7 +499,7 @@ impl Node {
         label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut style = Style::default();
         style.flex_shrink = 0.0;
-        Node::from_view(label, style)
+        Node::from_view(label, style).with_tag("#text")
     }
 
     /// Update the displayed string on a text-label Node.
@@ -515,7 +522,7 @@ impl Node {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Node::from_view(widget, style)
+        Node::from_view(widget, style).with_tag("placeholder")
     }
 }
 
