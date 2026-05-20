@@ -39,9 +39,7 @@ where
 {
     let _mtm = common::test_mtm();
 
-    let root = ios_dom::Element::create_vstack(&tree);
-    let tree = ios_dom::layout::new_tree();
-    ios_dom::layout::set_as_root(root.as_node(), &tree);
+    let root = ios_dom::Element::create_vstack();
 
     let mut state = view.build();
     state.mount(&root, None);
@@ -53,14 +51,12 @@ where
 
     f(&root);
     drop(state);
-    drop(root);
-    drop(tree);
 }
 
 fn walk(view: &objc2_ui_kit::UIView, f: &mut impl FnMut(&objc2_ui_kit::UIView)) {
     f(view);
     for sv in view.subviews().iter() {
-        walk(&*sv, f);
+        walk(&sv, f);
     }
 }
 
@@ -75,7 +71,7 @@ fn leaf_controls_have_nonzero_intrinsic_size() {
         );
         with_mounted_view(view, (320.0, 480.0), |root| {
             let mut found_label = false;
-            walk(root.ui_view(), &mut |v| {
+            walk(&root.ui_view(), &mut |v| {
                 let any: &AnyObject = v.as_ref();
                 if let Some(lbl) = any.downcast_ref::<UILabel>() {
                     found_label = true;
@@ -105,7 +101,7 @@ fn buttons_in_hstack_have_natural_size() {
             .child(button().title("Cancel"));
         with_mounted_view(view, (320.0, 100.0), |root| {
             let mut button_frames = Vec::new();
-            walk(root.ui_view(), &mut |v| {
+            walk(&root.ui_view(), &mut |v| {
                 let any: &AnyObject = v.as_ref();
                 if any.downcast_ref::<UIButton>().is_some() {
                     button_frames.push(v.frame());

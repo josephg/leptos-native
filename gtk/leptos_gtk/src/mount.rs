@@ -180,8 +180,7 @@ where
         let view = f(app);
         // Stub tree for the top-level build; the actual Window child
         // ignores this and builds against its own per-window tree.
-        let stub_tree = gtk_dom::layout::new_tree();
-        let state = view.build(&stub_tree);
+        let state = view.build();
 
         *built_for_activate.borrow_mut() = Some(AppState {
             state: Box::new(state),

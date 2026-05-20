@@ -121,15 +121,17 @@ pub struct NodeContext<B: LayoutBackend> {
 }
 
 /// The per-thread node store: a generational slotmap of [`NodeData`]
-/// plus the set of window/scene roots and the relayout-dedup flag.
-/// Ports hold one of these in a `thread_local!` and expose it via
-/// [`LayoutBackend::with_tree`].
+/// plus the relayout work-queue. Ports hold one of these in a
+/// `thread_local!` and expose it via [`LayoutBackend::with_tree`].
 pub struct LayoutState<B: LayoutBackend> {
     nodes: SlotMap<DefaultKey, NodeData<B>>,
-    /// Roots of every live window/scene subtree. Dispatched relayout
-    /// callbacks iterate these instead of walking up via `parent`
-    /// (which could hit a removed-and-reused id).
-    pub roots: Vec<NodeId>,
+    /// Subtree roots queued for recompute on the next main-loop tick.
+    /// The port's relayout scheduler walks up from a mutated node to
+    /// its root and enqueues just that root, so a change in one window
+    /// doesn't recompute the others. Drained when the pass runs; a root
+    /// freed before then resolves to `None` on lookup and is skipped
+    /// (generational keys never alias).
+    pending_relayout: Vec<NodeId>,
     /// Dedup flag for the port's relayout scheduler: `true` while a
     /// relayout pass is queued for the next main-loop tick.
     pub relayout_queued: Cell<bool>,
@@ -139,7 +141,7 @@ impl<B: LayoutBackend> Default for LayoutState<B> {
     fn default() -> Self {
         LayoutState {
             nodes: SlotMap::new(),
-            roots: Vec::new(),
+            pending_relayout: Vec::new(),
             relayout_queued: Cell::new(false),
         }
     }
@@ -249,8 +251,6 @@ impl<B: LayoutBackend> LayoutState<B> {
         if let Some(removed) = self.nodes.remove(key(id)) {
             out.push(removed);
         }
-        // Drop from the root set if it was a root.
-        self.roots.retain(|r| *r != id);
         // Invalidate the (former) parent's cached layout.
         if let Some(p) = parent {
             self.mark_dirty(p);
@@ -530,17 +530,32 @@ pub fn with_handlers_mut<B: LayoutBackend, R>(
     B::with_tree(|s| s.with_handlers_mut(id, f))
 }
 
-/// Register `id` as a window/scene root.
-pub fn add_root<B: LayoutBackend>(id: NodeId) {
+/// The topmost ancestor of `id` (its subtree root) — walk `parent`
+/// until there is none. Safe against freed intermediates: a missing
+/// node has no parent, so the walk stops. Returns `id` itself if it's
+/// already a root or absent.
+pub fn root_of<B: LayoutBackend>(id: NodeId) -> NodeId {
     B::with_tree(|s| {
-        if !s.roots.contains(&id) {
-            s.roots.push(id);
+        let mut cur = id;
+        while let Some(p) = s.parent(cur) {
+            cur = p;
+        }
+        cur
+    })
+}
+
+/// Enqueue `root` for recompute on the next relayout pass (deduped).
+pub fn queue_relayout<B: LayoutBackend>(root: NodeId) {
+    B::with_tree(|s| {
+        if !s.pending_relayout.contains(&root) {
+            s.pending_relayout.push(root);
         }
     })
 }
 
-pub fn roots<B: LayoutBackend>() -> Vec<NodeId> {
-    B::with_tree(|s| s.roots.clone())
+/// Drain the set of roots queued for recompute.
+pub fn take_pending_relayout<B: LayoutBackend>() -> Vec<NodeId> {
+    B::with_tree(|s| std::mem::take(&mut s.pending_relayout))
 }
 
 pub fn relayout_queued<B: LayoutBackend>() -> bool {

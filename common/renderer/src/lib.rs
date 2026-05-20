@@ -37,12 +37,14 @@ pub mod renderer;
 /// tuples, primitives, strings, iterators, either, fragments, keyed lists).
 pub mod view;
 
-/// Renderer-agnostic Taffy-backed layout engine — `LayoutTree<B>`
-/// generic over a [`LayoutBackend`](layout::LayoutBackend), the per-port
-/// `Style` re-exports, the grid track-sizing helpers, etc. Lives here
-/// (not its own crate) so [`setters`]'s `IntoMaybeReactive` impls for
-/// taffy types satisfy the orphan rule.
-pub mod layout;
+/// The retained render tree: a per-thread [`scene::LayoutState<B>`]
+/// node store (generational slotmap of view + style + handlers),
+/// generic over a [`LayoutBackend`](scene::LayoutBackend), with the
+/// Taffy layout engine, the `NodeId` free-fn API, the per-port `Style`
+/// re-exports, and the grid track-sizing helpers. Lives here (not its
+/// own crate) so [`setters`]'s `IntoMaybeReactive` impls for taffy
+/// types satisfy the orphan rule.
+pub mod scene;
 
 /// Generic, port-agnostic style mutators (`set_padding`,
 /// `set_grid_template_columns`, …) and the trait-driven
@@ -74,11 +76,10 @@ pub mod directive;
 /// read or written as a real element attribute.
 pub mod attr_keys;
 
-// Mirror the old `native_layout` crate root: re-export every layout
-// + setters item at the renderer root so consumer paths
-// (`use renderer::{Style, set_padding, LayoutNodeOps}`) match the
-// shape the per-port code already uses.
-pub use layout::*;
+// Re-export every scene + setters item at the renderer root so
+// consumer paths (`use renderer::{Style, set_padding, LayoutNodeOps}`)
+// match the shape the per-port code already uses.
+pub use scene::*;
 pub use setters::*;
 pub use window::{WindowPosition, WindowSize};
 

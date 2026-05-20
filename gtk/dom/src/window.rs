@@ -6,18 +6,16 @@
 //! against this and is responsible for mounting children before
 //! calling [`OpenedWindow::show`].
 
-use crate::layout::{self, FlexDirection, TreeRef};
+use crate::layout::{self, FlexDirection};
 use crate::node::{install_taffy_layout_for_container, Node};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
-/// `GtkApplicationWindow` itself, the content-root [`Element`] (its
-/// child), and the new Taffy tree the content root was registered as
-/// root of.
+/// `GtkApplicationWindow` itself and the content-root [`Node`] (its
+/// child). Nodes live in the ambient per-thread store.
 pub struct OpenedWindow {
     pub gtk_window: gtk4::ApplicationWindow,
     pub content_root: Node,
-    pub tree: TreeRef,
 }
 
 /// Open a `GtkApplicationWindow` with the given title and content
@@ -39,9 +37,7 @@ pub fn open_window(
         .default_height(size.1)
         .build();
 
-    // Build a fresh tree, then create the content root inside it.
-    let tree = layout::new_tree();
-    let content_root = Node::create_vstack(&tree);
+    let content_root = Node::create_vstack();
     layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.
@@ -54,18 +50,13 @@ pub fn open_window(
         renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
     }
 
-    // Publish the content_root as the tree's root and install our
-    // TaffyLayout as its layout manager (`is_root=true` so its
-    // `allocate` runs `compute_layout`).
-    layout::set_as_root(content_root.as_node(), &tree);
-    let root_id = content_root
-        .as_node()
-        .tree_id()
-        .expect("just registered")
-        .1;
+    // Install our TaffyLayout as the content root's layout manager
+    // (`is_root=true` so its `allocate` runs the layout pass). The
+    // relayout scheduler finds this root dynamically by walking up
+    // `parent` from any descendant.
+    let root_id = content_root.id();
     install_taffy_layout_for_container(
-        content_root.widget(),
-        &tree,
+        &content_root.widget(),
         root_id,
         /* is_root */ true,
     );
@@ -74,21 +65,19 @@ pub fn open_window(
     {
         let overlay = crate::debug_overlay::install(
             &gtk_window,
-            content_root.widget(),
-            &tree,
+            &content_root.widget(),
             root_id,
         );
         gtk_window.set_child(Some(&overlay));
     }
     #[cfg(not(feature = "debug-overlay"))]
     {
-        gtk_window.set_child(Some(content_root.widget()));
+        gtk_window.set_child(Some(&content_root.widget()));
     }
 
     OpenedWindow {
         gtk_window,
         content_root,
-        tree,
     }
 }
 

@@ -39,7 +39,7 @@ pub trait Render<R: Renderer>: Sized {
     type State: Mountable<R>;
 
     /// Builds the view for the first time. Nodes are allocated into the
-    /// ambient thread-local store (see [`crate::layout::LayoutBackend::with_tree`]).
+    /// ambient thread-local store (see [`crate::scene::LayoutBackend::with_tree`]).
     fn build(self) -> Self::State;
 
     /// Updates the view with new data, in place.
@@ -82,6 +82,9 @@ pub trait Mountable<R: Renderer> {
         }
     }
 
+    // I'd like to have this return an element iterator to prevent a lot of allocations,
+    // but this type needs to be able to go in Box<dyn _> for any_view.
+    // type ElemIter: Iterator<Item=R::Node>;
     /// Returns the elements owned by this view (used for things like NodeRef
     /// resolution).
     fn elements(&self) -> Vec<R::Node>;

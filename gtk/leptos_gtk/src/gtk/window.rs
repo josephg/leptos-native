@@ -69,7 +69,7 @@ where
 {
     type State = WindowState;
 
-    fn build(self, _outer_tree: &renderer::layout::TreeRef<<Dom as renderer::renderer::Renderer>::Backend>) -> Self::State {
+    fn build(self) -> Self::State {
         let app = self
             .application
             .expect("Window::build called without application; \
@@ -81,7 +81,7 @@ where
         // Build the user's view tree, then mount under the content
         // root. The mount cascade propagates the tree to every
         // descendant.
-        let mut children = self.children.build(&opened.tree);
+        let mut children = self.children.build();
         children.mount(&opened.content_root, None);
 
         // Show. GTK runs measure/allocate on the next frame, which

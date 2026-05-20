@@ -232,11 +232,6 @@ pub fn build_scroll_wrapper_style(axis: ScrollAxis) -> Style {
     wrapper_style
 }
 
-/// Register `node` as a window/scene root for the relayout scheduler.
-pub fn set_as_root(node: impl std::borrow::Borrow<Node>) {
-    renderer::add_root::<CocoaBackend>(node.borrow().id());
-}
-
 pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<objc2_app_kit::NSScrollView>()
@@ -244,37 +239,47 @@ pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
 }
 
 /// Remove the node (and its structural subtree) from the store and
-/// detach its NSView, marking the former parent dirty so its flex
-/// cache invalidates.
+/// detach its NSView, then schedule a relayout of the (former)
+/// parent's subtree so its flex layout recomputes without the node.
 pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
     let node = *node.borrow();
     let parent = renderer::parent::<CocoaBackend>(node.id());
     node.teardown();
     if let Some(pid) = parent {
-        renderer::mark_dirty::<CocoaBackend>(pid);
-        schedule_relayout_pass();
+        queue_relayout_for(pid);
     }
 }
 
 // ---------------------------------------------------------------------
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
+//
+// Each mutation walks up from the affected node to its subtree root
+// and enqueues just that root. The deferred pass recomputes only the
+// enqueued roots, so a change in one window doesn't relayout the rest.
 // ---------------------------------------------------------------------
 
-/// Schedule a re-layout. Marks `node` dirty (required for content
-/// changes on leaf controls so the measure callback re-runs) and
-/// queues a single pass over all roots for the next main-loop tick.
+/// Mark `node` dirty (so leaf measure callbacks re-run on content
+/// change) and queue its subtree root for the next relayout pass.
 pub fn schedule_relayout(node: Node) {
     renderer::mark_dirty::<CocoaBackend>(node.id());
-    schedule_relayout_pass();
+    queue_relayout_for(node.id());
 }
 
-fn schedule_relayout_pass() {
+/// Walk up from `id` to its subtree root, enqueue that root, and make
+/// sure a relayout pass is scheduled for the next main-loop tick.
+fn queue_relayout_for(id: NodeId) {
+    let root = renderer::root_of::<CocoaBackend>(id);
+    renderer::queue_relayout::<CocoaBackend>(root);
+    ensure_relayout_pass_scheduled();
+}
+
+fn ensure_relayout_pass_scheduled() {
     // Snapshot the in-flight animation BEFORE the dedup check — the
     // deferred compute_layout runs after CURRENT is cleared.
     #[cfg(feature = "animation")]
     crate::animation::capture_for_layout();
 
-    // Dedup: one global "is a pass queued?" flag in the store.
+    // Dedup: one "is a pass queued?" flag in the store.
     if renderer::relayout_queued::<CocoaBackend>() {
         return;
     }
@@ -282,8 +287,9 @@ fn schedule_relayout_pass() {
 
     DispatchQueue::main().exec_async(move || {
         renderer::set_relayout_queued::<CocoaBackend>(false);
-        // Recompute every live root subtree against its view's frame.
-        for root_id in renderer::roots::<CocoaBackend>() {
+        // Recompute only the roots that were touched this tick. A root
+        // freed before now resolves to `None` and is skipped.
+        for root_id in renderer::take_pending_relayout::<CocoaBackend>() {
             let Some(view) = renderer::view::<CocoaBackend>(root_id) else {
                 continue;
             };
@@ -310,19 +316,19 @@ fn taffy_child_parent(parent: Node) -> NodeId {
 pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = taffy_child_parent(*parent.borrow());
     renderer::add_child::<CocoaBackend>(parent_id, child.borrow().id());
-    schedule_relayout_pass();
+    queue_relayout_for(parent_id);
 }
 
 pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
     let parent_id = taffy_child_parent(*parent.borrow());
     renderer::insert_child_at_index::<CocoaBackend>(parent_id, index, child.borrow().id());
-    schedule_relayout_pass();
+    queue_relayout_for(parent_id);
 }
 
 pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = taffy_child_parent(*parent.borrow());
     renderer::remove_child::<CocoaBackend>(parent_id, child.borrow().id());
-    schedule_relayout_pass();
+    queue_relayout_for(parent_id);
 }
 
 // ---------------------------------------------------------------------

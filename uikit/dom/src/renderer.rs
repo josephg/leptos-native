@@ -90,12 +90,12 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Element {
-        Element::create_text(tree, text)
+    pub fn create_text_node(text: &str) -> Element {
+        Element::create_text(text)
     }
 
-    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Element {
-        Element::create_placeholder(tree)
+    pub fn create_placeholder() -> Element {
+        Element::create_placeholder()
     }
 
     pub fn set_text(node: &Element, text: &str) {
@@ -124,7 +124,9 @@ impl Renderer {
     }
 
     pub fn remove(node: &Node) {
-        node.ui_view().removeFromSuperview();
+        // Detach the view and remove the node (and its structural
+        // subtree) from the store, returning node count to baseline.
+        crate::layout::drop_node(node);
     }
 
     pub fn get_parent(_node: &Node) -> Option<Node> {

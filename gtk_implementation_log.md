@@ -964,3 +964,13 @@ GTK does its own layout. This stage may end up being just:
   independent — `gtk::ApplicationWindow` instances share an
   `Application` but layout separately. Should Just Work, but worth
   validating with a `two_windows_gtk` example mirroring cocoa's.
+
+## 2026-05-20 — TLS node store + `Copy` `NodeId` (see implementation_log.md)
+
+The cross-cutting `Node`-becomes-`NodeId`-over-a-thread-local-store
+refactor landed on this port too, mirroring cocoa one-for-one. Full
+rationale + the shared design is in the top entry of
+`implementation_log.md` (2026-05-20). Port-local notes: same
+`LayoutBackend::with_tree` + `thread_local!` store, `Node` is a `Copy`
+id (no `Rc`/`SendWrapper`/refcount), explicit teardown+cascade
+lifecycle, and the walk-up-to-root relayout scheduler.

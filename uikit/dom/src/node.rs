@@ -16,7 +16,7 @@
 //!
 //! See the crate-level docs for the threading contract.
 
-use crate::layout::{IosMeta, LayoutHandle, NodeId, Style, TreeRef};
+use crate::layout::{IosMeta, NodeId, Style};
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
     MainThreadOnly, Message,
@@ -26,50 +26,24 @@ use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, fmt, rc::Rc};
 
-/// The core node wrapper — a thin handle into a `LayoutTree` arena.
+/// Per-port backend alias.
+type B = crate::layout::IosBackend;
+
+/// A handle into the ambient node store — structurally just a
+/// generational [`NodeId`]. `Copy + Send`.
 ///
-/// `Node` is `Clone` (single Rc bump) and `Send + 'static` (via
-/// [`SendWrapper`]). Touched only from the main thread.
-///
-/// Every Node clone shares one `Rc<NodeInner>`. When the last clone
-/// of an OWNING Node drops, `NodeInner::Drop` calls
-/// `tree.decref(id)`. The arena's removal rule (refcount=0 AND
-/// parent=None) decides whether to actually free the entry.
-///
-/// For closure-capture patterns that need to refer back to a node
-/// without forming reference cycles, use [`WeakNode`] / [`WeakElement`].
-#[derive(Clone)]
+/// All per-node state (the `UIView`, Taffy style, [`IosMeta`], ObjC
+/// handler retains) lives in `LayoutState<IosBackend>`; accessors read
+/// through the store keyed by `id`. A `Node` owns nothing — capturing
+/// one in a handler closure can't form a retain cycle.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Node {
-    inner: SendWrapper<Rc<NodeInner>>,
-}
-
-pub(crate) struct NodeInner {
-    tree: TreeRef,
-    id: NodeId,
-    /// Cached `Retained<UIView>` so `ui_view() -> &UIView` doesn't
-    /// need an arena borrow. Adds one ObjC retain per `NodeInner`
-    /// (the arena's `NodeData::view` is the other retain).
-    view: Retained<UIView>,
-    /// When true, `Drop` does NOT decref the arena entry.
-    is_borrowed: bool,
-}
-
-impl Drop for NodeInner {
-    fn drop(&mut self) {
-        if !self.is_borrowed {
-            self.tree.decref(self.id);
-        }
-    }
+    pub(crate) id: NodeId,
 }
 
 impl fmt::Debug for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ptr: *const UIView = &*self.inner.view;
-        f.debug_struct("Node")
-            .field("id", &self.inner.id)
-            .field("ptr", &ptr)
-            .field("borrowed", &self.inner.is_borrowed)
-            .finish()
+        f.debug_struct("Node").field("id", &self.id).finish()
     }
 }
 
@@ -81,24 +55,8 @@ impl AsRef<Node> for Node {
 
 impl Node {
     /// Typed registration primitive: hand in a concrete UIView
-    /// subclass, get back a `Node` owning a fresh arena entry. Used
-    /// by every typed-builder construction path in `leptos_uikit`
-    /// and by [`Node::create_text`] / [`Node::create_placeholder`].
+    /// subclass, get back a `Node`.
     pub fn from_view<V>(
-        tree: &TreeRef,
-        view: Retained<V>,
-        default_style: Style,
-        default_meta: IosMeta,
-    ) -> Self
-    where
-        V: AsRef<UIView> + Message,
-    {
-        Self::create_in_tree(tree, view, default_style, default_meta)
-    }
-
-    /// Legacy alias for [`Self::from_view`].
-    pub(crate) fn create_in_tree<V>(
-        tree: &TreeRef,
         view: Retained<V>,
         default_style: Style,
         default_meta: IosMeta,
@@ -107,129 +65,92 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let view_for_arena = view.clone();
-        let id = tree.new_leaf(
+        let id = renderer::new_leaf::<B>(
             default_style,
-            SendWrapper::new(view_for_arena),
+            SendWrapper::new(view.clone()),
             default_meta,
             crate::event::IosNodeHandlers::default(),
         );
-        // Wire the handlers' view back-ref so Drop can nil
+        // Wire the handlers' view back-ref so teardown can nil
         // setDelegate / removeAllTargets while the view is still alive.
-        tree.with_handlers_mut(id, |h| h.attach_view(view.clone()));
-
-        let inner = NodeInner {
-            tree: tree.clone(),
-            id,
-            view,
-            is_borrowed: false,
-        };
-        Node { inner: SendWrapper::new(Rc::new(inner)) }
+        renderer::with_handlers_mut::<B, _>(id, |h| h.attach_view(view));
+        Node { id }
     }
 
-    /// Build a Node wrapping `view` with a pre-existing
-    /// [`LayoutHandle`]. The resulting Node is **borrowed**: its
-    /// `Drop` does NOT remove the arena entry.
-    pub fn from_view_with_handle<V>(
-        view: Retained<V>,
-        handle: LayoutHandle,
-    ) -> Self
-    where
-        V: AsRef<UIView> + Message,
-    {
-        let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let inner = NodeInner {
-            tree: handle.tree,
-            id: handle.node_id,
-            view,
-            is_borrowed: true,
-        };
-        Node { inner: SendWrapper::new(Rc::new(inner)) }
+    /// Wrap an existing store id as a `Node`.
+    pub fn from_id(id: NodeId) -> Self {
+        Node { id }
     }
 
-    pub fn ui_view(&self) -> &UIView {
-        &self.inner.view
+    /// The node's `NodeId`.
+    pub fn id(self) -> NodeId {
+        self.id
     }
 
-    pub fn ui_view_retained(&self) -> Retained<UIView> {
-        self.inner.view.clone()
+    /// The underlying UIView (owned clone). Main-thread only. Panics
+    /// if the node is no longer in the store.
+    pub fn ui_view(self) -> Retained<UIView> {
+        renderer::view::<B>(self.id)
+            .map(|sw| sw.take())
+            .expect("Node id must exist in the store")
     }
 
-    pub fn ptr_eq(&self, other: &Node) -> bool {
-        let a: *const UIView = &*self.inner.view;
-        let b: *const UIView = &*other.inner.view;
-        a == b
+    /// `Some(view)` if the node is still in the store.
+    pub fn try_ui_view(self) -> Option<Retained<UIView>> {
+        renderer::view::<B>(self.id).map(|sw| sw.take())
     }
 
-    /// Drop the resources owned by this node and detach it from its
-    /// superview. Removes the arena entry eagerly (bypasses the
-    /// refcount-still-positive reachability check).
-    pub fn teardown(&self) {
-        self.inner.tree.remove(self.inner.id);
-        self.ui_view().removeFromSuperview();
+    pub fn ui_view_retained(self) -> Retained<UIView> {
+        self.ui_view()
+    }
+
+    pub fn ptr_eq(self, other: &Node) -> bool {
+        self.id == other.id
+    }
+
+    /// Remove this node (and its structural subtree) from the store
+    /// and detach its UIView.
+    pub fn teardown(self) {
+        if let Some(view) = self.try_ui_view() {
+            view.removeFromSuperview();
+        }
+        renderer::remove::<B>(self.id);
     }
 
     // ---- Accessor surface ------------------------------------------
 
-    /// Borrow the node's [`Style`] for read.
-    pub fn with_style<R>(&self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+    pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
+        let style = renderer::style::<B>(self.id).unwrap_or_default();
         f(&style)
     }
 
-    /// Mutate the node's [`Style`]. Pushed straight into the tree
-    /// (which marks the node dirty).
-    pub fn with_style_mut<R>(&self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = self.inner.tree.style(self.inner.id).unwrap_or_default();
+    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
+        let mut style = renderer::style::<B>(self.id).unwrap_or_default();
         let r = f(&mut style);
-        self.inner.tree.set_style(self.inner.id, style);
+        renderer::set_style::<B>(self.id, style);
         r
     }
 
-    /// Borrow the node's [`IosMeta`] for read.
-    pub fn with_meta<R>(&self, f: impl FnOnce(&IosMeta) -> R) -> R {
-        let meta = self.inner.tree.meta(self.inner.id).unwrap_or_default();
+    pub fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R {
+        let meta = renderer::meta::<B>(self.id).unwrap_or_default();
         f(&meta)
     }
 
-    /// Mutate the node's [`IosMeta`]. Pushed back into the tree.
-    pub fn with_meta_mut<R>(&self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
-        let mut meta = self.inner.tree.meta(self.inner.id).unwrap_or_default();
+    pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
+        let mut meta = renderer::meta::<B>(self.id).unwrap_or_default();
         let r = f(&mut meta);
-        self.inner.tree.set_meta(self.inner.id, meta);
+        renderer::set_meta::<B>(self.id, meta);
         r
     }
 
-    /// Mutate this node's per-node handler set in the arena.
+    /// Mutate this node's per-node handler set in the store. Panics if
+    /// the node isn't present (handlers install on live nodes).
     pub fn with_handlers_mut<R>(
-        &self,
+        self,
         f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
     ) -> R {
-        self.inner
-            .tree
-            .with_handlers_mut(self.inner.id, f)
-            .expect("Node id must exist in arena")
-    }
-
-    /// Returns the `(TreeRef, NodeId)` pair. Always `Some` now that
-    /// every Node has a tree from creation — the `Option` is kept for
-    /// API stability.
-    pub fn tree_id(&self) -> Option<(TreeRef, NodeId)> {
-        Some((self.inner.tree.clone(), self.inner.id))
-    }
-
-    /// Cheap accessor for the LayoutHandle.
-    pub fn mounted_handle(&self) -> Option<LayoutHandle> {
-        Some(LayoutHandle {
-            tree: self.inner.tree.clone(),
-            node_id: self.inner.id,
-        })
-    }
-
-    /// Test-only: number of strong refs to the inner Rc.
-    #[doc(hidden)]
-    pub fn handlers_rc_count_for_test(&self) -> usize {
-        Rc::strong_count(&*self.inner)
+        renderer::with_handlers_mut::<B, _>(self.id, f)
+            .expect("Node id must exist in the store")
     }
 }
 
@@ -259,27 +180,27 @@ impl Node {
     /// Generic UIView container (default style). Used by
     /// `<view>` / `<stack>` builders and by `RootViewController`
     /// for the content root.
-    pub fn create_container(tree: &TreeRef) -> Self {
+    pub fn create_container() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_container_with(tree, mtm)
+        Self::create_container_with(mtm)
     }
 
-    pub fn create_container_with(tree: &TreeRef, mtm: MainThreadMarker) -> Self {
+    pub fn create_container_with(mtm: MainThreadMarker) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
         let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
         let view: Retained<UIView> = UIView::initWithFrame(UIView::alloc(mtm), frame);
-        Node::from_view(tree, view, Style::default(), IosMeta::default())
+        Node::from_view(view, Style::default(), IosMeta::default())
     }
 
 
     /// The UIView that *actually* parents this element's children.
-    pub fn subview_parent(&self) -> Retained<UIView> {
+    pub fn subview_parent(self) -> Retained<UIView> {
         let direct = self.ui_view();
         let routes_to_doc = self.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
             if let Some(scroll) =
-                downcast::<objc2_ui_kit::UIScrollView>(direct)
+                downcast::<objc2_ui_kit::UIScrollView>(&direct)
             {
                 let subs = scroll.subviews();
                 if subs.count() > 0 {
@@ -287,24 +208,24 @@ impl Node {
                 }
             }
         }
-        direct.into()
+        direct
     }
 
-    pub fn insert_node(&self, child: &Node, marker: Option<&Node>) {
+    pub fn insert_node(self, child: &Node, marker: Option<&Node>) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
         let child_view = child.ui_view();
 
         match marker {
             None => {
-                parent.addSubview(child_view);
-                crate::layout::attach_child(self, child);
+                parent.addSubview(&child_view);
+                crate::layout::attach_child(self, *child);
             }
             Some(marker) => {
                 let marker_view = marker.ui_view();
-                parent.insertSubview_belowSubview(child_view, marker_view);
+                parent.insertSubview_belowSubview(&child_view, &marker_view);
                 let subviews = parent.subviews();
-                let child_ptr: *const UIView = child_view;
+                let child_ptr: *const UIView = &*child_view;
                 let mut child_index = subviews.len();
                 for (i, sv) in subviews.iter().enumerate() {
                     let sv_ptr: *const UIView = &*sv;
@@ -315,14 +236,14 @@ impl Node {
                 }
                 crate::layout::insert_child_at(
                     self,
-                    child,
+                    *child,
                     child_index,
                 );
             }
         }
     }
 
-    pub fn remove_child(&self, child: &Node) -> Option<Node> {
+    pub fn remove_child(self, child: &Node) -> Option<Node> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const UIView = &*parent_retained;
         let child_view = child.ui_view();
@@ -338,11 +259,11 @@ impl Node {
             return None;
         }
         child_view.removeFromSuperview();
-        crate::layout::detach_child(self, child);
-        Some(child.clone())
+        crate::layout::detach_child(self, *child);
+        Some(*child)
     }
 
-    pub fn clear_children(&self) {
+    pub fn clear_children(self) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
         let subs = parent.subviews();
@@ -353,10 +274,10 @@ impl Node {
 
     /// Set the title on a UIButton (Normal state) or the text on a
     /// UILabel. No-op on other classes.
-    pub fn set_title(&self, value: &str) {
+    pub fn set_title(self, value: &str) {
         let view = self.ui_view();
         let mut changed = false;
-        if let Some(button) = downcast::<UIButton>(view) {
+        if let Some(button) = downcast::<UIButton>(&view) {
             let current = button
                 .titleForState(objc2_ui_kit::UIControlState::Normal)
                 .map(|s| s.to_string())
@@ -369,7 +290,7 @@ impl Node {
                 changed = true;
             }
         }
-        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             let current = label.text().map(|s| s.to_string()).unwrap_or_default();
             if current != value {
                 label.setText(Some(&NSString::from_str(value)));
@@ -383,17 +304,17 @@ impl Node {
 
     /// Set the text/value on a UITextField or UITextView. No-op on
     /// other classes.
-    pub fn set_value(&self, value: &str) {
+    pub fn set_value(self, value: &str) {
         let view = self.ui_view();
         let mut changed = false;
-        if let Some(field) = downcast::<UITextField>(view) {
+        if let Some(field) = downcast::<UITextField>(&view) {
             let current = field.text().map(|s| s.to_string()).unwrap_or_default();
             if current != value {
                 field.setText(Some(&NSString::from_str(value)));
                 changed = true;
             }
         }
-        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
+        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(&view) {
             let current = tv.text().to_string();
             if current != value {
                 tv.setText(Some(&NSString::from_str(value)));
@@ -406,9 +327,9 @@ impl Node {
     }
 
     /// Set the placeholder on a UITextField. No-op on other classes.
-    pub fn set_placeholder(&self, value: &str) {
+    pub fn set_placeholder(self, value: &str) {
         let view = self.ui_view();
-        if let Some(field) = downcast::<UITextField>(view) {
+        if let Some(field) = downcast::<UITextField>(&view) {
             let current: String = field
                 .placeholder()
                 .map(|s| s.to_string())
@@ -421,7 +342,7 @@ impl Node {
     }
 
     /// Toggle UIView visibility.
-    pub fn set_hidden(&self, value: bool) {
+    pub fn set_hidden(self, value: bool) {
         let view = self.ui_view();
         if view.isHidden() != value {
             view.setHidden(value);
@@ -431,12 +352,12 @@ impl Node {
     /// Toggle user-interaction / enabled state. Sets
     /// `isUserInteractionEnabled` on the UIView; for UIControl
     /// subclasses, also sets `isEnabled`.
-    pub fn set_enabled(&self, value: bool) {
+    pub fn set_enabled(self, value: bool) {
         let view = self.ui_view();
         if view.isUserInteractionEnabled() != value {
             view.setUserInteractionEnabled(value);
         }
-        if let Some(control) = downcast::<UIControl>(view) {
+        if let Some(control) = downcast::<UIControl>(&view) {
             if control.isEnabled() != value {
                 control.setEnabled(value);
             }
@@ -445,81 +366,81 @@ impl Node {
 
     /// Set the on/off state on a UISwitch (animated). No-op on
     /// other classes.
-    pub fn set_checked(&self, value: bool) {
+    pub fn set_checked(self, value: bool) {
         let view = self.ui_view();
-        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(view) {
+        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(&view) {
             if sw.isOn() != value {
                 sw.setOn_animated(value, true);
             }
         }
     }
 
-    pub fn on_click(&self, cb: impl FnMut() + 'static) {
+    pub fn on_click(self, cb: impl FnMut() + 'static) {
         let view = self.ui_view();
-        if downcast::<UIControl>(view).is_some() {
+        if downcast::<UIControl>(&view).is_some() {
             crate::event::on_control_action(self, cb);
         } else {
             crate::event::on_tap_gesture(self, cb);
         }
     }
 
-    pub fn on_action(&self, cb: impl FnMut() + 'static) {
+    pub fn on_action(self, cb: impl FnMut() + 'static) {
         crate::event::on_control_action(self, cb);
     }
 
-    pub fn on_value_change(&self, mut cb: impl FnMut() + Send + 'static) {
-        if downcast::<UITextField>(self.ui_view()).is_some() {
+    pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
+        if downcast::<UITextField>(&self.ui_view()).is_some() {
             crate::event::on_text_field_change(self, move |_| cb());
             return;
         }
         crate::event::on_control_action(self, cb);
     }
 
-    pub fn on_text_change(&self, cb: impl FnMut(String) + 'static) {
+    pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
         crate::event::on_text_field_change(self, cb);
     }
 
-    pub fn on_text_end_editing(&self, cb: impl FnMut(String) + 'static) {
+    pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
         crate::event::on_text_field_end_editing(self, cb);
     }
 
-    pub fn on_text_focus(&self, cb: impl FnMut() + 'static) {
+    pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
         crate::event::on_text_field_focus(self, cb);
     }
 
-    pub fn on_text_blur(&self, cb: impl FnMut() + 'static) {
+    pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
         crate::event::on_text_field_blur(self, cb);
     }
 
     pub fn on_text_keydown(
-        &self,
+        self,
         _cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
         // Deferred: UIKeyCommand + pressesBegan:
     }
 
     pub fn on_text_keyup(
-        &self,
+        self,
         _cb: impl FnMut(crate::KeyEvent) + 'static,
     ) {
     }
 
-    pub fn checked(&self) -> bool {
-        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(self.ui_view()) {
+    pub fn checked(self) -> bool {
+        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(&self.ui_view()) {
             return sw.isOn();
         }
         false
     }
 
-    pub fn double_value(&self) -> f64 {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
+    pub fn double_value(self) -> f64 {
+        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
             return sl.value() as f64;
         }
         0.0
     }
 
-    pub fn set_double_value(&self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
+    pub fn set_double_value(self, v: f64) {
+        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
             let current = sl.value() as f64;
             if (current - v).abs() > f64::EPSILON {
                 sl.setValue(v as f32);
@@ -527,21 +448,21 @@ impl Node {
         }
     }
 
-    pub fn set_slider_min(&self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
+    pub fn set_slider_min(self, v: f64) {
+        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
             sl.setMinimumValue(v as f32);
         }
     }
 
-    pub fn set_slider_max(&self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(self.ui_view()) {
+    pub fn set_slider_max(self, v: f64) {
+        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
             sl.setMaximumValue(v as f32);
         }
     }
 
-    pub fn set_segmented_items(&self, items: &[String]) {
+    pub fn set_segmented_items(self, items: &[String]) {
         let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
+            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
         else {
             return;
         };
@@ -558,18 +479,18 @@ impl Node {
         }
     }
 
-    pub fn segmented_selection(&self) -> isize {
+    pub fn segmented_selection(self) -> isize {
         if let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
+            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
         {
             return sc.selectedSegmentIndex();
         }
         -1
     }
 
-    pub fn set_segmented_selection(&self, idx: isize) {
+    pub fn set_segmented_selection(self, idx: isize) {
         if let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(self.ui_view())
+            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
         {
             if sc.selectedSegmentIndex() != idx {
                 sc.setSelectedSegmentIndex(idx);
@@ -578,13 +499,13 @@ impl Node {
     }
 
     pub fn set_popup_items(
-        &self,
+        self,
         items: &[String],
         selected_idx: usize,
         on_select: impl FnMut(usize) + 'static,
     ) {
         use objc2_ui_kit::{UIAction, UIMenu, UIMenuElement, UIMenuElementState};
-        let Some(button) = downcast::<UIButton>(self.ui_view()) else {
+        let Some(button) = downcast::<UIButton>(&self.ui_view()) else {
             return;
         };
         let mtm = MainThreadMarker::new()
@@ -637,8 +558,8 @@ impl Node {
         }
     }
 
-    pub fn set_popup_selection(&self, items: &[String], idx: usize) {
-        let Some(button) = downcast::<UIButton>(self.ui_view()) else {
+    pub fn set_popup_selection(self, items: &[String], idx: usize) {
+        let Some(button) = downcast::<UIButton>(&self.ui_view()) else {
             return;
         };
         if let Some(t) = items.get(idx) {
@@ -657,27 +578,27 @@ impl Node {
         }
     }
 
-    pub fn set_color_well_value(&self, color: crate::Color) {
+    pub fn set_color_well_value(self, color: crate::Color) {
         use objc2_ui_kit::UIColorWell;
-        let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
+        let Some(cw) = downcast::<UIColorWell>(&self.ui_view()) else {
             return;
         };
         cw.setSelectedColor(Some(&color.to_uicolor()));
     }
 
-    pub fn color_well_value(&self) -> Option<crate::Color> {
+    pub fn color_well_value(self) -> Option<crate::Color> {
         use objc2_ui_kit::UIColorWell;
-        let cw = downcast::<UIColorWell>(self.ui_view())?;
+        let cw = downcast::<UIColorWell>(&self.ui_view())?;
         let c = cw.selectedColor()?;
         crate::Color::from_uicolor(&c)
     }
 
     pub fn on_color_change(
-        &self,
+        self,
         mut cb: impl FnMut(crate::Color) + 'static,
     ) {
         use objc2_ui_kit::UIColorWell;
-        let Some(cw) = downcast::<UIColorWell>(self.ui_view()) else {
+        let Some(cw) = downcast::<UIColorWell>(&self.ui_view()) else {
             return;
         };
         let cw_for_cb: Retained<UIColorWell> = cw.retain();
@@ -690,7 +611,7 @@ impl Node {
         });
     }
 
-    pub fn set_alpha(&self, alpha: f64) {
+    pub fn set_alpha(self, alpha: f64) {
         let v = self.ui_view();
         let clamped = alpha.clamp(0.0, 1.0);
         if (v.alpha() - clamped).abs() > f64::EPSILON {
@@ -698,7 +619,7 @@ impl Node {
         }
     }
 
-    pub fn set_background_color(&self, color: Option<crate::Color>) {
+    pub fn set_background_color(self, color: Option<crate::Color>) {
         let v = self.ui_view();
         match color {
             Some(c) => v.setBackgroundColor(Some(&c.to_uicolor())),
@@ -706,7 +627,7 @@ impl Node {
         }
     }
 
-    pub fn set_corner_radius(&self, radius: f64) {
+    pub fn set_corner_radius(self, radius: f64) {
         let layer = self.ui_view().layer();
         if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
             layer.setCornerRadius(radius);
@@ -714,14 +635,14 @@ impl Node {
         }
     }
 
-    pub fn set_border_width(&self, width: f64) {
+    pub fn set_border_width(self, width: f64) {
         let layer = self.ui_view().layer();
         if (layer.borderWidth() - width).abs() > f64::EPSILON {
             layer.setBorderWidth(width);
         }
     }
 
-    pub fn set_border_color(&self, color: Option<crate::Color>) {
+    pub fn set_border_color(self, color: Option<crate::Color>) {
         let layer = self.ui_view().layer();
         match color {
             Some(c) => {
@@ -732,57 +653,57 @@ impl Node {
         }
     }
 
-    pub fn set_text_color(&self, color: crate::Color) {
+    pub fn set_text_color(self, color: crate::Color) {
         let view = self.ui_view();
         let uicolor = color.to_uicolor();
 
-        if let Some(field) = downcast::<UITextField>(view) {
+        if let Some(field) = downcast::<UITextField>(&view) {
             field.setTextColor(Some(&uicolor));
             return;
         }
-        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             unsafe { label.setTextColor(Some(&uicolor)) };
             return;
         }
-        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
+        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(&view) {
             tv.setTextColor(Some(&uicolor));
         }
     }
 
-    pub fn set_text_alignment(&self, alignment: crate::TextAlignment) {
+    pub fn set_text_alignment(self, alignment: crate::TextAlignment) {
         let view = self.ui_view();
 
-        if let Some(field) = downcast::<UITextField>(view) {
+        if let Some(field) = downcast::<UITextField>(&view) {
             field.setTextAlignment(alignment.0);
             return;
         }
-        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             label.setTextAlignment(alignment.0);
             return;
         }
-        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
+        if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(&view) {
             tv.setTextAlignment(alignment.0);
         }
     }
 
-    pub fn set_font_size(&self, points: f64) {
+    pub fn set_font_size(self, points: f64) {
         use objc2_ui_kit::UIFont;
         let font = UIFont::systemFontOfSize(points);
 
         let view = self.ui_view();
         let mut applied = false;
-        if let Some(field) = downcast::<UITextField>(view) {
+        if let Some(field) = downcast::<UITextField>(&view) {
             field.setFont(Some(&font));
             applied = true;
-        } else if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+        } else if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             unsafe { label.setFont(Some(&font)) };
             applied = true;
-        } else if let Some(button) = downcast::<UIButton>(view) {
+        } else if let Some(button) = downcast::<UIButton>(&view) {
             if let Some(title_label) = button.titleLabel() {
                 unsafe { title_label.setFont(Some(&font)) };
                 applied = true;
             }
-        } else if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(view) {
+        } else if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(&view) {
             tv.setFont(Some(&font));
             applied = true;
         }
@@ -791,8 +712,8 @@ impl Node {
         }
     }
 
-    pub fn set_text_field_bordered(&self, bordered: bool) {
-        if let Some(f) = downcast::<UITextField>(self.ui_view()) {
+    pub fn set_text_field_bordered(self, bordered: bool) {
+        if let Some(f) = downcast::<UITextField>(&self.ui_view()) {
             use objc2_ui_kit::UITextBorderStyle;
             f.setBorderStyle(if bordered {
                 UITextBorderStyle::RoundedRect
@@ -802,63 +723,63 @@ impl Node {
         }
     }
 
-    pub fn set_text_field_bezeled(&self, bezeled: bool) {
+    pub fn set_text_field_bezeled(self, bezeled: bool) {
         self.set_text_field_bordered(bezeled);
     }
 
-    pub fn set_slider_vertical(&self, _vertical: bool) {}
-    pub fn set_slider_tick_marks(&self, _count: usize) {}
-    pub fn set_slider_snaps_to_ticks(&self, _snaps: bool) {}
+    pub fn set_slider_vertical(self, _vertical: bool) {}
+    pub fn set_slider_tick_marks(self, _count: usize) {}
+    pub fn set_slider_snaps_to_ticks(self, _snaps: bool) {}
 
-    pub fn set_date_picker_style(&self, style: crate::DatePickerStyle) {
+    pub fn set_date_picker_style(self, style: crate::DatePickerStyle) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
+            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
         {
             dp.setPreferredDatePickerStyle(style.0);
         }
     }
 
-    pub fn set_date_picker_min(&self, d: Option<crate::Date>) {
+    pub fn set_date_picker_min(self, d: Option<crate::Date>) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
+            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
         {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMinimumDate(nd.as_deref());
         }
     }
 
-    pub fn set_date_picker_max(&self, d: Option<crate::Date>) {
+    pub fn set_date_picker_max(self, d: Option<crate::Date>) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
+            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
         {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMaximumDate(nd.as_deref());
         }
     }
 
-    pub fn set_autohides_scrollers(&self, _autohides: bool) {}
+    pub fn set_autohides_scrollers(self, _autohides: bool) {}
 
-    pub fn set_has_horizontal_scroller(&self, has: bool) {
+    pub fn set_has_horizontal_scroller(self, has: bool) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIScrollView>(self.ui_view())
+            downcast::<objc2_ui_kit::UIScrollView>(&self.ui_view())
         {
             s.setShowsHorizontalScrollIndicator(has);
         }
     }
 
-    pub fn set_has_vertical_scroller(&self, has: bool) {
+    pub fn set_has_vertical_scroller(self, has: bool) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIScrollView>(self.ui_view())
+            downcast::<objc2_ui_kit::UIScrollView>(&self.ui_view())
         {
             s.setShowsVerticalScrollIndicator(has);
         }
     }
 
-    pub fn set_progress_displayed_when_stopped(&self, _shown: bool) {}
+    pub fn set_progress_displayed_when_stopped(self, _shown: bool) {}
 
-    pub fn date_picker_value(&self) -> crate::Date {
+    pub fn date_picker_value(self) -> crate::Date {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
+            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
         {
             let d = dp.date();
             return crate::Date::from_nsdate(&d);
@@ -866,9 +787,9 @@ impl Node {
         crate::Date::now()
     }
 
-    pub fn set_date_picker_value(&self, d: crate::Date) {
+    pub fn set_date_picker_value(self, d: crate::Date) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(self.ui_view())
+            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
         {
             let current = dp.date();
             let current_secs = current.timeIntervalSince1970();
@@ -880,18 +801,18 @@ impl Node {
         }
     }
 
-    pub fn stepper_value(&self) -> f64 {
+    pub fn stepper_value(self) -> f64 {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(self.ui_view())
+            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
         {
             return s.value() as f64;
         }
         0.0
     }
 
-    pub fn set_stepper_value(&self, v: f64) {
+    pub fn set_stepper_value(self, v: f64) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(self.ui_view())
+            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
         {
             if (s.value() as f64 - v).abs() > f64::EPSILON {
                 s.setValue(v);
@@ -900,13 +821,13 @@ impl Node {
     }
 
     pub fn configure_stepper(
-        &self,
+        self,
         min: f64,
         max: f64,
         increment: f64,
     ) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(self.ui_view())
+            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
         {
             s.setMinimumValue(min);
             s.setMaximumValue(max);
@@ -914,27 +835,27 @@ impl Node {
         }
     }
 
-    pub fn set_progress_value(&self, v: f64) {
+    pub fn set_progress_value(self, v: f64) {
         if let Some(p) =
-            downcast::<objc2_ui_kit::UIProgressView>(self.ui_view())
+            downcast::<objc2_ui_kit::UIProgressView>(&self.ui_view())
         {
             p.setProgress(v as f32);
         }
     }
 
-    pub fn set_progress_indeterminate(&self, _indeterminate: bool) {}
-    pub fn set_progress_max(&self, _max: f64) {}
+    pub fn set_progress_indeterminate(self, _indeterminate: bool) {}
+    pub fn set_progress_max(self, _max: f64) {}
 
     pub fn on_text_view_change(
-        &self,
+        self,
         cb: impl FnMut(String) + 'static,
     ) {
         crate::event::on_text_view_change(self, cb);
     }
 
-    pub fn set_text_view_editable(&self, editable: bool) {
+    pub fn set_text_view_editable(self, editable: bool) {
         if let Some(tv) =
-            downcast::<objc2_ui_kit::UITextView>(self.ui_view())
+            downcast::<objc2_ui_kit::UITextView>(&self.ui_view())
         {
             if tv.isEditable() != editable {
                 tv.setEditable(editable);
@@ -942,25 +863,25 @@ impl Node {
         }
     }
 
-    pub fn text_view_value(&self) -> Option<String> {
+    pub fn text_view_value(self) -> Option<String> {
         let tv =
-            downcast::<objc2_ui_kit::UITextView>(self.ui_view())?;
+            downcast::<objc2_ui_kit::UITextView>(&self.ui_view())?;
         Some(tv.text().to_string())
     }
 
-    pub fn focus(&self) -> bool {
+    pub fn focus(self) -> bool {
         let view = self.ui_view();
         view.becomeFirstResponder()
     }
 
-    pub fn blur(&self) -> bool {
+    pub fn blur(self) -> bool {
         let view = self.ui_view();
         view.resignFirstResponder()
     }
 
-    pub fn set_image_view_path(&self, path: &str) {
+    pub fn set_image_view_path(self, path: &str) {
         use objc2_ui_kit::{UIImage, UIImageView};
-        let Some(iv) = downcast::<UIImageView>(self.ui_view()) else {
+        let Some(iv) = downcast::<UIImageView>(&self.ui_view()) else {
             return;
         };
         if path.is_empty() {
@@ -974,10 +895,10 @@ impl Node {
         crate::layout::schedule_relayout(self);
     }
 
-    pub fn set_image_view_bytes(&self, bytes: Option<&[u8]>) {
+    pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
         use objc2_ui_kit::{UIImage, UIImageView};
         use objc2_foundation::NSData;
-        let Some(iv) = downcast::<UIImageView>(self.ui_view()) else {
+        let Some(iv) = downcast::<UIImageView>(&self.ui_view()) else {
             return;
         };
         let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
@@ -1000,10 +921,10 @@ impl Node {
         UIImage::systemImageNamed(&ns_name)
     }
 
-    pub fn set_sf_symbol(&self, name: &str) {
+    pub fn set_sf_symbol(self, name: &str) {
         let view = self.ui_view();
         let image = Self::sf_symbol_image(name);
-        if let Some(button) = downcast::<UIButton>(view) {
+        if let Some(button) = downcast::<UIButton>(&view) {
             button.setImage_forState(
                 image.as_deref(),
                 objc2_ui_kit::UIControlState::Normal,
@@ -1011,13 +932,13 @@ impl Node {
             crate::layout::schedule_relayout(self);
             return;
         }
-        if let Some(iv) = downcast::<objc2_ui_kit::UIImageView>(view) {
+        if let Some(iv) = downcast::<objc2_ui_kit::UIImageView>(&view) {
             iv.setImage(image.as_deref());
             crate::layout::schedule_relayout(self);
         }
     }
 
-    pub fn set_tint(&self, color: Option<crate::Color>) {
+    pub fn set_tint(self, color: Option<crate::Color>) {
         let view = self.ui_view();
         unsafe {
             if let Some(c) = color {
@@ -1038,14 +959,13 @@ impl Node {
     /// Build a text-label Node — a UILabel. Used by the renderer's
     /// `create_text_node`, which is the `Render` impl for `&str` /
     /// `String` / numerics.
-    pub fn create_text(tree: &TreeRef, content: &str) -> Self {
+    pub fn create_text(content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_text_with(tree, content, mtm)
+        Self::create_text_with(content, mtm)
     }
 
     pub fn create_text_with(
-        tree: &TreeRef,
         content: &str,
         mtm: MainThreadMarker,
     ) -> Self {
@@ -1060,14 +980,14 @@ impl Node {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Node::from_view(tree, view, style, IosMeta::default())
+        Node::from_view(view, style, IosMeta::default())
     }
 
     /// Update the displayed string on a text-label Node. No-op if
     /// the backing view isn't a UILabel.
-    pub fn set_text(&self, content: &str) {
+    pub fn set_text(self, content: &str) {
         let view = self.ui_view();
-        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(view) {
+        if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             label.setText(Some(&NSString::from_str(content)));
         }
         crate::layout::schedule_relayout(self);
@@ -1076,14 +996,13 @@ impl Node {
     /// Build a placeholder Node — a hidden, zero-sized UIView used
     /// by the renderer's control-flow primitives (`Render for ()`,
     /// tuple/iterator/keyed end-markers) as a stable mount anchor.
-    pub fn create_placeholder(tree: &TreeRef) -> Self {
+    pub fn create_placeholder() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
-        Self::create_placeholder_with(tree, mtm)
+        Self::create_placeholder_with(mtm)
     }
 
     pub fn create_placeholder_with(
-        tree: &TreeRef,
         mtm: MainThreadMarker,
     ) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -1099,7 +1018,7 @@ impl Node {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Node::from_view(tree, view, style, IosMeta::default())
+        Node::from_view(view, style, IosMeta::default())
     }
 }
 
@@ -1107,62 +1026,53 @@ impl Node {
 // Helpers
 // ---------------------------------------------------------------------
 
-pub(crate) fn downcast<T>(view: &UIView) -> Option<&T>
+pub(crate) fn downcast<T>(view: &UIView) -> Option<Retained<T>>
 where
     T: DowncastTarget,
 {
     let any: &AnyObject = view.as_ref();
-    any.downcast_ref::<T>()
+    any.downcast_ref::<T>().map(|r| r.retain())
 }
 
 // ---------------------------------------------------------------------
-// Weak handles — non-owning references for cycle-safe closure capture
+// Weak handles — now trivial: a Node is already a non-owning Copy id.
 // ---------------------------------------------------------------------
 //
-// See `cocoa/dom/src/node.rs` for the longer rationale. The same
-// Element-capture cycle risk applies on iOS (UIControl target/action
-// + UITextView delegate); `WeakElement` is the safe alternative.
+// With the thread-local store a `Node` is just a generational `NodeId`
+// that owns nothing; capturing it in a UIControl target / UITextView
+// delegate closure can't form a retain cycle. A stale id resolves to
+// `None`/no-op.
 
-/// Non-owning weak reference to a `Node`.
-#[derive(Clone)]
+/// Non-owning reference to a `Node` — the same `Copy` id; `upgrade`
+/// checks presence in the store.
+#[derive(Clone, Copy, Debug)]
 pub struct WeakNode {
-    inner: SendWrapper<std::rc::Weak<NodeInner>>,
+    id: NodeId,
 }
 
 impl Node {
-    pub fn downgrade(&self) -> WeakNode {
-        WeakNode {
-            inner: SendWrapper::new(Rc::downgrade(&*self.inner)),
-        }
+    pub fn downgrade(self) -> WeakNode {
+        WeakNode { id: self.id }
+    }
+
+    pub fn weak(self) -> WeakNode {
+        self.downgrade()
     }
 }
 
 impl WeakNode {
-    pub fn upgrade(&self) -> Option<Node> {
-        self.inner
-            .upgrade()
-            .map(|rc| Node { inner: SendWrapper::new(rc) })
+    pub fn upgrade(self) -> Option<Node> {
+        if renderer::contains::<B>(self.id) {
+            Some(Node { id: self.id })
+        } else {
+            None
+        }
     }
 
-    pub fn is_alive(&self) -> bool {
-        self.inner.strong_count() > 0
-    }
-}
-
-impl fmt::Debug for WeakNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("WeakNode")
-            .field("alive", &self.is_alive())
-            .finish()
+    pub fn is_alive(self) -> bool {
+        renderer::contains::<B>(self.id)
     }
 }
 
 /// Backwards-compat alias for [`WeakNode`] — see [`Element`].
 pub type WeakElement = WeakNode;
-
-impl Node {
-    /// Convenience alias for [`Node::downgrade`] (historical name).
-    pub fn weak(&self) -> WeakNode {
-        self.downgrade()
-    }
-}

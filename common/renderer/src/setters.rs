@@ -22,7 +22,7 @@
 //! short names so caller paths (`cocoa_dom::layout::set_padding(...)`,
 //! `gtk_dom::layout::set_grid_template_columns(...)`) stay stable.
 
-use crate::layout::{
+use crate::scene::{
     AlignContent, AlignItems, Dimension, FlexDirection, FlexWrap,
     GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
     JustifyItems, LengthPercentage, LengthPercentageAuto, Rect, Size, Style,
@@ -32,7 +32,7 @@ use crate::attrs::{
     install, AlignSelf, DecorationAttrs, Dim, Edges, GridLine, LayoutAttrs,
     Overflow, RenderEffect, UniversalAttrs,
 };
-use crate::layout::Display;
+use crate::scene::Display;
 
 // ---------------------------------------------------------------------
 // Port-specific glue trait

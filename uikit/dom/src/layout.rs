@@ -16,7 +16,8 @@ use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_ui_kit::{UIControl, UIScrollView, UITextField, UIView};
 use send_wrapper::SendWrapper;
-use std::{rc::Rc, sync::OnceLock};
+use std::cell::RefCell;
+use std::sync::OnceLock;
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -24,7 +25,7 @@ pub use renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use renderer::LayoutBackend;
+use renderer::{LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // iOS backend
@@ -40,6 +41,12 @@ pub struct IosBackend;
 #[derive(Clone, Default)]
 pub struct IosMeta {
     pub is_scroll_view: bool,
+}
+
+thread_local! {
+    /// The single per-thread node store for the uikit port.
+    static TREE: RefCell<LayoutState<IosBackend>> =
+        RefCell::new(LayoutState::default());
 }
 
 impl LayoutBackend for IosBackend {
@@ -59,16 +66,38 @@ impl LayoutBackend for IosBackend {
     fn first_baseline(view: &Self::View) -> Option<f32> {
         first_baseline_offset(view).map(|b| b as f32)
     }
+
+    fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
+        TREE.with(|t| f(&mut t.borrow_mut()))
+    }
 }
 
-// Aliases so call sites don't have to spell `IosBackend` everywhere.
-pub type LayoutTree = renderer::LayoutTree<IosBackend>;
-pub type TreeRef = renderer::TreeRef<IosBackend>;
-pub type LayoutHandle = renderer::LayoutHandle<IosBackend>;
 pub type NodeContext = renderer::NodeContext<IosBackend>;
 
-pub fn new_tree() -> TreeRef {
-    LayoutTree::new()
+// Introspection over the global store (used by tests).
+pub fn node_count() -> usize {
+    renderer::node_count::<IosBackend>()
+}
+pub fn style(id: NodeId) -> Option<Style> {
+    renderer::style::<IosBackend>(id)
+}
+pub fn children(id: NodeId) -> Vec<NodeId> {
+    renderer::children::<IosBackend>(id)
+}
+pub fn dirty(id: NodeId) -> bool {
+    renderer::dirty::<IosBackend>(id)
+}
+pub fn parent(id: NodeId) -> Option<NodeId> {
+    renderer::parent::<IosBackend>(id)
+}
+pub fn contains(id: NodeId) -> bool {
+    renderer::contains::<IosBackend>(id)
+}
+pub fn layout(id: NodeId) -> Option<Layout> {
+    renderer::layout::<IosBackend>(id)
+}
+pub fn remove(id: NodeId) {
+    renderer::remove::<IosBackend>(id);
 }
 
 // ---------------------------------------------------------------------
@@ -84,79 +113,50 @@ fn layout_debug_enabled() -> bool {
 // Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
 
-/// Mark `node` as the tree's root, if no root is set yet.
-///
-/// Arena allocation happens eagerly in `Element::create_with` (and
-/// `Text` / `Placeholder`). This just publishes `node.id` as
-/// `tree.root` — the deferred-relayout scheduler and the
-/// `compute_layout` entry points read it. Silent no-op if a root
-/// is already set (first wins).
-pub fn set_as_root(node: &Node, tree: &TreeRef) {
-    let Some((node_tree, id)) = node.tree_id() else { return };
-    debug_assert!(
-        Rc::ptr_eq(&node_tree, tree),
-        "set_as_root called with a tree that doesn't own this node"
-    );
-    let mut root = tree.root.borrow_mut();
-    if root.is_none() {
-        *root = Some(id);
-    }
-}
-
-/// Drop the node and detach it from the tree.
-pub fn drop_node(node: &Node) {
-    let parent = node
-        .tree_id()
-        .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    // Force an eager arena removal.
+/// Remove the node (and its structural subtree) and detach its view,
+/// then schedule a relayout of the (former) parent's subtree.
+pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
+    let node = *node.borrow();
+    let parent = renderer::parent::<IosBackend>(node.id());
     node.teardown();
-    if let Some((tree, pid)) = parent {
-        tree.mark_dirty(pid);
-        schedule_relayout_for_tree(&tree, pid);
+    if let Some(pid) = parent {
+        queue_relayout_for(pid);
     }
 }
 
 // ---------------------------------------------------------------------
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
+// Each mutation walks up to its subtree root and enqueues only that
+// root; the deferred pass recomputes just the enqueued roots.
 // ---------------------------------------------------------------------
 
-pub fn schedule_relayout(node: &Node) {
-    if let Some((tree, id)) = node.tree_id() {
-        tree.mark_dirty(id);
-        schedule_relayout_for_tree(&tree, id);
-    }
+pub fn schedule_relayout(node: Node) {
+    renderer::mark_dirty::<IosBackend>(node.id());
+    queue_relayout_for(node.id());
 }
 
-fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
-    // Dedup is per-tree via `LayoutTree::relayout_queued`; see the
-    // cocoa equivalent for the rationale (avoids a global TLS
-    // HashSet and the shutdown-order vulnerability).
-    if tree.relayout_queued.replace(true) {
+fn queue_relayout_for(id: NodeId) {
+    let root = renderer::root_of::<IosBackend>(id);
+    renderer::queue_relayout::<IosBackend>(root);
+    ensure_relayout_pass_scheduled();
+}
+
+fn ensure_relayout_pass_scheduled() {
+    if renderer::relayout_queued::<IosBackend>() {
         return;
     }
-    let tree_weak = SendWrapper::new(Rc::downgrade(tree));
+    renderer::set_relayout_queued::<IosBackend>(true);
+
     DispatchQueue::main().exec_async(move || {
-        let weak = tree_weak.take();
-        let Some(tree) = weak.upgrade() else { return };
-
-        tree.relayout_queued.set(false);
-
-        let Some(root_id) = *tree.root.borrow() else { return };
-        let root_view: Retained<UIView> = {
-            let Some(view) = tree.view(root_id) else { return };
-            (*view).clone()
-        };
-
-        let root_handle = LayoutHandle {
-            tree: tree.clone(),
-            node_id: root_id,
-        };
-        let root_node = crate::node::Node::from_view_with_handle(
-            root_view.clone(),
-            root_handle,
-        );
-        let size = root_view.frame().size;
-        compute_layout(&root_node, size);
+        renderer::set_relayout_queued::<IosBackend>(false);
+        for root_id in renderer::take_pending_relayout::<IosBackend>() {
+            let Some(view) = renderer::view::<IosBackend>(root_id) else {
+                continue;
+            };
+            let root_view: Retained<UIView> = (*view).clone();
+            let size = root_view.frame().size;
+            compute_layout(Node::from_id(root_id), size);
+        }
     });
 }
 
@@ -164,36 +164,33 @@ fn schedule_relayout_for_tree(tree: &TreeRef, _any_node_id: NodeId) {
 // Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-pub fn attach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.add_child(parent_id, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = parent.borrow().id();
+    renderer::add_child::<IosBackend>(parent_id, child.borrow().id());
+    queue_relayout_for(parent_id);
 }
 
-pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.insert_child_at_index(parent_id, index, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
+    let parent_id = parent.borrow().id();
+    renderer::insert_child_at_index::<IosBackend>(parent_id, index, child.borrow().id());
+    queue_relayout_for(parent_id);
 }
 
-pub fn detach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.remove_child(parent_id, child_id);
-    schedule_relayout_for_tree(&tree, parent_id);
+pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = parent.borrow().id();
+    renderer::remove_child::<IosBackend>(parent_id, child.borrow().id());
+    queue_relayout_for(parent_id);
 }
 
 // ---------------------------------------------------------------------
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
+pub fn update_style(node: Node, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: &Node, style: Style) {
+pub fn set_style(node: Node, style: Style) {
     update_style(node, |s| *s = style);
 }
 
@@ -201,23 +198,25 @@ pub fn set_style(node: &Node, style: Style) {
 // Layout computation
 // ---------------------------------------------------------------------
 
-pub fn compute_layout(root: &Node, available_size: NSSize) {
+pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSize) {
     if layout_debug_enabled() {
         eprintln!(
             "[compute_layout] avail {:.0}x{:.0}",
             available_size.width, available_size.height
         );
     }
-    let Some(handle) = root.mounted_handle() else { return };
+    let root_id = root.borrow().id();
+    if !renderer::contains::<IosBackend>(root_id) {
+        return;
+    }
 
     let w = available_size.width as f32;
     let h = available_size.height as f32;
 
     // For axes where the root's style.size is `auto`, fill the
-    // available space. Axes the user has set explicitly are left
-    // alone — see cocoa's compute_layout for the rationale.
+    // available space. Explicit axes are left alone.
     {
-        let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
+        let mut style = renderer::style::<IosBackend>(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -228,7 +227,7 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
             touched = true;
         }
         if touched {
-            handle.tree.set_style(handle.node_id, style);
+            renderer::set_style::<IosBackend>(root_id, style);
         }
     }
 
@@ -236,19 +235,17 @@ pub fn compute_layout(root: &Node, available_size: NSSize) {
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    handle.tree.run_layout_pass(handle.node_id, avail);
+    renderer::run_layout_pass::<IosBackend>(root_id, avail);
 
-    // iOS-specific: scroll-view second pass (UIScrollView's
-    // contentSize-driven layout, mirroring NSScrollView's
-    // documentView).
-    relayout_scroll_views(&handle.tree, handle.node_id);
+    // iOS-specific: scroll-view second pass.
+    relayout_scroll_views(root_id);
 
-    apply_frames(&handle.tree, handle.node_id);
-    fixup_scroll_view_contents(&handle.tree, handle.node_id);
+    apply_frames(root_id);
+    fixup_scroll_view_contents(root_id);
 }
 
-fn is_scroll_view(tree: &TreeRef, id: NodeId) -> bool {
-    tree.meta(id).map(|m| m.is_scroll_view).unwrap_or(false)
+fn is_scroll_view(id: NodeId) -> bool {
+    renderer::meta::<IosBackend>(id).map(|m| m.is_scroll_view).unwrap_or(false)
 }
 
 /// Warn (once per process) when a `<scroll_view>` ends up with a
@@ -262,14 +259,15 @@ fn is_scroll_view(tree: &TreeRef, id: NodeId) -> bool {
 /// inputs (window size, parent flex_grow, dynamic content) to
 /// safely panic.
 fn warn_if_scroll_view_unsized(
-    tree: &TreeRef,
     root: NodeId,
     viewport: &taffy::Layout,
 ) {
     use std::sync::Once;
     static WARNED: Once = Once::new();
 
-    if viewport.size.height < 0.5 && !tree.children(root).is_empty() {
+    if viewport.size.height < 0.5
+        && !renderer::children::<IosBackend>(root).is_empty()
+    {
         WARNED.call_once(|| {
             eprintln!(
                 "[ios_dom] a <scroll_view> has zero-height viewport \
@@ -286,16 +284,16 @@ fn warn_if_scroll_view_unsized(
     }
 }
 
-fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
-    if is_scroll_view(tree, root) {
-        let viewport = match tree.layout(root) {
+fn relayout_scroll_views(root: NodeId) {
+    if is_scroll_view(root) {
+        let viewport = match renderer::layout::<IosBackend>(root) {
             Some(l) => l,
             None => return,
         };
-        warn_if_scroll_view_unsized(tree, root, &viewport);
+        warn_if_scroll_view_unsized(root, &viewport);
         let viewport_w = viewport.size.width;
 
-        let saved_style = match tree.style(root) {
+        let saved_style = match renderer::style::<IosBackend>(root) {
             Some(s) => s,
             None => return,
         };
@@ -304,57 +302,54 @@ fn relayout_scroll_views(tree: &TreeRef, root: NodeId) {
             width: Dimension::length(viewport_w),
             height: Dimension::auto(),
         };
-        tree.set_style(root, probe_style);
-        tree.mark_dirty(root);
+        renderer::set_style::<IosBackend>(root, probe_style);
+        renderer::mark_dirty::<IosBackend>(root);
 
         let avail = Size {
             width: AvailableSpace::Definite(viewport_w),
             height: AvailableSpace::MaxContent,
         };
-        tree.run_layout_pass(root, avail);
+        renderer::run_layout_pass::<IosBackend>(root, avail);
 
-        tree.set_style(root, saved_style);
-        tree.mark_dirty(root);
+        renderer::set_style::<IosBackend>(root, saved_style);
+        renderer::mark_dirty::<IosBackend>(root);
         // Restore the scroll view's own final layout to the
-        // first-pass viewport — apply_layout reads `tree.layout(id)`
-        // and the second pass left content size in there.
-        tree.set_final_layout(root, viewport);
+        // first-pass viewport.
+        renderer::set_final_layout::<IosBackend>(root, viewport);
         return;
     }
 
-    let kids = tree.children(root).to_vec();
-    for child in kids {
-        relayout_scroll_views(tree, child);
+    for child in renderer::children::<IosBackend>(root) {
+        relayout_scroll_views(child);
     }
 }
 
-fn apply_frames(tree: &TreeRef, id: NodeId) {
-    tree.walk_subtree(id, &mut |_id, layout, view| {
+fn apply_frames(id: NodeId) {
+    for (_id, layout, view) in renderer::collect_subtree::<IosBackend>(id) {
         set_frame_from_layout(&view, &layout);
-    });
+    }
 }
 
 /// Bound each `<scroll_view>` content view to its children's natural
 /// extent, and update the UIScrollView's `contentSize` so it scrolls.
-fn fixup_scroll_view_contents(tree: &TreeRef, root: NodeId) {
-    if is_scroll_view(tree, root) {
-        let Some(view) = tree.view(root) else { return };
+fn fixup_scroll_view_contents(root: NodeId) {
+    if is_scroll_view(root) {
+        let Some(view) = renderer::view::<IosBackend>(root) else { return };
         let uiview: &UIView = &**view;
         let any: &AnyObject = uiview.as_ref();
         if let Some(scroll) = any.downcast_ref::<UIScrollView>() {
-            let viewport = tree.layout(root).unwrap_or_default();
+            let viewport = renderer::layout::<IosBackend>(root).unwrap_or_default();
             let mut max_x: f32 = 0.0;
             let mut max_y: f32 = 0.0;
-            for &child_id in tree.children(root).iter() {
-                let Some(cl) = tree.layout(child_id) else { continue };
+            for child_id in renderer::children::<IosBackend>(root) {
+                let Some(cl) = renderer::layout::<IosBackend>(child_id) else {
+                    continue;
+                };
                 max_x = max_x.max(cl.location.x + cl.size.width);
                 max_y = max_y.max(cl.location.y + cl.size.height);
             }
             let cw = (max_x as f64).max(viewport.size.width as f64);
             let ch = (max_y as f64).max(viewport.size.height as f64);
-            // The "content view" we install for `<scroll_view>` is
-            // the first subview of the UIScrollView (analogous to
-            // NSScrollView's documentView).
             let subs = scroll.subviews();
             if subs.count() > 0 {
                 let content = subs.objectAtIndex(0);
@@ -368,8 +363,8 @@ fn fixup_scroll_view_contents(tree: &TreeRef, root: NodeId) {
         return;
     }
 
-    for &child in tree.children(root).iter() {
-        fixup_scroll_view_contents(tree, child);
+    for child in renderer::children::<IosBackend>(root) {
+        fixup_scroll_view_contents(child);
     }
 }
 
@@ -508,13 +503,13 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 
 impl renderer::LayoutNodeOps for Node {
     fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
-        update_style(self, f);
+        update_style(*self, f);
     }
     fn schedule_relayout(&self) {
-        schedule_relayout(self);
+        schedule_relayout(*self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        Node::with_style(self, f)
+        Node::with_style(*self, f)
     }
 }
 
@@ -526,16 +521,12 @@ impl renderer::LayoutElement for Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_hidden(self, hidden);
+        Node::set_hidden(*self, hidden);
     }
-    // `set_clip`: iOS hasn't wired UIView::clipsToBounds yet, so
-    // `overflow=Hidden` is layout-only on this port (Taffy
-    // auto-min-size becomes 0, no visual clip). Override when clip
-    // support lands.
 }
 impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        Node::set_alpha(self, alpha)
+        Node::set_alpha(*self, alpha)
     }
 }
 
@@ -561,8 +552,8 @@ pub use renderer::{
 /// Force a node's `aspect_ratio` (width / height). Useful for
 /// square photo cells (`aspect_ratio = 1.0`).
 pub fn set_aspect_ratio(node: &Node, ratio: f32) {
-    update_style(node, |s| s.aspect_ratio = Some(ratio));
-    schedule_relayout(node);
+    update_style(*node, |s| s.aspect_ratio = Some(ratio));
+    schedule_relayout(*node);
 }
 
 /// Set Taffy's `position` flag. `Position::Absolute` removes the
@@ -570,8 +561,8 @@ pub fn set_aspect_ratio(node: &Node, ratio: f32) {
 /// relative to the parent's content area using `inset_*`. Used for
 /// overlay badges.
 pub fn set_position(node: &Node, position: Position) {
-    update_style(node, |s| s.position = position);
-    schedule_relayout(node);
+    update_style(*node, |s| s.position = position);
+    schedule_relayout(*node);
 }
 
 /// Set the four insets at once. Each value is points; `None`
@@ -584,7 +575,7 @@ pub fn set_inset(
     bottom: Option<f32>,
     left: Option<f32>,
 ) {
-    update_style(node, |s| {
+    update_style(*node, |s| {
         let to_dim = |v: Option<f32>| match v {
             Some(px) => LengthPercentageAuto::length(px),
             None => LengthPercentageAuto::auto(),
@@ -596,5 +587,5 @@ pub fn set_inset(
             left: to_dim(left),
         };
     });
-    schedule_relayout(node);
+    schedule_relayout(*node);
 }

@@ -175,7 +175,6 @@ pub fn open_window(
         renderer::setters::set_size_width(content_root.as_node(), Dim::Pct(1.0));
         renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
     }
-    layout::set_as_root(content_root);
     nswindow.setContentView(Some(&content_root.ns_view()));
 
     #[cfg(feature = "debug-overlay")]

@@ -103,10 +103,24 @@ back.
 
 ## 3. Capture rules for ObjC callback closures
 
-The single most common bug in this codebase has been "callback closure
+> **SUPERSEDED (2026-05-20).** This whole section described the
+> Element-capture cycle that existed when `Node` was an
+> `Rc<NodeInner>` handle into a per-window arena. After the
+> TLS-store refactor, `Node` is a bare `Copy + Send` `NodeId` that
+> **owns nothing** — capturing a `Node`/`WeakNode` in a handler
+> closure cannot form a retain cycle, because the closure→id link is
+> not ownership. Node lifetime is now driven solely by explicit
+> `teardown`/`remove` (see `implementation_log.md`, 2026-05-20).
+> The guidance below is kept for historical context; the "must not
+> capture a strong clone" rule is no longer load-bearing (there is no
+> strong clone — `Node` is `Copy`). Capturing the node id directly is
+> fine; use `WeakNode::upgrade()` only if you need the
+> resolves-to-`None`-after-teardown semantics.
+
+The single most common bug in this codebase *was* "callback closure
 keeps the thing it's installed on alive forever, because it captured
-a strong handle that traces back to itself." The rule that prevents
-this:
+a strong handle that traces back to itself." The rule that prevented
+this (pre-refactor):
 
 > A closure stored on a `Node` (i.e. installed into the arena's
 > handlers via `on_click`, `on_text_change`, etc.) must not capture

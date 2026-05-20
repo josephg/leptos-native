@@ -27,14 +27,13 @@ fn add_any_attr_routes_on_click_to_button() {
                 *fired_clone.lock().unwrap() += 1;
             }),));
 
-        let tree = gtk_dom::layout::new_tree();
-        let st = view.build(&tree);
+        let st = view.build();
 
         // GTK4: emit the `clicked` signal directly on the button.
-        let b = st
+        let __w = st
             .el
-            .widget()
-            .downcast_ref::<gtk_dom::gtk::Button>()
+            .widget();
+        let b = __w.downcast_ref::<gtk_dom::gtk::Button>()
             .unwrap();
         b.emit_clicked();
 

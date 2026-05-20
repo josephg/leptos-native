@@ -564,10 +564,10 @@ fn build_pane(
     vertical: bool,
     mtm: MainThreadMarker,
 ) -> Pane {
-    // Pane root: a FlippedView registered as a layout root.
+    // Pane root: a FlippedView. Its frame is owned by NSSplitView's
+    // Auto-Layout; reactive updates inside it walk up to this root.
     let root = Element::create_container_with(mtm);
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::set_as_root(root);
 
     // **Keep** `translatesAutoresizingMaskIntoConstraints = true`
     // (the default). NSSplitViewController sets each pane's frame

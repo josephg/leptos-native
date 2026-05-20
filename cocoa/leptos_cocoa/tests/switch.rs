@@ -46,13 +46,8 @@ fn arm(
 fn mount_into_host<V: Render<Dom> + 'static>(
     view: V,
 ) -> (cocoa_dom::Element, <V as Render<Dom>>::State) {
-    let tree = cocoa_dom::layout::new_tree();
-    let host = cocoa_dom::Element::create_container_with(
-        &tree,
-        common::test_mtm(),
-    );
-    cocoa_dom::layout::set_as_root(host.as_node(), &tree);
-    let mut state = view.build(&tree);
+    let host = cocoa_dom::Element::create_container_with(common::test_mtm());
+    let mut state = view.build();
     state.mount(&host, None);
     (host, state)
 }

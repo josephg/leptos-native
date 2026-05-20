@@ -1,11 +1,11 @@
-//! Tests for the `Node` lifecycle on the iOS port: arena allocation,
-//! drop semantics, borrowed wrappers, handler ownership, and the
-//! refcount / parent-reachability removal rule. Mirror of
-//! `cocoa/dom/tests/node_lifecycle.rs`.
+//! Tests for the `Node` lifecycle under the thread-local store (iOS).
 //!
-//! After the Phase 3 refactor, every Node is eagerly allocated in a
-//! `LayoutTree` from creation — there's no Unmounted/Mounted state
-//! machine anymore.
+//! A `Node` is a `Copy` `NodeId` into the per-thread store. There is
+//! no refcount and no drop-driven removal: a node is created
+//! Unattached, becomes Attached via `add_child`, and is Freed only by
+//! an explicit `teardown` / `remove` (which cascades to the structural
+//! subtree). Stale ids resolve to `None`/no-op via the generational
+//! slotmap key.
 
 #![cfg(target_os = "ios")]
 
@@ -14,385 +14,147 @@ mod common;
 use ios_dom::{
     event::{handler_store_size_for_test, text_view_store_size_for_test},
     layout,
-    Element, Node, NodeKind,
+    Element,
 };
 
-// =====================================================================
-// 1. Fresh nodes are in their tree from creation
-// =====================================================================
-
-fn freshly_created_node_has_tree_id() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let (_, id) = el
-        .as_node()
-        .tree_id()
-        .expect("fresh Node has tree_id");
-    assert!(
-        tree.style(id).is_some(),
-        "arena entry exists for freshly-created node"
-    );
+fn freshly_created_node_is_in_store() {
+    let el = Element::create_button().0;
+    assert!(layout::style(el.as_node().id()).is_some());
 }
 
-// =====================================================================
-// 2. Style/meta accessors route through the arena
-// =====================================================================
-
-fn style_mutation_lands_in_arena() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_vstack(&tree);
+fn style_mutation_lands_in_store() {
+    let el = Element::create_vstack();
     el.as_node().with_style_mut(|s| s.flex_grow = 7.0);
-    let id = el.as_node().tree_id().unwrap().1;
-    assert_eq!(tree.style(id).unwrap().flex_grow, 7.0);
+    assert_eq!(layout::style(el.as_node().id()).unwrap().flex_grow, 7.0);
 }
 
 fn scroll_view_has_is_scroll_view_at_create_time() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_scroll_view(&tree).0;
-    let meta = el.as_node().with_meta(|m| m.clone());
-    assert!(meta.is_scroll_view, "scroll_view sets is_scroll_view");
+    let el = Element::create_scroll_view().0;
+    assert!(el.as_node().with_meta(|m| m.is_scroll_view));
 }
 
-// =====================================================================
-// 3. Drop ordering: arena entry goes away when last Node clone drops
-// =====================================================================
-
-fn dropping_last_node_clone_removes_arena_entry() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let id = {
-        let el = Element::create_button(&tree).0;
-        el.as_node().tree_id().unwrap().1
-    };
-    assert!(
-        tree.style(id).is_none(),
-        "arena entry must be removed when last Node clone drops"
-    );
+fn teardown_removes_store_entry() {
+    let el = Element::create_button().0;
+    let id = el.as_node().id();
+    assert!(layout::style(id).is_some());
+    el.as_node().teardown();
+    assert!(layout::style(id).is_none());
 }
 
-fn cloning_node_extends_lifetime() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let id = el.as_node().tree_id().unwrap().1;
-
-    let clone = el.as_node().clone();
-    drop(el);
-    assert!(
-        tree.style(id).is_some(),
-        "arena entry must persist while a Node clone is alive"
-    );
-
-    drop(clone);
-    assert!(
-        tree.style(id).is_none(),
-        "arena entry must drop after last clone goes away"
-    );
+fn copying_node_id_does_not_affect_lifetime() {
+    let el = Element::create_button().0;
+    let id = el.as_node().id();
+    let copy = *el.as_node();
+    let _ = copy;
+    assert!(layout::style(id).is_some());
+    el.as_node().teardown();
+    assert!(layout::style(id).is_none());
 }
 
-// =====================================================================
-// 4. Borrowed wrapper: from_view_with_handle Node does NOT remove
-//    arena entries when dropped.
-// =====================================================================
-
-fn borrowed_node_drop_does_not_remove_arena_entry() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-
-    let owner = Element::create_vstack(&tree);
-    let id = owner.as_node().tree_id().unwrap().1;
-
-    let handle = owner.as_node().mounted_handle().unwrap();
-    let view_retained = owner.as_node().ui_view_retained();
-    let borrowed = Node::from_view_with_handle(
-        view_retained,
-        NodeKind::Element,
-        handle,
-    );
-    assert!(borrowed.tree_id().is_some(), "borrowed Node has tree_id");
-
-    drop(borrowed);
-    assert!(
-        tree.style(id).is_some(),
-        "arena entry must survive a borrowed-Node drop"
-    );
-
-    drop(owner);
-    assert!(
-        tree.style(id).is_none(),
-        "owning Node drop should now remove the entry"
-    );
-}
-
-// =====================================================================
-// 5. Handler-lifecycle: action-target install + drop balance
-// =====================================================================
-
-fn handler_installed_drops_with_node() {
-    let _mtm = common::test_mtm();
+fn handler_released_on_teardown() {
     let baseline = handler_store_size_for_test();
-    {
-        let tree = layout::new_tree();
-        let el = Element::create_button(&tree).0;
-        el.on_click(|| {});
-        assert_eq!(
-            handler_store_size_for_test(),
-            baseline + 1,
-            "on_click should allocate one ActionTarget"
-        );
-    }
-    assert_eq!(
-        handler_store_size_for_test(),
-        baseline,
-        "ActionTarget should dealloc when Node + tree go away"
-    );
+    let el = Element::create_button().0;
+    el.on_click(|| {});
+    assert_eq!(handler_store_size_for_test(), baseline + 1);
+    el.as_node().teardown();
+    assert_eq!(handler_store_size_for_test(), baseline);
 }
 
-// =====================================================================
-// 6. Text-view delegate cleanup: the explicit-drop fix in
-//    IosNodeHandlers::Drop should ensure delegates dealloc cleanly.
-// =====================================================================
-
-fn text_view_delegate_releases_on_node_drop() {
-    let _mtm = common::test_mtm();
+fn text_view_delegate_releases_on_teardown() {
     let baseline = text_view_store_size_for_test();
-    {
-        let tree = layout::new_tree();
-        let el = Element::create_text_view(&tree).0;
-        el.on_text_view_change(|_| {});
-        assert_eq!(
-            text_view_store_size_for_test(),
-            baseline + 1,
-            "ensure_text_view_entry should allocate one TextViewDelegate"
-        );
-    }
-    assert_eq!(
-        text_view_store_size_for_test(),
-        baseline,
-        "TextViewDelegate must dealloc when the Node drops — \
-         regression test for the explicit-drop fix in \
-         IosNodeHandlers::drop"
-    );
+    let el = Element::create_text_view().0;
+    el.on_text_view_change(|_| {});
+    assert_eq!(text_view_store_size_for_test(), baseline + 1);
+    el.as_node().teardown();
+    assert_eq!(text_view_store_size_for_test(), baseline);
 }
 
-// =====================================================================
-// 7. Refcount + parent-reachability removal rule (Phase 1 refactor)
-// =====================================================================
-
-fn new_leaf_starts_at_refcount_one() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let id = el.as_node().tree_id().unwrap().1;
-    assert_eq!(
-        tree.refcount_for_test(id),
-        Some(1),
-        "newly-created node has refcount=1 (the caller's handle)"
-    );
-}
-
-fn incref_increments_refcount() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let id = el.as_node().tree_id().unwrap().1;
-    tree.incref(id);
-    assert_eq!(tree.refcount_for_test(id), Some(2));
-    tree.incref(id);
-    assert_eq!(tree.refcount_for_test(id), Some(3));
-    tree.decref(id);
-    tree.decref(id);
-}
-
-fn decref_decrements_but_keeps_alive_if_attached() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
+fn teardown_cascades_to_children() {
+    let root = Element::create_vstack();
+    let child = Element::create_button().0;
     layout::attach_child(root.as_node(), child.as_node());
-
-    let child_id = child.as_node().tree_id().unwrap().1;
-    assert_eq!(tree.refcount_for_test(child_id), Some(1));
-
-    tree.decref(child_id);
-    assert_eq!(
-        tree.refcount_for_test(child_id),
-        Some(0),
-        "decref drops count to 0"
-    );
-    assert!(
-        tree.style(child_id).is_some(),
-        "attached entry must NOT be removed at refcount=0"
-    );
-
-    tree.incref(child_id);
+    let root_id = root.as_node().id();
+    let child_id = child.as_node().id();
+    assert!(layout::style(root_id).is_some());
+    assert!(layout::style(child_id).is_some());
+    root.as_node().teardown();
+    assert!(layout::style(root_id).is_none());
+    assert!(layout::style(child_id).is_none());
 }
 
-fn detached_orphan_with_refcount_zero_is_removed() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
+fn detach_does_not_free() {
+    let root = Element::create_vstack();
+    let child = Element::create_button().0;
     layout::attach_child(root.as_node(), child.as_node());
-
-    let child_id = child.as_node().tree_id().unwrap().1;
-
-    tree.decref(child_id);
-    assert!(tree.style(child_id).is_some());
-
+    let child_id = child.as_node().id();
     layout::detach_child(root.as_node(), child.as_node());
-    assert!(
-        tree.style(child_id).is_none(),
-        "detached entry with refcount=0 must be removed (reachability GC)"
-    );
+    assert!(layout::style(child_id).is_some());
+    assert_eq!(layout::parent(child_id), None);
+    child.as_node().teardown();
+    assert!(layout::style(child_id).is_none());
 }
 
-fn detached_orphan_with_handles_stays() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let root = Element::create_vstack(&tree);
-    let child = Element::create_button(&tree).0;
-    layout::attach_child(root.as_node(), child.as_node());
-
-    let child_id = child.as_node().tree_id().unwrap().1;
-    layout::detach_child(root.as_node(), child.as_node());
-    assert!(
-        tree.style(child_id).is_some(),
-        "detached entry with refcount > 0 must stay (Node handle keeps it alive)"
-    );
+fn stale_id_accessors_are_safe() {
+    let el = Element::create_button().0;
+    let id = el.as_node().id();
+    layout::remove(id);
+    assert!(layout::style(id).is_none());
+    assert!(layout::children(id).is_empty());
+    assert_eq!(layout::parent(id), None);
+    layout::remove(id);
 }
-
-fn decref_below_zero_is_safe() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let id = el.as_node().tree_id().unwrap().1;
-
-    tree.decref(id);
-    assert!(tree.style(id).is_none());
-    tree.decref(id);
-}
-
-fn decref_on_nonexistent_is_noop() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let id = el.as_node().tree_id().unwrap().1;
-    tree.remove(id);
-    tree.decref(id);
-    tree.incref(id);
-}
-
-// =====================================================================
-// 8. UIView identity stable across repeated accesses
-// =====================================================================
 
 fn ui_view_pointer_stable() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let ptr_before: *const objc2_ui_kit::UIView = el.as_node().ui_view();
-    let ptr_after: *const objc2_ui_kit::UIView = el.as_node().ui_view();
-    assert_eq!(ptr_before, ptr_after, "ui_view() pointer must be stable");
+    let el = Element::create_button().0;
+    let p1: *const objc2_ui_kit::UIView = &*el.as_node().ui_view();
+    let p2: *const objc2_ui_kit::UIView = &*el.as_node().ui_view();
+    assert_eq!(p1, p2);
 }
 
-// =====================================================================
-// 9. WeakNode / WeakElement — cycle-safe closure capture (Phase 4)
-// =====================================================================
-
-fn weak_node_upgrades_while_node_alive() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+fn weak_node_upgrades_while_present() {
+    let el = Element::create_button().0;
     let weak = el.as_node().downgrade();
-
-    assert!(weak.is_alive(), "weak handle is alive while Node is");
-    let strong = weak.upgrade().expect("upgrade succeeds");
-    assert!(strong.ptr_eq(el.as_node()), "upgrade returns the same Node");
+    assert!(weak.is_alive());
+    assert!(weak.upgrade().expect("alive").ptr_eq(el.as_node()));
 }
 
-fn weak_node_upgrade_fails_after_drop() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
+fn weak_node_upgrade_fails_after_teardown() {
+    let el = Element::create_button().0;
     let weak = el.as_node().downgrade();
-    drop(el);
-
-    assert!(!weak.is_alive(), "weak handle is dead after Element drops");
-    assert!(weak.upgrade().is_none(), "upgrade returns None");
+    el.as_node().teardown();
+    assert!(!weak.is_alive());
+    assert!(weak.upgrade().is_none());
 }
 
-fn weak_element_round_trips_kind() {
-    let _mtm = common::test_mtm();
-    let tree = layout::new_tree();
-    let el = Element::create_button(&tree).0;
-    let weak = el.weak();
-    let recovered = weak.upgrade().expect("alive");
-    assert_eq!(recovered.as_node().kind(), ios_dom::NodeKind::Element);
-}
-
-fn closure_capturing_weak_element_does_not_keep_arena_alive() {
-    let _mtm = common::test_mtm();
+fn closure_capturing_node_does_not_pin_entry() {
     let baseline = handler_store_size_for_test();
-    let tree = layout::new_tree();
-    let id = {
-        let el = Element::create_button(&tree).0;
-        let id = el.as_node().tree_id().unwrap().1;
-
-        let weak = el.weak();
-        el.on_click(move || {
-            if let Some(_e) = weak.upgrade() {
-                // would re-enter the element here in real code
-            }
-        });
-
-        assert_eq!(
-            handler_store_size_for_test(),
-            baseline + 1,
-            "on_click allocated an ActionTarget"
-        );
-        id
-    };
-
-    assert!(
-        tree.style(id).is_none(),
-        "WeakElement in handler closure does NOT prevent arena cleanup"
-    );
-    assert_eq!(
-        handler_store_size_for_test(),
-        baseline,
-        "ActionTarget must release when arena entry drops"
-    );
+    let el = Element::create_button().0;
+    let id = el.as_node().id();
+    let captured = *el.as_node();
+    el.on_click(move || {
+        let _ = captured.id();
+    });
+    assert_eq!(handler_store_size_for_test(), baseline + 1);
+    el.as_node().teardown();
+    assert!(layout::style(id).is_none());
+    assert_eq!(handler_store_size_for_test(), baseline);
 }
-
-// =====================================================================
-// Runner
-// =====================================================================
 
 fn main() {
     common::run_tests(&[
-        ("freshly_created_node_has_tree_id", freshly_created_node_has_tree_id),
-        ("style_mutation_lands_in_arena", style_mutation_lands_in_arena),
+        ("freshly_created_node_is_in_store", freshly_created_node_is_in_store),
+        ("style_mutation_lands_in_store", style_mutation_lands_in_store),
         ("scroll_view_has_is_scroll_view_at_create_time", scroll_view_has_is_scroll_view_at_create_time),
-        ("dropping_last_node_clone_removes_arena_entry", dropping_last_node_clone_removes_arena_entry),
-        ("cloning_node_extends_lifetime", cloning_node_extends_lifetime),
-        ("borrowed_node_drop_does_not_remove_arena_entry", borrowed_node_drop_does_not_remove_arena_entry),
-        ("handler_installed_drops_with_node", handler_installed_drops_with_node),
-        ("text_view_delegate_releases_on_node_drop", text_view_delegate_releases_on_node_drop),
-        ("new_leaf_starts_at_refcount_one", new_leaf_starts_at_refcount_one),
-        ("incref_increments_refcount", incref_increments_refcount),
-        ("decref_decrements_but_keeps_alive_if_attached", decref_decrements_but_keeps_alive_if_attached),
-        ("detached_orphan_with_refcount_zero_is_removed", detached_orphan_with_refcount_zero_is_removed),
-        ("detached_orphan_with_handles_stays", detached_orphan_with_handles_stays),
-        ("decref_below_zero_is_safe", decref_below_zero_is_safe),
-        ("decref_on_nonexistent_is_noop", decref_on_nonexistent_is_noop),
+        ("teardown_removes_store_entry", teardown_removes_store_entry),
+        ("copying_node_id_does_not_affect_lifetime", copying_node_id_does_not_affect_lifetime),
+        ("handler_released_on_teardown", handler_released_on_teardown),
+        ("text_view_delegate_releases_on_teardown", text_view_delegate_releases_on_teardown),
+        ("teardown_cascades_to_children", teardown_cascades_to_children),
+        ("detach_does_not_free", detach_does_not_free),
+        ("stale_id_accessors_are_safe", stale_id_accessors_are_safe),
         ("ui_view_pointer_stable", ui_view_pointer_stable),
-        ("weak_node_upgrades_while_node_alive", weak_node_upgrades_while_node_alive),
-        ("weak_node_upgrade_fails_after_drop", weak_node_upgrade_fails_after_drop),
-        ("weak_element_round_trips_kind", weak_element_round_trips_kind),
-        ("closure_capturing_weak_element_does_not_keep_arena_alive", closure_capturing_weak_element_does_not_keep_arena_alive),
+        ("weak_node_upgrades_while_present", weak_node_upgrades_while_present),
+        ("weak_node_upgrade_fails_after_teardown", weak_node_upgrade_fails_after_teardown),
+        ("closure_capturing_node_does_not_pin_entry", closure_capturing_node_does_not_pin_entry),
     ]);
 }

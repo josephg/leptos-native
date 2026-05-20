@@ -2,7 +2,7 @@
 //! concrete `Element`/`Node`/`Text`/`Placeholder` types and the imperative
 //! operations (create, set_attribute, insert_node, etc.) the view tree calls.
 
-use crate::layout::LayoutBackend;
+use crate::scene::LayoutBackend;
 use crate::view::Mountable;
 use std::fmt::Debug;
 

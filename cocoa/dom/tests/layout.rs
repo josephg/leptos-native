@@ -8,13 +8,6 @@ mod common;
 use cocoa_dom::{layout, Element};
 use objc2_foundation::NSSize;
 
-/// Build a fresh layout tree, register `root` as its root, return
-/// the tree handle. Tests that want layout to actually compute need
-/// this — root.compute_layout panics if the node isn't registered.
-fn fresh_tree(root: &Element) {
-    layout::set_as_root(root.as_node());
-}
-
 fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
     let f = view.frame();
     let tol = 0.5;
@@ -36,7 +29,6 @@ fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
 fn root_fills_available_space() {
     let _mtm = common::test_mtm();
     let root = Element::create_container();
-    let _tree = fresh_tree(&root);
     layout::compute_layout(
         root.as_node(), NSSize::new(400.0, 300.0)
     );
@@ -51,7 +43,6 @@ fn row_two_children_side_by_side() {
     let _mtm = common::test_mtm();
     let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -81,7 +72,6 @@ fn column_two_children_stacked() {
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Column
     );
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -112,7 +102,6 @@ fn padding_inset_applies_to_children() {
         root.as_node(), layout::FlexDirection::Column
     );
     layout::set_padding(root.as_node(), 16.0);
-    let _tree = fresh_tree(&root);
 
     let child = Element::create_container();
     layout::set_height(child.as_node(), 50.0);
@@ -138,7 +127,6 @@ fn gap_separates_children() {
         root.as_node(), layout::FlexDirection::Column
     );
     layout::set_gap(root.as_node(), 12.0);
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -164,7 +152,6 @@ fn flex_grow_distributes_leftover() {
     let _mtm = common::test_mtm();
     let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -191,7 +178,6 @@ fn justify_content_space_between() {
         root.as_node(),
         layout::JustifyContent::SpaceBetween,
     );
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -215,7 +201,6 @@ fn align_items_center_centres_cross_axis() {
     let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_align_items(root.as_node(), layout::AlignItems::Center);
-    let _tree = fresh_tree(&root);
 
     let child = Element::create_container();
     layout::set_width(child.as_node(), 100.0);
@@ -232,7 +217,6 @@ fn flex_grow_unequal_distributes_proportionally() {
     let _mtm = common::test_mtm();
     let root = Element::create_container();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -261,7 +245,6 @@ fn nested_containers_inner_fits_within_outer() {
         outer.as_node(), layout::FlexDirection::Column
     );
     layout::set_padding(outer.as_node(), 10.0);
-    let _tree = fresh_tree(&outer);
 
     let inner = Element::create_container();
     layout::set_flex_direction(
@@ -306,7 +289,6 @@ fn nested_containers_inner_fits_within_outer() {
 fn zero_children_no_panic() {
     let _mtm = common::test_mtm();
     let root = Element::create_container();
-    let _tree = fresh_tree(&root);
     layout::compute_layout(
         root.as_node(), NSSize::new(100.0, 100.0)
     );
@@ -326,7 +308,6 @@ fn removing_child_collapses_remaining_layout() {
         root.as_node(),
         layout::FlexDirection::Column,
     );
-    let _tree = fresh_tree(&root);
 
     let a = Element::create_container();
     let b = Element::create_container();
@@ -370,7 +351,6 @@ fn scroll_view_bounds_parent_to_viewport() {
         root.as_node(),
         layout::FlexDirection::Column,
     );
-    let _tree = fresh_tree(&root);
 
     let scroll = Element::create_scroll_view().0;
     layout::set_flex_grow(scroll.as_node(), 1.0);
@@ -418,7 +398,6 @@ fn nested_vstack_collapses_after_removal() {
         outer.as_node(),
         layout::FlexDirection::Column,
     );
-    let _tree = fresh_tree(&outer);
 
     let inner = Element::create_container();
     layout::set_flex_direction(
@@ -469,7 +448,6 @@ fn zero_size_available_no_panic() {
     layout::set_flex_direction(
         root.as_node(), layout::FlexDirection::Row
     );
-    let _tree = fresh_tree(&root);
     let child = Element::create_container();
     layout::set_width(child.as_node(), 50.0);
     root.insert_node(child.as_node(), None);

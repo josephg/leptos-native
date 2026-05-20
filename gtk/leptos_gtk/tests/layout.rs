@@ -37,7 +37,7 @@ where
         "test",
         (size.0 as i32, size.1 as i32),
     );
-    let mut state = view.build(&opened.tree);
+    let mut state = view.build();
     state.mount(&opened.content_root, None);
 
     layout::compute_layout(opened.content_root.as_node(), size);
@@ -56,15 +56,10 @@ fn find_leaf_widgets<P>(
 where
     P: FnMut(&gtk_dom::gtk::Widget) -> bool,
 {
-    let lh = root
-        .as_node()
-        .mounted_handle()
-        .expect("root not registered");
-    let tree = lh.tree.clone();
     let mut out = Vec::new();
-    walk(&tree, lh.node_id, &mut |id, w| {
+    walk(root.as_node().id(), &mut |id, w| {
         if pred(w) {
-            if let Some(layout) = tree.layout(id) {
+            if let Some(layout) = layout::layout(id) {
                 out.push(layout);
             }
         }
@@ -72,17 +67,17 @@ where
     out
 }
 
-fn walk<F>(tree: &layout::TreeRef, id: layout::NodeId, f: &mut F)
+fn walk<F>(id: layout::NodeId, f: &mut F)
 where
     F: FnMut(layout::NodeId, &gtk_dom::gtk::Widget),
 {
-    let widget = tree.view(id);
-    let children: Vec<_> = tree.children(id).to_vec();
+    let widget = layout::view(id);
+    let children = layout::children(id);
     if let Some(w) = widget {
         f(id, &w);
     }
     for c in children {
-        walk(tree, c, f);
+        walk(c, f);
     }
 }
 
@@ -153,15 +148,12 @@ fn vstack_label_plus_hstack_has_full_height() {
                     .child(button().title("+1")),
             );
         with_mounted_view(view, (320.0, 200.0), |root| {
-            let lh = root.as_node().mounted_handle().unwrap();
             // First child of the content_root is the outer vstack.
-            let kids = lh.tree.children(lh.node_id).to_vec();
+            let kids = layout::children(root.as_node().id());
             assert!(!kids.is_empty(), "content_root has no children");
             let outer_id = kids[0];
-            let outer_layout = lh
-                .tree
-                .layout(outer_id)
-                .expect("outer layout missing");
+            let outer_layout =
+                layout::layout(outer_id).expect("outer layout missing");
             assert!(
                 outer_layout.size.height >= 60.0,
                 "vstack height {} suspiciously small",

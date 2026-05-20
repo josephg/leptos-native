@@ -80,7 +80,7 @@ impl RendererTrait for Dom {
         // The parent is a real node in the store; look it up by id.
         // Used by `UnitState::insert_before_this` (the mount anchor
         // for `<Switch>` and other placeholder-based control-flow).
-        renderer::layout::parent::<cocoa_dom::layout::CocoaBackend>(node.id())
+        renderer::parent::<cocoa_dom::layout::CocoaBackend>(node.id())
             .map(Node::from_id)
     }
 
@@ -133,7 +133,7 @@ impl Dom {
 /// is a root (or detached). The parent is a real node; no NSView
 /// wrapper synthesis is needed under the thread-local store.
 pub(crate) fn parent_of(before: &Node) -> Option<Node> {
-    renderer::layout::parent::<cocoa_dom::layout::CocoaBackend>(before.id())
+    renderer::parent::<cocoa_dom::layout::CocoaBackend>(before.id())
         .map(Node::from_id)
 }
 

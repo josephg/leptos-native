@@ -17,7 +17,7 @@
 
 use crate::node::Node;
 use gtk4::prelude::*;
-use std::rc::Rc;
+use std::cell::RefCell;
 
 pub use renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -25,7 +25,7 @@ pub use renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use renderer::LayoutBackend;
+use renderer::{LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // GTK backend
@@ -37,6 +37,12 @@ use renderer::LayoutBackend;
 /// content sizing); `gtk::ScrolledWindow` handles its own
 /// content sizing.
 pub struct GtkBackend;
+
+thread_local! {
+    /// The single per-thread node store for the gtk port.
+    static TREE: RefCell<LayoutState<GtkBackend>> =
+        RefCell::new(LayoutState::default());
+}
 
 impl LayoutBackend for GtkBackend {
     type View = gtk4::Widget;
@@ -63,53 +69,56 @@ impl LayoutBackend for GtkBackend {
             None
         }
     }
+
+    fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
+        TREE.with(|t| f(&mut t.borrow_mut()))
+    }
 }
 
-// Aliases so call sites don't have to spell `GtkBackend` everywhere.
-pub type LayoutTree = renderer::LayoutTree<GtkBackend>;
-pub type TreeRef = renderer::TreeRef<GtkBackend>;
-pub type LayoutHandle = renderer::LayoutHandle<GtkBackend>;
 pub type NodeContext = renderer::NodeContext<GtkBackend>;
 
-pub fn new_tree() -> TreeRef {
-    LayoutTree::new()
+// Introspection over the global store (used by tests).
+pub fn node_count() -> usize {
+    renderer::node_count::<GtkBackend>()
+}
+pub fn style(id: NodeId) -> Option<Style> {
+    renderer::style::<GtkBackend>(id)
+}
+pub fn children(id: NodeId) -> Vec<NodeId> {
+    renderer::children::<GtkBackend>(id)
+}
+pub fn dirty(id: NodeId) -> bool {
+    renderer::dirty::<GtkBackend>(id)
+}
+pub fn parent(id: NodeId) -> Option<NodeId> {
+    renderer::parent::<GtkBackend>(id)
+}
+pub fn contains(id: NodeId) -> bool {
+    renderer::contains::<GtkBackend>(id)
+}
+pub fn layout(id: NodeId) -> Option<Layout> {
+    renderer::layout::<GtkBackend>(id)
+}
+pub fn view(id: NodeId) -> Option<gtk4::Widget> {
+    renderer::view::<GtkBackend>(id)
+}
+pub fn remove(id: NodeId) {
+    renderer::remove::<GtkBackend>(id);
 }
 
 // ---------------------------------------------------------------------
 // Per-Node helpers — read/write Node state via its accessors.
 // ---------------------------------------------------------------------
 
-/// Mark `node` as the tree's root, if no root is set yet.
-///
-/// Arena allocation happens eagerly in `Element::create` (and
-/// `Text` / `Placeholder`), so this no longer does any registration
-/// work. It just publishes the node id as `tree.root` — which the
-/// GTK measure/allocate driver reads to find what to lay out. If
-/// a root is already set, this is a silent no-op (first wins).
-pub fn set_as_root(node: &Node, tree: &TreeRef) {
-    let Some((node_tree, id)) = node.tree_id() else { return };
-    debug_assert!(
-        Rc::ptr_eq(&node_tree, tree),
-        "set_as_root called with a tree that doesn't own this node"
-    );
-    let mut root = tree.root.borrow_mut();
-    if root.is_none() {
-        *root = Some(id);
-    }
-}
-
-/// Drop the node and detach it from the tree. Now that `NodeInner::Drop`
-/// already calls `decref`, this just exists for callers that want an
-/// eager detach-now point and to mark the (former) parent dirty.
-pub fn drop_node(node: &Node) {
-    let parent = node
-        .tree_id()
-        .and_then(|(tree, id)| tree.parent(id).map(|pid| (tree, pid)));
-    // Force an eager arena removal (bypass refcount > 0 GC).
+/// Drop the node (and its structural subtree) from the store and
+/// unparent its widget, then queue a resize of the (former) parent's
+/// root so its layout recomputes.
+pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
+    let node = *node.borrow();
+    let parent = renderer::parent::<GtkBackend>(node.id());
     node.teardown();
-    if let Some((tree, pid)) = parent {
-        tree.mark_dirty(pid);
-        queue_root_resize(&tree);
+    if let Some(pid) = parent {
+        queue_root_resize_for(pid);
     }
 }
 
@@ -117,34 +126,30 @@ pub fn drop_node(node: &Node) {
 // Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-pub fn attach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.add_child(parent_id, child_id);
-    queue_root_resize(&tree);
+pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = parent.borrow().id();
+    renderer::add_child::<GtkBackend>(parent_id, child.borrow().id());
+    queue_root_resize_for(parent_id);
 }
 
-pub fn insert_child_at(parent: &Node, child: &Node, index: usize) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.insert_child_at_index(parent_id, index, child_id);
-    queue_root_resize(&tree);
+pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
+    let parent_id = parent.borrow().id();
+    renderer::insert_child_at_index::<GtkBackend>(parent_id, index, child.borrow().id());
+    queue_root_resize_for(parent_id);
 }
 
-pub fn detach_child(parent: &Node, child: &Node) {
-    let Some((tree, parent_id)) = parent.tree_id() else { return };
-    let Some((_, child_id)) = child.tree_id() else { return };
-    tree.remove_child(parent_id, child_id);
-    queue_root_resize(&tree);
+pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+    let parent_id = parent.borrow().id();
+    renderer::remove_child::<GtkBackend>(parent_id, child.borrow().id());
+    queue_root_resize_for(parent_id);
 }
 
-/// Ask GTK to re-run measure+allocate on the tree's root widget.
-/// Each TaffyLayout instance registers the root widget on the tree
-/// so we can fish it out via the stored root NodeId. Multiple
-/// `queue_resize` calls coalesce into one pass per frame.
-pub fn queue_root_resize(tree: &TreeRef) {
-    let Some(root_id) = *tree.root.borrow() else { return };
-    if let Some(widget) = tree.view(root_id) {
+/// Walk up from `id` to its subtree root and ask GTK to re-run
+/// measure+allocate on that root's widget. `queue_resize` calls
+/// coalesce into one pass per frame, so no extra dedup is needed.
+fn queue_root_resize_for(id: NodeId) {
+    let root = renderer::root_of::<GtkBackend>(id);
+    if let Some(widget) = renderer::view::<GtkBackend>(root) {
         widget.queue_resize();
     }
     #[cfg(feature = "debug-overlay")]
@@ -155,27 +160,20 @@ pub fn queue_root_resize(tree: &TreeRef) {
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: &Node, f: impl FnOnce(&mut Style)) {
-    // `Node::with_style_mut` reads the style from the arena, runs
-    // `f`, pushes the updated style back via `tree.set_style`
-    // (which marks the node dirty for the next Taffy pass).
+pub fn update_style(node: Node, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: &Node, style: Style) {
+pub fn set_style(node: Node, style: Style) {
     update_style(node, |s| *s = style);
 }
 
-/// Mark this node dirty in the tree and queue a GTK resize. Call
-/// after content changes that affect intrinsic size (button title,
-/// label text). GTK already calls `queue_resize` for us when
-/// changing the corresponding widget property — but we still need
-/// to mark the cached measurement invalid.
-pub fn schedule_relayout(node: &Node) {
-    if let Some((tree, id)) = node.tree_id() {
-        tree.mark_dirty(id);
-        queue_root_resize(&tree);
-    }
+/// Mark this node dirty and queue a GTK resize of its root. Call after
+/// content changes that affect intrinsic size (button title, label
+/// text) so the cached measurement is invalidated.
+pub fn schedule_relayout(node: Node) {
+    renderer::mark_dirty::<GtkBackend>(node.id());
+    queue_root_resize_for(node.id());
 }
 
 // ---------------------------------------------------------------------
@@ -185,13 +183,13 @@ pub fn schedule_relayout(node: &Node) {
 
 impl renderer::LayoutNodeOps for Node {
     fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
-        update_style(self, f);
+        update_style(*self, f);
     }
     fn schedule_relayout(&self) {
-        schedule_relayout(self);
+        schedule_relayout(*self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        Node::with_style(self, f)
+        Node::with_style(*self, f)
     }
 }
 
@@ -201,7 +199,7 @@ impl renderer::LayoutElement for Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_hidden(self, hidden);
+        Node::set_hidden(*self, hidden);
     }
     fn set_clip(&self, clip: bool) {
         use gtk4::prelude::WidgetExt;
@@ -214,10 +212,10 @@ impl renderer::LayoutElement for Node {
 }
 impl renderer::UniversalElement for Node {
     fn set_alpha(&self, alpha: f64) {
-        Node::set_alpha(self, alpha)
+        Node::set_alpha(*self, alpha)
     }
     fn set_tool_tip(&self, tip: &str) {
-        Node::set_tool_tip(self, tip)
+        Node::set_tool_tip(*self, tip)
     }
 }
 
@@ -243,15 +241,17 @@ pub use renderer::{
 // layout against a fixed available size without running a GTK main
 // loop; this helper mirrors `cocoa_dom::layout::compute_layout`.
 
-pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
-    let Some(handle) = root.mounted_handle() else { return };
+pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: (f32, f32)) {
+    let root_id = root.borrow().id();
+    if !renderer::contains::<GtkBackend>(root_id) {
+        return;
+    }
     let (w, h) = available_size;
 
     // For axes where the root's style.size is `auto`, fill the
-    // available space. Axes the user has set explicitly are left
-    // alone — see cocoa's compute_layout for the rationale.
+    // available space. Explicit axes are left alone.
     {
-        let mut style = handle.tree.style(handle.node_id).unwrap_or_default();
+        let mut style = renderer::style::<GtkBackend>(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -262,7 +262,7 @@ pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
             touched = true;
         }
         if touched {
-            handle.tree.set_style(handle.node_id, style);
+            renderer::set_style::<GtkBackend>(root_id, style);
         }
     }
 
@@ -270,7 +270,7 @@ pub fn compute_layout(root: &Node, available_size: (f32, f32)) {
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    handle.tree.run_layout_pass(handle.node_id, avail);
+    renderer::run_layout_pass::<GtkBackend>(root_id, avail);
 }
 
 // ---------------------------------------------------------------------

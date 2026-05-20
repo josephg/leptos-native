@@ -44,7 +44,7 @@ use std::cell::{Cell, RefCell};
 /// called. The SceneDelegate takes it on
 /// `scene:willConnectToSession:` and calls it with the window and
 /// content root after creating them.
-type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element, &crate::layout::TreeRef)>;
+type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element)>;
 
 // TLS allowed under `MEMORY_POLICY.md` §2 "app-scoped pinning"
 // carve-out: this is a single-value slot used to hand the view
@@ -59,7 +59,7 @@ thread_local! {
 /// Store a view builder to be invoked when the first scene connects.
 /// Called by the mount entry point before `uiapplication_main`.
 pub fn store_view_builder(
-    f: impl FnOnce(&UIWindow, &crate::node::Element, &crate::layout::TreeRef) + 'static,
+    f: impl FnOnce(&UIWindow, &crate::node::Element) + 'static,
 ) {
     BUILDER.with_borrow_mut(|slot| {
         *slot = Some(Box::new(f));
@@ -156,10 +156,6 @@ impl AppDelegate {
 pub struct SceneDelegateState {
     pub window: RefCell<Option<Retained<UIWindow>>>,
     pub content_root: RefCell<Option<crate::node::Element>>,
-    /// Owns the content root's Taffy tree. Cloned `Rc`s on each
-    /// node's `LayoutHandle` already keep the tree alive, but
-    /// rooting it here too means there's an explicit owner.
-    pub tree: RefCell<Option<crate::layout::TreeRef>>,
 }
 
 define_class!(
@@ -184,7 +180,6 @@ define_class!(
             let this = this.set_ivars(SceneDelegateState {
                 window: RefCell::new(None),
                 content_root: RefCell::new(None),
-                tree: RefCell::new(None),
             });
             unsafe { msg_send![super(this), init] }
         }
@@ -230,11 +225,9 @@ define_class!(
             ));
 
             // Content root — a vstack filling the window. The tag
-            // already implies `flex_direction: Column`. Build the tree
-            // first, then create the content root inside it.
-            let tree = crate::layout::new_tree();
+            // already implies `flex_direction: Column`.
             let content_root =
-                crate::node::Element::create_container_with(&tree, mtm);
+                crate::node::Element::create_container_with(mtm);
             crate::layout::set_flex_direction(
                 content_root.as_node(),
                 crate::layout::FlexDirection::Column,
@@ -254,15 +247,13 @@ define_class!(
                     Dim::Pct(1.0),
                 );
             }
-            crate::layout::set_as_root(content_root.as_node(), &tree);
-
             let root_vc = RootViewController::new(mtm, content_root.clone());
-            root_vc.setView(Some(content_root.ui_view()));
+            root_vc.setView(Some(&content_root.ui_view()));
             window.setRootViewController(Some(&root_vc));
 
             BUILDER.with_borrow_mut(|slot| {
                 if let Some(build) = slot.take() {
-                    build(&window, &content_root, &tree);
+                    build(&window, &content_root);
                 }
             });
 
@@ -270,7 +261,6 @@ define_class!(
 
             *self.ivars().window.borrow_mut() = Some(window);
             *self.ivars().content_root.borrow_mut() = Some(content_root);
-            *self.ivars().tree.borrow_mut() = Some(tree);
         }
     }
 );
@@ -280,7 +270,6 @@ impl SceneDelegate {
         let alloc = Self::alloc(mtm).set_ivars(SceneDelegateState {
             window: RefCell::new(None),
             content_root: RefCell::new(None),
-            tree: RefCell::new(None),
         });
         unsafe { msg_send![super(alloc), init] }
     }
@@ -367,7 +356,7 @@ define_class!(
             if insets_changed {
                 state.last_insets.set(insets);
                 state.last_keyboard_inset.set(kb_bottom_extra);
-                crate::layout::update_style(content_root.as_node(), |s| {
+                crate::layout::update_style(*content_root.as_node(), |s| {
                     s.padding = taffy::Rect {
                         top: taffy::LengthPercentage::length(insets.top as f32),
                         bottom: taffy::LengthPercentage::length(

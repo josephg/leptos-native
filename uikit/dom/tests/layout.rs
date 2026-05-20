@@ -28,21 +28,18 @@
 mod common;
 
 use ios_dom::{
-    layout::{compute_layout, new_tree, set_as_root, set_padding},
-    Element, StringAttr,
+    layout::{compute_layout, set_padding},
+    Element,
 };
 use objc2::runtime::AnyObject;
 use objc2_foundation::NSSize;
 use objc2_ui_kit::{UIButton, UILabel};
 
-/// Build a fresh "content_root"–style Element registered in a
-/// new Taffy tree. Mirrors what `SceneDelegate::scene:willConnectToSession`
-/// does in production, but synchronously for tests.
-fn make_root_with_size(width: f64, height: f64) -> (ios_dom::layout::TreeRef, Element) {
+/// Build a "content_root"–style Element with a pinned size.
+fn make_root_with_size(width: f64, height: f64) -> Element {
     let _mtm = common::test_mtm();
-    let tree = new_tree();
 
-    let root = Element::create_vstack(&tree);
+    let root = Element::create_vstack();
     // Pin the root's size in its style so layout has something to
     // distribute against.
     root.as_node().with_style_mut(|s| {
@@ -52,8 +49,7 @@ fn make_root_with_size(width: f64, height: f64) -> (ios_dom::layout::TreeRef, El
         };
     });
 
-    set_as_root(root.as_node(), &tree);
-    (tree, root)
+    root
 }
 
 /// REGRESSION: a `<vstack>` containing a single `<label>` must produce
@@ -62,12 +58,12 @@ fn make_root_with_size(width: f64, height: f64) -> (ios_dom::layout::TreeRef, El
 /// placeholder turned it into a non-leaf in Taffy), the label's frame
 /// stays at 0×0 and the parent collapses.
 fn label_in_vstack_has_nonzero_height() {
-    let mtm = common::test_mtm();
+    let _mtm = common::test_mtm();
 
-    let (tree, root) = make_root_with_size(320.0, 480.0);
+    let root = make_root_with_size(320.0, 480.0);
     set_padding(root.as_node(), 12.0);
 
-    let label = Element::create_label(&tree).0;
+    let label = Element::create_label().0;
     label.set_title("Hello, iOS!");
     root.insert_node(label.as_node(), None);
 
@@ -103,18 +99,18 @@ fn label_in_vstack_has_nonzero_height() {
 /// intrinsic-content-sized frame after layout. Same shape as
 /// cocoa's `button_in_hstack_has_natural_size` test.
 fn buttons_in_hstack_have_natural_size() {
-    let mtm = common::test_mtm();
+    let _mtm = common::test_mtm();
 
-    let (tree, root) = make_root_with_size(320.0, 200.0);
+    let root = make_root_with_size(320.0, 200.0);
 
-    let hstack = Element::create_hstack(&tree);
+    let hstack = Element::create_hstack();
     root.insert_node(hstack.as_node(), None);
 
-    let b1 = Element::create_button(&tree).0;
+    let b1 = Element::create_button().0;
     b1.set_title("OK");
     hstack.insert_node(b1.as_node(), None);
 
-    let b2 = Element::create_button(&tree).0;
+    let b2 = Element::create_button().0;
     b2.set_title("Cancel");
     hstack.insert_node(b2.as_node(), None);
 
@@ -152,19 +148,19 @@ fn buttons_in_hstack_have_natural_size() {
 /// height. Mirrors the cocoa `vstack_label_plus_hstack_has_full_height`
 /// test.
 fn vstack_label_plus_hstack_has_full_height() {
-    let mtm = common::test_mtm();
+    let _mtm = common::test_mtm();
 
-    let (tree, root) = make_root_with_size(320.0, 480.0);
+    let root = make_root_with_size(320.0, 480.0);
     set_padding(root.as_node(), 12.0);
 
-    let label = Element::create_label(&tree).0;
+    let label = Element::create_label().0;
     label.set_title("Count: 0");
     root.insert_node(label.as_node(), None);
 
-    let hstack = Element::create_hstack(&tree);
+    let hstack = Element::create_hstack();
     root.insert_node(hstack.as_node(), None);
     for title in ["-1", "Reset", "+1"] {
-        let b = Element::create_button(&tree).0;
+        let b = Element::create_button().0;
         b.set_title(title);
         hstack.insert_node(b.as_node(), None);
     }

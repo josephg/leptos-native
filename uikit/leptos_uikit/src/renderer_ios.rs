@@ -34,12 +34,12 @@ impl RendererTrait for Dom {
         IosRenderer::intern(text)
     }
 
-    fn create_text_node(tree: &ios_dom::layout::TreeRef, text: &str) -> Element {
-        IosRenderer::create_text_node(tree, text)
+    fn create_text_node(text: &str) -> Element {
+        IosRenderer::create_text_node(text)
     }
 
-    fn create_placeholder(tree: &ios_dom::layout::TreeRef) -> Element {
-        IosRenderer::create_placeholder(tree)
+    fn create_placeholder() -> Element {
+        IosRenderer::create_placeholder()
     }
 
     fn set_text(node: &Element, text: &str) {
@@ -92,10 +92,9 @@ impl RendererTrait for Dom {
     where
         M: Mountable<Self>,
     {
-        let Some(parent_view) = before.ui_view().superview() else {
+        let Some(parent) = parent_of(before) else {
             return false;
         };
-        let parent = synthesise_parent_element(parent_view, before);
         new_child.mount(&parent, Some(before));
         true
     }
@@ -103,44 +102,23 @@ impl RendererTrait for Dom {
 
 impl Dom {
     /// Mount `new_child` immediately before `before`. Panics if
-    /// `before` has no superview (must-succeed variant).
+    /// `before` has no parent (must-succeed variant).
     #[track_caller]
     pub fn mount_before<M>(new_child: &mut M, before: &Node)
     where
         M: Mountable<Dom>,
     {
-        let parent_view = before
-            .ui_view()
-            .superview()
-            .expect("Dom::mount_before — node has no superview");
-        let parent = synthesise_parent_element(parent_view, before);
+        let parent = parent_of(before)
+            .expect("Dom::mount_before — node has no parent");
         new_child.mount(&parent, Some(before));
     }
 }
 
-fn synthesise_parent_element(
-    parent_view: ios_dom::Retained<ios_dom::UIView>,
-    before: &Node,
-) -> Element {
-    use ios_dom::layout::LayoutHandle;
-
-    let parent_handle: Option<LayoutHandle> = before
-        .mounted_handle()
-        .and_then(|h| {
-            let parent_id = h.tree.parent(h.node_id)?;
-            Some(LayoutHandle {
-                tree: h.tree.clone(),
-                node_id: parent_id,
-            })
-        });
-
-    let handle = parent_handle.expect(
-        "synthesise_parent_element: `before` Node has no parent in its \
-         tree — every node is now arena-resident from creation, so this \
-         should be unreachable",
-    );
-    let parent_node = Node::from_view_with_handle(parent_view, handle);
-    parent_node
+/// The parent `Node` of `before` in the store, or `None` if it's a
+/// root. No view-wrapper synthesis needed under the thread-local store.
+fn parent_of(before: &Node) -> Option<Node> {
+    renderer::parent::<ios_dom::layout::IosBackend>(before.id())
+        .map(Node::from_id)
 }
 
 // ---------------------------------------------------------------------

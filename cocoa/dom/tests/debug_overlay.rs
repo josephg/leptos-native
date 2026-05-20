@@ -39,7 +39,6 @@ fn overlay_does_not_shift_children() {
         root.as_node(),
         layout::FlexDirection::Row,
     );
-    layout::set_as_root(root.as_node());
 
     // Install the overlay BEFORE adding children — same order
     // window.rs does.
@@ -79,7 +78,6 @@ fn overlay_does_not_shift_marker_inserts() {
         root.as_node(),
         layout::FlexDirection::Row,
     );
-    layout::set_as_root(root.as_node());
 
     let __nv = root.ns_view();
     let any: &objc2::runtime::AnyObject = __nv.as_ref();

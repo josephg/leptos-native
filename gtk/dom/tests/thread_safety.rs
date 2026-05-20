@@ -21,8 +21,7 @@ fn create_off_main_panics() {
         std::panic::catch_unwind(|| {
             // `new_tree()` is main-thread-safe (pure Rust); the panic
             // comes from the GTK widget constructor.
-            let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Node::create_button(&tree).0;
+            let _ = gtk_dom::Node::create_button().0;
         })
     })
     .join()
@@ -40,8 +39,7 @@ fn create_text_off_main_panics() {
     }
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Node::create_text(&tree, "hi");
+            let _ = gtk_dom::Node::create_text("hi");
         })
     })
     .join()
@@ -59,8 +57,7 @@ fn create_placeholder_off_main_panics() {
     }
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let tree = gtk_dom::layout::new_tree();
-            let _ = gtk_dom::Node::create_placeholder(&tree);
+            let _ = gtk_dom::Node::create_placeholder();
         })
     })
     .join()

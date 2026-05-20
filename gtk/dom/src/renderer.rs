@@ -82,12 +82,12 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(tree: &crate::layout::TreeRef, text: &str) -> Node {
-        Node::create_text(tree, text)
+    pub fn create_text_node(text: &str) -> Node {
+        Node::create_text(text)
     }
 
-    pub fn create_placeholder(tree: &crate::layout::TreeRef) -> Node {
-        Node::create_placeholder(tree)
+    pub fn create_placeholder() -> Node {
+        Node::create_placeholder()
     }
 
     pub fn set_text(node: &Node, text: &str) {
@@ -115,7 +115,7 @@ impl Renderer {
     }
 
     pub fn remove(node: &Node) {
-        node.teardown();
+        crate::layout::drop_node(node);
     }
 
     pub fn get_parent(_node: &Node) -> Option<Node> {

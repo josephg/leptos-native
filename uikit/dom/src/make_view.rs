@@ -11,7 +11,7 @@
 
 use crate::{
     event::IosNodeHandlers,
-    layout::{Dimension, FlexDirection, IosMeta, Style, TreeRef},
+    layout::{Dimension, FlexDirection, IosMeta, Style},
     node::Node,
 };
 
@@ -42,146 +42,134 @@ fn leaf_style() -> Style {
 impl Node {
     /// System-style push button (UIButton with type System). Targets/
     /// titles wired later via attribute setters / `on_click`.
-    pub fn create_button(tree: &TreeRef) -> (Node, Retained<UIButton>) {
+    pub fn create_button() -> (Node, Retained<UIButton>) {
         let b = UIButton::buttonWithType(UIButtonType::System, mtm());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(b.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, b)
     }
 
     /// UISwitch — boolean toggle.
-    pub fn create_switch(tree: &TreeRef) -> (Node, Retained<UISwitch>) {
+    pub fn create_switch() -> (Node, Retained<UISwitch>) {
         let sw = UISwitch::initWithFrame(UISwitch::alloc(mtm()), zero_frame());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(sw.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, sw)
     }
 
-    pub fn create_label(tree: &TreeRef) -> (Node, Retained<UILabel>) {
+    pub fn create_label() -> (Node, Retained<UILabel>) {
         let l = UILabel::initWithFrame(UILabel::alloc(mtm()), zero_frame());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(l.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, l)
     }
 
     /// Editable single-line text field with rounded-rect bezel.
-    pub fn create_text_field(tree: &TreeRef) -> (Node, Retained<UITextField>) {
+    pub fn create_text_field() -> (Node, Retained<UITextField>) {
         let tf = UITextField::initWithFrame(UITextField::alloc(mtm()), zero_frame());
         tf.setBorderStyle(UITextBorderStyle::RoundedRect);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tf.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, tf)
     }
 
-    pub fn create_secure_text_field(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UITextField>) {
+    pub fn create_secure_text_field() -> (Node, Retained<UITextField>) {
         let tf = UITextField::initWithFrame(UITextField::alloc(mtm()), zero_frame());
         tf.setSecureTextEntry(true);
         tf.setBorderStyle(UITextBorderStyle::RoundedRect);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tf.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, tf)
     }
 
     /// Continuous-update slider — `setContinuous(true)`.
-    pub fn create_slider(tree: &TreeRef) -> (Node, Retained<UISlider>) {
+    pub fn create_slider() -> (Node, Retained<UISlider>) {
         let sl = UISlider::initWithFrame(UISlider::alloc(mtm()), zero_frame());
         sl.setContinuous(true);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(sl.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, sl)
     }
 
-    pub fn create_date_picker(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UIDatePicker>) {
+    pub fn create_date_picker() -> (Node, Retained<UIDatePicker>) {
         let dp = UIDatePicker::initWithFrame(
             UIDatePicker::alloc(mtm()),
             zero_frame(),
         );
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(dp.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, dp)
     }
 
     /// +/- numeric stepper. `setAutorepeat(true)` + `setContinuous(true)`
     /// — fire on every drag tick.
-    pub fn create_stepper(tree: &TreeRef) -> (Node, Retained<UIStepper>) {
+    pub fn create_stepper() -> (Node, Retained<UIStepper>) {
         let st = UIStepper::initWithFrame(UIStepper::alloc(mtm()), zero_frame());
         st.setAutorepeat(true);
         st.setContinuous(true);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(st.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, st)
     }
 
     /// `UIProgressView` (Default style). Named for cocoa parity
     /// (`<progress_indicator>`).
-    pub fn create_progress_indicator(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UIProgressView>) {
+    pub fn create_progress_indicator() -> (Node, Retained<UIProgressView>) {
         let pv = UIProgressView::initWithProgressViewStyle(
             UIProgressView::alloc(mtm()),
             UIProgressViewStyle::Default,
         );
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(pv.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, pv)
     }
 
     /// UIImageView with aspect-fit scaling.
-    pub fn create_image_view(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UIImageView>) {
+    pub fn create_image_view() -> (Node, Retained<UIImageView>) {
         let iv = UIImageView::initWithFrame(
             UIImageView::alloc(mtm()),
             zero_frame(),
         );
         iv.setContentMode(UIViewContentMode::ScaleAspectFit);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(iv.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, iv)
     }
 
     /// Menu-style button — UIButton with `setShowsMenuAsPrimaryAction`.
-    pub fn create_pop_up_button(tree: &TreeRef) -> (Node, Retained<UIButton>) {
+    pub fn create_pop_up_button() -> (Node, Retained<UIButton>) {
         let b = UIButton::buttonWithType(UIButtonType::System, mtm());
         b.setShowsMenuAsPrimaryAction(true);
         b.setChangesSelectionAsPrimaryAction(true);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(b.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, b)
     }
 
-    pub fn create_color_well(tree: &TreeRef) -> (Node, Retained<UIColorWell>) {
+    pub fn create_color_well() -> (Node, Retained<UIColorWell>) {
         let cw = UIColorWell::initWithFrame(
             UIColorWell::alloc(mtm()),
             zero_frame(),
         );
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(cw.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, cw)
     }
 
-    pub fn create_segmented_control(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UISegmentedControl>) {
+    pub fn create_segmented_control() -> (Node, Retained<UISegmentedControl>) {
         let sc = UISegmentedControl::initWithFrame(
             UISegmentedControl::alloc(mtm()),
             zero_frame(),
         );
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(sc.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, sc)
     }
 
     /// User-scrollable container — UIScrollView with a content UIView
     /// added as the first subview. Children added via `insert_node`
     /// route to the content view.
-    pub fn create_scroll_view(
-        tree: &TreeRef,
-    ) -> (Node, Retained<UIScrollView>) {
+    pub fn create_scroll_view() -> (Node, Retained<UIScrollView>) {
         let scroll = UIScrollView::initWithFrame(
             UIScrollView::alloc(mtm()),
             zero_frame(),
@@ -205,46 +193,46 @@ impl Node {
         let mut meta = IosMeta::default();
         meta.is_scroll_view = true;
 
-        let n = Node::from_view(tree, view, s, meta);
+        let n = Node::from_view(view, s, meta);
         (n, scroll)
     }
 
     /// Multi-line text editing surface — UITextView, editable + selectable.
-    pub fn create_text_view(tree: &TreeRef) -> (Node, Retained<UITextView>) {
+    pub fn create_text_view() -> (Node, Retained<UITextView>) {
         let tv = UITextView::initWithFrame(UITextView::alloc(mtm()), zero_frame());
         tv.setEditable(true);
         tv.setSelectable(true);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tv.clone()) };
-        let n = Node::from_view(tree, view, leaf_style(), IosMeta::default());
+        let n = Node::from_view(view, leaf_style(), IosMeta::default());
         (n, tv)
     }
 
     /// `<stack_view>` / `<vstack>` / `<view>` — vertical UIView
     /// container.
-    pub fn create_vstack(tree: &TreeRef) -> Node {
+    pub fn create_vstack() -> Node {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Column;
-        Node::from_view(tree, view, s, IosMeta::default())
+        Node::from_view(view, s, IosMeta::default())
     }
 
     /// `<hstack>` — horizontal UIView container.
-    pub fn create_hstack(tree: &TreeRef) -> Node {
+    pub fn create_hstack() -> Node {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Row;
-        Node::from_view(tree, view, s, IosMeta::default())
+        Node::from_view(view, s, IosMeta::default())
     }
 
     /// `<grid>` — UIView container with Taffy `Display::Grid`.
-    pub fn create_grid(tree: &TreeRef) -> Node {
+    pub fn create_grid() -> Node {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
         s.display = crate::layout::Display::Grid;
-        Node::from_view(tree, view, s, IosMeta::default())
+        Node::from_view(view, s, IosMeta::default())
     }
 }
 

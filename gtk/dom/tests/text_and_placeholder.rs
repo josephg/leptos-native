@@ -8,54 +8,49 @@ mod common;
 use gtk_dom::{gtk::prelude::*, Node};
 
 fn text_create_basic() {
-    let tree = gtk_dom::layout::new_tree();
-    let t = Node::create_text(&tree, "hello");
+    let t = Node::create_text("hello");
 
-    let l = t
+    let __w = t
         .as_node()
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Label>()
+        .widget();
+    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
         .expect("text-label should be backed by gtk::Label");
     assert_eq!(l.label().as_str(), "hello");
 }
 
 fn text_create_empty() {
-    let tree = gtk_dom::layout::new_tree();
-    let t = Node::create_text(&tree, "");
-    let l = t
+    let t = Node::create_text("");
+    let __w = t
         .as_node()
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Label>()
+        .widget();
+    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "");
 }
 
 fn text_create_multiline_preserves_newlines() {
-    let tree = gtk_dom::layout::new_tree();
-    let t = Node::create_text(&tree, "line one\nline two\nline three");
-    let l = t
+    let t = Node::create_text("line one\nline two\nline three");
+    let __w = t
         .as_node()
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Label>()
+        .widget();
+    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "line one\nline two\nline three");
 }
 
 fn text_set_text_updates_value() {
-    let tree = gtk_dom::layout::new_tree();
-    let t = Node::create_text(&tree, "before");
+    let t = Node::create_text("before");
     t.set_text("after");
-    let l = t
+    let __w = t
         .as_node()
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Label>()
+        .widget();
+    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "after");
 }
 
 fn placeholder_create_is_invisible() {
-    let tree = gtk_dom::layout::new_tree();
-    let p = Node::create_placeholder(&tree);
+    let p = Node::create_placeholder();
 
     let widget = p.as_node().widget();
     // Placeholders shouldn't take any layout space — gtk's
@@ -64,12 +59,11 @@ fn placeholder_create_is_invisible() {
 }
 
 fn placeholder_backed_by_label_so_children_error() {
-    let tree = gtk_dom::layout::new_tree();
     // Implementation detail: we use gtk::Label rather than gtk::Box
     // for placeholders so that a `placeholder.append(child)` attempt
     // would fail at the GTK type level rather than silently mounting
     // an invisible child.
-    let p = Node::create_placeholder(&tree);
+    let p = Node::create_placeholder();
     assert!(
         p.as_node().widget().is::<gtk_dom::gtk::Label>(),
         "Placeholder should be a gtk::Label so it can't accept children"

@@ -661,3 +661,13 @@ macOS (`target_os = "macos"`) and Linux (`target_os = "linux"`).
   `scene:willConnectToSession:options:` is called once per scene.
   Our `run()` creates one window per call. Multi-window would need
   the user to manually manage multiple scene sessions — deferred.
+
+## 2026-05-20 — TLS node store + `Copy` `NodeId` (see implementation_log.md)
+
+The cross-cutting `Node`-becomes-`NodeId`-over-a-thread-local-store
+refactor landed on this port too, mirroring cocoa one-for-one. Full
+rationale + the shared design is in the top entry of
+`implementation_log.md` (2026-05-20). Port-local notes: same
+`LayoutBackend::with_tree` + `thread_local!` store, `Node` is a `Copy`
+id (no `Rc`/`SendWrapper`/refcount), explicit teardown+cascade
+lifecycle, and the walk-up-to-root relayout scheduler.

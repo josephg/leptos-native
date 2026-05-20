@@ -17,15 +17,14 @@ use std::rc::Rc;
 // ---------------------------------------------------------------------
 
 fn on_click_fires_on_button() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_button(&tree).0;
+    let el = Node::create_button().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_click(move || c.set(c.get() + 1));
 
-    let b = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Button>()
+    let __w = el
+        .widget();
+    let b = __w.downcast_ref::<gtk_dom::gtk::Button>()
         .unwrap();
     b.emit_clicked();
     b.emit_clicked();
@@ -34,8 +33,7 @@ fn on_click_fires_on_button() {
 }
 
 fn on_click_on_label_is_no_op() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_label(&tree).0;
+    let el = Node::create_label().0;
     el.on_click(|| panic!("must not fire"));
     // No way to "fire a click" on a label; the assertion is that
     // installing didn't panic and won't fire. Just verify by
@@ -43,17 +41,16 @@ fn on_click_on_label_is_no_op() {
 }
 
 fn on_click_on_checkbox_fires_on_toggle() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_checkbox(&tree).0;
+    let el = Node::create_checkbox().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_click(move || c.set(c.get() + 1));
 
     // Toggling a CheckButton fires the `toggled` signal — our
     // `on_click` routes through that.
-    let cb = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::CheckButton>()
+    let __w = el
+        .widget();
+    let cb = __w.downcast_ref::<gtk_dom::gtk::CheckButton>()
         .unwrap();
     cb.set_active(true);
     cb.set_active(false);
@@ -66,8 +63,7 @@ fn on_click_on_checkbox_fires_on_toggle() {
 // ---------------------------------------------------------------------
 
 fn on_action_fires_on_slider() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_slider(&tree).0;
+    let el = Node::create_slider().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_action(move || c.set(c.get() + 1));
@@ -80,8 +76,7 @@ fn on_action_fires_on_slider() {
 }
 
 fn on_action_fires_on_dropdown() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_pop_up_button(&tree).0;
+    let el = Node::create_pop_up_button().0;
     el.set_popup_items(&["A".to_string(), "B".to_string(), "C".to_string()]);
 
     let count = Rc::new(Cell::new(0));
@@ -94,8 +89,7 @@ fn on_action_fires_on_dropdown() {
 }
 
 fn on_action_on_view_is_no_op() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_stack(&tree);
+    let el = Node::create_stack();
     el.on_action(|| panic!("must not fire"));
 }
 
@@ -104,15 +98,14 @@ fn on_action_on_view_is_no_op() {
 // ---------------------------------------------------------------------
 
 fn on_text_change_fires_on_text_field() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_text_field(&tree).0;
+    let el = Node::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_change(move |v| c.set(v));
 
-    let entry = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Entry>()
+    let __w = el
+        .widget();
+    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
         .unwrap();
     entry.set_text("typed");
 
@@ -120,16 +113,14 @@ fn on_text_change_fires_on_text_field() {
 }
 
 fn on_text_change_on_button_is_no_op() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_button(&tree).0;
+    let el = Node::create_button().0;
     el.on_text_change(|_| panic!("must not fire"));
 }
 
 fn multiple_on_text_change_fan_out() {
-    let tree = gtk_dom::layout::new_tree();
     // Each `on_text_change` install adds another connect_changed
     // signal connection — they all fire.
-    let el = Node::create_text_field(&tree).0;
+    let el = Node::create_text_field().0;
     let calls = Rc::new(Cell::new(0));
     {
         let c = calls.clone();
@@ -140,9 +131,9 @@ fn multiple_on_text_change_fan_out() {
         el.on_text_change(move |_| c.set(c.get() + 1));
     }
 
-    let entry = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Entry>()
+    let __w = el
+        .widget();
+    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
         .unwrap();
     entry.set_text("hi");
 
@@ -154,15 +145,14 @@ fn multiple_on_text_change_fan_out() {
 // ---------------------------------------------------------------------
 
 fn on_text_end_editing_fires_on_activate() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_text_field(&tree).0;
+    let el = Node::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_end_editing(move |v| c.set(v));
 
-    let entry = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Entry>()
+    let __w = el
+        .widget();
+    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
         .unwrap();
     entry.set_text("done");
     entry.emit_activate();
@@ -171,8 +161,7 @@ fn on_text_end_editing_fires_on_activate() {
 }
 
 fn on_change_and_on_input_coexist() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_text_field(&tree).0;
+    let el = Node::create_text_field().0;
     let inputs = Rc::new(Cell::new(0));
     let changes = Rc::new(Cell::new(0));
 
@@ -185,9 +174,9 @@ fn on_change_and_on_input_coexist() {
         el.on_text_end_editing(move |_| c.set(c.get() + 1));
     }
 
-    let entry = el
-        .widget()
-        .downcast_ref::<gtk_dom::gtk::Entry>()
+    let __w = el
+        .widget();
+    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
         .unwrap();
     entry.set_text("x");
     entry.emit_activate();
@@ -206,8 +195,7 @@ fn on_change_and_on_input_coexist() {
 // ---------------------------------------------------------------------
 
 fn slider_double_value_round_trips() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_slider(&tree).0;
+    let el = Node::create_slider().0;
     el.set_slider_min(0.0);
     el.set_slider_max(100.0);
     el.set_double_value(42.5);
@@ -215,8 +203,7 @@ fn slider_double_value_round_trips() {
 }
 
 fn popup_items_and_selection() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_pop_up_button(&tree).0;
+    let el = Node::create_pop_up_button().0;
     let items: Vec<String> =
         ["Alpha", "Beta", "Gamma"].into_iter().map(String::from).collect();
     el.set_popup_items(&items);
@@ -225,8 +212,7 @@ fn popup_items_and_selection() {
 }
 
 fn checkbox_checked_round_trips() {
-    let tree = gtk_dom::layout::new_tree();
-    let el = Node::create_checkbox(&tree).0;
+    let el = Node::create_checkbox().0;
     assert!(!el.checked());
     el.set_checked(true);
     assert!(el.checked());

@@ -16,13 +16,12 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
-        let tree = gtk_dom::layout::new_tree();
-        let text_field = Node::create_text_field(&tree).0;
+        let text_field = Node::create_text_field().0;
 
         text_field.set_value("hello");
-        let after_first = text_field
-            .widget()
-            .downcast_ref::<gtk_dom::gtk::Entry>()
+        let __w = text_field
+            .widget();
+        let after_first = __w.downcast_ref::<gtk_dom::gtk::Entry>()
             .unwrap()
             .text()
             .to_string();
@@ -30,9 +29,9 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
         text_field.set_value("hello");
 
-        let after_second = text_field
-            .widget()
-            .downcast_ref::<gtk_dom::gtk::Entry>()
+        let __w = text_field
+            .widget();
+        let after_second = __w.downcast_ref::<gtk_dom::gtk::Entry>()
             .unwrap()
             .text()
             .to_string();
@@ -42,13 +41,12 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
 fn set_bool_attribute_with_same_value_idempotent() {
     with_reactive_scope(|| {
-        let tree = gtk_dom::layout::new_tree();
-        let checkbox = Node::create_checkbox(&tree).0;
+        let checkbox = Node::create_checkbox().0;
 
         checkbox.set_checked(true);
-        let cb = checkbox
-            .widget()
-            .downcast_ref::<gtk_dom::gtk::CheckButton>()
+        let __w = checkbox
+            .widget();
+        let cb = __w.downcast_ref::<gtk_dom::gtk::CheckButton>()
             .unwrap();
         assert!(cb.is_active());
 

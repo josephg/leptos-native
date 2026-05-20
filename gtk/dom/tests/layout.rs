@@ -12,46 +12,25 @@ mod common;
 
 use gtk_dom::{layout, Node};
 
-/// Recover the layout tree that already owns `root`, publish `root`
-/// as its root, return the tree handle.
-///
-/// Pre-Phase-3 the tree was created lazily after the root; now every
-/// Node is in a tree from creation, so callers build the tree first
-/// and pass it to `Node::create(&tree, ...)`. This helper just
-/// re-publishes the root for tests that haven't been updated to the
-/// new shape.
-fn fresh_tree(root: &Node) -> layout::TreeRef {
-    let tree = root.as_node().tree_id().unwrap().0;
-    layout::set_as_root(root.as_node(), &tree);
-    tree
-}
-
 /// Read the Taffy-computed layout for `el` and assert position +
 /// size against the expected values.
 fn frame_eq(
-    tree: &layout::TreeRef,
     el: &Node,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
 ) {
-    let lh = el
-        .as_node()
-        .mounted_handle()
-        .expect("element not registered in tree");
-    let layout = tree
-        .layout(lh.node_id)
-        .expect("no layout computed");
+    let l = layout::layout(el.as_node().id()).expect("no layout computed");
     let tol = 0.5;
     assert!(
-        (layout.location.x - x).abs() < tol
-            && (layout.location.y - y).abs() < tol
-            && (layout.size.width - w).abs() < tol
-            && (layout.size.height - h).abs() < tol,
+        (l.location.x - x).abs() < tol
+            && (l.location.y - y).abs() < tol
+            && (l.size.width - w).abs() < tol
+            && (l.size.height - h).abs() < tol,
         "frame mismatch: got ({}, {}, {}×{}); expected ({}, {}, {}×{})",
-        layout.location.x, layout.location.y,
-        layout.size.width, layout.size.height,
+        l.location.x, l.location.y,
+        l.size.width, l.size.height,
         x, y, w, h
     );
 }
@@ -61,11 +40,9 @@ fn frame_eq(
 // ---------------------------------------------------------------------
 
 fn root_fills_available_space() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
-    let tree = fresh_tree(&root);
+    let root = Node::create_stack();
     layout::compute_layout(root.as_node(), (400.0, 300.0));
-    frame_eq(&tree, &root, 0.0, 0.0, 400.0, 300.0);
+    frame_eq(&root, 0.0, 0.0, 400.0, 300.0);
 }
 
 // ---------------------------------------------------------------------
@@ -73,13 +50,11 @@ fn root_fills_available_space() {
 // ---------------------------------------------------------------------
 
 fn row_two_children_side_by_side() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
     layout::set_width(a.as_node(), 100.0);
     layout::set_height(a.as_node(), 50.0);
     layout::set_width(b.as_node(), 200.0);
@@ -90,8 +65,8 @@ fn row_two_children_side_by_side() {
 
     layout::compute_layout(root.as_node(), (500.0, 400.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 100.0, 50.0);
-    frame_eq(&tree, &b, 100.0, 0.0, 200.0, 60.0);
+    frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
+    frame_eq(&b, 100.0, 0.0, 200.0, 60.0);
 }
 
 // ---------------------------------------------------------------------
@@ -99,13 +74,11 @@ fn row_two_children_side_by_side() {
 // ---------------------------------------------------------------------
 
 fn column_two_children_stacked() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
     layout::set_height(a.as_node(), 80.0);
     layout::set_height(b.as_node(), 120.0);
 
@@ -116,8 +89,8 @@ fn column_two_children_stacked() {
 
     // Column + default `align_items: Stretch` makes children fill
     // the cross-axis (width = 300).
-    frame_eq(&tree, &a, 0.0, 0.0, 300.0, 80.0);
-    frame_eq(&tree, &b, 0.0, 80.0, 300.0, 120.0);
+    frame_eq(&a, 0.0, 0.0, 300.0, 80.0);
+    frame_eq(&b, 0.0, 80.0, 300.0, 120.0);
 }
 
 // ---------------------------------------------------------------------
@@ -125,19 +98,17 @@ fn column_two_children_stacked() {
 // ---------------------------------------------------------------------
 
 fn padding_inset_applies_to_children() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_padding(root.as_node(), 16.0);
-    let tree = fresh_tree(&root);
 
-    let child = Node::create_stack(&tree);
+    let child = Node::create_stack();
     layout::set_height(child.as_node(), 50.0);
     root.insert_node(child.as_node(), None);
 
     layout::compute_layout(root.as_node(), (200.0, 200.0));
 
-    frame_eq(&tree, &child, 16.0, 16.0, 168.0, 50.0);
+    frame_eq(&child, 16.0, 16.0, 168.0, 50.0);
 }
 
 // ---------------------------------------------------------------------
@@ -145,14 +116,12 @@ fn padding_inset_applies_to_children() {
 // ---------------------------------------------------------------------
 
 fn gap_separates_children() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_gap(root.as_node(), 12.0);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
     layout::set_height(a.as_node(), 30.0);
     layout::set_height(b.as_node(), 40.0);
     root.insert_node(a.as_node(), None);
@@ -160,8 +129,8 @@ fn gap_separates_children() {
 
     layout::compute_layout(root.as_node(), (200.0, 200.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 200.0, 30.0);
-    frame_eq(&tree, &b, 0.0, 42.0, 200.0, 40.0);
+    frame_eq(&a, 0.0, 0.0, 200.0, 30.0);
+    frame_eq(&b, 0.0, 42.0, 200.0, 40.0);
 }
 
 // ---------------------------------------------------------------------
@@ -169,13 +138,11 @@ fn gap_separates_children() {
 // ---------------------------------------------------------------------
 
 fn flex_grow_distributes_leftover() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
     layout::set_flex_grow(a.as_node(), 1.0);
     layout::set_flex_grow(b.as_node(), 1.0);
     root.insert_node(a.as_node(), None);
@@ -183,18 +150,16 @@ fn flex_grow_distributes_leftover() {
 
     layout::compute_layout(root.as_node(), (400.0, 100.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 200.0, 100.0);
-    frame_eq(&tree, &b, 200.0, 0.0, 200.0, 100.0);
+    frame_eq(&a, 0.0, 0.0, 200.0, 100.0);
+    frame_eq(&b, 200.0, 0.0, 200.0, 100.0);
 }
 
 fn flex_grow_unequal_distributes_proportionally() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
     layout::set_flex_grow(a.as_node(), 1.0);
     layout::set_flex_grow(b.as_node(), 3.0);
     root.insert_node(a.as_node(), None);
@@ -202,23 +167,21 @@ fn flex_grow_unequal_distributes_proportionally() {
 
     layout::compute_layout(root.as_node(), (400.0, 100.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 100.0, 100.0);
-    frame_eq(&tree, &b, 100.0, 0.0, 300.0, 100.0);
+    frame_eq(&a, 0.0, 0.0, 100.0, 100.0);
+    frame_eq(&b, 100.0, 0.0, 300.0, 100.0);
 }
 
 fn justify_content_space_between() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
     layout::set_justify_content(
         root.as_node(),
         layout::JustifyContent::SpaceBetween,
     );
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
-    let c = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
+    let c = Node::create_stack();
     for el in [&a, &b, &c] {
         layout::set_width(el.as_node(), 60.0);
         layout::set_height(el.as_node(), 40.0);
@@ -227,26 +190,24 @@ fn justify_content_space_between() {
 
     layout::compute_layout(root.as_node(), (600.0, 100.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 60.0, 40.0);
-    frame_eq(&tree, &b, 270.0, 0.0, 60.0, 40.0);
-    frame_eq(&tree, &c, 540.0, 0.0, 60.0, 40.0);
+    frame_eq(&a, 0.0, 0.0, 60.0, 40.0);
+    frame_eq(&b, 270.0, 0.0, 60.0, 40.0);
+    frame_eq(&c, 540.0, 0.0, 60.0, 40.0);
 }
 
 fn align_items_center_centres_cross_axis() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
     layout::set_align_items(root.as_node(), layout::AlignItems::Center);
-    let tree = fresh_tree(&root);
 
-    let child = Node::create_stack(&tree);
+    let child = Node::create_stack();
     layout::set_width(child.as_node(), 100.0);
     layout::set_height(child.as_node(), 30.0);
     root.insert_node(child.as_node(), None);
 
     layout::compute_layout(root.as_node(), (400.0, 200.0));
 
-    frame_eq(&tree, &child, 150.0, 0.0, 100.0, 30.0);
+    frame_eq(&child, 150.0, 0.0, 100.0, 30.0);
 }
 
 // ---------------------------------------------------------------------
@@ -254,20 +215,18 @@ fn align_items_center_centres_cross_axis() {
 // ---------------------------------------------------------------------
 
 fn nested_containers_inner_fits_within_outer() {
-    let tree = gtk_dom::layout::new_tree();
-    let outer = Node::create_stack(&tree);
+    let outer = Node::create_stack();
     layout::set_flex_direction(outer.as_node(), layout::FlexDirection::Column);
     layout::set_padding(outer.as_node(), 10.0);
-    let tree = fresh_tree(&outer);
 
-    let inner = Node::create_stack(&tree);
+    let inner = Node::create_stack();
     layout::set_flex_direction(inner.as_node(), layout::FlexDirection::Row);
     layout::set_padding(inner.as_node(), 4.0);
     layout::set_height(inner.as_node(), 80.0);
     outer.insert_node(inner.as_node(), None);
 
-    let leaf_a = Node::create_stack(&tree);
-    let leaf_b = Node::create_stack(&tree);
+    let leaf_a = Node::create_stack();
+    let leaf_b = Node::create_stack();
     layout::set_width(leaf_a.as_node(), 30.0);
     layout::set_width(leaf_b.as_node(), 30.0);
     inner.insert_node(leaf_a.as_node(), None);
@@ -275,12 +234,12 @@ fn nested_containers_inner_fits_within_outer() {
 
     layout::compute_layout(outer.as_node(), (200.0, 300.0));
 
-    frame_eq(&tree, &outer, 0.0, 0.0, 200.0, 300.0);
-    frame_eq(&tree, &inner, 10.0, 10.0, 180.0, 80.0);
+    frame_eq(&outer, 0.0, 0.0, 200.0, 300.0);
+    frame_eq(&inner, 10.0, 10.0, 180.0, 80.0);
     // Leafs: positioned in inner-local Taffy coordinates after
     // inner's padding(4).
-    frame_eq(&tree, &leaf_a, 4.0, 4.0, 30.0, 72.0);
-    frame_eq(&tree, &leaf_b, 34.0, 4.0, 30.0, 72.0);
+    frame_eq(&leaf_a, 4.0, 4.0, 30.0, 72.0);
+    frame_eq(&leaf_b, 34.0, 4.0, 30.0, 72.0);
 }
 
 // ---------------------------------------------------------------------
@@ -288,22 +247,18 @@ fn nested_containers_inner_fits_within_outer() {
 // ---------------------------------------------------------------------
 
 fn zero_children_no_panic() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
-    let tree = fresh_tree(&root);
+    let root = Node::create_stack();
     layout::compute_layout(root.as_node(), (100.0, 100.0));
-    frame_eq(&tree, &root, 0.0, 0.0, 100.0, 100.0);
+    frame_eq(&root, 0.0, 0.0, 100.0, 100.0);
 }
 
 fn removing_child_collapses_remaining_layout() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    let tree = fresh_tree(&root);
 
-    let a = Node::create_stack(&tree);
-    let b = Node::create_stack(&tree);
-    let c = Node::create_stack(&tree);
+    let a = Node::create_stack();
+    let b = Node::create_stack();
+    let c = Node::create_stack();
     layout::set_height(a.as_node(), 50.0);
     layout::set_height(b.as_node(), 50.0);
     layout::set_height(c.as_node(), 50.0);
@@ -312,33 +267,31 @@ fn removing_child_collapses_remaining_layout() {
     root.insert_node(c.as_node(), None);
 
     layout::compute_layout(root.as_node(), (200.0, 200.0));
-    frame_eq(&tree, &a, 0.0, 0.0, 200.0, 50.0);
-    frame_eq(&tree, &b, 0.0, 50.0, 200.0, 50.0);
-    frame_eq(&tree, &c, 0.0, 100.0, 200.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 200.0, 50.0);
+    frame_eq(&b, 0.0, 50.0, 200.0, 50.0);
+    frame_eq(&c, 0.0, 100.0, 200.0, 50.0);
 
     root.remove_child(b.as_node());
     layout::compute_layout(root.as_node(), (200.0, 200.0));
-    frame_eq(&tree, &a, 0.0, 0.0, 200.0, 50.0);
-    frame_eq(&tree, &c, 0.0, 50.0, 200.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 200.0, 50.0);
+    frame_eq(&c, 0.0, 50.0, 200.0, 50.0);
 }
 
 fn nested_vstack_collapses_after_removal() {
-    let tree = gtk_dom::layout::new_tree();
-    let outer = Node::create_stack(&tree);
+    let outer = Node::create_stack();
     layout::set_flex_direction(outer.as_node(), layout::FlexDirection::Column);
-    let tree = fresh_tree(&outer);
 
-    let inner = Node::create_stack(&tree);
+    let inner = Node::create_stack();
     layout::set_flex_direction(inner.as_node(), layout::FlexDirection::Column);
-    let footer = Node::create_stack(&tree);
+    let footer = Node::create_stack();
     layout::set_height(footer.as_node(), 30.0);
 
     outer.insert_node(inner.as_node(), None);
     outer.insert_node(footer.as_node(), None);
 
-    let row_a = Node::create_stack(&tree);
-    let row_b = Node::create_stack(&tree);
-    let row_c = Node::create_stack(&tree);
+    let row_a = Node::create_stack();
+    let row_b = Node::create_stack();
+    let row_c = Node::create_stack();
     layout::set_height(row_a.as_node(), 40.0);
     layout::set_height(row_b.as_node(), 40.0);
     layout::set_height(row_c.as_node(), 40.0);
@@ -348,11 +301,11 @@ fn nested_vstack_collapses_after_removal() {
     inner.insert_node(row_c.as_node(), None);
 
     layout::compute_layout(outer.as_node(), (300.0, 400.0));
-    frame_eq(&tree, &footer, 0.0, 120.0, 300.0, 30.0);
+    frame_eq(&footer, 0.0, 120.0, 300.0, 30.0);
 
     inner.remove_child(row_b.as_node());
     layout::compute_layout(outer.as_node(), (300.0, 400.0));
-    frame_eq(&tree, &footer, 0.0, 80.0, 300.0, 30.0);
+    frame_eq(&footer, 0.0, 80.0, 300.0, 30.0);
 }
 
 /// REGRESSION: when a label's text changes from "0" to "-1" the
@@ -362,22 +315,17 @@ fn nested_vstack_collapses_after_removal() {
 /// label is allocated too narrow, forcing GTK Label to wrap "-1" to
 /// two lines.
 fn label_text_change_reflowed_on_relayout() {
-    let tree = gtk_dom::layout::new_tree();
     use gtk4::prelude::*;
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let _tree = fresh_tree(&root);
 
-    let label = Node::create_label(&tree).0;
+    let label = Node::create_label().0;
     label.set_value("0");
     root.insert_node(label.as_node(), None);
 
     layout::compute_layout(root.as_node(), (300.0, 50.0));
-    let lh = label
-        .as_node()
-        .mounted_handle()
-        .expect("label registered");
-    let w_zero = _tree.layout(lh.node_id).expect("layout computed").size.width;
+    let label_id = label.as_node().id();
+    let w_zero = layout::layout(label_id).expect("layout computed").size.width;
     let raw_zero = label
         .widget()
         .downcast_ref::<gtk4::Label>()
@@ -391,7 +339,7 @@ fn label_text_change_reflowed_on_relayout() {
         .map(|l| l.measure(gtk4::Orientation::Horizontal, -1).1)
         .unwrap_or(-1);
     layout::compute_layout(root.as_node(), (300.0, 50.0));
-    let w_minus_one = _tree.layout(lh.node_id).expect("layout computed").size.width;
+    let w_minus_one = layout::layout(label_id).expect("layout computed").size.width;
 
     assert!(
         w_minus_one >= raw_minus as f32,
@@ -402,11 +350,9 @@ fn label_text_change_reflowed_on_relayout() {
 }
 
 fn zero_size_available_no_panic() {
-    let tree = gtk_dom::layout::new_tree();
-    let root = Node::create_stack(&tree);
+    let root = Node::create_stack();
     layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
-    let _tree = fresh_tree(&root);
-    let child = Node::create_stack(&tree);
+    let child = Node::create_stack();
     layout::set_width(child.as_node(), 50.0);
     root.insert_node(child.as_node(), None);
 

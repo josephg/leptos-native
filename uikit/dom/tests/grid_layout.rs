@@ -18,29 +18,17 @@ use renderer::{auto, fr, length, GridAutoFlow};
 use objc2_foundation::NSSize;
 use renderer::attrs::GridLine;
 
-fn fresh_tree(root: &Element) -> layout::TreeRef {
-    let tree = layout::new_tree();
-    layout::set_as_root(root.as_node(), &tree);
-    tree
-}
-
 /// Read the Taffy-computed layout for `el` and assert position +
-/// size. Reads from the tree rather than via `UIView::frame()`
-/// because tests don't run a UIKit event loop, so the iOS-side
-/// `apply_layout` walk (which sets frames) is the bit under test.
+/// size. Reads from the store rather than via `UIView::frame()`
+/// because tests don't run a UIKit event loop.
 fn frame_eq(
-    tree: &layout::TreeRef,
     el: &Element,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
 ) {
-    let lh = el
-        .as_node()
-        .mounted_handle()
-        .expect("element not registered in tree");
-    let l = tree.layout(lh.node_id).expect("no layout computed");
+    let l = layout::layout(el.as_node().id()).expect("no layout computed");
     let tol = 0.5;
     assert!(
         (l.location.x - x).abs() < tol
@@ -54,12 +42,11 @@ fn frame_eq(
 }
 
 fn make_grid(
-    tree: &layout::TreeRef,
     columns: Vec<renderer::GridTemplateComponent>,
     rows: Vec<renderer::GridTemplateComponent>,
 ) -> Element {
     let _mtm = common::test_mtm();
-    let g = Element::create_grid(tree);
+    let g = Element::create_grid();
     layout::set_grid_template_columns(g.as_node(), columns);
     layout::set_grid_template_rows(g.as_node(), rows);
     g
@@ -68,94 +55,80 @@ fn make_grid(
 // ---------------------------------------------------------------------
 
 fn create_grid_sets_display_grid() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let g = Element::create_grid(&tree);
-    let tree = fresh_tree(&g);
-    let id = g.as_node().tree_id().unwrap().1;
-    let style = tree.style(id).expect("registered node has a style");
+    let g = Element::create_grid();
+    let id = g.as_node().id();
+    let style = layout::style(id).expect("registered node has a style");
     assert_eq!(style.display, renderer::Display::Grid);
 }
 
 fn three_column_fixed_widths() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(100.0), length(200.0), length(100.0)],
         vec![length(50.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 100.0, 50.0);
-    frame_eq(&tree, &b, 100.0, 0.0, 200.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
+    frame_eq(&b, 100.0, 0.0, 200.0, 50.0);
 }
 
 fn fr_columns_distribute_leftover() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![fr(1.0), fr(2.0), fr(1.0)],
         vec![length(50.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
-    let c = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
+    let c = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 100.0, 50.0);
-    frame_eq(&tree, &b, 100.0, 0.0, 200.0, 50.0);
-    frame_eq(&tree, &c, 300.0, 0.0, 100.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
+    frame_eq(&b, 100.0, 0.0, 200.0, 50.0);
+    frame_eq(&c, 300.0, 0.0, 100.0, 50.0);
 }
 
 fn mixed_fixed_fr_auto_columns() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(100.0), fr(1.0), auto()],
         vec![length(50.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
-    let c = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
+    let c = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 100.0, 50.0);
-    frame_eq(&tree, &b, 100.0, 0.0, 300.0, 50.0);
-    frame_eq(&tree, &c, 400.0, 0.0, 0.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
+    frame_eq(&b, 100.0, 0.0, 300.0, 50.0);
+    frame_eq(&c, 400.0, 0.0, 0.0, 50.0);
 }
 
 fn two_by_two_fills_in_row_order() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0)],
         vec![length(50.0), length(50.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
-    let c = Element::create_vstack(&tree);
-    let d = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
+    let c = Element::create_vstack();
+    let d = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
@@ -163,108 +136,93 @@ fn two_by_two_fills_in_row_order() {
 
     layout::compute_layout(g.as_node(), NSSize::new(100.0, 100.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &b, 50.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &c, 0.0, 50.0, 50.0, 50.0);
-    frame_eq(&tree, &d, 50.0, 50.0, 50.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
+    frame_eq(&b, 50.0, 0.0, 50.0, 50.0);
+    frame_eq(&c, 0.0, 50.0, 50.0, 50.0);
+    frame_eq(&d, 50.0, 50.0, 50.0, 50.0);
 }
 
 fn gap_shorthand_separates_both_axes() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0)],
         vec![length(50.0), length(50.0)],
     );
     layout::set_gap(g.as_node(), 10.0);
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
-    let c = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
+    let c = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(110.0, 110.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &b, 60.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &c, 0.0, 60.0, 50.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
+    frame_eq(&b, 60.0, 0.0, 50.0, 50.0);
+    frame_eq(&c, 0.0, 60.0, 50.0, 50.0);
 }
 
 fn per_axis_gaps_apply_independently() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0)],
         vec![length(50.0), length(50.0)],
     );
     layout::set_column_gap(g.as_node(), 5.0);
     layout::set_row_gap(g.as_node(), 20.0);
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
-    let c = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
+    let c = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
     g.insert_node(c.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(105.0, 120.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &b, 55.0, 0.0, 50.0, 50.0);
-    frame_eq(&tree, &c, 0.0, 70.0, 50.0, 50.0);
+    frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
+    frame_eq(&b, 55.0, 0.0, 50.0, 50.0);
+    frame_eq(&c, 0.0, 70.0, 50.0, 50.0);
 }
 
 fn column_span_two_widens_cell() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0), length(50.0)],
         vec![length(40.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let wide = Element::create_vstack(&tree);
+    let wide = Element::create_vstack();
     layout::set_grid_column_end(wide.as_node(), GridLine::Span(2));
     g.insert_node(wide.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(150.0, 40.0));
 
-    frame_eq(&tree, &wide, 0.0, 0.0, 100.0, 40.0);
+    frame_eq(&wide, 0.0, 0.0, 100.0, 40.0);
 }
 
 fn column_range_one_to_negative_one_spans_full_width() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0), length(50.0)],
         vec![length(40.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let full = Element::create_vstack(&tree);
+    let full = Element::create_vstack();
     layout::set_grid_column_start(full.as_node(), GridLine::Line(1));
     layout::set_grid_column_end(full.as_node(), GridLine::Line(-1));
     g.insert_node(full.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(150.0, 40.0));
 
-    frame_eq(&tree, &full, 0.0, 0.0, 150.0, 40.0);
+    frame_eq(&full, 0.0, 0.0, 150.0, 40.0);
 }
 
 fn block_spanning_two_rows_two_columns() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0), length(50.0)],
         vec![length(50.0), length(50.0), length(50.0)],
     );
-    let tree = fresh_tree(&g);
 
-    let block = Element::create_vstack(&tree);
+    let block = Element::create_vstack();
     layout::set_grid_column_start(block.as_node(), GridLine::Line(1));
     layout::set_grid_column_end(block.as_node(), GridLine::Line(3));
     layout::set_grid_row_start(block.as_node(), GridLine::Line(1));
@@ -273,7 +231,7 @@ fn block_spanning_two_rows_two_columns() {
 
     layout::compute_layout(g.as_node(), NSSize::new(150.0, 150.0));
 
-    frame_eq(&tree, &block, 0.0, 0.0, 100.0, 100.0);
+    frame_eq(&block, 0.0, 0.0, 100.0, 100.0);
 }
 
 fn grid_line_to_placement_handles_each_variant() {
@@ -291,58 +249,48 @@ fn grid_line_to_placement_handles_each_variant() {
 }
 
 fn auto_flow_column_with_one_row_stacks_horizontally() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0)],
         vec![length(40.0)],
     );
     layout::set_grid_auto_flow(g.as_node(), GridAutoFlow::Column);
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
-    let b = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
+    let b = Element::create_vstack();
     g.insert_node(a.as_node(), None);
     g.insert_node(b.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(100.0, 40.0));
 
-    frame_eq(&tree, &a, 0.0, 0.0, 50.0, 40.0);
-    frame_eq(&tree, &b, 50.0, 0.0, 50.0, 40.0);
+    frame_eq(&a, 0.0, 0.0, 50.0, 40.0);
+    frame_eq(&b, 50.0, 0.0, 50.0, 40.0);
 }
 
 fn padding_insets_grid_cells() {
-    let tree = ios_dom::layout::new_tree();
     let g = make_grid(
-        &tree,
         vec![length(50.0), length(50.0)],
         vec![length(50.0)],
     );
     layout::set_padding(g.as_node(), 10.0);
-    let tree = fresh_tree(&g);
 
-    let a = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
     g.insert_node(a.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(120.0, 70.0));
 
-    frame_eq(&tree, &a, 10.0, 10.0, 50.0, 50.0);
+    frame_eq(&a, 10.0, 10.0, 50.0, 50.0);
 }
 
 fn empty_grid_no_panic() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let g = Element::create_grid(&tree);
-    let _tree = fresh_tree(&g);
+    let g = Element::create_grid();
     layout::compute_layout(g.as_node(), NSSize::new(100.0, 100.0));
 }
 
 fn zero_available_size_no_panic() {
-    let tree = ios_dom::layout::new_tree();
-    let g = make_grid(&tree, vec![fr(1.0), fr(1.0)], vec![fr(1.0)]);
-    let _tree = fresh_tree(&g);
+    let g = make_grid(vec![fr(1.0), fr(1.0)], vec![fr(1.0)]);
 
-    let a = Element::create_vstack(&tree);
+    let a = Element::create_vstack();
     g.insert_node(a.as_node(), None);
 
     layout::compute_layout(g.as_node(), NSSize::new(0.0, 0.0));

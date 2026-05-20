@@ -10,7 +10,7 @@
 mod common;
 
 use cocoa_dom::{
-    layout::{compute_layout, set_as_root},
+    layout::compute_layout,
     Element,
 };
 use objc2_foundation::NSSize;
@@ -25,7 +25,6 @@ fn baseline_compute_clears_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
 
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root), "root still dirty after compute");
@@ -36,7 +35,6 @@ fn attach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root));
 
@@ -55,7 +53,6 @@ fn detach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     let child = Element::create_button().0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
@@ -75,7 +72,6 @@ fn set_text_marks_node_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     let child = Element::create_label().0;
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
@@ -95,7 +91,6 @@ fn set_style_width_marks_node_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     compute_layout(root.as_node(), NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root));
 
@@ -125,7 +120,6 @@ fn attach_child_is_idempotent() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     let child = Element::create_button().0;
 
     cocoa_dom::layout::attach_child(root.as_node(), child.as_node());
@@ -142,7 +136,6 @@ fn insert_child_at_is_idempotent() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
     let a = Element::create_button().0;
     let b = Element::create_button().0;
 
@@ -178,7 +171,6 @@ fn reorder_cascade_does_not_duplicate_edges() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     let root = Element::create_container_with(mtm);
-    set_as_root(root.as_node());
 
     let a = Element::create_button().0;
     let b = Element::create_button().0;

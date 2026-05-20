@@ -5,6 +5,59 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-20 — Node is now a `Copy` `NodeId` over a thread-local store (cross-cutting: cocoa + gtk + uikit)
+
+The biggest structural change since the kind-discriminant removal.
+`Node` was an `Rc<NodeInner { tree, id, view, is_borrowed }>` handle
+into a per-window `LayoutTree<B>` arena, with refcount-gated removal
+(`refcount==0 && parent==None`). It's now a **bare `Copy + Send`
+`NodeId`** into a single per-thread node store.
+
+- **`common/renderer/src/layout.rs` → `scene.rs`.** The module was
+  misnamed: it's the retained render tree (node store) + Taffy engine,
+  not "layout." `renderer::scene`; the crate-root re-exports
+  (`renderer::new_leaf`, `renderer::Style`, …) are unchanged, so
+  external call sites don't move. (`cocoa_dom::layout` etc. keep their
+  name — they really are the per-port layout adapters.)
+- **TLS store.** `LayoutState<B>` (the slotmap + relayout queue) lives
+  in a `thread_local!` per port, reached through the new
+  `LayoutBackend::with_tree`. A node reference is just a generational
+  `NodeId`; stale ids resolve to `None`/no-op (weak-ref behavior for
+  free). Sanctioned exception to the no-new-TLS rule — the store is a
+  main-thread-lifetime singleton.
+- **No refcount, no `Rc`, no `SendWrapper`, no `is_borrowed`.** A
+  `Node` owns nothing. Lifecycle is explicit: **Unattached → Attached
+  → Freed**. `renderer::remove`/`Node::teardown` deletes the node and
+  **cascades** to its structural subtree (internal helper nodes like
+  the scroll-view documentView wrapper are ordinary children now,
+  freed by the cascade). Freeing is driven by `ElementState::unmount`
+  and off-tree owners (window/scene close, toolbar items) — never an
+  automatic sweep.
+- **The Element-capture cycle is gone by construction.** A handler
+  closure capturing a `Node` captures a `Copy` id that owns nothing,
+  so no `Rc` cycle can form. `WeakNode`/`WeakElement` are now just the
+  same `Copy` id with a presence check. See the SUPERSEDED banner in
+  `MEMORY_POLICY.md`.
+- **`Render::build` lost its `&TreeRef` parameter** (the store is
+  ambient); every `State` struct that stashed a `SendWrapper<TreeRef>`
+  for rebuild dropped that field.
+- **Relayout scheduler.** Instead of recomputing every window root,
+  each mutation walks up to its subtree root (`renderer::root_of`) and
+  enqueues just that root; the deferred pass recomputes only the
+  touched roots. `set_as_root`/`add_root`/`roots` deleted — the root
+  is found dynamically (a content/pane root has `parent == None`). GTK
+  drives this through its `TaffyLayout` allocate cycle; cocoa/uikit
+  through a dispatched `compute_layout`.
+- **Per-port surface.** cocoa/uikit keep a transitional
+  `pub type Element = Node`; gtk never had it. Platform methods stay
+  inherent on the (now `Copy`) `Node` newtype.
+
+Verified: cocoa full suite (~240 tests) green and examples build; gtk
+layout/lifecycle tests pass; uikit dom + builder tests pass on the
+simulator. See `gtk_implementation_log.md` / `implementation_ios.md`.
+
+---
+
 ## 2026-05-20 — Flow cleanups: phantom drop, apply_common helper, Renderer trait collapse
 
 A small series of mechanical cleanups landed after the post-refactor

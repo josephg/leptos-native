@@ -28,34 +28,25 @@ mod common;
 use ios_dom::{layout, Element};
 use renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
-fn fresh_tree(root: &Element) -> layout::TreeRef {
-    let tree = layout::new_tree();
-    layout::set_as_root(root.as_node(), &tree);
-    tree
-}
 
 fn style_of(el: &Element) -> renderer::Style {
     el.as_node().with_style(|s| s.clone())
 }
 
 fn padding_static_lands_in_padding_field() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create_vstack(&tree);
-    let _tree = fresh_tree(&el);
+    let el = Element::create_vstack();
 
     let mut attrs = LayoutAttrs::default();
-    attrs.padding = Some(MaybeReactive::Static(8.0));
+    attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
     let effects = layout::apply_layout(&el, attrs);
     assert!(effects.is_empty());
     assert_eq!(style_of(&el).padding.left, renderer::LengthPercentage::length(8.0));
 }
 
 fn flex_grow_static_lands_in_flex_grow() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create_vstack(&tree);
-    let _tree = fresh_tree(&el);
+    let el = Element::create_vstack();
 
     let mut attrs = LayoutAttrs::default();
     attrs.flex_grow = Some(MaybeReactive::Static(2.0));
@@ -64,18 +55,14 @@ fn flex_grow_static_lands_in_flex_grow() {
 }
 
 fn empty_universal_attrs_no_panic() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create_vstack(&tree);
-    let _tree = fresh_tree(&el);
+    let el = Element::create_vstack();
     let _ = layout::apply_universal(&el, UniversalAttrs::default());
 }
 
 fn alpha_static_sets_view_alpha() {
-    let tree = ios_dom::layout::new_tree();
     let _mtm = common::test_mtm();
-    let el = Element::create_vstack(&tree);
-    let _tree = fresh_tree(&el);
+    let el = Element::create_vstack();
 
     let mut attrs = UniversalAttrs::default();
     attrs.alpha = Some(MaybeReactive::Static(0.5));
@@ -86,12 +73,10 @@ fn alpha_static_sets_view_alpha() {
 }
 
 fn tool_tip_silently_dropped_on_ios() {
-    let tree = ios_dom::layout::new_tree();
     // iOS has no hover-tooltip concept; the UniversalElement default
     // impl no-ops set_tool_tip. Verify it doesn't panic.
     let _mtm = common::test_mtm();
-    let el = Element::create_vstack(&tree);
-    let _tree = fresh_tree(&el);
+    let el = Element::create_vstack();
 
     let mut attrs = UniversalAttrs::default();
     attrs.tool_tip = Some(MaybeReactive::Static("ignored".to_string()));
