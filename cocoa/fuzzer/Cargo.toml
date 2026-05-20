@@ -10,7 +10,7 @@ name = "cocoa_fuzzer"
 path = "src/main.rs"
 
 [dependencies]
-leptos = { package = "leptos_cocoa", path = "../leptos_cocoa" }
+leptos_native = { package = "leptos_cocoa", path = "../leptos_cocoa" }
 cocoa_dom = { path = "../dom" }
 renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }

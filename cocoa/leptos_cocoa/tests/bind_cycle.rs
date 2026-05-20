@@ -35,14 +35,13 @@ fn set_attribute_with_same_value_does_not_re_set() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let text_field = Element::create_text_field(&tree).0;
+        let text_field = Element::create_text_field().0;
 
         // First set — establishes baseline.
         text_field.set_value("hello");
         let after_first = {
-            let any: &objc2::runtime::AnyObject =
-                text_field.ns_view().as_ref();
+            let view = text_field.ns_view();
+            let any: &objc2::runtime::AnyObject = view.as_ref();
             any.downcast_ref::<NSTextField>()
                 .expect("text_field is NSTextField")
                 .stringValue()
@@ -58,8 +57,8 @@ fn set_attribute_with_same_value_does_not_re_set() {
         // And the underlying NSTextField's stringValue still reads
         // "hello" — sanity check.
         let after_second = {
-            let any: &objc2::runtime::AnyObject =
-                text_field.ns_view().as_ref();
+            let view = text_field.ns_view();
+            let any: &objc2::runtime::AnyObject = view.as_ref();
             any.downcast_ref::<NSTextField>()
                 .unwrap()
                 .stringValue()
@@ -74,11 +73,11 @@ fn set_bool_attribute_with_same_value_idempotent() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let tree = cocoa_dom::layout::new_tree();
-        let checkbox = Element::create_checkbox(&tree).0;
+        let checkbox = Element::create_checkbox().0;
 
         checkbox.set_checked(true);
-        let any: &objc2::runtime::AnyObject = checkbox.ns_view().as_ref();
+        let cb_view = checkbox.ns_view();
+        let any: &objc2::runtime::AnyObject = cb_view.as_ref();
         let btn: &NSButton =
             any.downcast_ref::<NSButton>().expect("checkbox is NSButton");
         assert_eq!(btn.state(), objc2_app_kit::NSControlStateValueOn);

@@ -265,11 +265,20 @@ pub fn schedule_relayout(node: Node) {
     queue_relayout_for(node.id());
 }
 
-/// Walk up from `id` to its subtree root, enqueue that root, and make
-/// sure a relayout pass is scheduled for the next main-loop tick.
+/// Enqueue `id` for relayout on the next main-loop tick.
+///
+/// We enqueue the *touched node*, NOT its current subtree root. The
+/// root is resolved (via `root_of`) when the pass drains — see
+/// [`ensure_relayout_pass_scheduled`]. Resolving early is a bug:
+/// reactive attr effects fire during `Render::build`, before the
+/// node is mounted under `content_root`, so `root_of` would capture
+/// an intermediate node as its own root. The deferred pass would
+/// then recompute that intermediate as a root and plant it at Taffy
+/// origin `(0,0)` — the "everything teleports to the top-left"
+/// regression. Deferring `root_of` to drain time means the node is
+/// attached by then and resolves to the real window root.
 fn queue_relayout_for(id: NodeId) {
-    let root = renderer::root_of::<CocoaBackend>(id);
-    renderer::queue_relayout::<CocoaBackend>(root);
+    renderer::queue_relayout::<CocoaBackend>(id);
     ensure_relayout_pass_scheduled();
 }
 
@@ -287,9 +296,21 @@ fn ensure_relayout_pass_scheduled() {
 
     DispatchQueue::main().exec_async(move || {
         renderer::set_relayout_queued::<CocoaBackend>(false);
-        // Recompute only the roots that were touched this tick. A root
-        // freed before now resolves to `None` and is skipped.
-        for root_id in renderer::take_pending_relayout::<CocoaBackend>() {
+        // Resolve each touched node to its CURRENT subtree root (it's
+        // attached by now, even if it wasn't when enqueued), dedup,
+        // and recompute each unique root once. A node freed before now
+        // isn't in the store and is skipped.
+        let mut roots: Vec<NodeId> = Vec::new();
+        for id in renderer::take_pending_relayout::<CocoaBackend>() {
+            if !renderer::contains::<CocoaBackend>(id) {
+                continue;
+            }
+            let root = renderer::root_of::<CocoaBackend>(id);
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+        for root_id in roots {
             let Some(view) = renderer::view::<CocoaBackend>(root_id) else {
                 continue;
             };

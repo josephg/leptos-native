@@ -108,7 +108,7 @@ fn suspend_splices_at_placeholder_position() {
             }))
             .child(label().child("c"));
 
-        let mut state = <_ as Render<Dom>>::build(view, &opened.tree);
+        let mut state = <_ as Render<Dom>>::build(view);
         state.mount(&opened.content_root, None);
 
         // Pump once to let initial mount settle. The Suspend
@@ -204,7 +204,7 @@ fn suspend_orphan_cleanup_unmounts_built_view() {
             button().title("click me").add_any_attr(on(click, |_| {}))
         });
 
-        let mut state = <_ as Render<Dom>>::build(view, &opened.tree);
+        let mut state = <_ as Render<Dom>>::build(view);
         state.mount(&opened.content_root, None);
         common::pump_run_loop(0.05);
 

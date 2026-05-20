@@ -5,6 +5,43 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-20 — Post-`NodeId`-refactor polish: teleport fix, overlay/fuzzer, ElementState::Drop
+
+Follow-up pass after the `NodeId`-over-thread-local-store refactor below.
+
+- **Relayout teleport bug (cocoa-only).** Symptom: correct initial
+  layout, then on the next tick every element jumped to the window's
+  top-left and stayed. Cause: `queue_relayout_for` resolved
+  `root_of(id)` **at enqueue time**. Reactive attr effects fire during
+  `Render::build`, *before* the node is mounted under `content_root`,
+  so `root_of` captured an intermediate node (e.g. the user's outer
+  vstack) as its own root. The deferred pass then ran
+  `compute_layout(that_node)` with `apply_root_frame=true`, planting it
+  at Taffy origin `(0,0)`. Fix: enqueue the *touched node id* and
+  resolve `root_of` at **drain time** (when it's attached), dedup
+  roots. GTK was immune — it relayouts from the real widget root via
+  its `TaffyLayout` allocate cycle, never from a captured id. See
+  `cocoa/dom/src/layout.rs::queue_relayout_for` /
+  `ensure_relayout_pass_scheduled`.
+- **`ElementState::Drop` safety net (all three ports).** Nothing freed
+  the store entry if an `ElementState` was dropped *without* `unmount`
+  (orphaned before mount, panic mid-`build`) — a thread-lifetime leak.
+  Added an idempotent `Drop { self.el.teardown() }`; after a normal
+  `unmount` the id is stale and this is a no-op. Verified by the
+  cocoa `leak_lifecycle` "drop without unmount must not leak" cases.
+- **Leak assertions.** Each port's `node_lifecycle` test gained a
+  subtree-teardown + orphan-teardown `node_count() == baseline` check
+  (cocoa also opens a real window). The `cocoa_fuzzer` was un-brok-en
+  (it still used the deleted per-window `tree` API) and its per-window
+  `node_count` accounting collapsed onto the single shared store; it
+  passes 20 seeds with per-iteration leak checks + extra windows +
+  structural mutation.
+- **gtk debug overlay** ported off the deleted `TreeRef` onto the
+  store free-fns (`layout::style`/`parent`/`layout`/`view`/`children`),
+  matching the cocoa overlay conversion.
+
+---
+
 ## 2026-05-20 — Node is now a `Copy` `NodeId` over a thread-local store (cross-cutting: cocoa + gtk + uikit)
 
 The biggest structural change since the kind-discriminant removal.

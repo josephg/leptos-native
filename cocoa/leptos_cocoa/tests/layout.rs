@@ -38,7 +38,7 @@ where
 {
     let mtm = common::test_mtm();
     let opened = cocoa_dom::window::open_window("test", size, mtm);
-    let mut state = view.build(&opened.tree);
+    let mut state = view.build();
     state.mount(&opened.content_root, None);
     let content_size = opened.content_root.ns_view().frame().size;
     cocoa_dom::layout::compute_layout(
@@ -81,7 +81,7 @@ fn leaf_controls_have_nonzero_intrinsic_size() {
         );
         with_mounted_view(view, (320.0, 200.0), |root| {
             let mut found_field = false;
-            walk(root.ns_view(), &mut |v| {
+            walk(&root.ns_view(), &mut |v| {
                 let any: &AnyObject = v.as_ref();
                 if let Some(field) = any.downcast_ref::<NSTextField>() {
                     found_field = true;
@@ -114,7 +114,7 @@ fn button_in_hstack_has_natural_size() {
             .child(button().title("Cancel"));
         with_mounted_view(view, (320.0, 100.0), |root| {
             let mut button_frames = Vec::new();
-            walk(root.ns_view(), &mut |v| {
+            walk(&root.ns_view(), &mut |v| {
                 let any: &AnyObject = v.as_ref();
                 if any.downcast_ref::<NSButton>().is_some() {
                     button_frames.push(v.frame());

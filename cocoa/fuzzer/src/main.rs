@@ -202,15 +202,22 @@ fn store_sizes() -> StoreSizes {
     }
 }
 
+/// Live entry count of the process-wide thread-local node store.
+/// Replaces the old per-window `LayoutTree::node_count()` — every
+/// window now shares one store, so this is the total across all open
+/// windows. A clean run returns to its pre-seed baseline after
+/// teardown.
+fn node_count() -> usize {
+    renderer::node_count::<cocoa_dom::layout::CocoaBackend>()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FullSizes {
     stores: StoreSizes,
-    /// Sum of `LayoutTree::node_count()` across both per-window
-    /// trees. The fuzzer creates two trees per seed (one for the
-    /// reactive mount, one for the static comparison mount).
-    /// Pre-mount baseline is the count of any pre-existing trees
-    /// from earlier seeds (should be 0 at the start of a clean run
-    /// but may grow if a seed leaked).
+    /// Live entry count of the shared node store ([`node_count`]) at
+    /// snapshot time — covers every open window's subtree. During
+    /// shape-stable chaos this stays constant; after teardown it
+    /// returns to the pre-seed baseline.
     tree_nodes: usize,
 }
 
@@ -285,6 +292,7 @@ fn run_one(
     }
 
     let baseline_stores = store_sizes();
+    let baseline_nodes = node_count();
     let owner = Owner::new();
 
     // Fixed available size for every layout pass in this seed.
@@ -306,8 +314,7 @@ fn run_one(
 
         // Build + mount reactive tree.
         let view_a = build(&spec, &reactive_store);
-        let tree_a = win_a.tree.clone();
-        let mut state_a = catch_ns("build-A", || view_a.build(&tree_a))?;
+        let mut state_a = catch_ns("build-A", || view_a.build())?;
         catch_ns("mount-A", || {
             state_a.mount(&win_a.content_root, None);
         })?;
@@ -353,7 +360,7 @@ fn run_one(
             let extra_store = SignalStore::new();
             let view = build(&extra_spec, &extra_store);
             let mut st: Box<dyn renderer::view::Mountable<leptos_native::Dom>> =
-                Box::new(catch_ns("build-extra", || view.build(&win.tree))?);
+                Box::new(catch_ns("build-extra", || view.build())?);
             catch_ns("mount-extra", || {
                 st.mount(&win.content_root, None);
             })?;
@@ -382,7 +389,7 @@ fn run_one(
         // must return to the pre-seed baseline.
         let post_mount_a = FullSizes {
             stores: store_sizes(),
-            tree_nodes: win_a.tree.node_count(),
+            tree_nodes: node_count(),
         };
 
         // Phase 2: chaos.
@@ -392,7 +399,6 @@ fn run_one(
                 iterations: args.chaos,
             };
             if args.check_per_iteration {
-                let tree_a_for_check = win_a.tree.clone();
                 let post_mount_check = post_mount_a;
                 // Show / DynamicList legitimately resize the tree
                 // and store counts across iterations (a Show flip
@@ -412,7 +418,7 @@ fn run_one(
                     pump_run_loop(0.005);
                     let now = FullSizes {
                         stores: store_sizes(),
-                        tree_nodes: tree_a_for_check.node_count(),
+                        tree_nodes: node_count(),
                     };
                     // When structural mutation is enabled, the
                     // post-mount snapshot is the LOWER bound, not
@@ -472,7 +478,7 @@ fn run_one(
         // and the static rebuild should match.
         if args.xcui {
             let stats = catch_ns("xcui-drive", || {
-                interact::drive(win_a.content_root.ns_view(), &mut rng)
+                interact::drive(&win_a.content_root.ns_view(), &mut rng)
             })?;
             if args.print_spec {
                 println!(
@@ -511,8 +517,7 @@ fn run_one(
             open_window("fuzz-B", (800.0, 600.0), mtm)
         })?;
         let view_b = build(&spec, &static_store);
-        let tree_b = win_b.tree.clone();
-        let mut state_b = catch_ns("build-B", || view_b.build(&tree_b))?;
+        let mut state_b = catch_ns("build-B", || view_b.build())?;
         catch_ns("mount-B", || {
             state_b.mount(&win_b.content_root, None);
         })?;
@@ -537,8 +542,8 @@ fn run_one(
         let nodes = spec.size();
 
         let result = compare_trees(
-            win_a.content_root.ns_view(),
-            win_b.content_root.ns_view(),
+            &win_a.content_root.ns_view(),
+            &win_b.content_root.ns_view(),
         );
 
         // Unmount both before dropping windows so the Drop guards
@@ -575,16 +580,18 @@ fn run_one(
         }
 
         result?;
-        // Capture tree sizes before the windows drop (the TreeRef
-        // Rc goes away with the OpenedWindow at end of scope).
-        // Both trees should report 0 nodes after explicit
-        // teardown.
-        let tree_a_after = win_a.tree.node_count();
-        let tree_b_after = win_b.tree.node_count();
-        if tree_a_after + tree_b_after != 0 {
+        // The shared node store must return to its pre-seed baseline
+        // once every window's content_root has been explicitly torn
+        // down. Under the NodeId-over-thread-local-store model,
+        // teardown cascades the whole structural subtree out of the
+        // store immediately — no refcount, no deferred sweep — so a
+        // non-baseline count here is a real leak.
+        let nodes_after = node_count();
+        if nodes_after != baseline_nodes {
             return Err(format!(
-                "tree leak after teardown: tree_a={} tree_b={}",
-                tree_a_after, tree_b_after
+                "node store leak after teardown: {} live nodes \
+                 (baseline {})",
+                nodes_after, baseline_nodes
             ));
         }
         let _ = win_a;

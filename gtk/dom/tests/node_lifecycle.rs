@@ -125,6 +125,47 @@ fn weak_node_upgrade_fails_after_teardown() {
     assert!(weak.upgrade().is_none());
 }
 
+// 10. A mounted subtree returns the store to baseline after the
+// root is torn down — the headless analogue of whole-window
+// teardown (opening a real gtk::ApplicationWindow needs an app +
+// main loop). Locks in the explicit-free lifecycle the
+// `ElementState::Drop` safety net relies on.
+fn subtree_teardown_returns_to_baseline() {
+    let baseline = layout::node_count();
+
+    let root = Node::create_vstack();
+    let row = Node::create_stack();
+    let b1 = Node::create_button().0;
+    let b2 = Node::create_button().0;
+    let label = Node::create_label().0;
+    layout::attach_child(row.as_node(), b1.as_node());
+    layout::attach_child(row.as_node(), b2.as_node());
+    layout::attach_child(root.as_node(), label.as_node());
+    layout::attach_child(root.as_node(), row.as_node());
+
+    assert!(layout::node_count() > baseline, "mounting grows the store");
+
+    root.as_node().teardown();
+    assert_eq!(
+        layout::node_count(),
+        baseline,
+        "store returned to baseline after subtree teardown — no leak"
+    );
+}
+
+// 11. An unattached (orphaned) node is fully freed by teardown.
+fn unattached_node_teardown_returns_to_baseline() {
+    let baseline = layout::node_count();
+    let el = Node::create_button().0;
+    assert_eq!(layout::node_count(), baseline + 1);
+    el.as_node().teardown();
+    assert_eq!(
+        layout::node_count(),
+        baseline,
+        "unattached node freed by teardown — no orphan leak"
+    );
+}
+
 fn main() {
     common::run_tests(&[
         ("freshly_created_node_is_in_store", freshly_created_node_is_in_store),
@@ -137,5 +178,7 @@ fn main() {
         ("widget_pointer_stable", widget_pointer_stable),
         ("weak_node_upgrades_while_present", weak_node_upgrades_while_present),
         ("weak_node_upgrade_fails_after_teardown", weak_node_upgrade_fails_after_teardown),
+        ("subtree_teardown_returns_to_baseline", subtree_teardown_returns_to_baseline),
+        ("unattached_node_teardown_returns_to_baseline", unattached_node_teardown_returns_to_baseline),
     ]);
 }

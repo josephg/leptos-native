@@ -6,6 +6,20 @@ top.
 
 ---
 
+## 2026-05-20 — Post-`NodeId`-refactor polish (port mirror)
+
+Cross-cutting follow-ups logged in `implementation_log.md`. GTK-side:
+the **debug overlay** was ported off the deleted `TreeRef` onto the
+store free-fns (`layout::style`/`parent`/`layout`/`view`/`children`);
+`debug_overlay::install` dropped its `tree` arg (window.rs already
+passed the new signature). Added an idempotent **`ElementState::Drop`**
+(`self.el.teardown()`) as a leak safety net, plus subtree/orphan
+`node_count() == baseline` assertions in `node_lifecycle`. The cocoa
+relayout-teleport bug didn't affect GTK — it relayouts from the real
+widget root via the `TaffyLayout` allocate cycle, not a captured id.
+
+---
+
 ## 2026-05-19 — Direct typed attribute setters (port mirror)
 
 Mirrored the cocoa attribute-setter cleanup. Removed `StringAttr`

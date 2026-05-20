@@ -246,6 +246,22 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
     }
 }
 
+impl<ChildState> Drop for ElementState<ChildState> {
+    /// Safety net for the case where an `ElementState` is dropped
+    /// *without* `unmount` ever running — e.g. a view orphaned before
+    /// mount, or a panic partway through `build`. Under the
+    /// NodeId-over-thread-local-store model nothing else would free
+    /// our entry, so it would leak for the life of the thread.
+    ///
+    /// `teardown` (→ `renderer::remove`) is idempotent: after a normal
+    /// `unmount` our `el` id is stale and this is a no-op. The cascade
+    /// in `remove` also frees any children still in the store, and
+    /// `ChildState` / `_effects` drop via ordinary field drop.
+    fn drop(&mut self) {
+        self.el.teardown();
+    }
+}
+
 // ---------------------------------------------------------------------
 // stack() — Taffy flexbox container (canonical linear layout primitive)
 // ---------------------------------------------------------------------
