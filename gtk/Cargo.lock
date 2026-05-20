@@ -1588,13 +1588,10 @@ name = "renderer"
 version = "0.1.0"
 dependencies = [
  "either_of",
- "futures",
  "indexmap",
- "or_poisoned",
  "reactive_graph",
  "rustc-hash",
  "rustc_version",
- "send_wrapper",
  "slotmap",
  "taffy",
  "throw_error",

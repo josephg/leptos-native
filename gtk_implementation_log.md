@@ -4,8 +4,6 @@ A running record of design decisions made during the Linux/GTK port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
----
-
 ## 2026-05-20 — Post-`NodeId`-refactor polish (port mirror)
 
 Cross-cutting follow-ups logged in `implementation_log.md`. GTK-side:
@@ -17,6 +15,45 @@ passed the new signature). Added an idempotent **`ElementState::Drop`**
 `node_count() == baseline` assertions in `node_lifecycle`. The cocoa
 relayout-teleport bug didn't affect GTK — it relayouts from the real
 widget root via the `TaffyLayout` allocate cycle, not a captured id.
+
+
+## 2026-05-20 — `detach_child_widget`: set_child-based parents at teardown
+
+Switching `mount.rs` from `std::mem::forget`-ing the app state to an
+`AppHandle` that actually drops it (root view state → reactive
+`Owner`) surfaced `gtk_widget_unparent: assertion 'GTK_IS_WIDGET
+(widget)' failed` at process exit. Previously the leak hid it: the
+`ApplicationWindow` was never dropped, so it never finalized and
+never tried to dispose its child tree.
+
+Root cause: `Node::teardown` (and `remove_child`) detached children
+with a bare `child.unparent()`. That's correct for GtkBox-style
+containers, but **single-child containers that track their child via
+`set_child` keep an internal child pointer that `unparent()` does not
+clear** — GtkWindow / GtkApplicationWindow, and a GtkOverlay's *main*
+child. After teardown freed the child `Node` (removed from the store
+→ last widget ref dropped), that pointer dangled; when the window
+finalized at `AppHandle::drop` it double-disposed the freed child →
+the assertion.
+
+`counter_gtk` was clean but `counters_gtk` wasn't — the only
+difference was `counters` enabling the `debug-overlay` feature, which
+wraps `content_root` as the *main child* of a `gtk::Overlay`
+(`overlay.set_child(content_root)`). So the same bug, one level
+deeper than the window root.
+
+Fix: a single `detach_child_widget(parent, child)` helper that uses
+the owning API per parent type — `set_child(None)` for
+Window/ApplicationWindow and an Overlay's main child,
+`remove_overlay` for overlay layers, and `unparent()` for everything
+else. Both `teardown` and `remove_child` route through it (the latter
+previously special-cased only windows, missing Overlay). If we ever
+attach nodes under other `set_child`/`GtkBin`-style parents
+(ScrolledWindow, Frame, Revealer, …) they'll need adding here too.
+
+Verified via `G_DEBUG=fatal-criticals` + gdb that the assertion
+originated in `ApplicationWindow` drop inside `AppHandle::drop`, and
+that both examples now exit with no criticals.
 
 ---
 
