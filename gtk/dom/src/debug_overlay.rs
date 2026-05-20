@@ -11,13 +11,14 @@
 //! - The window's content_root is wrapped in a `gtk::Overlay` whose
 //!   overlay-child is a custom `DebugOverlayWidget`. The widget sets
 //!   `can-target=false` so clicks pass through to the real controls.
-//! - The widget's `snapshot` walks its tree's `TreeRef` and strokes
-//!   each node's bounds (via `Widget::compute_bounds`).
+//! - The widget's `snapshot` walks the thread-local node store from
+//!   its root id and strokes each node's bounds (via
+//!   `Widget::compute_bounds`).
 //! - A `gtk::EventControllerKey` on the window watches for the `~`
 //!   key and flips the global `VISIBLE` flag, then asks every
 //!   registered overlay to redraw via `queue_draw`.
 
-use crate::layout::{NodeId, TreeRef};
+use crate::layout::{self, NodeId};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -38,7 +39,6 @@ mod imp {
 
     #[derive(Default)]
     pub struct DebugOverlayWidget {
-        pub tree: RefCell<Option<TreeRef>>,
         pub root_id: RefCell<Option<NodeId>>,
     }
 
@@ -74,10 +74,9 @@ mod imp {
             if !VISIBLE.load(Ordering::Relaxed) {
                 return;
             }
-            let Some(tree) = self.tree.borrow().clone() else { return };
             let Some(root_id) = *self.root_id.borrow() else { return };
             let target: gtk4::Widget = self.obj().clone().upcast();
-            walk(&tree, root_id, snapshot, &target, true);
+            walk(root_id, snapshot, &target, true);
         }
     }
 }
@@ -89,11 +88,10 @@ glib::wrapper! {
 }
 
 impl DebugOverlayWidget {
-    fn new(tree: TreeRef, root_id: NodeId) -> Self {
+    fn new(root_id: NodeId) -> Self {
         let obj: Self = glib::Object::new();
         {
             let imp = obj.imp();
-            *imp.tree.borrow_mut() = Some(tree);
             *imp.root_id.borrow_mut() = Some(root_id);
         }
         obj.set_can_target(false);
@@ -124,16 +122,16 @@ fn fill_rect(snap: &gtk4::Snapshot, rect: gtk4::graphene::Rect, color: [f32; 4])
 /// Whether Taffy actually consults `first_baseline(node)` during the
 /// layout pass. True when either the node's own `align_self` is
 /// `Baseline`, or its flex parent's `align_items` is `Baseline`.
-fn baseline_in_use(tree: &TreeRef, node_id: NodeId) -> bool {
-    let style = match tree.style(node_id) {
+fn baseline_in_use(node_id: NodeId) -> bool {
+    let style = match layout::style(node_id) {
         Some(s) => s,
         None => return false,
     };
     if style.align_self == Some(renderer::AlignItems::Baseline) {
         return true;
     }
-    let Some(parent_id) = tree.parent(node_id) else { return false };
-    let parent_style = match tree.style(parent_id) {
+    let Some(parent_id) = layout::parent(node_id) else { return false };
+    let parent_style = match layout::style(parent_id) {
         Some(s) => s,
         None => return false,
     };
@@ -141,26 +139,25 @@ fn baseline_in_use(tree: &TreeRef, node_id: NodeId) -> bool {
 }
 
 fn walk(
-    tree: &TreeRef,
     node_id: NodeId,
     snap: &gtk4::Snapshot,
     target: &gtk4::Widget,
     is_root: bool,
 ) {
-    let Some(view) = tree.view(node_id) else { return };
-    let kids: Vec<NodeId> = tree.children(node_id).to_vec();
+    let Some(view) = layout::view(node_id) else { return };
+    let kids: Vec<NodeId> = layout::children(node_id);
     let bounds = view.compute_bounds(target);
-    let layout = tree.layout(node_id).unwrap_or_default();
+    let layout_box = layout::layout(node_id).unwrap_or_default();
 
     if !is_root {
         if let Some(rect) = bounds {
             // Magenta = border box.
             stroke_rect(snap, rect, [1.0, 0.2, 0.5, 0.85]);
 
-            let pt = layout.padding.top;
-            let pr = layout.padding.right;
-            let pb = layout.padding.bottom;
-            let pl = layout.padding.left;
+            let pt = layout_box.padding.top;
+            let pr = layout_box.padding.right;
+            let pb = layout_box.padding.bottom;
+            let pl = layout_box.padding.left;
             if pt > 0.0 || pr > 0.0 || pb > 0.0 || pl > 0.0 {
                 let cx = rect.x() + pl;
                 let cy = rect.y() + pt;
@@ -177,7 +174,7 @@ fn walk(
             // baseline (queried at unconstrained height) can be off
             // for widgets whose final allocation differs from their
             // natural size.
-            if baseline_in_use(tree, node_id) {
+            if baseline_in_use(node_id) {
                 if let Some(bo) =
                     <crate::layout::GtkBackend as renderer::LayoutBackend>::first_baseline(&view)
                 {
@@ -195,7 +192,7 @@ fn walk(
     if kids.len() >= 2 {
         let frames: Vec<gtk4::graphene::Rect> = kids
             .iter()
-            .filter_map(|id| tree.view(*id).and_then(|w| w.compute_bounds(target)))
+            .filter_map(|id| layout::view(*id).and_then(|w| w.compute_bounds(target)))
             .collect();
         for pair in frames.windows(2) {
             let a = pair[0];
@@ -237,7 +234,7 @@ fn walk(
     }
 
     for child in kids {
-        walk(tree, child, snap, target, false);
+        walk(child, snap, target, false);
     }
 }
 
@@ -268,13 +265,12 @@ pub fn mark_overlays_dirty() {
 pub fn install(
     window: &gtk4::ApplicationWindow,
     content_root: &gtk4::Widget,
-    tree: &TreeRef,
     root_id: NodeId,
 ) -> gtk4::Overlay {
     let overlay = gtk4::Overlay::new();
     overlay.set_child(Some(content_root));
 
-    let widget = DebugOverlayWidget::new(tree.clone(), root_id);
+    let widget = DebugOverlayWidget::new(root_id);
     overlay.add_overlay(&widget);
     OVERLAYS.with(|o| o.borrow_mut().push(widget.downgrade()));
 
