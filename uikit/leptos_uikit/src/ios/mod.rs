@@ -13,7 +13,6 @@ pub mod attr;
 pub mod bind;
 pub(crate) mod directives;
 pub mod element;
-pub mod node_ref;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal, Selection};
@@ -23,7 +22,6 @@ pub use element::{
     segmented_control, slider, stack, stepper, switch_, text_field, text_view,
     toggle, vstack, IosText, WithText,
 };
-pub use node_ref::NodeRef;
 
 // Convenient passthrough of the most common style enums.
 pub use ios_dom::layout::{

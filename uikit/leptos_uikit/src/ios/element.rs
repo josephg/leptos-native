@@ -103,6 +103,7 @@ fn apply_text(el: UikitElem, attrs: IosText) -> Vec<RenderEffect<()>> {
 // `apply_layout` lives in `renderer::apply_layout`; the
 // `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
 use ios_dom::layout::apply_layout;
+use leptos_native::node_ref::NodeRef;
 
 /// Apply the always-present `universal` (+ optional `text`) and
 /// `layout` cascade tail every typed builder runs. Layout LAST
@@ -800,7 +801,7 @@ pub struct Button {
     sf_symbol: Option<MaybeReactive<String>>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     text: IosText,
@@ -839,7 +840,7 @@ impl Button {
         self.sf_symbol = Some(name.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -926,7 +927,7 @@ pub struct Label {
     text_value: MaybeReactive<String>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     text: IosText,
@@ -956,7 +957,7 @@ impl Label {
     pub fn child<V: IntoMaybeReactive<String>>(self, value: V) -> Self {
         self.text(value)
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1044,7 +1045,7 @@ pub struct TextField {
     pending_bind: Option<crate::ios::bind::BoundValue>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     text: IosText,
@@ -1088,7 +1089,7 @@ impl TextField {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1204,7 +1205,7 @@ pub struct Switch {
     pending_bind_checked: Option<crate::ios::bind::BoundChecked>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1238,7 +1239,7 @@ impl Switch {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1336,7 +1337,7 @@ pub struct Slider {
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1373,7 +1374,7 @@ impl Slider {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1471,7 +1472,7 @@ pub struct Stepper {
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1513,7 +1514,7 @@ impl Stepper {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1608,7 +1609,7 @@ impl Render<Dom> for Stepper {
 
 pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1627,7 +1628,7 @@ impl ProgressIndicator {
         self.value = v.into_maybe_reactive();
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1681,7 +1682,7 @@ pub struct ImageView {
     tint: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1730,7 +1731,7 @@ impl ImageView {
         self.tint = Some(c.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1830,7 +1831,7 @@ pub struct SegmentedControl {
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1866,7 +1867,7 @@ impl SegmentedControl {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1961,7 +1962,7 @@ pub struct PopUpButton {
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1997,7 +1998,7 @@ impl PopUpButton {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -2106,7 +2107,7 @@ pub struct ColorWell {
     pending_bind_value: Option<crate::ios::bind::BoundColor>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -2133,7 +2134,7 @@ impl ColorWell {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -2220,7 +2221,7 @@ pub struct DatePicker {
     pending_bind: Option<crate::ios::bind::BoundDate>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     style: Option<MaybeReactive<ios_dom::DatePickerStyle>>,
@@ -2253,7 +2254,7 @@ impl DatePicker {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -2487,7 +2488,7 @@ pub struct TextView {
     value: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundValue>,
-    node_ref: Option<crate::ios::NodeRef>,
+    node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     text: IosText,
@@ -2514,7 +2515,7 @@ impl TextView {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: crate::ios::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
         self.node_ref = Some(r);
         self
     }

@@ -19,7 +19,6 @@ pub(crate) mod directives;
 pub mod element;
 pub(crate) mod error_guard;
 pub mod menu;
-pub mod node_ref;
 pub mod split;
 pub mod toolbar;
 pub mod window;
@@ -29,7 +28,6 @@ pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
     button, grid, hstack, label, stack, text_field, vstack,
 };
-pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums so users

@@ -6,7 +6,6 @@
 //! need them on GTK can extend the builders.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use super::node_ref::NodeRef;
 use crate::GtkDom;
 use crate::dom::{
     layout::{
@@ -21,9 +20,11 @@ use crate::dom::{
     GtkElem,
 };
 use reactive_graph::effect::RenderEffect;
+use leptos_native::node_ref::NodeRef;
 use renderer::attrs::{
     LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
+use renderer::directive;
 use renderer::view::{Mountable, Render};
 
 // `apply_layout` / `apply_universal` live in `renderer`. The
@@ -619,7 +620,7 @@ pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -661,14 +662,14 @@ impl Button {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -737,7 +738,7 @@ impl Render<GtkDom> for Button {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);
@@ -759,7 +760,7 @@ pub struct Checkbox {
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<super::bind::BoundChecked>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -826,14 +827,14 @@ impl Checkbox {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -889,7 +890,7 @@ impl Render<GtkDom> for Checkbox {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);
@@ -913,7 +914,7 @@ pub struct Slider {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<super::bind::BoundFloat>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -978,14 +979,14 @@ impl Slider {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1045,7 +1046,7 @@ impl Render<GtkDom> for Slider {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);
@@ -1068,7 +1069,7 @@ pub struct PopUpButton {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<super::bind::BoundIndex>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1131,7 +1132,7 @@ impl PopUpButton {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1186,7 +1187,7 @@ impl Render<GtkDom> for PopUpButton {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);
@@ -1206,7 +1207,7 @@ impl Render<GtkDom> for PopUpButton {
 pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1248,7 +1249,7 @@ impl Label {
         self.text(value)
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1292,7 +1293,7 @@ impl Render<GtkDom> for Label {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);
@@ -1316,7 +1317,7 @@ pub struct TextField {
     secure: bool,
     pending_bind: Option<super::bind::BoundValue>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
-    node_ref: Option<NodeRef>,
+    node_ref: Option<NodeRef<GtkElem>>,
     directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1394,7 +1395,7 @@ impl TextField {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<GtkElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1477,7 +1478,7 @@ impl Render<GtkDom> for TextField {
         effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         super::directives::run_all(self.directives, el);

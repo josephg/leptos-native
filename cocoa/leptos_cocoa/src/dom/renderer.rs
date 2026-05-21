@@ -12,10 +12,8 @@
 //! On the native code path they should be unreachable; tracked in
 //! `implementation_log.md`.
 
-use crate::dom::node::CocoaElem;
 use objc2::rc::Retained;
 use objc2_app_kit::NSEvent;
-use renderer::renderer::CastFrom;
 use send_wrapper::SendWrapper;
 use std::fmt;
 

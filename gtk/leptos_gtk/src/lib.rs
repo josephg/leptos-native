@@ -10,11 +10,8 @@
 #![cfg(feature = "gtk")]
 #![allow(missing_docs)]
 
-pub mod directive;
-pub mod element_gtk;
 pub mod event_gtk;
 pub mod gtk;
-pub mod keys;
 pub mod mount;
 pub mod renderer_gtk;
 
@@ -38,7 +35,7 @@ pub type ChildrenFn = ::leptos_native::children::ChildrenFn<GtkDom>;
 /// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
 /// `::leptos_native::attr::Checked`).
 pub mod attr {
-    pub use crate::keys::*;
+    pub use renderer::attr_keys::{AttributeKey, Checked, Value};
 }
 
 // ---------------------------------------------------------------------
@@ -86,16 +83,21 @@ pub mod tachys {
     pub mod html {
         pub mod element {
             //! GTK-flavoured element builders (button, vstack, label, ...).
-            pub use crate::element_gtk::*;
+            pub use crate::gtk::element::{
+                button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
+                slider, stack, stack_view, text_field, toggle, vstack,
+            };
+
+            // Menus: `<menu_bar>` + `<menu>` + `<menu_item>` + `<menu_separator>`.
+            // `<menu_bar>` sits as a top-level sibling of `<window>` in `run()`;
+            // the others only make sense nested inside.
+            pub use crate::gtk::menu::{menu, menu_bar, menu_item, menu_separator};
         }
         pub mod event {
             pub use crate::event_gtk::*;
         }
         pub mod attribute {
-            pub use crate::keys::*;
-        }
-        pub mod directive {
-            pub use crate::directive::*;
+            pub use renderer::attr_keys::{AttributeKey, Checked, Value};
         }
     }
 }
@@ -136,7 +138,6 @@ pub mod prelude {
             secure_text_field, slider, stack, stack_view, text_field, toggle,
             vstack,
         },
-        node_ref::NodeRef,
         AlignContent, AlignItems, FlexDirection, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
         TrackSizingFunction,

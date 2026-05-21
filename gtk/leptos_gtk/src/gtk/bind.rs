@@ -13,6 +13,7 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, Set},
 };
+use renderer::attr_keys;
 
 pub trait IntoSignal<T: Send + Sync + 'static>: 'static {
     fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static>;
@@ -59,11 +60,11 @@ pub trait BindAttribute<Key, Sig> {
 // TextField — bind:value=String-ish signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::keys::Value, Sig> for TextField
+impl<Sig> BindAttribute<attr_keys::Value, Sig> for TextField
 where
     Sig: IntoSignal<String>,
 {
-    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+    fn bind(mut self, _key: attr_keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_value(BoundValue { getter, setter });
@@ -97,11 +98,11 @@ pub(crate) fn install_text_field_value_bind(
 // Slider — bind:value=f64 signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::keys::Value, Sig> for Slider
+impl<Sig> BindAttribute<attr_keys::Value, Sig> for Slider
 where
     Sig: IntoSignal<f64>,
 {
-    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+    fn bind(mut self, _key: attr_keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_value(BoundFloat { getter, setter });
@@ -136,11 +137,11 @@ pub(crate) fn install_slider_value_bind(
 // PopUpButton — bind:value=usize signal (matches Cocoa naming)
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::keys::Value, Sig> for PopUpButton
+impl<Sig> BindAttribute<attr_keys::Value, Sig> for PopUpButton
 where
     Sig: IntoSignal<usize>,
 {
-    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+    fn bind(mut self, _key: attr_keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_selection(BoundIndex { getter, setter });
@@ -175,11 +176,11 @@ pub(crate) fn install_popup_selection_bind(
 // Checkbox — bind:checked=bool signal
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::keys::Checked, Sig> for Checkbox
+impl<Sig> BindAttribute<attr_keys::Checked, Sig> for Checkbox
 where
     Sig: IntoSignal<bool>,
 {
-    fn bind(mut self, _key: crate::keys::Checked, signal: Sig) -> Self {
+    fn bind(mut self, _key: attr_keys::Checked, signal: Sig) -> Self {
         let getter = signal.into_get();
         let setter = signal.into_set();
         self.set_pending_bind_checked(BoundChecked { getter, setter });
@@ -214,11 +215,11 @@ pub(crate) fn install_checkbox_checked_bind(
 // Label — bind:value=String signal (read-only sink)
 // ---------------------------------------------------------------------
 
-impl<Sig> BindAttribute<crate::keys::Value, Sig> for Label
+impl<Sig> BindAttribute<attr_keys::Value, Sig> for Label
 where
     Sig: IntoSignal<String>,
 {
-    fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
+    fn bind(mut self, _key: attr_keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();
         self.set_pending_bind_text(getter);
         self

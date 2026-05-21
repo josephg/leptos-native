@@ -222,6 +222,8 @@ pub mod context {
 /// Utilities for simple logging.
 pub mod logging;
 
+pub mod node_ref;
+
 /// Utilities for working with asynchronous tasks.
 pub mod task {
     use any_spawner::Executor;

@@ -10,6 +10,7 @@ use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::dom::{event, layout::*, CocoaElem, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
 use crate::CocoaDom;
 use reactive_graph::effect::RenderEffect;
+use leptos_native::node_ref::NodeRef;
 use renderer::attrs::{
     DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
     WithUniversal,
@@ -95,7 +96,7 @@ pub trait WithDecoration: Sized {
 // `apply_universal` and `apply_layout` live in `renderer`. The
 // `UniversalElement` / `LayoutElement` impls for `CocoaNode` live
 // in `cocoa_dom` (orphan rule).
-use renderer::{apply_decoration, apply_universal};
+use renderer::{apply_decoration, apply_universal, directive};
 
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
@@ -824,7 +825,7 @@ pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -896,7 +897,7 @@ impl Button {
     /// `node_ref=…` from the macro. The ref gets filled with this
     /// builder's underlying `CocoaNode` after
     /// `Render::build` runs.
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -916,7 +917,7 @@ impl Button {
     /// fact that our `AddAnyAttr` stub drops attributes.
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1134,7 +1135,7 @@ pub struct Checkbox {
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<crate::cocoa::bind::BoundChecked>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1210,7 +1211,7 @@ impl Checkbox {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1220,7 +1221,7 @@ impl Checkbox {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1321,7 +1322,7 @@ pub struct Slider {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1400,7 +1401,7 @@ impl Slider {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1410,7 +1411,7 @@ impl Slider {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1567,7 +1568,7 @@ pub struct PopUpButton {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1636,7 +1637,7 @@ impl PopUpButton {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1646,7 +1647,7 @@ impl PopUpButton {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1771,7 +1772,7 @@ pub struct Label {
     value: MaybeReactive<String>,
     try_text: Option<LabelTryTextFn>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1836,7 +1837,7 @@ impl Label {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -1853,7 +1854,7 @@ impl Label {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2074,7 +2075,7 @@ pub struct TextField {
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2212,7 +2213,7 @@ impl TextField {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
@@ -2222,7 +2223,7 @@ impl TextField {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2422,7 +2423,7 @@ pub struct DatePicker {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2483,14 +2484,14 @@ impl DatePicker {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2647,7 +2648,7 @@ pub struct Stepper {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2720,14 +2721,14 @@ impl Stepper {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2847,7 +2848,7 @@ pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
     max_value: MaybeReactive<f64>,
     indeterminate: MaybeReactive<bool>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2890,14 +2891,14 @@ impl ProgressIndicator {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3002,7 +3003,7 @@ pub struct ColorWell {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -3057,14 +3058,14 @@ impl ColorWell {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3169,7 +3170,7 @@ pub struct SegmentedControl {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -3236,14 +3237,14 @@ impl SegmentedControl {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3534,7 +3535,7 @@ pub struct ImageView {
     bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<Color>>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -3620,14 +3621,14 @@ impl ImageView {
         self
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3725,7 +3726,7 @@ pub struct TextView {
     /// (one-way: signal → field). Installed at build time via
     /// `install_text_view_value_bind`.
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
-    node_ref: Option<crate::cocoa::NodeRef>,
+    node_ref: Option<NodeRef<CocoaElem>>,
     directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -3774,14 +3775,14 @@ impl TextView {
         self.pending_bind = Some(bound);
     }
 
-    pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
+    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
         self.node_ref = Some(r);
         self
     }
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {

@@ -11,7 +11,6 @@
 #![allow(missing_docs)]
 
 pub mod cocoa;
-pub mod directive;
 pub mod element_macos;
 pub mod event_macos;
 pub mod keys;
@@ -91,9 +90,6 @@ pub mod tachys {
         }
         pub mod attribute {
             pub use crate::keys::*;
-        }
-        pub mod directive {
-            pub use crate::directive::*;
         }
     }
 }
@@ -217,7 +213,6 @@ pub mod prelude {
             // builder.
             WithDecoration,
         },
-        node_ref::NodeRef,
         AlignContent, AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
         TrackSizingFunction,

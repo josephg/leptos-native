@@ -12,7 +12,6 @@ pub mod decoration;
 pub(crate) mod directives;
 pub mod element;
 pub mod menu;
-pub mod node_ref;
 pub mod window;
 
 pub use attr::{IntoMaybeReactive, MaybeReactive};
@@ -23,7 +22,6 @@ pub use element::{
     slider, stack, stack_view, text_field, toggle, vstack,
 };
 pub use crate::dom::Color;
-pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums.

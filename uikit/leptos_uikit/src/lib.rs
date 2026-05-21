@@ -10,7 +10,6 @@
 #![cfg(target_os = "ios")]
 #![allow(missing_docs)]
 
-pub mod directive;
 pub mod element_ios;
 pub mod event_ios;
 pub mod ios;
@@ -70,9 +69,9 @@ pub mod tachys {
         pub mod attribute {
             pub use crate::keys::*;
         }
-        pub mod directive {
-            pub use crate::directive::*;
-        }
+        // pub mod directive {
+        //     pub use crate::directive::*;
+        // }
     }
 }
 
@@ -104,7 +103,6 @@ pub mod prelude {
             button, grid, hstack, label, scroll_view, secure_text_field,
             slider, switch_, text_field, vstack, WithText,
         },
-        node_ref::NodeRef,
         AlignContent, AlignItems, FlexDirection, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
         TrackSizingFunction,
