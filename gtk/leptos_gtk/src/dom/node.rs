@@ -8,7 +8,7 @@
 //! the store by id; a stale id resolves to `None`/no-op via the
 //! generational key.
 //!
-//! Lifecycle is explicit: [`GtkNode::teardown`] removes the node and its
+//! Lifecycle is explicit: [`GtkElem::teardown`] removes the node and its
 //! structural subtree from the store. Mirrors the cocoa port — see
 //! `cocoa/dom/src/node.rs` for the longer rationale.
 //!
@@ -28,11 +28,11 @@ use crate::dom::{event, layout};
 /// `LayoutState<GtkBackend>`; accessors read through the store keyed
 /// by `id`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct GtkNode {
+pub struct GtkElem {
     pub(crate) id: NodeId,
 }
 
-impl GtkNode {
+impl GtkElem {
     /// Typed registration primitive: hand in a concrete gtk widget,
     /// get back a `Node`.
     pub fn new_from_widget<W>(widget: W, default_style: Style) -> Self
@@ -41,12 +41,12 @@ impl GtkNode {
     {
         let widget: gtk4::Widget = widget.upcast();
         let id = GtkBackend::new_leaf(default_style, widget, (), ());
-        GtkNode { id }
+        GtkElem { id }
     }
 
     /// Wrap an existing store id as a `Node`.
     pub fn from_id(id: NodeId) -> Self {
-        GtkNode { id }
+        GtkElem { id }
     }
 
     /// The node's `NodeId`.
@@ -109,7 +109,7 @@ impl GtkNode {
 
     /// Pointer-equality check. Each node owns exactly one widget, so id
     /// equality is equivalent to underlying-gobject equality.
-    pub fn ptr_eq(self, other: GtkNode) -> bool {
+    pub fn ptr_eq(self, other: GtkElem) -> bool {
         self.id == other.id
     }
 
@@ -126,11 +126,11 @@ impl GtkNode {
 
     /// Generic flexbox container (gtk::Box-backed).
     pub fn create_container() -> Self {
-        GtkNode::new_from_widget(container_widget(), Style::default()).with_tag("container")
+        GtkElem::new_from_widget(container_widget(), Style::default()).with_tag("container")
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
-    pub fn insert_node(self, child: GtkNode, marker: Option<GtkNode>) {
+    pub fn insert_node(self, child: GtkElem, marker: Option<GtkElem>) {
         let _ = self.try_insert_node(child, marker);
     }
 
@@ -138,8 +138,8 @@ impl GtkNode {
     /// parent isn't a supported container, or `marker` isn't its child.
     pub fn try_insert_node(
         self,
-        child: GtkNode,
-        marker: Option<GtkNode>,
+        child: GtkElem,
+        marker: Option<GtkElem>,
     ) -> bool {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
@@ -208,7 +208,7 @@ impl GtkNode {
     }
 
     /// Remove `child` from this element's child list.
-    pub fn remove_child(self, child: GtkNode) -> Option<GtkNode> {
+    pub fn remove_child(self, child: GtkElem) -> Option<GtkElem> {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -490,7 +490,7 @@ impl GtkNode {
         label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut style = Style::default();
         style.flex_shrink = 0.0;
-        GtkNode::new_from_widget(label, style).with_tag("#text")
+        GtkElem::new_from_widget(label, style).with_tag("#text")
     }
 
     /// Update the displayed string on a text-label Node.
@@ -514,7 +514,7 @@ impl GtkNode {
         style.size.width = crate::dom::layout::Dimension::length(0.0);
         style.size.height = crate::dom::layout::Dimension::length(0.0);
 
-        GtkNode::new_from_widget(widget, style).with_tag("placeholder")
+        GtkElem::new_from_widget(widget, style).with_tag("placeholder")
     }
 }
 
@@ -559,7 +559,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 fn attach_under(
     parent: &gtk4::Widget,
     child: &gtk4::Widget,
-    marker: Option<GtkNode>,
+    marker: Option<GtkElem>,
 ) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {

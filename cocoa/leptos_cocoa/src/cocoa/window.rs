@@ -21,7 +21,7 @@
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 use crate::CocoaDom;
-use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaNode, MainThreadMarker};
+use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaElem, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
@@ -452,8 +452,8 @@ impl Mountable<CocoaDom> for WindowState {
 
     fn mount(
         &mut self,
-        _parent: CocoaNode,
-        _marker: Option<CocoaNode>,
+        _parent: CocoaElem,
+        _marker: Option<CocoaElem>,
     ) {
         // Window is its own root; nothing to mount under another
         // Element. The NSWindow was opened in `build()`.
@@ -463,7 +463,7 @@ impl Mountable<CocoaDom> for WindowState {
         false
     }
 
-    fn elements(&self) -> Vec<CocoaNode> {
+    fn elements(&self) -> Vec<CocoaElem> {
         // A Window doesn't contribute any elements to its parent's
         // children list — it lives at the OS level.
         Vec::new()

@@ -9,7 +9,7 @@
 //! stale id (after the node was freed) resolves to `None`/no-op via the
 //! generational key — weak-reference behavior for free.
 //!
-//! Lifecycle is explicit: [`CocoaNode::teardown`] removes the node and its
+//! Lifecycle is explicit: [`CocoaElem::teardown`] removes the node and its
 //! whole structural subtree from the store. There is no drop-driven
 //! removal (a `Node` is `Copy`, so it has no `Drop`).
 
@@ -35,17 +35,17 @@ use super::layout::CocoaBackend;
 /// (`with_style`, `with_meta`, `with_handlers_mut`, `ns_view`) read
 /// through the store keyed by `id`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct CocoaNode {
+pub struct CocoaElem {
     pub(crate) id: NodeId,
 }
 
-impl AsRef<CocoaNode> for CocoaNode {
-    fn as_ref(&self) -> &CocoaNode {
+impl AsRef<CocoaElem> for CocoaElem {
+    fn as_ref(&self) -> &CocoaElem {
         self
     }
 }
 
-impl CocoaNode {
+impl CocoaElem {
     /// Allocate a fresh entry in the store and return a `Node` for it.
     /// The typed registration primitive: hand in a concrete NSView
     /// subclass, get back a `Node`.
@@ -67,14 +67,14 @@ impl CocoaNode {
         // Wire the handlers' view back-ref so teardown can nil
         // setTarget/setDelegate while the view is still alive.
         CocoaBackend::with_handlers_mut(id, |h| h.attach_view(view));
-        CocoaNode { id }
+        CocoaElem { id }
     }
 
     /// Wrap an existing store id as a `Node`. Used where some other
     /// code already registered the entry (e.g. the relayout scheduler
     /// reconstructing a root handle).
     pub fn from_id(id: NodeId) -> Self {
-        CocoaNode { id }
+        CocoaElem { id }
     }
 
     /// The node's `NodeId`.
@@ -132,7 +132,7 @@ impl CocoaNode {
     }
 
     /// Pointer-equality check (same underlying NSView object).
-    pub fn ptr_eq(self, other: &CocoaNode) -> bool {
+    pub fn ptr_eq(self, other: &CocoaElem) -> bool {
         match (self.try_ns_view(), other.try_ns_view()) {
             (Some(a), Some(b)) => {
                 let pa: *const NSView = &*a;
@@ -205,7 +205,7 @@ impl CocoaNode {
         let view: Retained<NSView> = unsafe {
             Retained::cast_unchecked(FlippedView::new(mtm))
         };
-        CocoaNode::from_view(view, Style::default(), CocoaMeta::default())
+        CocoaElem::from_view(view, Style::default(), CocoaMeta::default())
     }
 
     /// The NSView that *actually* parents this node's children. For
@@ -227,7 +227,7 @@ impl CocoaNode {
 
     /// Insert `child` before `marker` in this element's child list.
     /// If `marker` is `None`, append.
-    pub fn insert_node(self, child: CocoaNode, marker: Option<CocoaNode>) {
+    pub fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>) {
         let parent_retained = self.subview_parent();
         let parent: &NSView = &parent_retained;
         let child_view = child.ns_view();
@@ -263,7 +263,7 @@ impl CocoaNode {
 
     /// Remove `child` from this element. Returns the node back if it was
     /// actually our child, otherwise `None`.
-    pub fn remove_child(self, child: CocoaNode) -> Option<CocoaNode> {
+    pub fn remove_child(self, child: CocoaElem) -> Option<CocoaElem> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const NSView = &*parent_retained;
         let child_view = child.ns_view();
@@ -1224,7 +1224,7 @@ impl CocoaNode {
 // Node: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-impl CocoaNode {
+impl CocoaElem {
     /// Build a text-label Node — a non-editable, non-bordered
     /// NSTextField (AppKit's "label" configuration).
     pub fn create_text(content: &str) -> Self {
@@ -1243,7 +1243,7 @@ impl CocoaNode {
         let mut style = layout::Style::default();
         style.flex_shrink = 0.0;
 
-        CocoaNode::from_view(view, style, CocoaMeta::default())
+        CocoaElem::from_view(view, style, CocoaMeta::default())
     }
 
     /// Update the displayed string on a text-label Node.
@@ -1274,7 +1274,7 @@ impl CocoaNode {
         style.size.width = layout::Dimension::length(0.0);
         style.size.height = layout::Dimension::length(0.0);
 
-        CocoaNode::from_view(view, style, CocoaMeta::default())
+        CocoaElem::from_view(view, style, CocoaMeta::default())
     }
 }
 

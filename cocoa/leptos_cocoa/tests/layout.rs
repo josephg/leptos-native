@@ -12,7 +12,7 @@
 mod common;
 
 use leptos_cocoa::cocoa::element::{button, hstack, label, vstack};
-use leptos_cocoa::dom::{layout, spawner, window, CocoaNode};
+use leptos_cocoa::dom::{layout, spawner, window, CocoaElem};
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
@@ -35,7 +35,7 @@ fn with_mounted_view<V, F>(view: V, size: (f64, f64), f: F)
 where
     V: Render<leptos_cocoa::CocoaDom>,
     V::State: Mountable<leptos_cocoa::CocoaDom>,
-    F: FnOnce(&CocoaNode),
+    F: FnOnce(&CocoaElem),
 {
     let mtm = common::test_mtm();
     let opened = window::open_window("test", size, mtm);

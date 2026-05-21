@@ -6,7 +6,7 @@
 #![cfg(feature = "gtk")]
 
 use leptos_gtk::gtk::window;
-use leptos_gtk::renderer_gtk::GtkNode;
+use leptos_gtk::renderer_gtk::GtkElem;
 
 mod common;
 
@@ -15,12 +15,12 @@ fn focus_unmounted_returns_false_or_no_panic() {
     // reflects whether GTK accepted the focus change. Without a
     // window this is normally false; we don't assert, just verify
     // no panic.
-    let el = GtkNode::create_text_field().0;
+    let el = GtkElem::create_text_field().0;
     let _ = el.focus();
 }
 
 fn blur_unmounted_returns_false() {
-    let el = GtkNode::create_text_field().0;
+    let el = GtkElem::create_text_field().0;
     assert!(!el.blur(), "no window → no blur");
 }
 
@@ -31,7 +31,7 @@ fn focus_mounted_text_field_succeeds() {
     let app = common::init_app_registered("org.test.gtk_dom.focus");
     let win = window::open_window(&app, "focus-test", (320, 200));
 
-    let field = GtkNode::create_text_field().0;
+    let field = GtkElem::create_text_field().0;
     win.content_root.insert_node(field, None);
 
     // grab_focus returns true when GTK accepts the focus request.
@@ -45,7 +45,7 @@ fn blur_clears_focus() {
     let app = common::init_app_registered("org.test.gtk_dom.blur");
     let win = window::open_window(&app, "blur-test", (320, 200));
 
-    let field = GtkNode::create_text_field().0;
+    let field = GtkElem::create_text_field().0;
     win.content_root.insert_node(field, None);
 
     let _ = field.focus();
@@ -57,7 +57,7 @@ fn focus_on_button_works() {
     let app = common::init_app_registered("org.test.gtk_dom.button-focus");
     let win = window::open_window(&app, "button-focus", (320, 200));
 
-    let button = GtkNode::create_button().0;
+    let button = GtkElem::create_button().0;
     win.content_root.insert_node(button, None);
 
     let _ = button.focus();

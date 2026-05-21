@@ -13,7 +13,7 @@
 //! `implementation_log.md`.
 
 use crate::dom::layout;
-use crate::dom::node::CocoaNode;
+use crate::dom::node::CocoaElem;
 use objc2::rc::Retained;
 use objc2_app_kit::NSEvent;
 use renderer::renderer::CastFrom;
@@ -103,51 +103,51 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(text: &str) -> CocoaNode {
-        CocoaNode::create_text(text)
+    pub fn create_text_node(text: &str) -> CocoaElem {
+        CocoaElem::create_text(text)
     }
 
-    pub fn create_placeholder() -> CocoaNode {
-        CocoaNode::create_placeholder()
+    pub fn create_placeholder() -> CocoaElem {
+        CocoaElem::create_placeholder()
     }
 
-    pub fn set_text(node: CocoaNode, text: &str) {
+    pub fn set_text(node: CocoaElem, text: &str) {
         node.set_text(text);
     }
 
     pub fn insert_node(
-        parent: CocoaNode,
-        new_child: CocoaNode,
-        anchor: Option<CocoaNode>,
+        parent: CocoaElem,
+        new_child: CocoaElem,
+        anchor: Option<CocoaElem>,
     ) {
         parent.insert_node(new_child, anchor);
     }
 
     pub fn try_insert_node(
-        parent: CocoaNode,
-        new_child: CocoaNode,
-        anchor: Option<CocoaNode>,
+        parent: CocoaElem,
+        new_child: CocoaElem,
+        anchor: Option<CocoaElem>,
     ) -> bool {
         parent.insert_node(new_child, anchor);
         true
     }
 
-    pub fn remove_node(parent: CocoaNode, child: CocoaNode) -> Option<CocoaNode> {
+    pub fn remove_node(parent: CocoaElem, child: CocoaElem) -> Option<CocoaElem> {
         parent.remove_child(child)
     }
 
-    pub fn remove(node: CocoaNode) {
+    pub fn remove(node: CocoaElem) {
         // `drop_node` detaches the NSView and removes the node (and its
         // structural subtree) from the store, so the node count returns
         // to baseline. Caught by `cocoa_fuzzer`'s post-seed check.
         layout::drop_node(node);
     }
 
-    pub fn log_node(node: CocoaNode) {
+    pub fn log_node(node: CocoaElem) {
         eprintln!("[cocoa_dom] {node:?}");
     }
 
-    pub fn clear_children(parent: CocoaNode) {
+    pub fn clear_children(parent: CocoaElem) {
         parent.clear_children();
     }
 }
@@ -159,8 +159,8 @@ impl Renderer {
 // crate, and the trait doesn't mention any local type.
 // ---------------------------------------------------------------------
 
-impl CastFrom<CocoaNode> for CocoaNode {
-    fn cast_from(source: CocoaNode) -> Option<CocoaNode> {
+impl CastFrom<CocoaElem> for CocoaElem {
+    fn cast_from(source: CocoaElem) -> Option<CocoaElem> {
         Some(source)
     }
 }

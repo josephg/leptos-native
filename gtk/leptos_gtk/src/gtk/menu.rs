@@ -27,7 +27,7 @@ use renderer::menu::Modifiers;
 use renderer::view::{Mountable, Render};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use crate::dom::GtkNode;
+use crate::dom::GtkElem;
 // ---------------------------------------------------------------------
 // SectionCursor — gio-section-aware grouping for <menu_separator/>
 // ---------------------------------------------------------------------
@@ -233,14 +233,14 @@ impl<CS: 'static> Mountable<GtkDom> for MenuBarState<CS> {
     fn unmount(&mut self) {}
     fn mount(
         &mut self,
-        _parent: GtkNode,
-        _marker: Option<GtkNode>,
+        _parent: GtkElem,
+        _marker: Option<GtkElem>,
     ) {
     }
     fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<GtkNode> {
+    fn elements(&self) -> Vec<GtkElem> {
         Vec::new()
     }
 }

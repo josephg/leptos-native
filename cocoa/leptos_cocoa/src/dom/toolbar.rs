@@ -35,7 +35,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::event::{action_fired_sel, ActionTarget};
-use super::{event, layout, node, CocoaNode, Icon};
+use super::{event, layout, node, CocoaElem, Icon};
 use objc2::{
     define_class, msg_send,
     rc::Retained,
@@ -77,7 +77,7 @@ pub struct ToolbarItemRegistration {
     /// wrapping the embedded `NSSearchField`. Held to keep the
     /// element (and through it, the search field) reachable for
     /// the toolbar's lifetime.
-    pub search_element: Option<CocoaNode>,
+    pub search_element: Option<CocoaElem>,
 }
 
 impl Drop for ToolbarItemRegistration {
@@ -731,7 +731,7 @@ pub struct SearchToolbarItem {
     /// Element wrapping the embedded `NSSearchField`. The element's
     /// Node has no Taffy handle (the field is laid out by AppKit
     /// inside the toolbar item, not by Taffy).
-    search_element: CocoaNode,
+    search_element: CocoaElem,
     /// Auto Layout constraint pinning the search field's width.
     /// Lazily created by [`Self::set_search_field_width`]; once
     /// installed, subsequent calls just update its `constant`.
@@ -774,7 +774,7 @@ pub fn search_toolbar_item(
     // event-handler plumbing applies. NSToolbar owns layout, so this
     // node stays Unattached in the store (it never joins a layout
     // root); it persists until the toolbar item is torn down.
-    let node = CocoaNode::from_view(
+    let node = CocoaElem::from_view(
         search_field,
         taffy::Style::default(),
         layout::CocoaMeta::default(),
@@ -803,13 +803,13 @@ impl SearchToolbarItem {
         self.ns_item.clone()
     }
 
-    pub fn search_element(&self) -> &CocoaNode {
+    pub fn search_element(&self) -> &CocoaElem {
         &self.search_element
     }
 
     /// Consume the wrapper into `(NSToolbarItem, CocoaNode)` for the
     /// caller to stash separately.
-    pub fn into_parts(self) -> (Retained<NSToolbarItem>, CocoaNode) {
+    pub fn into_parts(self) -> (Retained<NSToolbarItem>, CocoaElem) {
         (self.ns_item, self.search_element)
     }
 

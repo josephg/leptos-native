@@ -30,7 +30,7 @@ use crate::event_macos::{
     ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
 };
 use crate::CocoaDom;
-use crate::dom::{menu::{self as dom_menu, MenuBar as DomMenuBar}, CocoaNode, Icon, MainThreadMarker};
+use crate::dom::{menu::{self as dom_menu, MenuBar as DomMenuBar}, CocoaElem, Icon, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSMenuItem};
 use objc2_foundation::NSString;
@@ -211,8 +211,8 @@ impl<CS: 'static> Mountable<CocoaDom> for MenuBarState<CS> {
     }
     fn mount(
         &mut self,
-        _parent: CocoaNode,
-        _marker: Option<CocoaNode>,
+        _parent: CocoaElem,
+        _marker: Option<CocoaElem>,
     ) {
         // The menu bar is its own root; nothing to attach under
         // a view-tree parent.
@@ -220,7 +220,7 @@ impl<CS: 'static> Mountable<CocoaDom> for MenuBarState<CS> {
     fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaDom>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<CocoaNode> {
+    fn elements(&self) -> Vec<CocoaElem> {
         Vec::new()
     }
 }

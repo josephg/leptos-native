@@ -9,10 +9,10 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, layout::compute_layout, CocoaNode};
+use leptos_cocoa::dom::{layout, layout::compute_layout, CocoaElem};
 use objc2_foundation::NSSize;
 
-fn dirty_for(el: &CocoaNode) -> bool {
+fn dirty_for(el: &CocoaElem) -> bool {
     layout::dirty(el.id())
 }
 
@@ -21,7 +21,7 @@ fn dirty_for(el: &CocoaNode) -> bool {
 fn baseline_compute_clears_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
 
     compute_layout(root, NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root), "root still dirty after compute");
@@ -31,11 +31,11 @@ fn baseline_compute_clears_dirty() {
 fn attach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
     compute_layout(root, NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root));
 
-    let child = CocoaNode::create_button().0;
+    let child = CocoaElem::create_button().0;
     layout::attach_child(root, child);
 
     assert!(
@@ -49,8 +49,8 @@ fn attach_child_marks_parent_dirty() {
 fn detach_child_marks_parent_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
-    let child = CocoaNode::create_button().0;
+    let root = CocoaElem::create_container_with(mtm);
+    let child = CocoaElem::create_button().0;
     layout::attach_child(root, child);
     compute_layout(root, NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root));
@@ -68,8 +68,8 @@ fn detach_child_marks_parent_dirty() {
 fn set_text_marks_node_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
-    let child = CocoaNode::create_label().0;
+    let root = CocoaElem::create_container_with(mtm);
+    let child = CocoaElem::create_label().0;
     layout::attach_child(root, child);
     compute_layout(root, NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&child));
@@ -87,7 +87,7 @@ fn set_text_marks_node_dirty() {
 fn set_style_width_marks_node_dirty() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
     compute_layout(root, NSSize::new(200.0, 200.0));
     assert!(!dirty_for(&root));
 
@@ -109,15 +109,15 @@ fn set_style_width_marks_node_dirty() {
 // content size and shoving siblings off-screen.
 // ---------------------------------------------------------------------
 
-fn child_count(parent: &CocoaNode) -> usize {
+fn child_count(parent: &CocoaElem) -> usize {
     layout::children(parent.id()).len()
 }
 
 fn attach_child_is_idempotent() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
-    let child = CocoaNode::create_button().0;
+    let root = CocoaElem::create_container_with(mtm);
+    let child = CocoaElem::create_button().0;
 
     layout::attach_child(root, child);
     assert_eq!(child_count(&root), 1);
@@ -132,9 +132,9 @@ fn attach_child_is_idempotent() {
 fn insert_child_at_is_idempotent() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
-    let a = CocoaNode::create_button().0;
-    let b = CocoaNode::create_button().0;
+    let root = CocoaElem::create_container_with(mtm);
+    let a = CocoaElem::create_button().0;
+    let b = CocoaElem::create_button().0;
 
     layout::insert_child_at(root, a, 0);
     layout::insert_child_at(root, b, 1);
@@ -167,11 +167,11 @@ fn insert_child_at_is_idempotent() {
 fn reorder_cascade_does_not_duplicate_edges() {
     let _mtm = common::test_mtm();
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
 
-    let a = CocoaNode::create_button().0;
-    let b = CocoaNode::create_button().0;
-    let c = CocoaNode::create_button().0;
+    let a = CocoaElem::create_button().0;
+    let b = CocoaElem::create_button().0;
+    let c = CocoaElem::create_button().0;
     layout::attach_child(root, a);
     layout::attach_child(root, b);
     layout::attach_child(root, c);

@@ -6,28 +6,28 @@
 mod common;
 
 
-use leptos_gtk::dom::GtkNode;
+use leptos_gtk::dom::GtkElem;
 use leptos_gtk::dom::layout::{self, GtkBackend};
 use renderer::LayoutBackend;
 
-fn dirty_for(el: &GtkNode) -> bool {
+fn dirty_for(el: &GtkElem) -> bool {
     GtkBackend::dirty(el.id())
 }
 
 /// After `compute_layout`, the root's dirty bit is cleared.
 fn baseline_compute_clears_dirty() {
-    let root = GtkNode::create_vstack();
+    let root = GtkElem::create_vstack();
 
     layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root), "root still dirty after compute");
 }
 
 fn attach_child_marks_parent_dirty() {
-    let root = GtkNode::create_vstack();
+    let root = GtkElem::create_vstack();
     layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
 
-    let child = GtkNode::create_button().0;
+    let child = GtkElem::create_button().0;
     layout::attach_child(root, child);
 
     assert!(
@@ -37,8 +37,8 @@ fn attach_child_marks_parent_dirty() {
 }
 
 fn detach_child_marks_parent_dirty() {
-    let root = GtkNode::create_vstack();
-    let child = GtkNode::create_button().0;
+    let root = GtkElem::create_vstack();
+    let child = GtkElem::create_button().0;
     layout::attach_child(root, child);
     layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
@@ -52,8 +52,8 @@ fn detach_child_marks_parent_dirty() {
 }
 
 fn set_text_marks_node_dirty() {
-    let root = GtkNode::create_vstack();
-    let child = GtkNode::create_label().0;
+    let root = GtkElem::create_vstack();
+    let child = GtkElem::create_label().0;
     layout::attach_child(root, child);
     layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&child));
@@ -67,7 +67,7 @@ fn set_text_marks_node_dirty() {
 }
 
 fn set_style_width_marks_node_dirty() {
-    let root = GtkNode::create_vstack();
+    let root = GtkElem::create_vstack();
     layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
 
@@ -84,13 +84,13 @@ fn set_style_width_marks_node_dirty() {
 // a duplicate parent->child edge in the Taffy tree.
 // ---------------------------------------------------------------------
 
-fn child_count(parent: &GtkNode) -> usize {
+fn child_count(parent: &GtkElem) -> usize {
     GtkBackend::children(parent.id()).len()
 }
 
 fn attach_child_is_idempotent() {
-    let root = GtkNode::create_vstack();
-    let child = GtkNode::create_button().0;
+    let root = GtkElem::create_vstack();
+    let child = GtkElem::create_button().0;
 
     layout::attach_child(root, child);
     assert_eq!(child_count(&root), 1);
@@ -103,9 +103,9 @@ fn attach_child_is_idempotent() {
 }
 
 fn insert_child_at_is_idempotent() {
-    let root = GtkNode::create_vstack();
-    let a = GtkNode::create_button().0;
-    let b = GtkNode::create_button().0;
+    let root = GtkElem::create_vstack();
+    let a = GtkElem::create_button().0;
+    let b = GtkElem::create_button().0;
 
     layout::insert_child_at(root, a, 0);
     layout::insert_child_at(root, b, 1);
@@ -130,11 +130,11 @@ fn insert_child_at_is_idempotent() {
 }
 
 fn reorder_cascade_does_not_duplicate_edges() {
-    let root = GtkNode::create_vstack();
+    let root = GtkElem::create_vstack();
 
-    let a = GtkNode::create_button().0;
-    let b = GtkNode::create_button().0;
-    let c = GtkNode::create_button().0;
+    let a = GtkElem::create_button().0;
+    let b = GtkElem::create_button().0;
+    let c = GtkElem::create_button().0;
     layout::attach_child(root, a);
     layout::attach_child(root, b);
     layout::attach_child(root, c);

@@ -18,7 +18,7 @@ use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{Get, Set};
-use leptos_cocoa::dom::{spawner, CocoaNode};
+use leptos_cocoa::dom::{spawner, CocoaElem};
 use renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
@@ -46,8 +46,8 @@ fn arm(
 /// and the View::State (kept alive for the test's lifetime).
 fn mount_into_host<V: Render<CocoaDom> + 'static>(
     view: V,
-) -> (CocoaNode, <V as Render<CocoaDom>>::State) {
-    let host = CocoaNode::create_container_with(common::test_mtm());
+) -> (CocoaElem, <V as Render<CocoaDom>>::State) {
+    let host = CocoaElem::create_container_with(common::test_mtm());
     let mut state = view.build();
     state.mount(host, None);
     (host, state)

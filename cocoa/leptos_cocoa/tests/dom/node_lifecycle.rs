@@ -11,7 +11,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{event::{handler_store_size_for_test, text_field_store_size_for_test}, layout, window, CocoaNode};
+use leptos_cocoa::dom::{event::{handler_store_size_for_test, text_field_store_size_for_test}, layout, window, CocoaElem};
 
 // =====================================================================
 // 1. Fresh nodes are in the store from creation
@@ -19,7 +19,7 @@ use leptos_cocoa::dom::{event::{handler_store_size_for_test, text_field_store_si
 
 fn freshly_created_node_is_in_store() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let id = el.id();
     assert!(
         layout::style(id).is_some(),
@@ -33,7 +33,7 @@ fn freshly_created_node_is_in_store() {
 
 fn style_mutation_lands_in_store() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
     el.with_style_mut(|s| s.flex_grow = 7.0);
     let id = el.id();
     assert_eq!(layout::style(id).unwrap().flex_grow, 7.0);
@@ -41,7 +41,7 @@ fn style_mutation_lands_in_store() {
 
 fn scroll_view_has_child_taffy_parent_at_create_time() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_scroll_view().0;
+    let el = CocoaElem::create_scroll_view().0;
     let meta = el.with_meta(|m| m.clone());
     assert!(meta.is_scroll_view, "scroll_view sets is_scroll_view");
     assert!(
@@ -56,7 +56,7 @@ fn scroll_view_has_child_taffy_parent_at_create_time() {
 
 fn teardown_removes_store_entry() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let id = el.id();
     assert!(layout::style(id).is_some());
 
@@ -74,7 +74,7 @@ fn teardown_removes_store_entry() {
 fn handler_released_on_teardown() {
     let _mtm = common::test_mtm();
     let baseline = handler_store_size_for_test();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     el.on_click(|| {});
     assert_eq!(
         handler_store_size_for_test(),
@@ -92,7 +92,7 @@ fn handler_released_on_teardown() {
 fn text_field_delegate_releases_on_teardown() {
     let _mtm = common::test_mtm();
     let baseline = text_field_store_size_for_test();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     el.on_text_change(|_| {});
     assert_eq!(
         text_field_store_size_for_test(),
@@ -114,8 +114,8 @@ fn text_field_delegate_releases_on_teardown() {
 
 fn teardown_cascades_to_children() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
-    let child = CocoaNode::create_button().0;
+    let root = CocoaElem::create_container();
+    let child = CocoaElem::create_button().0;
     layout::attach_child(root, child);
 
     let root_id = root.id();
@@ -138,7 +138,7 @@ fn teardown_cascades_to_children() {
 /// child (no Node owner). Tearing down the scroll_view must free it.
 fn scroll_view_wrapper_freed_with_parent() {
     let _mtm = common::test_mtm();
-    let scroll = CocoaNode::create_scroll_view().0;
+    let scroll = CocoaElem::create_scroll_view().0;
     let scroll_id = scroll.id();
     let wrapper_id = scroll
 
@@ -163,8 +163,8 @@ fn scroll_view_wrapper_freed_with_parent() {
 /// stays in the store until explicitly removed).
 fn detach_does_not_free() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
-    let child = CocoaNode::create_button().0;
+    let root = CocoaElem::create_container();
+    let child = CocoaElem::create_button().0;
     layout::attach_child(root, child);
     let child_id = child.id();
 
@@ -189,7 +189,7 @@ fn detach_does_not_free() {
 
 fn stale_id_accessors_are_safe() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let id = el.id();
     layout::remove(id);
     // id is now stale.
@@ -205,7 +205,7 @@ fn stale_id_accessors_are_safe() {
 
 fn ns_view_pointer_stable() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let ptr_before: *const objc2_app_kit::NSView = &*el.ns_view();
     let ptr_after: *const objc2_app_kit::NSView = &*el.ns_view();
     assert_eq!(ptr_before, ptr_after, "ns_view() pointer must be stable");
@@ -230,12 +230,12 @@ fn window_teardown_returns_to_baseline() {
     let opened = window::open_window("leak-test", (320.0, 240.0), mtm);
 
     // A container with a label and two buttons under content_root.
-    let row = CocoaNode::create_container();
-    let b1 = CocoaNode::create_button().0;
-    let b2 = CocoaNode::create_button().0;
+    let row = CocoaElem::create_container();
+    let b1 = CocoaElem::create_button().0;
+    let b2 = CocoaElem::create_button().0;
     layout::attach_child(row, b1);
     layout::attach_child(row, b2);
-    let label = CocoaNode::create_label().0;
+    let label = CocoaElem::create_label().0;
 
     opened.content_root.insert_node(label, None);
     opened.content_root.insert_node(row, None);
@@ -268,7 +268,7 @@ fn unattached_node_teardown_returns_to_baseline() {
     let _mtm = common::test_mtm();
     let baseline = layout::node_count();
 
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     assert_eq!(layout::node_count(), baseline + 1);
 
     // Never attached to any parent — the orphan case. Explicit

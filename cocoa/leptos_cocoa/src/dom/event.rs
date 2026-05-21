@@ -31,7 +31,7 @@
 //! handlers to the Rust `Node` decouples them from AppKit's view
 //! lifecycle entirely.
 
-use super::{node, CocoaNode, KeyEvent};
+use super::{node, CocoaElem, KeyEvent};
 use objc2::{
     define_class, msg_send,
     rc::Retained,
@@ -542,7 +542,7 @@ impl TextFieldDelegate {
 /// reuse the existing delegate's `SharedHandlers`, so callbacks
 /// of all kinds (input, change, focus, blur, keydown, keyup) fan
 /// out from one delegate in install order.
-fn ensure_text_field_entry(node: CocoaNode) -> SharedHandlers {
+fn ensure_text_field_entry(node: CocoaElem) -> SharedHandlers {
     let view = node.ns_view();
     let field = node::downcast::<NSTextField>(&view)
         .expect("ensure_text_field_entry: node is not an NSTextField");
@@ -588,7 +588,7 @@ fn ensure_text_field_entry(node: CocoaNode) -> SharedHandlers {
 /// Used by both `bind:value` (write-back leg) and `on:input`.
 /// No-op if `node` isn't an NSTextField.
 pub fn on_text_field_change(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(String) + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -601,7 +601,7 @@ pub fn on_text_field_change(
 /// Append a commit observer (fires on return key / focus loss).
 /// Used by `on:change`. No-op if `node` isn't an NSTextField.
 pub fn on_text_field_end_editing(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(String) + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -614,7 +614,7 @@ pub fn on_text_field_end_editing(
 /// Append a focus observer — fires on `controlTextDidBeginEditing:`
 /// (the field gained focus). No-op if `node` isn't an NSTextField.
 pub fn on_text_field_focus(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut() + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -629,7 +629,7 @@ pub fn on_text_field_focus(
 /// with `on_text_field_end_editing` (which carries the value);
 /// blur handlers run after change handlers from the same notif.
 pub fn on_text_field_blur(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut() + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -643,7 +643,7 @@ pub fn on_text_field_blur(
 /// (Enter, Escape, Tab, arrows). See [`KeyEvent`] for the
 /// supported keys.
 pub fn on_text_field_keydown(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(KeyEvent) + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -659,7 +659,7 @@ pub fn on_text_field_keydown(
 /// parity (`on:keyup=…` in upstream examples works without
 /// substitution).
 pub fn on_text_field_keyup(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(KeyEvent) + 'static,
 ) {
     if node::downcast::<NSTextField>(&node.ns_view()).is_none() {
@@ -757,7 +757,7 @@ impl TextViewDelegate {
 /// regardless — that's the Node the framework owns. The inner
 /// NSTextView's delegate slot points at our delegate but the
 /// `Retained` lives on the Node, so lifecycle is Rust-driven.
-fn text_view_for_node(node: CocoaNode) -> Option<Retained<NSTextView>> {
+fn text_view_for_node(node: CocoaElem) -> Option<Retained<NSTextView>> {
     let view = node.ns_view();
     if let Some(tv) = node::downcast::<NSTextView>(&view) {
         return Some(tv.retain());
@@ -774,7 +774,7 @@ fn text_view_for_node(node: CocoaNode) -> Option<Retained<NSTextView>> {
 /// `<text_view>` (NSScrollView-wrapped) nodes — see
 /// [`text_view_for_node`].
 fn ensure_text_view_entry(
-    node: CocoaNode,
+    node: CocoaElem,
 ) -> Option<SharedTextViewHandlers> {
     let tv = text_view_for_node(node)?;
     let mtm = MainThreadMarker::new()
@@ -826,7 +826,7 @@ fn ensure_text_view_entry(
 /// an NSTextView (directly or via a wrapping `<text_view>` scroll
 /// view).
 pub fn on_text_view_change(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(String) + 'static,
 ) {
     let Some(handlers) = ensure_text_view_entry(node) else { return };
@@ -856,7 +856,7 @@ pub fn on_text_view_change(
 ///     the bind setter, or add an `Effect` that watches the
 ///     signal.
 pub fn on_control_action(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut() + 'static,
 ) {
     let view = node.ns_view();
@@ -974,7 +974,7 @@ pub fn hover_tracker_store_size_for_test() -> usize {
 /// changes. `ActiveAlways` ensures hover fires regardless of
 /// window key/main state.
 pub fn on_hover(
-    node: CocoaNode,
+    node: CocoaElem,
     cb: impl FnMut(bool) + 'static,
 ) {
     let view = node.ns_view();

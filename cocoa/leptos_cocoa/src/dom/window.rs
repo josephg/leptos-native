@@ -6,7 +6,7 @@
 
 use super::{
     layout,
-    node::CocoaNode,
+    node::CocoaElem,
 };
 use objc2::{
     define_class, msg_send,
@@ -32,7 +32,7 @@ type CleanupClosure = Box<dyn FnOnce()>;
 /// the resize handler can read its frame) plus an optional cleanup
 /// closure that fires once on `windowWillClose:`.
 pub struct WindowDelegateState {
-    pub root: CocoaNode,
+    pub root: CocoaElem,
     pub on_close: RefCell<Option<CleanupClosure>>,
 }
 
@@ -76,7 +76,7 @@ impl WindowDelegate {
     /// Create a delegate bound to `root`. The delegate retains a
     /// clone of the Node (cheap — shared NSView retain + Rc bump);
     /// register it on an NSWindow via `setDelegate(...)`.
-    pub fn new(root: CocoaNode, mtm: MainThreadMarker) -> Retained<Self> {
+    pub fn new(root: CocoaElem, mtm: MainThreadMarker) -> Retained<Self> {
         let alloc = Self::alloc(mtm).set_ivars(WindowDelegateState {
             root,
             on_close: RefCell::new(None),
@@ -104,7 +104,7 @@ impl WindowDelegate {
 /// for mounting children under `content_root`.
 pub struct OpenedWindow {
     pub nswindow: Retained<NSWindow>,
-    pub content_root: CocoaNode,
+    pub content_root: CocoaElem,
     pub delegate: Retained<WindowDelegate>,
 }
 
@@ -159,7 +159,7 @@ pub fn open_window(
     // Height is still content-sized; if the user's outer container
     // wants to fill the window vertically too, they add
     // `flex_grow=1` to it.
-    let content_root = CocoaNode::create_container_with(mtm);
+    let content_root = CocoaElem::create_container_with(mtm);
     layout::set_flex_direction(
         content_root,
         layout::FlexDirection::Column,

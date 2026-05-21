@@ -6,7 +6,7 @@
 mod common;
 
 
-use leptos_gtk::dom::{spawner, GtkNode};
+use leptos_gtk::dom::{spawner, GtkElem};
 use leptos_gtk::gtk4::prelude::*;
 use reactive_graph::owner::Owner;
 
@@ -18,7 +18,7 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
-        let text_field = GtkNode::create_text_field().0;
+        let text_field = GtkElem::create_text_field().0;
 
         text_field.set_value("hello");
         let __w = text_field
@@ -43,7 +43,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
 fn set_bool_attribute_with_same_value_idempotent() {
     with_reactive_scope(|| {
-        let checkbox = GtkNode::create_checkbox().0;
+        let checkbox = GtkElem::create_checkbox().0;
 
         checkbox.set_checked(true);
         let __w = checkbox

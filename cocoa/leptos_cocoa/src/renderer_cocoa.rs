@@ -21,12 +21,12 @@ use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
 // distinguishing a "text node" or "placeholder" from a regular
 // Element is the NSView subclass + default style applied at creation.
 pub use crate::dom::{
-    ClassList, CocoaNode, CssStyleDeclaration, Event, TemplateElement,
+    ClassList, CocoaElem, CssStyleDeclaration, Event, TemplateElement,
 };
 
 
-pub type Text = CocoaNode;
-pub type Placeholder = CocoaNode;
+pub type Text = CocoaElem;
+pub type Placeholder = CocoaElem;
 
 /// The Cocoa renderer surface — implements [`renderer::Renderer`].
 ///
@@ -38,53 +38,53 @@ pub struct CocoaDom;
 
 impl Renderer for CocoaDom {
     type Backend = CocoaBackend;
-    type Node = CocoaNode;
+    type Node = CocoaElem;
 
     fn intern(text: &str) -> &str {
         CocoaRenderer::intern(text)
     }
 
-    fn create_text_node(text: &str) -> CocoaNode {
+    fn create_text_node(text: &str) -> CocoaElem {
         CocoaRenderer::create_text_node(text)
     }
 
-    fn create_placeholder() -> CocoaNode {
+    fn create_placeholder() -> CocoaElem {
         CocoaRenderer::create_placeholder()
     }
 
-    fn set_text(node: CocoaNode, text: &str) {
+    fn set_text(node: CocoaElem, text: &str) {
         CocoaRenderer::set_text(node, text);
     }
 
     fn insert_node(
-        parent: CocoaNode,
-        new_child: CocoaNode,
-        anchor: Option<CocoaNode>,
+        parent: CocoaElem,
+        new_child: CocoaElem,
+        anchor: Option<CocoaElem>,
     ) {
         CocoaRenderer::insert_node(parent, new_child, anchor);
     }
 
-    fn remove_node(parent: CocoaNode, child: CocoaNode) -> Option<CocoaNode> {
+    fn remove_node(parent: CocoaElem, child: CocoaElem) -> Option<CocoaElem> {
         CocoaRenderer::remove_node(parent, child)
     }
 
-    fn clear_children(parent: CocoaNode) {
+    fn clear_children(parent: CocoaElem) {
         CocoaRenderer::clear_children(parent);
     }
 
-    fn remove(node: CocoaNode) {
+    fn remove(node: CocoaElem) {
         CocoaRenderer::remove(node);
     }
 
-    fn get_parent(node: CocoaNode) -> Option<CocoaNode> {
+    fn get_parent(node: CocoaElem) -> Option<CocoaElem> {
         // The parent is a real node in the store; look it up by id.
         // Used by `UnitState::insert_before_this` (the mount anchor
         // for `<Switch>` and other placeholder-based control-flow).
         CocoaBackend::parent(node.id())
-            .map(CocoaNode::from_id)
+            .map(CocoaElem::from_id)
     }
 
-    fn log_node(node: CocoaNode) {
+    fn log_node(node: CocoaElem) {
         CocoaRenderer::log_node(node);
     }
 
@@ -93,7 +93,7 @@ impl Renderer for CocoaDom {
     /// right LayoutHandle so the new child registers in the same Taffy
     /// tree.
     #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: CocoaNode) -> bool
+    fn try_mount_before<M>(new_child: &mut M, before: CocoaElem) -> bool
     where
         M: Mountable<Self>,
     {
@@ -109,7 +109,7 @@ impl CocoaDom {
     /// Mount `new_child` immediately before `before`. Panics if `before`
     /// has no parent (mirror of `try_mount_before`).
     #[track_caller]
-    pub fn mount_before<M>(new_child: &mut M, before: CocoaNode)
+    pub fn mount_before<M>(new_child: &mut M, before: CocoaElem)
     where
         M: Mountable<CocoaDom>,
     {
@@ -122,9 +122,9 @@ impl CocoaDom {
 /// The parent `Node` of `before` in the store, or `None` if `before`
 /// is a root (or detached). The parent is a real node; no NSView
 /// wrapper synthesis is needed under the thread-local store.
-pub(crate) fn parent_of(before: CocoaNode) -> Option<CocoaNode> {
+pub(crate) fn parent_of(before: CocoaElem) -> Option<CocoaElem> {
     CocoaBackend::parent(before.id())
-        .map(CocoaNode::from_id)
+        .map(CocoaElem::from_id)
 }
 
 // ---------------------------------------------------------------------
@@ -142,7 +142,7 @@ pub(crate) fn parent_of(before: CocoaNode) -> Option<CocoaNode> {
 /// the window's root content view). Callers fall back to mounting at
 /// a different anchor in that case.
 pub(crate) fn insert_before_node(
-    before: CocoaNode,
+    before: CocoaElem,
     child: &mut dyn Mountable<CocoaDom>,
 ) -> bool {
     let Some(parent) = parent_of(before) else {
@@ -152,19 +152,19 @@ pub(crate) fn insert_before_node(
     true
 }
 
-impl Mountable<CocoaDom> for CocoaNode {
+impl Mountable<CocoaDom> for CocoaElem {
     fn unmount(&mut self) {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: CocoaNode, marker: Option<CocoaNode>) {
+    fn mount(&mut self, parent: CocoaElem, marker: Option<CocoaElem>) {
         CocoaDom::insert_node(parent, *self, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: CocoaNode,
-        marker: Option<CocoaNode>,
+        parent: CocoaElem,
+        marker: Option<CocoaElem>,
     ) -> bool {
         CocoaRenderer::try_insert_node(parent, *self, marker)
     }
@@ -173,7 +173,7 @@ impl Mountable<CocoaDom> for CocoaNode {
         insert_before_node(*self, child)
     }
 
-    fn elements(&self) -> Vec<CocoaNode> {
+    fn elements(&self) -> Vec<CocoaElem> {
         vec![self.clone()]
     }
 }

@@ -15,7 +15,7 @@
 mod common;
 
 use objc2::MainThreadMarker;
-use leptos_cocoa::dom::{app, layout, CocoaNode};
+use leptos_cocoa::dom::{app, layout, CocoaElem};
 use renderer::{Dimension, LengthPercentage};
 use reactive_graph::{
     owner::Owner,
@@ -31,7 +31,7 @@ use renderer::attrs::{
 // ---------------------------------------------------------------------
 
 
-fn style_of(el: &CocoaNode) -> renderer::Style {
+fn style_of(el: &CocoaElem) -> renderer::Style {
     el.with_style(|s| s.clone())
 }
 
@@ -66,7 +66,7 @@ fn init_executor_once(mtm: MainThreadMarker) {
 
 fn padding_static_lands_in_padding_field() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
@@ -82,7 +82,7 @@ fn padding_static_lands_in_padding_field() {
 
 fn flex_grow_static_lands_in_flex_grow() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.flex_grow = Some(MaybeReactive::Static(2.5));
@@ -93,7 +93,7 @@ fn flex_grow_static_lands_in_flex_grow() {
 
 fn align_self_static_converts_to_taffy_alignitems() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.align_self = Some(MaybeReactive::Static(AlignSelf::Center));
@@ -104,7 +104,7 @@ fn align_self_static_converts_to_taffy_alignitems() {
 
 fn align_self_auto_clears_to_none() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.align_self = Some(MaybeReactive::Static(AlignSelf::Auto));
@@ -119,7 +119,7 @@ fn align_self_auto_clears_to_none() {
 
 fn width_dim_lands_in_size_width() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.width = Some(MaybeReactive::Static(Dim::Px(120.0)));
@@ -133,7 +133,7 @@ fn width_dim_lands_in_size_width() {
 
 fn height_dim_pct_lands_in_size_height_as_percent() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.height = Some(MaybeReactive::Static(Dim::Pct(0.5)));
@@ -144,7 +144,7 @@ fn height_dim_pct_lands_in_size_height_as_percent() {
 
 fn min_max_dim_land_in_their_slots() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.min_width = Some(MaybeReactive::Static(Dim::Px(40.0)));
@@ -166,7 +166,7 @@ fn min_max_dim_land_in_their_slots() {
 
 fn grid_column_start_static_lands_as_line() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.grid_column_start = Some(MaybeReactive::Static(GridLine::Line(2)));
@@ -179,7 +179,7 @@ fn grid_column_start_static_lands_as_line() {
 
 fn grid_row_end_static_span() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
     attrs.grid_row_end = Some(MaybeReactive::Static(GridLine::Span(3)));
@@ -196,7 +196,7 @@ fn reactive_padding_re_runs_on_signal_change() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        let el = CocoaNode::create_container();
+        let el = CocoaElem::create_container();
 
         let pad = RwSignal::new(4.0_f32);
         let mut attrs = LayoutAttrs::default();
@@ -231,7 +231,7 @@ fn reactive_width_drives_size_width() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        let el = CocoaNode::create_container();
+        let el = CocoaElem::create_container();
 
         let w = RwSignal::new(Dim::Px(50.0));
         let mut attrs = LayoutAttrs::default();
@@ -254,7 +254,7 @@ fn reactive_width_drives_size_width() {
 
 fn empty_layout_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let effects = layout::apply_layout(el, LayoutAttrs::default());
     assert!(effects.is_empty(), "no fields = no effects");
@@ -271,7 +271,7 @@ fn empty_layout_attrs_returns_no_effects() {
 
 fn alpha_static_sets_view_alpha() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = UniversalAttrs::default();
     attrs.alpha = Some(MaybeReactive::Static(0.5));
@@ -284,7 +284,7 @@ fn alpha_static_sets_view_alpha() {
 
 fn tool_tip_static_sets_view_tool_tip() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let mut attrs = UniversalAttrs::default();
     attrs.tool_tip = Some(MaybeReactive::Static("hello".to_string()));
@@ -298,7 +298,7 @@ fn reactive_alpha_re_runs_on_signal_change() {
     let mtm = common::test_mtm();
     init_executor_once(mtm);
     with_owner(|| {
-        let el = CocoaNode::create_container();
+        let el = CocoaElem::create_container();
 
         let a = RwSignal::new(1.0_f64);
         let mut attrs = UniversalAttrs::default();
@@ -317,7 +317,7 @@ fn reactive_alpha_re_runs_on_signal_change() {
 
 fn empty_universal_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
 
     let effects = layout::apply_universal(el, UniversalAttrs::default());
     assert!(effects.is_empty());

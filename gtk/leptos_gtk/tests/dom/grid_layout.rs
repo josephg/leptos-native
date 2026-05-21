@@ -10,12 +10,12 @@
 
 mod common;
 
-use leptos_gtk::dom::{layout::{self, GtkBackend}, GtkNode};
+use leptos_gtk::dom::{layout::{self, GtkBackend}, GtkElem};
 use renderer::{auto, fr, length, GridAutoFlow, LayoutBackend};
 use renderer::attrs::GridLine;
 
 fn frame_eq(
-    el: &GtkNode,
+    el: &GtkElem,
     x: f32,
     y: f32,
     w: f32,
@@ -37,8 +37,8 @@ fn frame_eq(
 fn make_grid(
     columns: Vec<renderer::GridTemplateComponent>,
     rows: Vec<renderer::GridTemplateComponent>,
-) -> GtkNode {
-    let g = GtkNode::create_grid();
+) -> GtkElem {
+    let g = GtkElem::create_grid();
     layout::set_grid_template_columns(g, columns);
     layout::set_grid_template_rows(g, rows);
     g
@@ -47,7 +47,7 @@ fn make_grid(
 // ---------------------------------------------------------------------
 
 fn create_grid_sets_display_grid() {
-    let g = GtkNode::create_grid();
+    let g = GtkElem::create_grid();
     let id = g.id();
     let style = GtkBackend::style(id).expect("registered node has a style");
     assert_eq!(style.display, renderer::Display::Grid);
@@ -58,8 +58,8 @@ fn three_column_fixed_widths() {
         vec![length(50.0)],
     );
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
 
@@ -74,9 +74,9 @@ fn fr_columns_distribute_leftover() {
         vec![length(50.0)],
     );
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
-    let c = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
+    let c = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
     g.insert_node(c, None);
@@ -93,9 +93,9 @@ fn mixed_fixed_fr_auto_columns() {
         vec![length(50.0)],
     );
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
-    let c = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
+    let c = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
     g.insert_node(c, None);
@@ -112,10 +112,10 @@ fn two_by_two_fills_in_row_order() {
         vec![length(50.0), length(50.0)],
     );
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
-    let c = GtkNode::create_stack();
-    let d = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
+    let c = GtkElem::create_stack();
+    let d = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
     g.insert_node(c, None);
@@ -135,9 +135,9 @@ fn gap_shorthand_separates_both_axes() {
     );
     layout::set_gap(g, 10.0);
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
-    let c = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
+    let c = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
     g.insert_node(c, None);
@@ -156,9 +156,9 @@ fn per_axis_gaps_apply_independently() {
     layout::set_column_gap(g, 5.0);
     layout::set_row_gap(g, 20.0);
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
-    let c = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
+    let c = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
     g.insert_node(c, None);
@@ -175,7 +175,7 @@ fn column_span_two_widens_cell() {
         vec![length(40.0)],
     );
 
-    let wide = GtkNode::create_stack();
+    let wide = GtkElem::create_stack();
     layout::set_grid_column_end(wide, GridLine::Span(2));
     g.insert_node(wide, None);
 
@@ -189,7 +189,7 @@ fn column_range_one_to_negative_one_spans_full_width() {
         vec![length(40.0)],
     );
 
-    let full = GtkNode::create_stack();
+    let full = GtkElem::create_stack();
     layout::set_grid_column_start(full, GridLine::Line(1));
     layout::set_grid_column_end(full, GridLine::Line(-1));
     g.insert_node(full, None);
@@ -204,7 +204,7 @@ fn block_spanning_two_rows_two_columns() {
         vec![length(50.0), length(50.0), length(50.0)],
     );
 
-    let block = GtkNode::create_stack();
+    let block = GtkElem::create_stack();
     layout::set_grid_column_start(block, GridLine::Line(1));
     layout::set_grid_column_end(block, GridLine::Line(3));
     layout::set_grid_row_start(block, GridLine::Line(1));
@@ -234,8 +234,8 @@ fn auto_flow_row_with_one_column_stacks_vertically() {
         vec![length(50.0), length(50.0)],
     );
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
 
@@ -251,8 +251,8 @@ fn auto_flow_column_with_one_row_stacks_horizontally() {
     );
     layout::set_grid_auto_flow(g, GridAutoFlow::Column);
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
     g.insert_node(a, None);
     g.insert_node(b, None);
 
@@ -263,14 +263,14 @@ fn auto_flow_column_with_one_row_stacks_horizontally() {
 }
 
 fn empty_grid_no_panic() {
-    let g = GtkNode::create_grid();
+    let g = GtkElem::create_grid();
     layout::compute_layout(g, (100.0, 100.0));
 }
 
 fn zero_available_size_no_panic() {
     let g = make_grid(vec![fr(1.0), fr(1.0)], vec![fr(1.0)]);
 
-    let a = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
     g.insert_node(a, None);
 
     layout::compute_layout(g, (0.0, 0.0));
@@ -282,7 +282,7 @@ fn padding_insets_grid_cells() {
     );
     layout::set_padding(g, 10.0);
 
-    let a = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
     g.insert_node(a, None);
 
     layout::compute_layout(g, (120.0, 70.0));
@@ -291,12 +291,12 @@ fn padding_insets_grid_cells() {
 }
 
 fn flexbox_still_works_after_grid() {
-    let root = GtkNode::create_stack();
+    let root = GtkElem::create_stack();
     layout::set_flex_direction(root, layout::FlexDirection::Row);
     layout::set_gap(root, 10.0);
 
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
     layout::set_width(a, 40.0);
     layout::set_height(a, 30.0);
     layout::set_width(b, 40.0);

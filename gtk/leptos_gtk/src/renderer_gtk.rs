@@ -24,10 +24,10 @@ use renderer::{
 // a "text node" or "placeholder" from a regular Element is the
 // widget subclass + default style applied at creation.
 pub use crate::dom::{
-    Event, GtkNode,
+    Event, GtkElem,
 };
-pub type Text = GtkNode;
-pub type Placeholder = GtkNode;
+pub type Text = GtkElem;
+pub type Placeholder = GtkElem;
 use renderer::scene::LayoutBackend;
 
 /// The GTK renderer surface — implements [`renderer::Renderer`].
@@ -36,49 +36,49 @@ pub struct GtkDom;
 
 impl Renderer for GtkDom {
     type Backend = layout::GtkBackend;
-    type Node = GtkNode;
+    type Node = GtkElem;
 
     fn intern(text: &str) -> &str {
         text
     }
 
-    fn create_text_node(text: &str) -> GtkNode {
-        GtkNode::create_text(text)
+    fn create_text_node(text: &str) -> GtkElem {
+        GtkElem::create_text(text)
     }
 
-    fn create_placeholder() -> GtkNode {
-        GtkNode::create_placeholder()
+    fn create_placeholder() -> GtkElem {
+        GtkElem::create_placeholder()
     }
 
-    fn set_text(node: GtkNode, text: &str) {
+    fn set_text(node: GtkElem, text: &str) {
         node.set_text(text);
     }
 
     fn insert_node(
-        parent: GtkNode,
-        new_child: GtkNode,
-        anchor: Option<GtkNode>,
+        parent: GtkElem,
+        new_child: GtkElem,
+        anchor: Option<GtkElem>,
     ) {
         parent.insert_node(new_child, anchor);
     }
 
-    fn remove_node(parent: GtkNode, child: GtkNode) -> Option<GtkNode> {
+    fn remove_node(parent: GtkElem, child: GtkElem) -> Option<GtkElem> {
         parent.remove_child(child)
     }
 
-    fn clear_children(parent: GtkNode) {
+    fn clear_children(parent: GtkElem) {
         parent.clear_children();
     }
 
-    fn remove(node: GtkNode) {
+    fn remove(node: GtkElem) {
         layout::drop_node(node);
     }
 
-    fn get_parent(node: GtkNode) -> Option<GtkNode> {
+    fn get_parent(node: GtkElem) -> Option<GtkElem> {
         parent_of(node)
     }
 
-    fn log_node(node: GtkNode) {
+    fn log_node(node: GtkElem) {
         eprintln!("[gtk_dom] {node:?}");
     }
 }
@@ -87,7 +87,7 @@ impl GtkDom {
     /// Mount `new_child` immediately before `before`. Panics if
     /// `before` has no parent (mirror of `try_mount_before`).
     #[track_caller]
-    pub fn mount_before<M>(new_child: &mut M, before: GtkNode)
+    pub fn mount_before<M>(new_child: &mut M, before: GtkElem)
     where
         M: Mountable<GtkDom>,
     {
@@ -100,28 +100,28 @@ impl GtkDom {
 /// The parent `Node` of `before` in the store, or `None` if it's a
 /// root. The parent is a real node — no widget-wrapper synthesis is
 /// needed under the thread-local store.
-fn parent_of(before: GtkNode) -> Option<GtkNode> {
+fn parent_of(before: GtkElem) -> Option<GtkElem> {
     crate::dom::layout::GtkBackend::parent(before.id())
-        .map(GtkNode::from_id)
+        .map(GtkElem::from_id)
 }
 
 // ---------------------------------------------------------------------
 // Mountable<Dom> impls — orphan-rule says these live in this crate.
 // ---------------------------------------------------------------------
 
-impl Mountable<GtkDom> for GtkNode {
+impl Mountable<GtkDom> for GtkElem {
     fn unmount(&mut self) {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: GtkNode, marker: Option<GtkNode>) {
+    fn mount(&mut self, parent: GtkElem, marker: Option<GtkElem>) {
         <GtkDom as Renderer>::insert_node(parent, *self, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: GtkNode,
-        marker: Option<GtkNode>,
+        parent: GtkElem,
+        marker: Option<GtkElem>,
     ) -> bool {
         parent.try_insert_node(*self, marker)
     }
@@ -130,7 +130,7 @@ impl Mountable<GtkDom> for GtkNode {
         false
     }
 
-    fn elements(&self) -> Vec<GtkNode> {
+    fn elements(&self) -> Vec<GtkElem> {
         vec![self.clone()]
     }
 }

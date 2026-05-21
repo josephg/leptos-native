@@ -5,7 +5,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 
 // ---------------------------------------------------------------------
 // Identity / round-trip
@@ -13,8 +13,8 @@ use leptos_cocoa::dom::CocoaNode;
 
 fn ptr_eq_false_for_distinct() {
     let _mtm = common::test_mtm();
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     assert_ne!(
         a, b,
         "distinct Elements should not pointer-eq"
@@ -23,7 +23,7 @@ fn ptr_eq_false_for_distinct() {
 
 fn into_node_round_trip() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let original_ptr: *const objc2_app_kit::NSView = &*el.ns_view();
     let n = el;
     let el2 = n;
@@ -40,9 +40,9 @@ fn into_node_round_trip() {
 
 fn insert_node_appends_when_marker_none() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
-    let a = CocoaNode::create_button().0;
-    let b = CocoaNode::create_button().0;
+    let parent = CocoaElem::create_container();
+    let a = CocoaElem::create_button().0;
+    let b = CocoaElem::create_button().0;
 
     parent.insert_node(a, None);
     parent.insert_node(b, None);
@@ -55,10 +55,10 @@ fn insert_node_appends_when_marker_none() {
 
 fn insert_node_before_marker_places_correctly() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
-    let a = CocoaNode::create_button().0;
-    let b = CocoaNode::create_button().0;
-    let c = CocoaNode::create_button().0;
+    let parent = CocoaElem::create_container();
+    let a = CocoaElem::create_button().0;
+    let b = CocoaElem::create_button().0;
+    let c = CocoaElem::create_button().0;
 
     // Initial order: a, c
     parent.insert_node(a, None);
@@ -82,9 +82,9 @@ fn insert_node_moves_existing_child() {
     // NSView semantics: a view has one parent. Inserting it under a
     // new parent removes it from the old.
     let _mtm = common::test_mtm();
-    let parent_a = CocoaNode::create_container();
-    let parent_b = CocoaNode::create_container();
-    let child = CocoaNode::create_button().0;
+    let parent_a = CocoaElem::create_container();
+    let parent_b = CocoaElem::create_container();
+    let child = CocoaElem::create_button().0;
 
     parent_a.insert_node(child, None);
     assert_eq!(parent_a.ns_view().subviews().len(), 1);
@@ -101,8 +101,8 @@ fn insert_node_moves_existing_child() {
 
 fn remove_child_returns_some_for_actual_child() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
-    let child = CocoaNode::create_button().0;
+    let parent = CocoaElem::create_container();
+    let child = CocoaElem::create_button().0;
     parent.insert_node(child, None);
 
     let removed = parent.remove_child(child);
@@ -112,9 +112,9 @@ fn remove_child_returns_some_for_actual_child() {
 
 fn remove_child_returns_none_for_non_child() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
-    let actual = CocoaNode::create_button().0;
-    let stranger = CocoaNode::create_button().0;
+    let parent = CocoaElem::create_container();
+    let actual = CocoaElem::create_button().0;
+    let stranger = CocoaElem::create_button().0;
     parent.insert_node(actual, None);
 
     let removed = parent.remove_child(stranger);
@@ -130,10 +130,10 @@ fn remove_child_returns_none_for_non_child() {
 
 fn clear_children_removes_all() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
+    let parent = CocoaElem::create_container();
     for _ in 0..5 {
         parent.insert_node(
-            CocoaNode::create_button().0,
+            CocoaElem::create_button().0,
             None,
         );
     }
@@ -145,7 +145,7 @@ fn clear_children_removes_all() {
 
 fn clear_children_on_empty_is_no_op() {
     let _mtm = common::test_mtm();
-    let parent = CocoaNode::create_container();
+    let parent = CocoaElem::create_container();
     parent.clear_children();
     parent.clear_children();
     assert_eq!(parent.ns_view().subviews().len(), 0);

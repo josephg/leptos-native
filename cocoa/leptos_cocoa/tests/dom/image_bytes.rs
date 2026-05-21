@@ -10,7 +10,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 use objc2::runtime::AnyObject;
 use objc2::Message;
 use objc2_app_kit::NSImageView;
@@ -29,7 +29,7 @@ const TINY_PNG: &[u8] = &[
     0x60, 0x82,
 ];
 
-fn iv(el: &CocoaNode) -> objc2::rc::Retained<NSImageView> {
+fn iv(el: &CocoaElem) -> objc2::rc::Retained<NSImageView> {
     let view = el.ns_view();
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<NSImageView>()
@@ -44,7 +44,7 @@ fn iv(el: &CocoaNode) -> objc2::rc::Retained<NSImageView> {
 
 fn image_view_tag_creates_nsimageview() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     let _iv = iv(&el);
 }
 
@@ -54,7 +54,7 @@ fn image_view_tag_creates_nsimageview() {
 
 fn valid_png_bytes_set_image() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     assert!(
         iv(&el).image().is_none(),
         "fresh image_view should have no image"
@@ -74,7 +74,7 @@ fn valid_png_bytes_set_image() {
 
 fn none_clears_image() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     el.set_image_view_bytes(Some(TINY_PNG));
     assert!(iv(&el).image().is_some());
 
@@ -93,7 +93,7 @@ fn none_clears_image() {
 
 fn empty_slice_clears_image() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     el.set_image_view_bytes(Some(TINY_PNG));
     assert!(iv(&el).image().is_some());
 
@@ -115,7 +115,7 @@ fn empty_slice_clears_image() {
 
 fn garbage_bytes_dont_panic() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     let junk = b"not an image at all, just some bytes";
 
     el.set_image_view_bytes(Some(junk));
@@ -134,7 +134,7 @@ fn garbage_bytes_dont_panic() {
 
 fn replace_with_new_valid_bytes() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_image_view().0;
+    let el = CocoaElem::create_image_view().0;
     el.set_image_view_bytes(Some(TINY_PNG));
     let first = iv(&el).image().expect("first image set");
     let first_ptr: *const objc2_app_kit::NSImage = &*first;

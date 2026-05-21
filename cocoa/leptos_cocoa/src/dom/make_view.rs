@@ -1,9 +1,9 @@
-//! Typed per-control [`CocoaNode`] constructors.
+//! Typed per-control [`CocoaElem`] constructors.
 //!
 //! Each function here allocates a concrete AppKit view subclass
 //! (NSButton / NSTextField / NSScrollView / ...), builds its
 //! default Taffy [`Style`], and registers it in `tree` via
-//! [`CocoaNode::from_view`]. Every typed builder in `leptos_cocoa`
+//! [`CocoaElem::from_view`]. Every typed builder in `leptos_cocoa`
 //! calls exactly one of these from its `Render::build`.
 //!
 //! This replaces the old tag-string dispatch
@@ -11,7 +11,7 @@
 //! `node.rs`). Wins:
 //!
 //! 1. Static-typed end to end — the builder knows it wants an
-//!    NSButton, calls [`CocoaNode::create_button`], gets back both an
+//!    NSButton, calls [`CocoaElem::create_button`], gets back both an
 //!    `CocoaNode` and `Retained<NSButton>`. No string round-trip.
 //! 2. Dead-code elimination works — a binary that doesn't use
 //!    `<stepper>` doesn't carry NSStepper's construction code.
@@ -28,7 +28,7 @@ use crate::dom::{event::NodeHandlers, flipped_view::FlippedView, layout, layout:
     build_scroll_wrapper_style, scroll_view_document, CocoaBackend,
     CocoaMeta, Dimension, FlexDirection, ScrollAxis,
     Style
-}, node::CocoaNode};
+}, node::CocoaElem};
 use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBorderType, NSButton, NSColorWell, NSDatePicker, NSImageScaling,
@@ -59,7 +59,7 @@ fn leaf_style() -> Style {
     s
 }
 
-impl CocoaNode {
+impl CocoaElem {
     /// Push button. Use `buttonWithTitle:target:action:` rather than
     /// `initWithFrame:` — the former produces a properly-styled push
     /// button (rounded bezel, ~32px tall, sensible intrinsic size).
@@ -69,7 +69,7 @@ impl CocoaNode {
     ///
     /// Title and target/action are set later via attribute setters /
     /// `on_click(...)`.
-    pub fn create_button() -> (CocoaNode, Retained<NSButton>) {
+    pub fn create_button() -> (CocoaElem, Retained<NSButton>) {
         let mtm = mtm();
         let button = unsafe {
             NSButton::buttonWithTitle_target_action(
@@ -81,9 +81,9 @@ impl CocoaNode {
         };
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(button.clone()) };
-        let el = CocoaNode::from_view(view,
-            Style::default(),
-            CocoaMeta::default(),
+        let el = CocoaElem::from_view(view,
+                                      Style::default(),
+                                      CocoaMeta::default(),
         );
         (el, button)
     }
@@ -94,7 +94,7 @@ impl CocoaNode {
     /// set later.
     ///
     /// `flex_shrink=0`: clipping a checkbox label looks bad.
-    pub fn create_checkbox() -> (CocoaNode, Retained<NSButton>) {
+    pub fn create_checkbox() -> (CocoaElem, Retained<NSButton>) {
         let mtm = mtm();
         let button = unsafe {
             NSButton::checkboxWithTitle_target_action(
@@ -107,7 +107,7 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(button.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, button)
     }
 
@@ -122,34 +122,34 @@ impl CocoaNode {
     /// Never shrink: NSTextField doesn't clip its text content, so a
     /// frame shorter than the text height results in text overflowing
     /// into siblings' space.
-    pub fn create_label() -> (CocoaNode, Retained<NSTextField>) {
+    pub fn create_label() -> (CocoaElem, Retained<NSTextField>) {
         let mtm = mtm();
         let label =
             NSTextField::wrappingLabelWithString(&NSString::from_str(""), mtm);
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(label.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, label)
     }
 
     /// Editable single-line text field. Measured via NSTextField
     /// intrinsic; never shrinks (editable content shouldn't get
     /// clipped by sibling overlap).
-    pub fn create_text_field() -> (CocoaNode, Retained<NSTextField>) {
+    pub fn create_text_field() -> (CocoaElem, Retained<NSTextField>) {
         let mtm = mtm();
         let tf =
             NSTextField::initWithFrame(NSTextField::alloc(mtm), zero_frame());
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(tf.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, tf)
     }
 
     /// Password-style text field. NSSecureTextField IS-A NSTextField,
     /// so downstream code that downcasts to NSTextField still works.
-    pub fn create_secure_text_field() -> (CocoaNode, Retained<NSSecureTextField>) {
+    pub fn create_secure_text_field() -> (CocoaElem, Retained<NSSecureTextField>) {
         let mtm = mtm();
         let tf = NSSecureTextField::initWithFrame(
             NSSecureTextField::alloc(mtm),
@@ -158,7 +158,7 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(tf.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, tf)
     }
 
@@ -169,7 +169,7 @@ impl CocoaNode {
     ///
     /// Sliders have a defined intrinsic height; the parent decides
     /// width via the cross-axis stretch.
-    pub fn create_slider() -> (CocoaNode, Retained<NSSlider>) {
+    pub fn create_slider() -> (CocoaElem, Retained<NSSlider>) {
         let mtm = mtm();
         let slider =
             NSSlider::initWithFrame(NSSlider::alloc(mtm), zero_frame());
@@ -177,14 +177,14 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(slider.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, slider)
     }
 
     /// Pop-up button. `pullsDown=false` → menu-style (current
     /// selection shown in the bezel). The builder may flip to
     /// pull-down later via `setPullsDown`.
-    pub fn create_pop_up_button() -> (CocoaNode, Retained<NSPopUpButton>) {
+    pub fn create_pop_up_button() -> (CocoaElem, Retained<NSPopUpButton>) {
         let mtm = mtm();
         let p = NSPopUpButton::initWithFrame_pullsDown(
             NSPopUpButton::alloc(mtm),
@@ -194,11 +194,11 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(p.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, p)
     }
 
-    pub fn create_date_picker() -> (CocoaNode, Retained<NSDatePicker>) {
+    pub fn create_date_picker() -> (CocoaElem, Retained<NSDatePicker>) {
         let mtm = mtm();
         let dp = NSDatePicker::initWithFrame(
             NSDatePicker::alloc(mtm),
@@ -207,7 +207,7 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(dp.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, dp)
     }
 
@@ -219,7 +219,7 @@ impl CocoaNode {
     /// `setAutorepeat(true)`: fire on every drag tick (continuous),
     /// matches slider's default — consistent expectation for live-
     /// update controls.
-    pub fn create_stepper() -> (CocoaNode, Retained<NSStepper>) {
+    pub fn create_stepper() -> (CocoaElem, Retained<NSStepper>) {
         let mtm = mtm();
         let st =
             NSStepper::initWithFrame(NSStepper::alloc(mtm), zero_frame());
@@ -228,14 +228,14 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(st.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, st)
     }
 
     /// Bar-style determinate progress indicator (0..1). User can flip
     /// to indeterminate (spinner) via `.indeterminate(true)` on the
     /// builder.
-    pub fn create_progress_indicator() -> (CocoaNode, Retained<NSProgressIndicator>) {
+    pub fn create_progress_indicator() -> (CocoaElem, Retained<NSProgressIndicator>) {
         let mtm = mtm();
         let pi = NSProgressIndicator::initWithFrame(
             NSProgressIndicator::alloc(mtm),
@@ -247,11 +247,11 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(pi.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, pi)
     }
 
-    pub fn create_color_well() -> (CocoaNode, Retained<NSColorWell>) {
+    pub fn create_color_well() -> (CocoaElem, Retained<NSColorWell>) {
         let mtm = mtm();
         let cw = NSColorWell::initWithFrame(
             NSColorWell::alloc(mtm),
@@ -260,11 +260,11 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(cw.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, cw)
     }
 
-    pub fn create_segmented_control() -> (CocoaNode, Retained<NSSegmentedControl>) {
+    pub fn create_segmented_control() -> (CocoaElem, Retained<NSSegmentedControl>) {
         let mtm = mtm();
         let sc = NSSegmentedControl::initWithFrame(
             NSSegmentedControl::alloc(mtm),
@@ -273,13 +273,13 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(sc.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, sc)
     }
 
     /// Scaling-down-only image view. Images larger than the frame fit
     /// inside; smaller images render at native size.
-    pub fn create_image_view() -> (CocoaNode, Retained<NSImageView>) {
+    pub fn create_image_view() -> (CocoaElem, Retained<NSImageView>) {
         let mtm = mtm();
         let iv = NSImageView::initWithFrame(
             NSImageView::alloc(mtm),
@@ -289,7 +289,7 @@ impl CocoaNode {
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(iv.clone()) };
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, iv)
     }
 
@@ -308,7 +308,7 @@ impl CocoaNode {
     ///
     /// Returns the *outer* NSScrollView; the inner NSTextView is
     /// reachable via `scroll.documentView()`.
-    pub fn create_text_view() -> (CocoaNode, Retained<NSScrollView>) {
+    pub fn create_text_view() -> (CocoaElem, Retained<NSScrollView>) {
         let mtm = mtm();
         let scroll =
             NSScrollView::initWithFrame(NSScrollView::alloc(mtm), zero_frame());
@@ -329,13 +329,13 @@ impl CocoaNode {
         // Don't shrink past content; multi-line editing surfaces
         // shouldn't get squeezed by sibling overlap.
         let el =
-            CocoaNode::from_view(view, leaf_style(), CocoaMeta::default());
+            CocoaElem::from_view(view, leaf_style(), CocoaMeta::default());
         (el, scroll)
     }
 
     /// User-scrollable container. NSScrollView wrapping a FlippedView
     /// documentView. Children added via `insert_node` are routed to
-    /// the documentView via [`CocoaNode::subview_parent`]. The scroll
+    /// the documentView via [`CocoaElem::subview_parent`]. The scroll
     /// view's *outer* frame is whatever the parent gives it (the
     /// viewport); the documentView is sized separately in a second
     /// `compute_layout` pass with `MaxContent` height — see
@@ -356,7 +356,7 @@ impl CocoaNode {
     /// scroll_view collapses to nothing by default and only the
     /// user's flex_grow / explicit height grows it back to the
     /// viewport.
-    pub fn create_scroll_view() -> (CocoaNode, Retained<NSScrollView>) {
+    pub fn create_scroll_view() -> (CocoaElem, Retained<NSScrollView>) {
         let mtm = mtm();
         let scroll =
             NSScrollView::initWithFrame(NSScrollView::alloc(mtm), zero_frame());
@@ -383,7 +383,7 @@ impl CocoaNode {
         let mut meta = CocoaMeta::default();
         meta.is_scroll_view = true;
 
-        let el = CocoaNode::from_view(view, style, meta);
+        let el = CocoaElem::from_view(view, style, meta);
 
         // Internal Taffy wrapper backed by the document view. No
         // `Node` owns it; it's a structural child of the scroll_view,
@@ -410,12 +410,12 @@ impl CocoaNode {
     /// `<grid>` — 2-D grid container backed by Taffy's grid algorithm.
     /// Template tracks / gap / placement attrs are applied by the
     /// higher-level builder; this just establishes the container.
-    pub fn create_grid() -> CocoaNode {
+    pub fn create_grid() -> CocoaElem {
         let mtm = mtm();
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(FlippedView::new(mtm)) };
         let mut style = Style::default();
         style.display = layout::Display::Grid;
-        CocoaNode::from_view(view, style, CocoaMeta::default())
+        CocoaElem::from_view(view, style, CocoaMeta::default())
     }
 }

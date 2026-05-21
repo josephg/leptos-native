@@ -133,7 +133,7 @@ use crate::event_macos::{
 use crate::CocoaDom;
 use crate::dom::{toolbar::{
     self as dom_toolbar, *
-}, CocoaNode, Icon, MainThreadMarker};
+}, CocoaElem, Icon, MainThreadMarker};
 
 // Re-export the dom-side enums from this module so user-facing
 // code (and the prelude) reaches them via
@@ -520,8 +520,8 @@ impl<CS: 'static> Mountable<CocoaDom> for ToolbarState<CS> {
 
     fn mount(
         &mut self,
-        parent: CocoaNode,
-        _marker: Option<CocoaNode>,
+        parent: CocoaElem,
+        _marker: Option<CocoaElem>,
     ) {
         // Walk up from the parent's NSView to find the containing
         // NSWindow, then attach the toolbar to it. The parent will
@@ -543,7 +543,7 @@ impl<CS: 'static> Mountable<CocoaDom> for ToolbarState<CS> {
         false
     }
 
-    fn elements(&self) -> Vec<CocoaNode> {
+    fn elements(&self) -> Vec<CocoaElem> {
         Vec::new()
     }
 }
@@ -575,7 +575,7 @@ pub struct ToolbarItem {
     pub(crate) view_factory: Option<
         Box<
             dyn FnOnce(MainThreadMarker)
-                    -> (CocoaNode, Box<dyn Any>)
+                    -> (CocoaElem, Box<dyn Any>)
                 + Send
                 + 'static,
         >,

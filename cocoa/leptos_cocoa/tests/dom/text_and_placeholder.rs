@@ -7,11 +7,11 @@ mod common;
 
 use objc2::runtime::AnyObject;
 use objc2_app_kit::NSTextField;
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 
 fn text_create_basic() {
     let _mtm = common::test_mtm();
-    let t = CocoaNode::create_text("hello");
+    let t = CocoaElem::create_text("hello");
 
     // Backed by an NSTextField with the given content.
     let __nv = t.ns_view();
@@ -26,7 +26,7 @@ fn text_create_basic() {
 
 fn text_create_empty() {
     let _mtm = common::test_mtm();
-    let t = CocoaNode::create_text("");
+    let t = CocoaElem::create_text("");
     let __nv = t.ns_view();
     let any: &AnyObject = __nv.as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
@@ -35,7 +35,7 @@ fn text_create_empty() {
 
 fn text_create_multiline_preserves_newlines() {
     let _mtm = common::test_mtm();
-    let t = CocoaNode::create_text("line one\nline two\nline three");
+    let t = CocoaElem::create_text("line one\nline two\nline three");
     let __nv = t.ns_view();
     let any: &AnyObject = __nv.as_ref();
     let field = any.downcast_ref::<NSTextField>().unwrap();
@@ -47,7 +47,7 @@ fn text_create_multiline_preserves_newlines() {
 
 fn text_set_text_updates_value() {
     let _mtm = common::test_mtm();
-    let t = CocoaNode::create_text("before");
+    let t = CocoaElem::create_text("before");
     t.set_text("after");
     let __nv = t.ns_view();
     let any: &AnyObject = __nv.as_ref();
@@ -57,7 +57,7 @@ fn text_set_text_updates_value() {
 
 fn placeholder_create_is_hidden_zero_size() {
     let _mtm = common::test_mtm();
-    let p = CocoaNode::create_placeholder();
+    let p = CocoaElem::create_placeholder();
 
     let view = p.ns_view();
     // Placeholders shouldn't be visible — they shouldn't intercept

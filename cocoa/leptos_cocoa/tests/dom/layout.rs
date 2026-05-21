@@ -5,7 +5,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, CocoaNode};
+use leptos_cocoa::dom::{layout, CocoaElem};
 use objc2_foundation::NSSize;
 
 fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
@@ -28,7 +28,7 @@ fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
 
 fn root_fills_available_space() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::compute_layout(
         root, NSSize::new(400.0, 300.0)
     );
@@ -41,11 +41,11 @@ fn root_fills_available_space() {
 
 fn row_two_children_side_by_side() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(root, layout::FlexDirection::Row);
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     layout::set_width(a, 100.0);
     layout::set_height(a, 50.0);
     layout::set_width(b, 200.0);
@@ -68,13 +68,13 @@ fn row_two_children_side_by_side() {
 
 fn column_two_children_stacked() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root, layout::FlexDirection::Column
     );
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     layout::set_height(a, 80.0);
     layout::set_height(b, 120.0);
 
@@ -97,13 +97,13 @@ fn column_two_children_stacked() {
 
 fn padding_inset_applies_to_children() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root, layout::FlexDirection::Column
     );
     layout::set_padding(root, 16.0);
 
-    let child = CocoaNode::create_container();
+    let child = CocoaElem::create_container();
     layout::set_height(child, 50.0);
     root.insert_node(child, None);
 
@@ -122,14 +122,14 @@ fn padding_inset_applies_to_children() {
 
 fn gap_separates_children() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root, layout::FlexDirection::Column
     );
     layout::set_gap(root, 12.0);
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     layout::set_height(a, 30.0);
     layout::set_height(b, 40.0);
     root.insert_node(a, None);
@@ -150,11 +150,11 @@ fn gap_separates_children() {
 
 fn flex_grow_distributes_leftover() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(root, layout::FlexDirection::Row);
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     // Both grow=1, neither has a width — they should each get half
     // of the available 400.
     layout::set_flex_grow(a, 1.0);
@@ -172,16 +172,16 @@ fn flex_grow_distributes_leftover() {
 
 fn justify_content_space_between() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(root, layout::FlexDirection::Row);
     layout::set_justify_content(
         root,
         layout::JustifyContent::SpaceBetween,
     );
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
-    let c = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
+    let c = CocoaElem::create_container();
     for el in [a, b, c] {
         layout::set_width(el, 60.0);
         layout::set_height(el, 40.0);
@@ -198,11 +198,11 @@ fn justify_content_space_between() {
 
 fn align_items_center_centres_cross_axis() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(root, layout::FlexDirection::Column);
     layout::set_align_items(root, layout::AlignItems::Center);
 
-    let child = CocoaNode::create_container();
+    let child = CocoaElem::create_container();
     layout::set_width(child, 100.0);
     layout::set_height(child, 30.0);
     root.insert_node(child, None);
@@ -215,11 +215,11 @@ fn align_items_center_centres_cross_axis() {
 
 fn flex_grow_unequal_distributes_proportionally() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(root, layout::FlexDirection::Row);
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
     layout::set_flex_grow(a, 1.0);
     layout::set_flex_grow(b, 3.0);
     root.insert_node(a, None);
@@ -240,13 +240,13 @@ fn flex_grow_unequal_distributes_proportionally() {
 
 fn nested_containers_inner_fits_within_outer() {
     let _mtm = common::test_mtm();
-    let outer = CocoaNode::create_container();
+    let outer = CocoaElem::create_container();
     layout::set_flex_direction(
         outer, layout::FlexDirection::Column
     );
     layout::set_padding(outer, 10.0);
 
-    let inner = CocoaNode::create_container();
+    let inner = CocoaElem::create_container();
     layout::set_flex_direction(
         inner, layout::FlexDirection::Row
     );
@@ -254,8 +254,8 @@ fn nested_containers_inner_fits_within_outer() {
     layout::set_height(inner, 80.0);
     outer.insert_node(inner, None);
 
-    let leaf_a = CocoaNode::create_container();
-    let leaf_b = CocoaNode::create_container();
+    let leaf_a = CocoaElem::create_container();
+    let leaf_b = CocoaElem::create_container();
     layout::set_width(leaf_a, 30.0);
     layout::set_width(leaf_b, 30.0);
     inner.insert_node(leaf_a, None);
@@ -288,7 +288,7 @@ fn nested_containers_inner_fits_within_outer() {
 
 fn zero_children_no_panic() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::compute_layout(
         root, NSSize::new(100.0, 100.0)
     );
@@ -303,15 +303,15 @@ fn removing_child_collapses_remaining_layout() {
     // explicitly mark_dirty-ing the parent on remove_child /
     // drop_node.
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root,
         layout::FlexDirection::Column,
     );
 
-    let a = CocoaNode::create_container();
-    let b = CocoaNode::create_container();
-    let c = CocoaNode::create_container();
+    let a = CocoaElem::create_container();
+    let b = CocoaElem::create_container();
+    let c = CocoaElem::create_container();
     layout::set_height(a, 50.0);
     layout::set_height(b, 50.0);
     layout::set_height(c, 50.0);
@@ -346,13 +346,13 @@ fn scroll_view_bounds_parent_to_viewport() {
     // second-pass `compute_layout` sets the documentView's frame to
     // the natural content size for NSScrollView to scroll.
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root,
         layout::FlexDirection::Column,
     );
 
-    let scroll = CocoaNode::create_scroll_view().0;
+    let scroll = CocoaElem::create_scroll_view().0;
     layout::set_flex_grow(scroll, 1.0);
     root.insert_node(scroll, None);
 
@@ -360,14 +360,14 @@ fn scroll_view_bounds_parent_to_viewport() {
     // (plus default gap of 0). Without the layout fix this would
     // bubble up to the root and overflow; with it, scroll_view's
     // own frame stays at the viewport size (root's allotted space).
-    let inner = CocoaNode::create_container();
+    let inner = CocoaElem::create_container();
     layout::set_flex_direction(
         inner,
         layout::FlexDirection::Column,
     );
     scroll.insert_node(inner, None);
     for _ in 0..30 {
-        let row = CocoaNode::create_container();
+        let row = CocoaElem::create_container();
         layout::set_height(row, 16.0);
         inner.insert_node(row, None);
     }
@@ -393,18 +393,18 @@ fn nested_vstack_collapses_after_removal() {
     // would leave the footer at its original y (because the inner
     // vstack didn't shrink in the cached layout).
     let _mtm = common::test_mtm();
-    let outer = CocoaNode::create_container();
+    let outer = CocoaElem::create_container();
     layout::set_flex_direction(
         outer,
         layout::FlexDirection::Column,
     );
 
-    let inner = CocoaNode::create_container();
+    let inner = CocoaElem::create_container();
     layout::set_flex_direction(
         inner,
         layout::FlexDirection::Column,
     );
-    let footer = CocoaNode::create_container();
+    let footer = CocoaElem::create_container();
     layout::set_height(footer, 30.0);
 
     // Register parent → child top-down: `attach_child` is a no-op
@@ -413,9 +413,9 @@ fn nested_vstack_collapses_after_removal() {
     outer.insert_node(inner, None);
     outer.insert_node(footer, None);
 
-    let row_a = CocoaNode::create_container();
-    let row_b = CocoaNode::create_container();
-    let row_c = CocoaNode::create_container();
+    let row_a = CocoaElem::create_container();
+    let row_b = CocoaElem::create_container();
+    let row_c = CocoaElem::create_container();
     layout::set_height(row_a, 40.0);
     layout::set_height(row_b, 40.0);
     layout::set_height(row_c, 40.0);
@@ -444,11 +444,11 @@ fn nested_vstack_collapses_after_removal() {
 
 fn zero_size_available_no_panic() {
     let _mtm = common::test_mtm();
-    let root = CocoaNode::create_container();
+    let root = CocoaElem::create_container();
     layout::set_flex_direction(
         root, layout::FlexDirection::Row
     );
-    let child = CocoaNode::create_container();
+    let child = CocoaElem::create_container();
     layout::set_width(child, 50.0);
     root.insert_node(child, None);
 

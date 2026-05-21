@@ -4,14 +4,14 @@
 
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::dom::CocoaNode;
+    use leptos_native::dom::CocoaElem;
     use leptos_native::prelude::*;
 
-    pub fn log_build(_el: CocoaNode) {
+    pub fn log_build(_el: CocoaElem) {
         eprintln!("[directive] log_build: element built");
     }
 
-    pub fn with_param(_el: CocoaNode, msg: &'static str) {
+    pub fn with_param(_el: CocoaElem, msg: &'static str) {
         eprintln!("[directive] with_param: {msg}");
     }
 

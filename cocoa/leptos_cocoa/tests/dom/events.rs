@@ -14,14 +14,14 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSControl, NSTextField};
 use std::cell::Cell;
 use std::rc::Rc;
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 // ---------------------------------------------------------------------
 // on_click — buttons + popups (NSButton subtree)
 // ---------------------------------------------------------------------
 
 fn on_click_fires_on_button() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_click(move || c.set(c.get() + 1));
@@ -37,7 +37,7 @@ fn on_click_fires_on_button() {
 
 fn on_click_on_label_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_label().0;
+    let el = CocoaElem::create_label().0;
     // Should silently no-op (label isn't NSButton). Just verify no
     // panic; we don't fire action because there's nothing wired.
     el.on_click(|| panic!("must not fire"));
@@ -49,7 +49,7 @@ fn on_click_on_label_is_no_op() {
 
 fn on_action_fires_on_slider() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_slider().0;
+    let el = CocoaElem::create_slider().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_action(move || c.set(c.get() + 1));
@@ -64,7 +64,7 @@ fn on_action_fires_on_slider() {
 
 fn on_action_fires_on_popup() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_pop_up_button().0;
+    let el = CocoaElem::create_pop_up_button().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_action(move || c.set(c.get() + 1));
@@ -79,7 +79,7 @@ fn on_action_fires_on_popup() {
 
 fn on_action_on_view_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_container();
+    let el = CocoaElem::create_container();
     el.on_action(|| panic!("must not fire"));
 }
 
@@ -88,7 +88,7 @@ fn on_action_on_view_is_no_op() {
 // directly). We hit this bug once; this test prevents recurrence.
 fn on_click_on_slider_silently_drops_no_panic() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_slider().0;
+    let el = CocoaElem::create_slider().0;
     // on_click expects NSButton; slider isn't one. Silent no-op.
     el.on_click(|| panic!("must not fire on slider via on_click"));
     // Action target is None; can't fire_action without panicking,
@@ -103,7 +103,7 @@ fn second_on_click_panics() {
     let _mtm = common::test_mtm();
     let result = std::panic::catch_unwind(
         std::panic::AssertUnwindSafe(|| {
-            let el = CocoaNode::create_button().0;
+            let el = CocoaElem::create_button().0;
             el.on_click(|| {});
             // Second install on the same control panics rather
             // than silently overwriting the first.
@@ -129,7 +129,7 @@ fn second_on_click_panics() {
 
 fn on_text_change_fires_on_text_field() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_change(move |v| c.set(v));
@@ -147,13 +147,13 @@ fn on_text_change_fires_on_text_field() {
 
 fn on_text_change_on_button_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     el.on_text_change(|_| panic!("must not fire"));
 }
 
 fn multiple_on_text_change_fan_out() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let calls = Rc::new(Cell::new(0));
     let last_a = Rc::new(Cell::new(String::new()));
     let last_b = Rc::new(Cell::new(String::new()));
@@ -192,7 +192,7 @@ fn multiple_on_text_change_fan_out() {
 
 fn on_text_end_editing_fires_on_commit() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_end_editing(move |v| c.set(v));
@@ -212,7 +212,7 @@ fn on_text_end_editing_fires_on_commit() {
 
 fn on_text_focus_fires_on_begin_editing() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let calls = Rc::new(Cell::new(0));
     let c = calls.clone();
     el.on_text_focus(move || c.set(c.get() + 1));
@@ -226,7 +226,7 @@ fn on_text_focus_fires_on_begin_editing() {
 
 fn on_text_blur_fires_on_end_editing() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let calls = Rc::new(Cell::new(0));
     let c = calls.clone();
     el.on_text_blur(move || c.set(c.get() + 1));
@@ -240,7 +240,7 @@ fn on_text_blur_fires_on_end_editing() {
 
 fn on_change_and_on_blur_both_fire_on_commit() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let changes = Rc::new(Cell::new(0));
     let blurs = Rc::new(Cell::new(0));
     let last_change = Rc::new(Cell::new(String::new()));
@@ -270,7 +270,7 @@ fn on_change_and_on_blur_both_fire_on_commit() {
 
 fn on_text_focus_on_button_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     el.on_text_focus(|| panic!("must not fire"));
 }
 
@@ -281,7 +281,7 @@ fn on_text_focus_on_button_is_no_op() {
 fn on_text_keydown_fires_on_enter() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let captured = Rc::new(Cell::new(None::<String>));
     let c = captured.clone();
     el.on_text_keydown(move |ev| c.set(Some(ev.key)));
@@ -297,7 +297,7 @@ fn on_text_keydown_fires_on_enter() {
 fn on_text_keydown_fires_on_escape() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let captured = Rc::new(Cell::new(None::<u32>));
     let c = captured.clone();
     el.on_text_keydown(move |ev| c.set(Some(ev.key_code)));
@@ -313,7 +313,7 @@ fn on_text_keydown_fires_on_escape() {
 fn on_text_keyup_fires_on_command_keys() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let captured = Rc::new(Cell::new(None::<String>));
     let c = captured.clone();
     el.on_text_keyup(move |ev| c.set(Some(ev.key)));
@@ -329,7 +329,7 @@ fn on_text_keyup_fires_on_command_keys() {
 fn keydown_and_keyup_both_fire_on_same_notification() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let down = Rc::new(Cell::new(0));
     let up = Rc::new(Cell::new(0));
     {
@@ -353,7 +353,7 @@ fn keydown_and_keyup_both_fire_on_same_notification() {
 fn unknown_command_selector_does_not_fire() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     el.on_text_keydown(|_| panic!("must not fire on unknown selector"));
 
     let __nv = el.ns_view();
@@ -366,7 +366,7 @@ fn unknown_command_selector_does_not_fire() {
 fn arrow_keys_map_to_web_names() {
     use objc2::sel;
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let names = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
     let n = names.clone();
     el.on_text_keydown(move |ev| n.borrow_mut().push(ev.key));
@@ -387,13 +387,13 @@ fn arrow_keys_map_to_web_names() {
 
 fn keydown_on_button_is_no_op() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_button().0;
+    let el = CocoaElem::create_button().0;
     el.on_text_keydown(|_| panic!("must not fire on button"));
 }
 
 fn on_change_and_on_input_coexist() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     let inputs = Rc::new(Cell::new(0));
     let changes = Rc::new(Cell::new(0));
 
@@ -424,7 +424,7 @@ fn on_change_and_on_input_coexist() {
 
 fn slider_double_value_round_trips() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_slider().0;
+    let el = CocoaElem::create_slider().0;
     el.set_slider_min(0.0);
     el.set_slider_max(100.0);
     el.set_double_value(42.5);
@@ -433,7 +433,7 @@ fn slider_double_value_round_trips() {
 
 fn popup_items_and_selection() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_pop_up_button().0;
+    let el = CocoaElem::create_pop_up_button().0;
     let items: Vec<String> =
         ["Alpha", "Beta", "Gamma"].into_iter().map(String::from).collect();
     el.set_popup_items(&items);
@@ -443,7 +443,7 @@ fn popup_items_and_selection() {
 
 fn checkbox_checked_round_trips() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_checkbox().0;
+    let el = CocoaElem::create_checkbox().0;
     assert!(!el.checked());
     el.set_checked(true);
     assert!(el.checked());

@@ -9,7 +9,7 @@
 //! setting, hydration tree walking) panic with `unimplemented!()` if
 //! actually called.
 
-use crate::dom::node::GtkNode;
+use crate::dom::node::GtkElem;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -52,8 +52,8 @@ impl fmt::Debug for Event {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<GtkNode> for GtkNode {
-    fn cast_from(source: GtkNode) -> Option<GtkNode> {
+impl CastFrom<GtkElem> for GtkElem {
+    fn cast_from(source: GtkElem) -> Option<GtkElem> {
         Some(source)
     }
 }

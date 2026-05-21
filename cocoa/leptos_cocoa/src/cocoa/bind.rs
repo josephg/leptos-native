@@ -23,7 +23,7 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, Set},
 };
-use crate::dom::{CocoaNode, Color, Date};
+use crate::dom::{CocoaElem, Color, Date};
 
 /// Downcast the element's NSView to a specific subclass at install
 /// time. Returns `Retained<T>` so the install closures can hold a
@@ -37,7 +37,7 @@ use crate::dom::{CocoaNode, Color, Date};
 /// when an `install_*` function is called on the wrong element
 /// type, which is a programming error at the framework level (the
 /// builders are typed and route to the right install).
-fn typed_view<T>(el: &CocoaNode, ctx: &'static str) -> Retained<T>
+fn typed_view<T>(el: &CocoaElem, ctx: &'static str) -> Retained<T>
 where
     T: objc2::Message + objc2::DowncastTarget,
 {
@@ -139,7 +139,7 @@ pub(crate) struct BoundValue {
 /// `RenderEffect` that pushes signal → view; caller stashes it in the
 /// element's State so it lives as long as the mount.
 pub(crate) fn install_text_field_value_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundValue,
 ) -> RenderEffect<()> {
     // Outgoing: user types → push to signal.
@@ -225,7 +225,7 @@ where
 }
 
 pub(crate) fn install_text_view_value_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundValue,
 ) -> RenderEffect<()> {
     // Outgoing: user types → push to signal.
@@ -274,7 +274,7 @@ where
 }
 
 pub(crate) fn install_stepper_value_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSStepper;
@@ -321,7 +321,7 @@ where
 }
 
 pub(crate) fn install_date_picker_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundDate,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSDatePicker;
@@ -351,7 +351,7 @@ pub(crate) fn install_date_picker_bind(
 }
 
 pub(crate) fn install_slider_value_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     // NSSlider extends NSControl directly; capture the typed
@@ -414,7 +414,7 @@ pub(crate) struct BoundIndex {
 }
 
 pub(crate) fn install_popup_selection_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundIndex,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSPopUpButton;
@@ -467,7 +467,7 @@ where
 }
 
 pub(crate) fn install_color_well_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundColor,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSColorWell;
@@ -496,7 +496,7 @@ pub(crate) fn install_color_well_bind(
 }
 
 pub(crate) fn install_segmented_selection_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundIndex,
 ) -> RenderEffect<()> {
     use objc2_app_kit::NSSegmentedControl;
@@ -553,7 +553,7 @@ pub(crate) struct BoundChecked {
 /// `RenderEffect` that pushes signal → button state; caller stashes
 /// it in the element's State so it lives as long as the mount.
 pub(crate) fn install_checkbox_checked_bind(
-    el: &CocoaNode,
+    el: &CocoaElem,
     bound: BoundChecked,
 ) -> RenderEffect<()> {
     use objc2_app_kit::{

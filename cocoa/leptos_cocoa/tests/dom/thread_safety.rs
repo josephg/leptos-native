@@ -11,7 +11,7 @@
 mod common;
 
 use std::sync::{Arc, Mutex};
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 
 /// `Element::create` reads `MainThreadMarker::new()` at the start;
 /// off-main this returns `None` and the unwrap panics with a clear
@@ -27,7 +27,7 @@ fn create_off_main_panics() {
             // The tree is constructed inside the thread closure
             // because TreeRef is `!Send`; the mtm check inside
             // `Element::create` panics before tree access.
-            let _ = CocoaNode::create_button().0;
+            let _ = CocoaElem::create_button().0;
         });
         if let Err(e) = result {
             let msg = if let Some(s) = e.downcast_ref::<&'static str>() {
@@ -58,7 +58,7 @@ fn create_off_main_panics() {
 fn create_text_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let _ = CocoaNode::create_text("hi");
+            let _ = CocoaElem::create_text("hi");
         })
     })
     .join()
@@ -72,7 +72,7 @@ fn create_text_off_main_panics() {
 fn create_placeholder_off_main_panics() {
     let result = std::thread::spawn(|| {
         std::panic::catch_unwind(|| {
-            let _ = CocoaNode::create_placeholder();
+            let _ = CocoaElem::create_placeholder();
         })
     })
     .join()

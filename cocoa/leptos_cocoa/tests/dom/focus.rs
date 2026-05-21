@@ -11,7 +11,7 @@
 mod common;
 
 use objc2::MainThreadMarker;
-use leptos_cocoa::dom::{app, window, CocoaNode};
+use leptos_cocoa::dom::{app, window, CocoaElem};
 
 /// Initialise NSApplication once per test process. `init_app`
 /// returns `(app, delegate)` — both are intentionally leaked here
@@ -28,7 +28,7 @@ fn init_app_once(mtm: MainThreadMarker) {
 
 fn focus_unmounted_returns_false() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     assert!(
         !el.focus(),
         "an element not in a window can't be focused"
@@ -37,7 +37,7 @@ fn focus_unmounted_returns_false() {
 
 fn blur_unmounted_returns_false() {
     let _mtm = common::test_mtm();
-    let el = CocoaNode::create_text_field().0;
+    let el = CocoaElem::create_text_field().0;
     assert!(!el.blur(), "no window → no blur");
 }
 
@@ -47,7 +47,7 @@ fn focus_mounted_text_field_succeeds() {
     let win =
         window::open_window("focus-test", (320.0, 200.0), mtm);
 
-    let field = CocoaNode::create_text_field().0;
+    let field = CocoaElem::create_text_field().0;
     win.content_root.insert_node(field, None);
 
     // Before focus: nobody is first responder (or the window itself).
@@ -76,7 +76,7 @@ fn blur_clears_focus() {
     let win =
         window::open_window("blur-test", (320.0, 200.0), mtm);
 
-    let field = CocoaNode::create_text_field().0;
+    let field = CocoaElem::create_text_field().0;
     win.content_root.insert_node(field, None);
 
     field.focus();
@@ -101,7 +101,7 @@ fn focus_on_button_works() {
     let win =
         window::open_window("button-focus", (320.0, 200.0), mtm);
 
-    let button = CocoaNode::create_button().0;
+    let button = CocoaElem::create_button().0;
     win.content_root.insert_node(button, None);
 
     // Whether AppKit accepts focus on a button depends on

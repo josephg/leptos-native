@@ -5,7 +5,7 @@
 
 mod common;
 
-use leptos_gtk::dom::GtkNode;
+use leptos_gtk::dom::GtkElem;
 use leptos_gtk::gtk4::prelude::*;
 
 // ---------------------------------------------------------------------
@@ -13,8 +13,8 @@ use leptos_gtk::gtk4::prelude::*;
 // ---------------------------------------------------------------------
 
 fn ptr_eq_false_for_distinct() {
-    let a = GtkNode::create_stack();
-    let b = GtkNode::create_stack();
+    let a = GtkElem::create_stack();
+    let b = GtkElem::create_stack();
     assert_ne!(
         a, b,
         "distinct Elements should not be equal"
@@ -53,9 +53,9 @@ fn child_at(widget: &gtk4::Widget, idx: usize) -> Option<gtk4::Widget> {
 // ---------------------------------------------------------------------
 
 fn insert_node_appends_when_marker_none() {
-    let parent = GtkNode::create_stack();
-    let a = GtkNode::create_button().0;
-    let b = GtkNode::create_button().0;
+    let parent = GtkElem::create_stack();
+    let a = GtkElem::create_button().0;
+    let b = GtkElem::create_button().0;
 
     parent.insert_node(a, None);
     parent.insert_node(b, None);
@@ -68,10 +68,10 @@ fn insert_node_appends_when_marker_none() {
 }
 
 fn insert_node_before_marker_places_correctly() {
-    let parent = GtkNode::create_stack();
-    let a = GtkNode::create_button().0;
-    let b = GtkNode::create_button().0;
-    let c = GtkNode::create_button().0;
+    let parent = GtkElem::create_stack();
+    let a = GtkElem::create_button().0;
+    let b = GtkElem::create_button().0;
+    let c = GtkElem::create_button().0;
 
     // Initial order: a, c
     parent.insert_node(a, None);
@@ -97,9 +97,9 @@ fn insert_node_before_marker_places_correctly() {
 fn insert_node_moves_existing_child() {
     // gtk::Widget semantics: a widget has one parent. Inserting it
     // under a new parent removes it from the old.
-    let parent_a = GtkNode::create_stack();
-    let parent_b = GtkNode::create_stack();
-    let child = GtkNode::create_button().0;
+    let parent_a = GtkElem::create_stack();
+    let parent_b = GtkElem::create_stack();
+    let child = GtkElem::create_button().0;
 
     parent_a.insert_node(child, None);
     assert_eq!(child_count(&parent_a.widget()), 1);
@@ -114,8 +114,8 @@ fn insert_node_moves_existing_child() {
 // ---------------------------------------------------------------------
 
 fn remove_child_returns_some_for_actual_child() {
-    let parent = GtkNode::create_stack();
-    let child = GtkNode::create_button().0;
+    let parent = GtkElem::create_stack();
+    let child = GtkElem::create_button().0;
     parent.insert_node(child, None);
 
     let removed = parent.remove_child(child);
@@ -124,9 +124,9 @@ fn remove_child_returns_some_for_actual_child() {
 }
 
 fn remove_child_returns_none_for_non_child() {
-    let parent = GtkNode::create_stack();
-    let actual = GtkNode::create_button().0;
-    let stranger = GtkNode::create_button().0;
+    let parent = GtkElem::create_stack();
+    let actual = GtkElem::create_button().0;
+    let stranger = GtkElem::create_button().0;
     parent.insert_node(actual, None);
 
     let removed = parent.remove_child(stranger);
@@ -140,9 +140,9 @@ fn remove_child_returns_none_for_non_child() {
 // ---------------------------------------------------------------------
 
 fn clear_children_removes_all() {
-    let parent = GtkNode::create_stack();
+    let parent = GtkElem::create_stack();
     for _ in 0..5 {
-        parent.insert_node(GtkNode::create_button().0, None);
+        parent.insert_node(GtkElem::create_button().0, None);
     }
     assert_eq!(child_count(&parent.widget()), 5);
 
@@ -151,7 +151,7 @@ fn clear_children_removes_all() {
 }
 
 fn clear_children_on_empty_is_no_op() {
-    let parent = GtkNode::create_stack();
+    let parent = GtkElem::create_stack();
     parent.clear_children();
     parent.clear_children();
     assert_eq!(child_count(&parent.widget()), 0);

@@ -18,7 +18,7 @@
 //! The overlay is not registered in Taffy and its `hitTest:` returns
 //! null, so it's transparent to layout and to mouse events.
 
-use super::{flipped_view::FlippedView, layout, layout::CocoaBackend, CocoaNode};
+use super::{flipped_view::FlippedView, layout, layout::CocoaBackend, CocoaElem};
 use block2::RcBlock;
 use objc2::{
     class, define_class, msg_send,
@@ -65,7 +65,7 @@ thread_local! {
 }
 
 pub struct DebugOverlayIvars {
-    root_id: CocoaNode,
+    root_id: CocoaElem,
 }
 
 define_class!(
@@ -181,7 +181,7 @@ enum DrawCmd {
 }
 
 fn walk(
-    node_id: CocoaNode,
+    node_id: CocoaElem,
     offset: NSPoint,
     f: &mut dyn FnMut(DrawCmd),
 ) {
@@ -334,7 +334,7 @@ fn walk_inner(
 impl DebugOverlayView {
     fn new(
         mtm: MainThreadMarker,
-        root_id: CocoaNode,
+        root_id: CocoaElem,
     ) -> Retained<Self> {
         let alloc = Self::alloc(mtm)
             .set_ivars(DebugOverlayIvars { root_id });
@@ -363,7 +363,7 @@ pub fn mark_overlays_dirty() {
 
 /// Install a debug overlay over `content_root`, sized to fill it.
 /// Idempotent across windows; each call registers another overlay.
-pub fn install(content_root: &FlippedView, root_id: CocoaNode, mtm: MainThreadMarker) {
+pub fn install(content_root: &FlippedView, root_id: CocoaElem, mtm: MainThreadMarker) {
     let bounds = content_root.bounds();
     let overlay = DebugOverlayView::new(mtm, root_id);
     overlay.setFrame(bounds);

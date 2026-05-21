@@ -29,7 +29,7 @@ use reactive_graph::{
     traits::{Get, GetUntracked, Set},
 };
 use std::cell::Cell;
-use crate::dom::CocoaNode;
+use crate::dom::CocoaElem;
 
 /// A reactive reference to a built `cocoa_dom::CocoaNode`.
 ///
@@ -42,7 +42,7 @@ use crate::dom::CocoaNode;
 /// reactive_graph's storage) while runtime-enforcing main-thread
 /// access.
 #[derive(Debug)]
-pub struct NodeRef(RwSignal<Option<CocoaNode>>);
+pub struct NodeRef(RwSignal<Option<CocoaElem>>);
 
 impl NodeRef {
     /// Create a new, unfilled NodeRef. Filled when the builder
@@ -54,19 +54,19 @@ impl NodeRef {
 
     /// Reactive read — subscribes the current Effect to this
     /// ref. Returns the element if it's been mounted, else None.
-    pub fn get(&self) -> Option<CocoaNode> {
+    pub fn get(&self) -> Option<CocoaElem> {
         self.0.get()
     }
 
     /// Non-reactive read.
-    pub fn get_untracked(&self) -> Option<CocoaNode> {
+    pub fn get_untracked(&self) -> Option<CocoaElem> {
         self.0.get_untracked()
     }
 
     /// Run `f` once when the ref has been filled (i.e. when the
     /// element it points to has been built and mounted). Useful
     /// for "focus this field on first show" patterns.
-    pub fn on_load<F: FnOnce(CocoaNode) + 'static>(self, f: F) {
+    pub fn on_load<F: FnOnce(CocoaElem) + 'static>(self, f: F) {
         let f = Cell::new(Some(f));
         Effect::new(move |_| {
             if let Some(el) = self.get() {
@@ -79,7 +79,7 @@ impl NodeRef {
 
     /// Internal: fill the ref. Called by builders' `Render::build`
     /// after constructing their underlying CocoaNode.
-    pub fn load(&self, el: CocoaNode) {
+    pub fn load(&self, el: CocoaElem) {
         self.0.set(Some(el));
     }
 }

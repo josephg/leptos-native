@@ -7,15 +7,15 @@
 //! calling [`OpenedWindow::show`].
 
 use crate::dom::layout::{self, FlexDirection};
-use crate::dom::node::{install_taffy_layout_for_container, GtkNode};
+use crate::dom::node::{install_taffy_layout_for_container, GtkElem};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
-/// `GtkApplicationWindow` itself and the content-root [`GtkNode`] (its
+/// `GtkApplicationWindow` itself and the content-root [`GtkElem`] (its
 /// child). Nodes live in the ambient per-thread store.
 pub struct OpenedWindow {
     pub gtk_window: gtk4::ApplicationWindow,
-    pub content_root: GtkNode,
+    pub content_root: GtkElem,
 }
 
 /// Open a `GtkApplicationWindow` with the given title and content
@@ -37,7 +37,7 @@ pub fn open_window(
         .default_height(size.1)
         .build();
 
-    let content_root = GtkNode::create_vstack();
+    let content_root = GtkElem::create_vstack();
     layout::set_flex_direction(content_root, FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.

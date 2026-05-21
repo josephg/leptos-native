@@ -12,7 +12,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{debug_overlay, flipped_view::FlippedView, layout, CocoaNode};
+use leptos_cocoa::dom::{debug_overlay, flipped_view::FlippedView, layout, CocoaElem};
 use objc2_app_kit::NSView;
 use objc2_foundation::NSSize;
 
@@ -34,7 +34,7 @@ fn frame_eq(view: &NSView, x: f64, y: f64, w: f64, h: f64) {
 /// because the overlay shifted subview indices.
 fn overlay_does_not_shift_children() {
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
     layout::set_flex_direction(
         root,
         layout::FlexDirection::Row,
@@ -49,8 +49,8 @@ fn overlay_does_not_shift_children() {
         .expect("\"view\" tag should produce a FlippedView");
     debug_overlay::install(flipped, root, mtm);
 
-    let a = CocoaNode::create_container_with(mtm);
-    let b = CocoaNode::create_container_with(mtm);
+    let a = CocoaElem::create_container_with(mtm);
+    let b = CocoaElem::create_container_with(mtm);
     layout::set_width(a, 100.0);
     layout::set_height(a, 50.0);
     layout::set_width(b, 200.0);
@@ -73,7 +73,7 @@ fn overlay_does_not_shift_children() {
 /// land at wrong Taffy indices.
 fn overlay_does_not_shift_marker_inserts() {
     let mtm = common::test_mtm();
-    let root = CocoaNode::create_container_with(mtm);
+    let root = CocoaElem::create_container_with(mtm);
     layout::set_flex_direction(
         root,
         layout::FlexDirection::Row,
@@ -84,9 +84,9 @@ fn overlay_does_not_shift_marker_inserts() {
     let flipped = any.downcast_ref::<FlippedView>().unwrap();
     debug_overlay::install(flipped, root, mtm);
 
-    let a = CocoaNode::create_container_with(mtm);
-    let b = CocoaNode::create_container_with(mtm);
-    let c = CocoaNode::create_container_with(mtm);
+    let a = CocoaElem::create_container_with(mtm);
+    let b = CocoaElem::create_container_with(mtm);
+    let c = CocoaElem::create_container_with(mtm);
     for (el, w) in [(a, 50.0), (b, 60.0), (c, 70.0)] {
         layout::set_width(el, w);
         layout::set_height(el, 40.0);

@@ -14,7 +14,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::CocoaNode;
+use leptos_cocoa::dom::CocoaElem;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
 
@@ -33,7 +33,7 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 /// API only.
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
-        let text_field = CocoaNode::create_text_field().0;
+        let text_field = CocoaElem::create_text_field().0;
 
         // First set — establishes baseline.
         text_field.set_value("hello");
@@ -71,7 +71,7 @@ fn set_bool_attribute_with_same_value_idempotent() {
     // let _mtm = common::test_mtm();
     // let mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let checkbox = CocoaNode::create_checkbox().0;
+        let checkbox = CocoaElem::create_checkbox().0;
 
         checkbox.set_checked(true);
         let cb_view = checkbox.ns_view();

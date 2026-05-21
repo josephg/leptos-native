@@ -14,7 +14,7 @@ use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use reactive_graph::owner::Owner;
 use renderer::attrs::WithLayout;
 use renderer::view::{Mountable, Render};
-use leptos_gtk::dom::{layout, layout::GtkBackend, spawner, window, GtkNode};
+use leptos_gtk::dom::{layout, layout::GtkBackend, spawner, window, GtkElem};
 use renderer::LayoutBackend;
 use leptos_gtk::gtk4::prelude::*;
 
@@ -31,7 +31,7 @@ fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
     V: Render<leptos_gtk::GtkDom>,
     V::State: Mountable<leptos_gtk::GtkDom>,
-    F: FnOnce(&GtkNode),
+    F: FnOnce(&GtkElem),
 {
     let app = common::init_app_registered("org.test.leptos_gtk.layout");
     let opened = window::open_window(
@@ -52,7 +52,7 @@ where
 /// Walk the Taffy tree under `root` and collect the layouts of all
 /// leaf widgets that match `pred`.
 fn find_leaf_widgets<P>(
-    root: &GtkNode,
+    root: &GtkElem,
     mut pred: P,
 ) -> Vec<layout::Layout>
 where

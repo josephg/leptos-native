@@ -21,15 +21,15 @@
 
 mod common;
 
-use leptos_gtk::dom::{layout, GtkNode};
+use leptos_gtk::dom::{layout, GtkElem};
 use renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
-fn style_of(el: &GtkNode) -> renderer::Style {
+fn style_of(el: &GtkElem) -> renderer::Style {
     el.with_style(|s| s.clone())
 }
 
 fn padding_static_lands_in_padding_field() {
-    let el = GtkNode::create_stack();
+    let el = GtkElem::create_stack();
 
     let mut attrs = LayoutAttrs::default();
     attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
@@ -41,7 +41,7 @@ fn padding_static_lands_in_padding_field() {
 }
 
 fn flex_grow_static_lands_in_flex_grow() {
-    let el = GtkNode::create_stack();
+    let el = GtkElem::create_stack();
 
     let mut attrs = LayoutAttrs::default();
     attrs.flex_grow = Some(MaybeReactive::Static(1.5));
@@ -50,13 +50,13 @@ fn flex_grow_static_lands_in_flex_grow() {
 }
 
 fn empty_universal_attrs_no_panic() {
-    let el = GtkNode::create_stack();
+    let el = GtkElem::create_stack();
     let _ = layout::apply_universal(el, UniversalAttrs::default());
 }
 
 fn alpha_static_sets_widget_opacity() {
     use gtk4::prelude::*;
-    let el = GtkNode::create_stack();
+    let el = GtkElem::create_stack();
 
     let mut attrs = UniversalAttrs::default();
     attrs.alpha = Some(MaybeReactive::Static(0.4));

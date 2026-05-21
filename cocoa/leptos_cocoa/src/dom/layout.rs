@@ -4,7 +4,7 @@
 //! [`renderer`]; this file plugs cocoa-specific types into it
 //! via [`CocoaBackend`]. The wrappers below — `set_as_root`,
 //! `attach_child`, `compute_layout`, the `set_*` setters — route
-//! through the new [`CocoaNode`] accessors (`with_style`, `with_meta`,
+//! through the new [`CocoaElem`] accessors (`with_style`, `with_meta`,
 //! `tree_id`) and dispatch into the shared tree.
 //!
 //! What stays cocoa-specific:
@@ -17,7 +17,7 @@
 //! - `schedule_relayout` / dispatch (DispatchQueue).
 //! - Layer-backed conveniences (`set_background_color`, `set_clip`).
 
-use super::node::CocoaNode;
+use super::node::CocoaElem;
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
@@ -241,7 +241,7 @@ pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
 /// Remove the node (and its structural subtree) from the store and
 /// detach its NSView, then schedule a relayout of the (former)
 /// parent's subtree so its flex layout recomputes without the node.
-pub fn drop_node(node: CocoaNode) {
+pub fn drop_node(node: CocoaElem) {
     let parent = CocoaBackend::parent(node.id());
     node.teardown();
     if let Some(pid) = parent {
@@ -259,7 +259,7 @@ pub fn drop_node(node: CocoaNode) {
 
 /// Mark `node` dirty (so leaf measure callbacks re-run on content
 /// change) and queue its subtree root for the next relayout pass.
-pub fn schedule_relayout(node: CocoaNode) {
+pub fn schedule_relayout(node: CocoaElem) {
     CocoaBackend::mark_dirty(node.id());
     queue_relayout_for(node.id());
 }
@@ -315,7 +315,7 @@ fn ensure_relayout_pass_scheduled() {
             };
             let root_view: Retained<NSView> = (*view).clone();
             let size = root_view.frame().size;
-            compute_layout(CocoaNode::from_id(root_id), size);
+            compute_layout(CocoaElem::from_id(root_id), size);
         }
     });
 }
@@ -327,25 +327,25 @@ fn ensure_relayout_pass_scheduled() {
 /// The Taffy parent id for attaching children. For `<scroll_view>`
 /// this redirects to the documentView wrapper (`meta.child_taffy_parent`);
 /// otherwise it's the node's own id.
-fn taffy_child_parent(parent: CocoaNode) -> NodeId {
+fn taffy_child_parent(parent: CocoaElem) -> NodeId {
     parent
         .with_meta(|m| m.child_taffy_parent)
         .unwrap_or(parent.id())
 }
 
-pub fn attach_child(parent: CocoaNode, child: CocoaNode) {
+pub fn attach_child(parent: CocoaElem, child: CocoaElem) {
     let parent_id = taffy_child_parent(parent);
     CocoaBackend::add_child(parent_id, child.id());
     queue_relayout_for(parent_id);
 }
 
-pub fn insert_child_at(parent: CocoaNode, child: CocoaNode, index: usize) {
+pub fn insert_child_at(parent: CocoaElem, child: CocoaElem, index: usize) {
     let parent_id = taffy_child_parent(parent);
     CocoaBackend::insert_child_at_index(parent_id, index, child.id());
     queue_relayout_for(parent_id);
 }
 
-pub fn detach_child(parent: CocoaNode, child: CocoaNode) {
+pub fn detach_child(parent: CocoaElem, child: CocoaElem) {
     let parent_id = taffy_child_parent(parent);
     CocoaBackend::remove_child(parent_id, child.id());
     queue_relayout_for(parent_id);
@@ -355,11 +355,11 @@ pub fn detach_child(parent: CocoaNode, child: CocoaNode) {
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: CocoaNode, f: impl FnOnce(&mut Style)) {
+pub fn update_style(node: CocoaElem, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: CocoaNode, style: Style) {
+pub fn set_style(node: CocoaElem, style: Style) {
     update_style(node, |s| *s = style);
 }
 
@@ -376,7 +376,7 @@ pub fn set_style(node: CocoaNode, style: Style) {
 /// `NSSplitView` whose Auto-Layout pass already positioned the
 /// FlippedView). Calling this on a pane-root would fight the
 /// outer system and reset origin to `(0, 0)` every tick.
-pub fn compute_layout(root: CocoaNode, available_size: NSSize) {
+pub fn compute_layout(root: CocoaElem, available_size: NSSize) {
     compute_layout_inner(root, available_size, /*apply_root_frame=*/ true)
 }
 
@@ -385,12 +385,12 @@ pub fn compute_layout(root: CocoaNode, available_size: NSSize) {
 /// (NSSplitView's Auto-Layout pass, in practice). Taffy still
 /// computes the layout using `available_size`, and frames are
 /// applied to every descendant.
-pub fn compute_layout_children(root: CocoaNode, available_size: NSSize) {
+pub fn compute_layout_children(root: CocoaElem, available_size: NSSize) {
     compute_layout_inner(root, available_size, /*apply_root_frame=*/ false)
 }
 
 fn compute_layout_inner(
-    root: CocoaNode,
+    root: CocoaElem,
     available_size: NSSize,
     apply_root_frame: bool,
 ) {
@@ -537,7 +537,7 @@ fn apply_frames_descendants_only(root_id: NodeId) {
 /// Mark this node's NSTextField as "use natural content width."
 /// Default for editable NSTextField is width=0 in the measure pass;
 /// this flag flips that to read `intrinsicContentSize` like a label.
-pub(crate) fn mark_intrinsic_width_from_content(node: CocoaNode, on: bool) {
+pub(crate) fn mark_intrinsic_width_from_content(node: CocoaElem, on: bool) {
     node.with_meta_mut(|m| m.intrinsic_width_from_content = on);
     // with_meta_mut doesn't mark dirty — the next measure pass needs
     // to see the new flag, so kick the store.
@@ -726,7 +726,7 @@ fn set_frame_from_layout(
 // the short paths (`cocoa_dom::layout::set_padding`, etc.) stable.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for CocoaNode {
+impl renderer::LayoutNodeOps for CocoaElem {
     fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
         update_style(self, f);
     }
@@ -734,30 +734,30 @@ impl renderer::LayoutNodeOps for CocoaNode {
         schedule_relayout(self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
-        CocoaNode::with_style(self, f)
+        CocoaElem::with_style(self, f)
     }
 }
 
 // `LayoutElement` / `UniversalElement` / `DecorationElement` impls let
 // `renderer::apply_layout` / `apply_universal` / `apply_decoration`
 // install reactive setters against a `cocoa_dom::Node` generically.
-impl renderer::LayoutElement for CocoaNode {
+impl renderer::LayoutElement for CocoaElem {
     fn set_view_hidden(self, hidden: bool) {
-        CocoaNode::set_hidden(self, hidden);
+        CocoaElem::set_hidden(self, hidden);
     }
     fn set_clip(self, clip: bool) {
         set_clip(self, clip);
     }
 }
-impl renderer::UniversalElement for CocoaNode {
+impl renderer::UniversalElement for CocoaElem {
     fn set_alpha(self, alpha: f64) {
-        CocoaNode::set_alpha(self, alpha)
+        CocoaElem::set_alpha(self, alpha)
     }
     fn set_tool_tip(self, tip: &str) {
-        CocoaNode::set_tool_tip(self, tip)
+        CocoaElem::set_tool_tip(self, tip)
     }
 }
-impl renderer::DecorationElement<Color> for CocoaNode {
+impl renderer::DecorationElement<Color> for CocoaElem {
     fn set_background_color(self, color: Color) {
         set_background_color(self, color);
     }
@@ -790,7 +790,7 @@ use crate::dom::{event, Color};
 // renderer-agnostic land).
 // ---------------------------------------------------------------------
 
-pub fn set_background_color(node: CocoaNode, color: Color) {
+pub fn set_background_color(node: CocoaElem, color: Color) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -811,7 +811,7 @@ pub fn set_background_color(node: CocoaNode, color: Color) {
     }
 }
 
-pub fn set_clip(node: CocoaNode, clip: bool) {
+pub fn set_clip(node: CocoaElem, clip: bool) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -829,7 +829,7 @@ pub fn set_clip(node: CocoaNode, clip: bool) {
 /// you need child views to clip to the rounded shape (common on
 /// container stacks; almost never wanted on buttons, where masking
 /// can chew into the rendered title near the corners).
-pub fn set_corner_radius(node: CocoaNode, radius: f32) {
+pub fn set_corner_radius(node: CocoaElem, radius: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -851,7 +851,7 @@ pub fn set_corner_radius(node: CocoaNode, radius: f32) {
 /// Set the CALayer border width in points. `0` disables the border.
 /// Border color defaults to opaque black when set the first time;
 /// pair with [`set_border_color`] for non-default colors.
-pub fn set_border_width(node: CocoaNode, width: f32) {
+pub fn set_border_width(node: CocoaElem, width: f32) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
@@ -879,7 +879,7 @@ pub fn set_border_width(node: CocoaNode, width: f32) {
 /// `transform.translation.{x,y}` from their prior values. Useful
 /// for slide-in / slide-out effects without disturbing layout.
 #[cfg(feature = "animation")]
-pub fn set_translation(node: CocoaNode, tx: f64, ty: f64) {
+pub fn set_translation(node: CocoaElem, tx: f64, ty: f64) {
     use objc2_quartz_core::CATransform3D;
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -935,7 +935,7 @@ pub fn set_translation(node: CocoaNode, tx: f64, ty: f64) {
 /// `transform.scale.x` and `transform.scale.y` from their prior
 /// values. Available only with the `animation` Cargo feature.
 #[cfg(feature = "animation")]
-pub fn set_scale(node: CocoaNode, sx: f64, sy: f64) {
+pub fn set_scale(node: CocoaElem, sx: f64, sy: f64) {
     use objc2_quartz_core::CATransform3D;
     let view = node.ns_view();
     view.setWantsLayer(true);
@@ -982,7 +982,7 @@ pub fn set_scale(node: CocoaNode, sx: f64, sy: f64) {
 
 /// Set the CALayer border color. No effect unless [`set_border_width`]
 /// has been called with a width > 0.
-pub fn set_border_color(node: CocoaNode, color: Color) {
+pub fn set_border_color(node: CocoaElem, color: Color) {
     let view = node.ns_view();
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {

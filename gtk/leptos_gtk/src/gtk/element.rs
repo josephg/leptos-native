@@ -18,7 +18,7 @@ use crate::dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    GtkNode,
+    GtkElem,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
@@ -42,7 +42,7 @@ use crate::dom::layout::{apply_layout, apply_universal};
 /// cocoa's `apply_common` (3-arg variant for ports without those
 /// extras).
 fn apply_common(
-    el: GtkNode,
+    el: GtkElem,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 ) -> Vec<RenderEffect<()>> {
@@ -57,7 +57,7 @@ fn apply_common(
 
 /// State retained for an element instance between build and rebuild.
 pub struct ElementState<ChildState> {
-    pub el: GtkNode,
+    pub el: GtkElem,
     pub(crate) _effects: Vec<RenderEffect<()>>,
     pub(crate) children: ChildState,
 }
@@ -79,8 +79,8 @@ impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
 
     fn mount(
         &mut self,
-        parent: GtkNode,
-        marker: Option<crate::dom::GtkNode>,
+        parent: GtkElem,
+        marker: Option<crate::dom::GtkElem>,
     ) {
         // Insert self.el under parent. If parent has a Taffy tree
         // handle, this also registers self.el (and recursively, on
@@ -106,7 +106,7 @@ impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
         false
     }
 
-    fn elements(&self) -> Vec<GtkNode> {
+    fn elements(&self) -> Vec<GtkElem> {
         vec![self.el.clone()]
     }
 }
@@ -128,7 +128,7 @@ impl<ChildState> Drop for ElementState<ChildState> {
 /// Install Stack-specific flex-item attrs that aren't covered by
 /// [`LayoutAttrs`] / [`WithLayout`] (`flex_shrink`, `flex_basis`).
 fn apply_flex_item_extras(
-    el: GtkNode,
+    el: GtkElem,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
 ) -> Vec<RenderEffect<()>> {
@@ -312,7 +312,7 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_stack();
+        let el = GtkElem::create_stack();
         let mut effects = Vec::new();
 
         let direction = self
@@ -533,7 +533,7 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_grid();
+        let el = GtkElem::create_grid();
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
@@ -620,7 +620,7 @@ pub struct Button {
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -668,7 +668,7 @@ impl Button {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkNode, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -711,7 +711,7 @@ impl Render<GtkDom> for Button {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_button().0;
+        let el = GtkElem::create_button().0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -760,7 +760,7 @@ pub struct Checkbox {
     pending_bind_checked: Option<super::bind::BoundChecked>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -833,7 +833,7 @@ impl Checkbox {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkNode, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -859,7 +859,7 @@ impl Render<GtkDom> for Checkbox {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_checkbox().0;
+        let el = GtkElem::create_checkbox().0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -914,7 +914,7 @@ pub struct Slider {
     pending_bind: Option<super::bind::BoundFloat>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -985,7 +985,7 @@ impl Slider {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<GtkNode, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<GtkElem, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1011,7 +1011,7 @@ impl Render<GtkDom> for Slider {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_slider().0;
+        let el = GtkElem::create_slider().0;
         let mut effects = Vec::new();
 
         el.set_slider_min(self.min_value);
@@ -1069,7 +1069,7 @@ pub struct PopUpButton {
     pending_bind_selection: Option<super::bind::BoundIndex>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1153,7 +1153,7 @@ impl Render<GtkDom> for PopUpButton {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_pop_up_button().0;
+        let el = GtkElem::create_pop_up_button().0;
         let mut effects = Vec::new();
 
         el.set_popup_items(&self.items);
@@ -1207,7 +1207,7 @@ pub struct Label {
     text: MaybeReactive<String>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1275,7 +1275,7 @@ impl Render<GtkDom> for Label {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let el = GtkNode::create_label().0;
+        let el = GtkElem::create_label().0;
         let mut effects = Vec::new();
 
         let el_for_text = el.clone();
@@ -1317,7 +1317,7 @@ pub struct TextField {
     pending_bind: Option<super::bind::BoundValue>,
     handlers: Vec<crate::event_gtk::PendingHandler>,
     node_ref: Option<NodeRef>,
-    directives: Vec<Box<dyn FnOnce(GtkNode) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(GtkElem) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 }
@@ -1434,9 +1434,9 @@ impl Render<GtkDom> for TextField {
 
     fn build(self) -> Self::State {
         let el = if self.secure {
-            GtkNode::create_secure_text_field().0
+            GtkElem::create_secure_text_field().0
         } else {
-            GtkNode::create_text_field().0
+            GtkElem::create_text_field().0
         };
         let mut effects = Vec::new();
 
@@ -1502,7 +1502,7 @@ macro_rules! impl_add_any_attr_for_leaf {
                 where
                     __A: renderer::view::ApplyAttr<crate::GtkDom>,
                 {
-                    self.directives.push(Box::new(move |el: GtkNode| {
+                    self.directives.push(Box::new(move |el: GtkElem| {
                         attr.apply_to(el);
                     }));
                     self

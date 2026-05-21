@@ -19,7 +19,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use crate::dom::{CocoaNode, KeyEvent};
+use crate::dom::{CocoaElem, KeyEvent};
 
 /// Marker type for the click event (NSButton target/action).
 pub struct ClickEvent;
@@ -255,7 +255,7 @@ impl PendingHandler {
     /// Install this handler against `el`. No-ops if the underlying
     /// AppKit view doesn't support the event (the cocoa_dom hooks
     /// downcast and silently drop on mismatch).
-    pub fn apply_to(self, el: CocoaNode) {
+    pub fn apply_to(self, el: CocoaElem) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
             // Change is the universal "value changed" event:
@@ -316,7 +316,7 @@ impl OnAttribute {
     /// Apply this attribute to a built cocoa Element (used by
     /// elements whose builder has already constructed the underlying
     /// view).
-    pub fn apply(mut self, el: CocoaNode) {
+    pub fn apply(mut self, el: CocoaElem) {
         if let Some(h) = self.handler.take() {
             h.apply_to(el);
         }
@@ -335,7 +335,7 @@ impl OnAttribute {
 // are SSR-coupled and gone in this fork.
 
 impl renderer::view::ApplyAttr<crate::CocoaDom> for OnAttribute {
-    fn apply_to(self, el: CocoaNode) {
+    fn apply_to(self, el: CocoaElem) {
         OnAttribute::apply(self, el)
     }
 }
