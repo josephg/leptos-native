@@ -104,6 +104,36 @@ impl Node {
         renderer::view::<B>(self.id).map(|sw| sw.take())
     }
 
+    /// Downcast the live NSView to `T`. `None` if the node is gone
+    /// from the store OR the view isn't a `T`.
+    ///
+    /// Setters and readers go through this (not the panicking
+    /// `ns_view()`) so a reactive effect that fires *after* the node
+    /// was torn down is a graceful no-op rather than a panic. Under
+    /// the `Copy`-`NodeId` model a `RenderEffect` closure captures
+    /// only the id (it pins nothing), so an async-scheduled effect
+    /// re-run can outlive its node.
+    ///
+    /// This is **defense-in-depth, not the primary fix**. The real fix
+    /// is that `ElementState::unmount` drops `_effects` before tearing
+    /// the node down (see `leptos_cocoa::cocoa::element`), which ends
+    /// the effects' driver futures so they can't re-run on a freed
+    /// node — fuzzing showed that alone drives late-fires to zero. We
+    /// keep this guard anyway because a stray late-fire here would
+    /// panic inside an async effect poll, which the runtime escalates
+    /// to a process *abort* (not a catchable unwind) — far worse in
+    /// production than a no-op. It also matches the web backend, where
+    /// setting an attribute on a detached-but-alive node is harmless.
+    /// Trade-off: a future regression of the unmount cleanup is
+    /// swallowed silently here rather than failing loudly in the
+    /// fuzzer.
+    fn try_downcast<T>(self) -> Option<Retained<T>>
+    where
+        T: DowncastTarget,
+    {
+        self.try_ns_view().and_then(|v| downcast::<T>(&v))
+    }
+
     /// Get a `Retained<NSView>` without panicking-vs-cloning concerns —
     /// kept for call-site parity with the old API.
     pub fn ns_view_retained(self) -> Retained<NSView> {
@@ -284,7 +314,7 @@ impl Node {
 
     /// Set the title on an NSButton. No-op on other view classes.
     pub fn set_title(self, value: &str) {
-        if let Some(button) = downcast::<NSButton>(&self.ns_view()) {
+        if let Some(button) = self.try_downcast::<NSButton>() {
             let current = button.title().to_string();
             if current != value {
                 button.setTitle(&NSString::from_str(value));
@@ -296,7 +326,7 @@ impl Node {
     /// Set the string value on an NSControl, or route to the
     /// `<text_view>`'s documentView. No-op on other view classes.
     pub fn set_value(self, value: &str) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         if let Some(control) = downcast::<NSControl>(&view) {
             let current = control.stringValue().to_string();
             if current != value {
@@ -323,7 +353,7 @@ impl Node {
 
     /// Set the placeholder string on an NSTextField. No-op otherwise.
     pub fn set_placeholder(self, value: &str) {
-        if let Some(field) = downcast::<NSTextField>(&self.ns_view()) {
+        if let Some(field) = self.try_downcast::<NSTextField>() {
             let current: String = field
                 .placeholderString()
                 .map(|s| s.to_string())
@@ -337,7 +367,7 @@ impl Node {
 
     /// Toggle the underlying NSView's visibility. Diff-guarded.
     pub fn set_hidden(self, value: bool) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         if view.isHidden() != value {
             view.setHidden(value);
         }
@@ -345,7 +375,7 @@ impl Node {
 
     /// Toggle the enabled state on an NSControl. Diff-guarded.
     pub fn set_enabled(self, value: bool) {
-        if let Some(control) = downcast::<NSControl>(&self.ns_view()) {
+        if let Some(control) = self.try_downcast::<NSControl>() {
             if control.isEnabled() != value {
                 control.setEnabled(value);
             }
@@ -354,7 +384,7 @@ impl Node {
 
     /// Set the on/off state on an NSButton. No-op otherwise.
     pub fn set_checked(self, value: bool) {
-        if let Some(button) = downcast::<NSButton>(&self.ns_view()) {
+        if let Some(button) = self.try_downcast::<NSButton>() {
             use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn};
             let want = if value {
                 NSControlStateValueOn
@@ -381,7 +411,7 @@ impl Node {
     /// Unit-payload value-change callback (delegate fan-out for text
     /// fields, target/action otherwise).
     pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
-        if downcast::<NSTextField>(&self.ns_view()).is_some() {
+        if self.try_downcast::<NSTextField>().is_some() {
             crate::event::on_text_field_change(self, move |_| cb());
             return;
         }
@@ -401,7 +431,7 @@ impl Node {
 
     /// Read the on/off state of an NSButton. `false` for non-buttons.
     pub fn checked(self) -> bool {
-        if let Some(button) = downcast::<NSButton>(&self.ns_view()) {
+        if let Some(button) = self.try_downcast::<NSButton>() {
             use objc2_app_kit::NSControlStateValueOn;
             return button.state() == NSControlStateValueOn;
         }
@@ -410,7 +440,7 @@ impl Node {
 
     /// Read the current `doubleValue` of an NSControl. 0.0 otherwise.
     pub fn double_value(self) -> f64 {
-        if let Some(c) = downcast::<NSControl>(&self.ns_view()) {
+        if let Some(c) = self.try_downcast::<NSControl>() {
             return c.doubleValue();
         }
         0.0
@@ -418,7 +448,7 @@ impl Node {
 
     /// Set the `doubleValue` on an NSControl. Diff-guarded.
     pub fn set_double_value(self, v: f64) {
-        if let Some(c) = downcast::<NSControl>(&self.ns_view()) {
+        if let Some(c) = self.try_downcast::<NSControl>() {
             if (c.doubleValue() - v).abs() > f64::EPSILON {
                 c.setDoubleValue(v);
             }
@@ -428,7 +458,7 @@ impl Node {
     /// Slider min.
     pub fn set_slider_min(self, v: f64) {
         use objc2_app_kit::NSSlider;
-        if let Some(s) = downcast::<NSSlider>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setMinValue(v);
         }
     }
@@ -436,7 +466,7 @@ impl Node {
     /// Slider max.
     pub fn set_slider_max(self, v: f64) {
         use objc2_app_kit::NSSlider;
-        if let Some(s) = downcast::<NSSlider>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setMaxValue(v);
         }
     }
@@ -444,7 +474,7 @@ impl Node {
     /// Replace the items list on an NSPopUpButton. No-op otherwise.
     pub fn set_popup_items(self, items: &[String]) {
         use objc2_app_kit::NSPopUpButton;
-        if let Some(p) = downcast::<NSPopUpButton>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             p.removeAllItems();
             for it in items {
                 p.addItemWithTitle(&NSString::from_str(it));
@@ -455,7 +485,7 @@ impl Node {
     /// Currently-selected index on an NSPopUpButton (-1 otherwise).
     pub fn popup_selection(self) -> isize {
         use objc2_app_kit::NSPopUpButton;
-        if let Some(p) = downcast::<NSPopUpButton>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             return p.indexOfSelectedItem();
         }
         -1
@@ -464,7 +494,7 @@ impl Node {
     /// Programmatically pick an item by index. Diff-guarded.
     pub fn set_popup_selection(self, idx: isize) {
         use objc2_app_kit::NSPopUpButton;
-        if let Some(p) = downcast::<NSPopUpButton>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             if p.indexOfSelectedItem() != idx {
                 p.selectItemAtIndex(idx);
             }
@@ -474,7 +504,7 @@ impl Node {
     /// Replace the labels on an NSSegmentedControl. No-op otherwise.
     pub fn set_segmented_items(self, items: &[String]) {
         use objc2_app_kit::NSSegmentedControl;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(sc) = downcast::<NSSegmentedControl>(&view) else {
             return;
         };
@@ -487,7 +517,7 @@ impl Node {
     /// Currently-selected segment (-1 otherwise).
     pub fn segmented_selection(self) -> isize {
         use objc2_app_kit::NSSegmentedControl;
-        if let Some(sc) = downcast::<NSSegmentedControl>(&self.ns_view()) {
+        if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             return sc.selectedSegment();
         }
         -1
@@ -496,7 +526,7 @@ impl Node {
     /// Programmatically pick a segment by index. Diff-guarded.
     pub fn set_segmented_selection(self, idx: isize) {
         use objc2_app_kit::NSSegmentedControl;
-        if let Some(sc) = downcast::<NSSegmentedControl>(&self.ns_view()) {
+        if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             if sc.selectedSegment() != idx {
                 sc.setSelectedSegment(idx);
             }
@@ -509,7 +539,7 @@ impl Node {
 
     /// Set this view's opacity (0.0..=1.0). Diff-guarded.
     pub fn set_alpha(self, alpha: f64) {
-        let v = self.ns_view();
+        let Some(v) = self.try_ns_view() else { return; };
         let clamped = alpha.clamp(0.0, 1.0);
         let old = v.alphaValue();
         if (old - clamped).abs() <= f64::EPSILON {
@@ -535,7 +565,7 @@ impl Node {
 
     /// Set this view's tool tip. Empty string removes it.
     pub fn set_tool_tip(self, tip: &str) {
-        let v = self.ns_view();
+        let Some(v) = self.try_ns_view() else { return; };
         if tip.is_empty() {
             v.setToolTip(None);
         } else {
@@ -550,7 +580,7 @@ impl Node {
 
     /// Set the text color on a text-bearing view. No-op otherwise.
     pub fn set_text_color(self, color: crate::Color) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let nscolor = color.to_nscolor();
 
         if let Some(field) = downcast::<NSTextField>(&view) {
@@ -571,7 +601,7 @@ impl Node {
 
     /// Set text alignment on a text-bearing view. No-op otherwise.
     pub fn set_text_alignment(self, alignment: crate::TextAlignment) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
 
         if let Some(field) = downcast::<NSTextField>(&view) {
             field.setAlignment(alignment.0);
@@ -641,7 +671,7 @@ impl Node {
                 .unwrap_or(plain)
         };
 
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         if let Some(field) = downcast::<NSTextField>(&view) {
             field.setFont(Some(&font));
         } else if let Some(button) = downcast::<NSButton>(&view) {
@@ -662,7 +692,7 @@ impl Node {
     }
 
     fn read_font_point_size(self) -> Option<f64> {
-        let view = self.ns_view();
+        let view = self.try_ns_view()?;
         if let Some(field) = downcast::<NSTextField>(&view) {
             return field.font().map(|f| f.pointSize());
         }
@@ -674,7 +704,9 @@ impl Node {
 
     fn read_font_traits(self) -> objc2_app_kit::NSFontDescriptorSymbolicTraits {
         use objc2_app_kit::NSFontDescriptorSymbolicTraits;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else {
+            return NSFontDescriptorSymbolicTraits::empty();
+        };
         let font = if let Some(field) = downcast::<NSTextField>(&view) {
             field.font()
         } else if let Some(button) = downcast::<NSButton>(&view) {
@@ -694,21 +726,21 @@ impl Node {
 
     /// Toggle whether an NSButton draws its bezel. No-op otherwise.
     pub fn set_button_bordered(self, bordered: bool) {
-        if let Some(b) = downcast::<NSButton>(&self.ns_view()) {
+        if let Some(b) = self.try_downcast::<NSButton>() {
             b.setBordered(bordered);
         }
     }
 
     /// Set the keyboard shortcut for an NSButton. No-op otherwise.
     pub fn set_key_equivalent(self, key: &str) {
-        if let Some(b) = downcast::<NSButton>(&self.ns_view()) {
+        if let Some(b) = self.try_downcast::<NSButton>() {
             b.setKeyEquivalent(&NSString::from_str(key));
         }
     }
 
     /// Apply a custom title color to an NSButton (`contentTintColor`).
     pub fn set_button_title_color(self, color: crate::Color) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(button) = downcast::<NSButton>(&view) else {
             return;
         };
@@ -719,7 +751,7 @@ impl Node {
     /// Render an SF Symbol as the button's image. Empty name clears it.
     pub fn set_button_sf_symbol(self, name: &str) {
         use objc2_app_kit::NSCellImagePosition;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(button) = downcast::<NSButton>(&view) else {
             return;
         };
@@ -742,7 +774,7 @@ impl Node {
     /// Toggle the `intrinsic_width = FromContent` opt-in. No-op
     /// on non-NSTextField.
     pub fn set_intrinsic_width_from_content(self, on: bool) {
-        if downcast::<NSTextField>(&self.ns_view()).is_some() {
+        if self.try_downcast::<NSTextField>().is_some() {
             crate::layout::mark_intrinsic_width_from_content(self, on);
             crate::layout::schedule_relayout(self);
         }
@@ -750,21 +782,21 @@ impl Node {
 
     /// Toggle whether an NSTextField draws a border. No-op otherwise.
     pub fn set_text_field_bordered(self, bordered: bool) {
-        if let Some(f) = downcast::<NSTextField>(&self.ns_view()) {
+        if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setBordered(bordered);
         }
     }
 
     /// Toggle whether an NSTextField draws its bezel. No-op otherwise.
     pub fn set_text_field_bezeled(self, bezeled: bool) {
-        if let Some(f) = downcast::<NSTextField>(&self.ns_view()) {
+        if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setBezeled(bezeled);
         }
     }
 
     /// Toggle whether a label can be selected. No-op otherwise.
     pub fn set_selectable(self, selectable: bool) {
-        if let Some(f) = downcast::<NSTextField>(&self.ns_view()) {
+        if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setSelectable(selectable);
         }
     }
@@ -776,7 +808,7 @@ impl Node {
             mode.0,
             NSLineBreakMode::ByWordWrapping | NSLineBreakMode::ByCharWrapping
         );
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         if let Some(f) = downcast::<NSTextField>(&view) {
             f.setUsesSingleLineMode(!wraps);
             f.cell()
@@ -813,7 +845,7 @@ impl Node {
     /// Switch an NSSlider orientation. No-op otherwise.
     pub fn set_slider_vertical(self, vertical: bool) {
         use objc2_app_kit::NSSlider;
-        if let Some(s) = downcast::<NSSlider>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setVertical(vertical);
         }
     }
@@ -821,7 +853,7 @@ impl Node {
     /// Set tick-mark count on an NSSlider. No-op otherwise.
     pub fn set_slider_tick_marks(self, count: usize) {
         use objc2_app_kit::NSSlider;
-        if let Some(s) = downcast::<NSSlider>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setNumberOfTickMarks(count as isize);
         }
     }
@@ -829,7 +861,7 @@ impl Node {
     /// Toggle snap-to-tick on an NSSlider. No-op otherwise.
     pub fn set_slider_snaps_to_ticks(self, snaps: bool) {
         use objc2_app_kit::NSSlider;
-        if let Some(s) = downcast::<NSSlider>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setAllowsTickMarkValuesOnly(snaps);
         }
     }
@@ -837,7 +869,7 @@ impl Node {
     /// Switch an NSPopUpButton between popup / pull-down. No-op otherwise.
     pub fn set_pulls_down(self, pulls_down: bool) {
         use objc2_app_kit::NSPopUpButton;
-        if let Some(p) = downcast::<NSPopUpButton>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             p.setPullsDown(pulls_down);
         }
     }
@@ -845,7 +877,7 @@ impl Node {
     /// Set an NSSegmentedControl's visual style. No-op otherwise.
     pub fn set_segment_style(self, style: crate::SegmentStyle) {
         use objc2_app_kit::NSSegmentedControl;
-        if let Some(sc) = downcast::<NSSegmentedControl>(&self.ns_view()) {
+        if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             sc.setSegmentStyle(style.0);
         }
     }
@@ -853,7 +885,7 @@ impl Node {
     /// Set NSDatePicker's visual style. No-op otherwise.
     pub fn set_date_picker_style(self, style: crate::DatePickerStyle) {
         use objc2_app_kit::NSDatePicker;
-        if let Some(dp) = downcast::<NSDatePicker>(&self.ns_view()) {
+        if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             dp.setDatePickerStyle(style.0);
         }
     }
@@ -861,7 +893,7 @@ impl Node {
     /// Constrain an NSDatePicker's min date.
     pub fn set_date_picker_min(self, d: Option<crate::Date>) {
         use objc2_app_kit::NSDatePicker;
-        if let Some(dp) = downcast::<NSDatePicker>(&self.ns_view()) {
+        if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMinDate(nd.as_deref());
         }
@@ -869,7 +901,7 @@ impl Node {
 
     pub fn set_date_picker_max(self, d: Option<crate::Date>) {
         use objc2_app_kit::NSDatePicker;
-        if let Some(dp) = downcast::<NSDatePicker>(&self.ns_view()) {
+        if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMaxDate(nd.as_deref());
         }
@@ -878,7 +910,7 @@ impl Node {
     /// Toggle auto-hiding of an NSScrollView's scrollers.
     pub fn set_autohides_scrollers(self, autohides: bool) {
         use objc2_app_kit::NSScrollView;
-        if let Some(s) = downcast::<NSScrollView>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setAutohidesScrollers(autohides);
         }
     }
@@ -886,7 +918,7 @@ impl Node {
     /// Show/hide an NSScrollView's horizontal scroller.
     pub fn set_has_horizontal_scroller(self, has: bool) {
         use objc2_app_kit::NSScrollView;
-        if let Some(s) = downcast::<NSScrollView>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setHasHorizontalScroller(has);
         }
     }
@@ -894,7 +926,7 @@ impl Node {
     /// Show/hide an NSScrollView's vertical scroller.
     pub fn set_has_vertical_scroller(self, has: bool) {
         use objc2_app_kit::NSScrollView;
-        if let Some(s) = downcast::<NSScrollView>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setHasVerticalScroller(has);
         }
     }
@@ -924,7 +956,7 @@ impl Node {
         }
 
         use objc2_app_kit::NSScrollView;
-        if let Some(s) = downcast::<NSScrollView>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSScrollView>() {
             match axis {
                 ScrollAxis::Vertical => {
                     s.setHasVerticalScroller(true);
@@ -945,7 +977,7 @@ impl Node {
     /// Toggle whether an NSProgressIndicator stays visible when stopped.
     pub fn set_progress_displayed_when_stopped(self, shown: bool) {
         use objc2_app_kit::NSProgressIndicator;
-        if let Some(p) = downcast::<NSProgressIndicator>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setDisplayedWhenStopped(shown);
         }
     }
@@ -953,7 +985,7 @@ impl Node {
     /// Read the current value of a `<date_picker>`.
     pub fn date_picker_value(self) -> crate::Date {
         use objc2_app_kit::NSDatePicker;
-        if let Some(dp) = downcast::<NSDatePicker>(&self.ns_view()) {
+        if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let d = dp.dateValue();
             return crate::Date::from_nsdate(&d);
         }
@@ -963,7 +995,7 @@ impl Node {
     /// Set the date shown in a `<date_picker>`. Diff-guarded.
     pub fn set_date_picker_value(self, d: crate::Date) {
         use objc2_app_kit::NSDatePicker;
-        if let Some(dp) = downcast::<NSDatePicker>(&self.ns_view()) {
+        if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let current = dp.dateValue();
             let current_secs = current.timeIntervalSince1970();
             if (current_secs - d.seconds_since_epoch).abs() > f64::EPSILON {
@@ -975,7 +1007,7 @@ impl Node {
     /// Read the value of a `<stepper>`. 0.0 otherwise.
     pub fn stepper_value(self) -> f64 {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             return s.doubleValue();
         }
         0.0
@@ -984,7 +1016,7 @@ impl Node {
     /// Set the value of a `<stepper>`. Diff-guarded.
     pub fn set_stepper_value(self, v: f64) {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             if (s.doubleValue() - v).abs() > f64::EPSILON {
                 s.setDoubleValue(v);
             }
@@ -994,7 +1026,7 @@ impl Node {
     /// Configure a `<stepper>`'s min/max/increment in one call.
     pub fn configure_stepper(self, min: f64, max: f64, increment: f64) {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMinValue(min);
             s.setMaxValue(max);
             s.setIncrement(increment);
@@ -1003,21 +1035,21 @@ impl Node {
 
     pub fn set_stepper_min(self, v: f64) {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMinValue(v);
         }
     }
 
     pub fn set_stepper_max(self, v: f64) {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMaxValue(v);
         }
     }
 
     pub fn set_stepper_increment(self, v: f64) {
         use objc2_app_kit::NSStepper;
-        if let Some(s) = downcast::<NSStepper>(&self.ns_view()) {
+        if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setIncrement(v);
         }
     }
@@ -1025,7 +1057,7 @@ impl Node {
     /// Set the `value` of a `<progress_indicator>`.
     pub fn set_progress_value(self, v: f64) {
         use objc2_app_kit::NSProgressIndicator;
-        if let Some(p) = downcast::<NSProgressIndicator>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setDoubleValue(v);
         }
     }
@@ -1033,7 +1065,7 @@ impl Node {
     /// Switch a `<progress_indicator>` between determinate / spinner.
     pub fn set_progress_indeterminate(self, indeterminate: bool) {
         use objc2_app_kit::NSProgressIndicator;
-        if let Some(p) = downcast::<NSProgressIndicator>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setIndeterminate(indeterminate);
             unsafe {
                 if indeterminate {
@@ -1048,7 +1080,7 @@ impl Node {
     /// Set the progress max value. Default 1.0.
     pub fn set_progress_max(self, max: f64) {
         use objc2_app_kit::NSProgressIndicator;
-        if let Some(p) = downcast::<NSProgressIndicator>(&self.ns_view()) {
+        if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setMaxValue(max);
         }
     }
@@ -1056,7 +1088,7 @@ impl Node {
     /// Read the current color from an `<color_well>`.
     pub fn color_well_value(self) -> crate::Color {
         use objc2_app_kit::NSColorWell;
-        if let Some(cw) = downcast::<NSColorWell>(&self.ns_view()) {
+        if let Some(cw) = self.try_downcast::<NSColorWell>() {
             let c = cw.color();
             return crate::Color::from_nscolor(&c)
                 .unwrap_or(crate::Color::BLACK);
@@ -1067,7 +1099,7 @@ impl Node {
     /// Set the color shown in an `<color_well>`. No-op otherwise.
     pub fn set_color_well_value(self, color: crate::Color) {
         use objc2_app_kit::NSColorWell;
-        if let Some(cw) = downcast::<NSColorWell>(&self.ns_view()) {
+        if let Some(cw) = self.try_downcast::<NSColorWell>() {
             cw.setColor(&color.to_nscolor());
         }
     }
@@ -1100,7 +1132,7 @@ impl Node {
     /// Load an image into an `<image_view>` from a file path.
     pub fn set_image_view_path(self, path: &str) {
         use objc2_app_kit::{NSImage, NSImageView};
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
             return;
         };
@@ -1120,7 +1152,7 @@ impl Node {
     pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
         use objc2_app_kit::{NSImage, NSImageView};
         use objc2_foundation::NSData;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
             return;
         };
@@ -1139,7 +1171,7 @@ impl Node {
     /// Set an `<image_view>` to render an SF Symbol by name.
     pub fn set_image_view_sf_symbol(self, name: &str) {
         use objc2_app_kit::NSImageView;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
             return;
         };
@@ -1151,7 +1183,7 @@ impl Node {
     /// Set an image view's tint color.
     pub fn set_image_view_tint(self, color: crate::Color) {
         use objc2_app_kit::NSImageView;
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
             return;
         };
@@ -1165,7 +1197,7 @@ impl Node {
 
     /// Set the editability of the NSTextView inside a `<text_view>`.
     pub fn set_text_view_editable(self, editable: bool) {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return; };
         let Some(scroll) = downcast::<objc2_app_kit::NSScrollView>(&view)
         else {
             return;
@@ -1183,7 +1215,7 @@ impl Node {
 
     /// Read the value of a `<text_view>`. `None` for non-text_view.
     pub fn text_view_value(self) -> Option<String> {
-        let view = self.ns_view();
+        let view = self.try_ns_view()?;
         let scroll = downcast::<objc2_app_kit::NSScrollView>(&view)?;
         let doc = scroll.documentView()?;
         let any_doc: &AnyObject = &doc;
@@ -1193,7 +1225,7 @@ impl Node {
 
     /// Make this element the window's first responder (focus).
     pub fn focus(self) -> bool {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return false; };
         let Some(window) = view.window() else { return false };
         let responder: &objc2_app_kit::NSResponder = &view;
         window.makeFirstResponder(Some(responder))
@@ -1201,7 +1233,7 @@ impl Node {
 
     /// Resign first-responder status (clears focus window-wide).
     pub fn blur(self) -> bool {
-        let view = self.ns_view();
+        let Some(view) = self.try_ns_view() else { return false; };
         let Some(window) = view.window() else { return false };
         window.makeFirstResponder(None)
     }
@@ -1235,7 +1267,7 @@ impl Node {
 
     /// Update the displayed string on a text-label Node.
     pub fn set_text(self, content: &str) {
-        if let Some(field) = downcast::<NSTextField>(&self.ns_view()) {
+        if let Some(field) = self.try_downcast::<NSTextField>() {
             field.setStringValue(&NSString::from_str(content));
         }
         crate::layout::schedule_relayout(self);

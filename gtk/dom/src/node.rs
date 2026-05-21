@@ -80,7 +80,23 @@ impl Node {
         renderer::view::<B>(self.id).expect("Node id must exist in the store")
     }
 
-    /// `Some(widget)` if the node is still in the store.
+    /// `Some(widget)` if the node is still in the store, else `None`.
+    ///
+    /// Setters resolve their widget through this (not the panicking
+    /// `widget()`) so a reactive effect that fires *after* the node was
+    /// torn down is a graceful no-op rather than a panic. Under the
+    /// `Copy`-`NodeId` model a `RenderEffect` closure captures only the
+    /// id (it pins nothing), so an async-scheduled effect re-run can
+    /// outlive its node.
+    ///
+    /// This is **defense-in-depth, not the primary fix**. The real fix
+    /// is that `ElementState::unmount` drops `_effects` before tearing
+    /// the node down (see `leptos_gtk::gtk::element`), which ends the
+    /// effects' driver futures so they can't re-run on a freed node. We
+    /// keep this guard anyway as a uniform safety net (and because it
+    /// matches the web backend, where setting an attribute on a
+    /// detached-but-alive node is harmless). Trade-off: a future
+    /// regression of the unmount cleanup is swallowed silently here.
     pub fn try_widget(self) -> Option<gtk4::Widget> {
         renderer::view::<B>(self.id)
     }
@@ -248,7 +264,7 @@ impl Node {
 
     /// Set the title on a button-flavoured widget. No-op otherwise.
     pub fn set_title(self, value: &str) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(button) = widget.downcast_ref::<gtk4::Button>() {
             if button.label().as_deref() != Some(value) {
@@ -273,7 +289,7 @@ impl Node {
 
     /// Set the value/text on an `Entry` / `PasswordEntry` / `Label`.
     pub fn set_value(self, value: &str) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
             if entry.text().as_str() != value {
@@ -298,7 +314,7 @@ impl Node {
 
     /// Set placeholder text on an `Entry` / `PasswordEntry`.
     pub fn set_placeholder(self, value: &str) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
             if entry.placeholder_text().as_deref() != Some(value) {
@@ -318,7 +334,7 @@ impl Node {
 
     /// Toggle widget visibility.
     pub fn set_hidden(self, value: bool) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         if widget.is_visible() == value {
             widget.set_visible(!value);
         }
@@ -326,7 +342,7 @@ impl Node {
 
     /// Toggle widget sensitivity (gtk's "enabled").
     pub fn set_enabled(self, value: bool) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         if widget.is_sensitive() != value {
             widget.set_sensitive(value);
         }
@@ -334,7 +350,7 @@ impl Node {
 
     /// Set the on/off state on a `gtk::CheckButton`. No-op otherwise.
     pub fn set_checked(self, value: bool) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
             if check.is_active() != value {
                 check.set_active(value);
@@ -353,7 +369,7 @@ impl Node {
     }
 
     pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
-        let widget = self.widget();
+        let Some(widget) = self.try_widget() else { return; };
         if widget.downcast_ref::<gtk4::Entry>().is_some() {
             crate::event::on_text_change(&widget, move |_| cb());
             return;
@@ -398,7 +414,8 @@ impl Node {
     }
 
     pub fn set_double_value(self, v: f64) {
-        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             if (s.value() - v).abs() > f64::EPSILON {
                 s.set_value(v);
             }
@@ -406,19 +423,22 @@ impl Node {
     }
 
     pub fn set_slider_min(self, v: f64) {
-        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             s.adjustment().set_lower(v);
         }
     }
 
     pub fn set_slider_max(self, v: f64) {
-        if let Some(s) = self.widget().downcast_ref::<gtk4::Scale>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             s.adjustment().set_upper(v);
         }
     }
 
     pub fn set_popup_items(self, items: &[String]) {
-        if let Some(dd) = self.widget().downcast_ref::<gtk4::DropDown>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
             let model = gtk4::StringList::new(&[]);
             for it in items {
                 model.append(it);
@@ -436,7 +456,8 @@ impl Node {
     }
 
     pub fn set_popup_selection(self, idx: u32) {
-        if let Some(dd) = self.widget().downcast_ref::<gtk4::DropDown>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
             if dd.selected() != idx {
                 dd.set_selected(idx);
             }
@@ -445,7 +466,7 @@ impl Node {
 
     /// Set this view's opacity (0.0..=1.0).
     pub fn set_alpha(self, alpha: f64) {
-        let w = self.widget();
+        let Some(w) = self.try_widget() else { return; };
         let clamped = alpha.clamp(0.0, 1.0);
         if (w.opacity() - clamped).abs() > f64::EPSILON {
             w.set_opacity(clamped);
@@ -454,7 +475,7 @@ impl Node {
 
     /// Set this view's tooltip text. Empty string clears it.
     pub fn set_tool_tip(self, tip: &str) {
-        let w = self.widget();
+        let Some(w) = self.try_widget() else { return; };
         if tip.is_empty() {
             w.set_tooltip_text(None);
         } else {
@@ -464,12 +485,14 @@ impl Node {
 
     /// Grab focus.
     pub fn focus(self) -> bool {
-        self.widget().grab_focus()
+        let Some(widget) = self.try_widget() else { return false; };
+        widget.grab_focus()
     }
 
     /// Resign focus.
     pub fn blur(self) -> bool {
-        if let Some(root) = self.widget().root() {
+        let Some(widget) = self.try_widget() else { return false; };
+        if let Some(root) = widget.root() {
             root.set_focus(None::<&gtk4::Widget>);
             true
         } else {
@@ -497,7 +520,8 @@ impl Node {
 
     /// Update the displayed string on a text-label Node.
     pub fn set_text(self, content: &str) {
-        if let Some(label) = self.widget().downcast_ref::<gtk4::Label>() {
+        let Some(widget) = self.try_widget() else { return; };
+        if let Some(label) = widget.downcast_ref::<gtk4::Label>() {
             if label.label().as_str() != content {
                 label.set_label(content);
                 crate::layout::schedule_relayout(self);

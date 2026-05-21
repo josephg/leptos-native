@@ -100,6 +100,34 @@ impl Node {
         renderer::view::<B>(self.id).map(|sw| sw.take())
     }
 
+    /// Downcast the live UIView to `T`. `None` if the node is gone
+    /// from the store OR the view isn't a `T`.
+    ///
+    /// Setters and readers go through this (not the panicking
+    /// `ui_view()`) so a reactive effect that fires *after* the node
+    /// was torn down is a graceful no-op rather than a panic. Under
+    /// the `Copy`-`NodeId` model a `RenderEffect` closure captures
+    /// only the id (it pins nothing), so an async-scheduled effect
+    /// re-run can outlive its node.
+    ///
+    /// This is **defense-in-depth, not the primary fix**. The real fix
+    /// is that `ElementState::unmount` drops `_effects` before tearing
+    /// the node down (see `leptos_uikit::ios::element`), which ends the
+    /// effects' driver futures so they can't re-run on a freed node. We
+    /// keep this guard anyway because a stray late-fire here would
+    /// panic inside an async effect poll, which the runtime escalates
+    /// to a process *abort* (not a catchable unwind) — far worse in
+    /// production than a no-op. It also matches the web backend, where
+    /// setting an attribute on a detached-but-alive node is harmless.
+    /// Trade-off: a future regression of the unmount cleanup is
+    /// swallowed silently here rather than failing loudly.
+    fn try_downcast<T>(self) -> Option<Retained<T>>
+    where
+        T: DowncastTarget,
+    {
+        self.try_ui_view().and_then(|v| downcast::<T>(&v))
+    }
+
     pub fn ui_view_retained(self) -> Retained<UIView> {
         self.ui_view()
     }
@@ -275,7 +303,7 @@ impl Node {
     /// Set the title on a UIButton (Normal state) or the text on a
     /// UILabel. No-op on other classes.
     pub fn set_title(self, value: &str) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         let mut changed = false;
         if let Some(button) = downcast::<UIButton>(&view) {
             let current = button
@@ -305,7 +333,7 @@ impl Node {
     /// Set the text/value on a UITextField or UITextView. No-op on
     /// other classes.
     pub fn set_value(self, value: &str) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         let mut changed = false;
         if let Some(field) = downcast::<UITextField>(&view) {
             let current = field.text().map(|s| s.to_string()).unwrap_or_default();
@@ -328,7 +356,7 @@ impl Node {
 
     /// Set the placeholder on a UITextField. No-op on other classes.
     pub fn set_placeholder(self, value: &str) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if let Some(field) = downcast::<UITextField>(&view) {
             let current: String = field
                 .placeholder()
@@ -343,7 +371,7 @@ impl Node {
 
     /// Toggle UIView visibility.
     pub fn set_hidden(self, value: bool) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if view.isHidden() != value {
             view.setHidden(value);
         }
@@ -353,7 +381,7 @@ impl Node {
     /// `isUserInteractionEnabled` on the UIView; for UIControl
     /// subclasses, also sets `isEnabled`.
     pub fn set_enabled(self, value: bool) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if view.isUserInteractionEnabled() != value {
             view.setUserInteractionEnabled(value);
         }
@@ -367,7 +395,7 @@ impl Node {
     /// Set the on/off state on a UISwitch (animated). No-op on
     /// other classes.
     pub fn set_checked(self, value: bool) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(&view) {
             if sw.isOn() != value {
                 sw.setOn_animated(value, true);
@@ -376,7 +404,7 @@ impl Node {
     }
 
     pub fn on_click(self, cb: impl FnMut() + 'static) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if downcast::<UIControl>(&view).is_some() {
             crate::event::on_control_action(self, cb);
         } else {
@@ -389,7 +417,7 @@ impl Node {
     }
 
     pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
-        if downcast::<UITextField>(&self.ui_view()).is_some() {
+        if self.try_downcast::<UITextField>().is_some() {
             crate::event::on_text_field_change(self, move |_| cb());
             return;
         }
@@ -426,21 +454,21 @@ impl Node {
     }
 
     pub fn checked(self) -> bool {
-        if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(&self.ui_view()) {
+        if let Some(sw) = self.try_downcast::<objc2_ui_kit::UISwitch>() {
             return sw.isOn();
         }
         false
     }
 
     pub fn double_value(self) -> f64 {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
+        if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             return sl.value() as f64;
         }
         0.0
     }
 
     pub fn set_double_value(self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
+        if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             let current = sl.value() as f64;
             if (current - v).abs() > f64::EPSILON {
                 sl.setValue(v as f32);
@@ -449,20 +477,20 @@ impl Node {
     }
 
     pub fn set_slider_min(self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
+        if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             sl.setMinimumValue(v as f32);
         }
     }
 
     pub fn set_slider_max(self, v: f64) {
-        if let Some(sl) = downcast::<objc2_ui_kit::UISlider>(&self.ui_view()) {
+        if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             sl.setMaximumValue(v as f32);
         }
     }
 
     pub fn set_segmented_items(self, items: &[String]) {
         let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         else {
             return;
         };
@@ -481,7 +509,7 @@ impl Node {
 
     pub fn segmented_selection(self) -> isize {
         if let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         {
             return sc.selectedSegmentIndex();
         }
@@ -490,7 +518,7 @@ impl Node {
 
     pub fn set_segmented_selection(self, idx: isize) {
         if let Some(sc) =
-            downcast::<objc2_ui_kit::UISegmentedControl>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         {
             if sc.selectedSegmentIndex() != idx {
                 sc.setSelectedSegmentIndex(idx);
@@ -505,7 +533,7 @@ impl Node {
         on_select: impl FnMut(usize) + 'static,
     ) {
         use objc2_ui_kit::{UIAction, UIMenu, UIMenuElement, UIMenuElementState};
-        let Some(button) = downcast::<UIButton>(&self.ui_view()) else {
+        let Some(button) = self.try_downcast::<UIButton>() else {
             return;
         };
         let mtm = MainThreadMarker::new()
@@ -559,7 +587,7 @@ impl Node {
     }
 
     pub fn set_popup_selection(self, items: &[String], idx: usize) {
-        let Some(button) = downcast::<UIButton>(&self.ui_view()) else {
+        let Some(button) = self.try_downcast::<UIButton>() else {
             return;
         };
         if let Some(t) = items.get(idx) {
@@ -580,7 +608,7 @@ impl Node {
 
     pub fn set_color_well_value(self, color: crate::Color) {
         use objc2_ui_kit::UIColorWell;
-        let Some(cw) = downcast::<UIColorWell>(&self.ui_view()) else {
+        let Some(cw) = self.try_downcast::<UIColorWell>() else {
             return;
         };
         cw.setSelectedColor(Some(&color.to_uicolor()));
@@ -588,7 +616,7 @@ impl Node {
 
     pub fn color_well_value(self) -> Option<crate::Color> {
         use objc2_ui_kit::UIColorWell;
-        let cw = downcast::<UIColorWell>(&self.ui_view())?;
+        let cw = self.try_downcast::<UIColorWell>()?;
         let c = cw.selectedColor()?;
         crate::Color::from_uicolor(&c)
     }
@@ -598,7 +626,7 @@ impl Node {
         mut cb: impl FnMut(crate::Color) + 'static,
     ) {
         use objc2_ui_kit::UIColorWell;
-        let Some(cw) = downcast::<UIColorWell>(&self.ui_view()) else {
+        let Some(cw) = self.try_downcast::<UIColorWell>() else {
             return;
         };
         let cw_for_cb: Retained<UIColorWell> = cw.retain();
@@ -612,7 +640,7 @@ impl Node {
     }
 
     pub fn set_alpha(self, alpha: f64) {
-        let v = self.ui_view();
+        let Some(v) = self.try_ui_view() else { return; };
         let clamped = alpha.clamp(0.0, 1.0);
         if (v.alpha() - clamped).abs() > f64::EPSILON {
             v.setAlpha(clamped);
@@ -620,7 +648,7 @@ impl Node {
     }
 
     pub fn set_background_color(self, color: Option<crate::Color>) {
-        let v = self.ui_view();
+        let Some(v) = self.try_ui_view() else { return; };
         match color {
             Some(c) => v.setBackgroundColor(Some(&c.to_uicolor())),
             None => v.setBackgroundColor(None),
@@ -628,7 +656,8 @@ impl Node {
     }
 
     pub fn set_corner_radius(self, radius: f64) {
-        let layer = self.ui_view().layer();
+        let Some(__v) = self.try_ui_view() else { return; };
+        let layer = __v.layer();
         if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
             layer.setCornerRadius(radius);
             layer.setMasksToBounds(radius > 0.0);
@@ -636,14 +665,16 @@ impl Node {
     }
 
     pub fn set_border_width(self, width: f64) {
-        let layer = self.ui_view().layer();
+        let Some(__v) = self.try_ui_view() else { return; };
+        let layer = __v.layer();
         if (layer.borderWidth() - width).abs() > f64::EPSILON {
             layer.setBorderWidth(width);
         }
     }
 
     pub fn set_border_color(self, color: Option<crate::Color>) {
-        let layer = self.ui_view().layer();
+        let Some(__v) = self.try_ui_view() else { return; };
+        let layer = __v.layer();
         match color {
             Some(c) => {
                 let cg = unsafe { c.to_uicolor().CGColor() };
@@ -654,7 +685,7 @@ impl Node {
     }
 
     pub fn set_text_color(self, color: crate::Color) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         let uicolor = color.to_uicolor();
 
         if let Some(field) = downcast::<UITextField>(&view) {
@@ -671,7 +702,7 @@ impl Node {
     }
 
     pub fn set_text_alignment(self, alignment: crate::TextAlignment) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
 
         if let Some(field) = downcast::<UITextField>(&view) {
             field.setTextAlignment(alignment.0);
@@ -690,7 +721,7 @@ impl Node {
         use objc2_ui_kit::UIFont;
         let font = UIFont::systemFontOfSize(points);
 
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         let mut applied = false;
         if let Some(field) = downcast::<UITextField>(&view) {
             field.setFont(Some(&font));
@@ -713,7 +744,7 @@ impl Node {
     }
 
     pub fn set_text_field_bordered(self, bordered: bool) {
-        if let Some(f) = downcast::<UITextField>(&self.ui_view()) {
+        if let Some(f) = self.try_downcast::<UITextField>() {
             use objc2_ui_kit::UITextBorderStyle;
             f.setBorderStyle(if bordered {
                 UITextBorderStyle::RoundedRect
@@ -733,7 +764,7 @@ impl Node {
 
     pub fn set_date_picker_style(self, style: crate::DatePickerStyle) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             dp.setPreferredDatePickerStyle(style.0);
         }
@@ -741,7 +772,7 @@ impl Node {
 
     pub fn set_date_picker_min(self, d: Option<crate::Date>) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMinimumDate(nd.as_deref());
@@ -750,7 +781,7 @@ impl Node {
 
     pub fn set_date_picker_max(self, d: Option<crate::Date>) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             let nd = d.map(|d| d.to_nsdate());
             dp.setMaximumDate(nd.as_deref());
@@ -761,7 +792,7 @@ impl Node {
 
     pub fn set_has_horizontal_scroller(self, has: bool) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIScrollView>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIScrollView>()
         {
             s.setShowsHorizontalScrollIndicator(has);
         }
@@ -769,7 +800,7 @@ impl Node {
 
     pub fn set_has_vertical_scroller(self, has: bool) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIScrollView>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIScrollView>()
         {
             s.setShowsVerticalScrollIndicator(has);
         }
@@ -779,7 +810,7 @@ impl Node {
 
     pub fn date_picker_value(self) -> crate::Date {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             let d = dp.date();
             return crate::Date::from_nsdate(&d);
@@ -789,7 +820,7 @@ impl Node {
 
     pub fn set_date_picker_value(self, d: crate::Date) {
         if let Some(dp) =
-            downcast::<objc2_ui_kit::UIDatePicker>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             let current = dp.date();
             let current_secs = current.timeIntervalSince1970();
@@ -803,7 +834,7 @@ impl Node {
 
     pub fn stepper_value(self) -> f64 {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIStepper>()
         {
             return s.value() as f64;
         }
@@ -812,7 +843,7 @@ impl Node {
 
     pub fn set_stepper_value(self, v: f64) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIStepper>()
         {
             if (s.value() as f64 - v).abs() > f64::EPSILON {
                 s.setValue(v);
@@ -827,7 +858,7 @@ impl Node {
         increment: f64,
     ) {
         if let Some(s) =
-            downcast::<objc2_ui_kit::UIStepper>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIStepper>()
         {
             s.setMinimumValue(min);
             s.setMaximumValue(max);
@@ -837,7 +868,7 @@ impl Node {
 
     pub fn set_progress_value(self, v: f64) {
         if let Some(p) =
-            downcast::<objc2_ui_kit::UIProgressView>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UIProgressView>()
         {
             p.setProgress(v as f32);
         }
@@ -855,7 +886,7 @@ impl Node {
 
     pub fn set_text_view_editable(self, editable: bool) {
         if let Some(tv) =
-            downcast::<objc2_ui_kit::UITextView>(&self.ui_view())
+            self.try_downcast::<objc2_ui_kit::UITextView>()
         {
             if tv.isEditable() != editable {
                 tv.setEditable(editable);
@@ -865,23 +896,23 @@ impl Node {
 
     pub fn text_view_value(self) -> Option<String> {
         let tv =
-            downcast::<objc2_ui_kit::UITextView>(&self.ui_view())?;
+            self.try_downcast::<objc2_ui_kit::UITextView>()?;
         Some(tv.text().to_string())
     }
 
     pub fn focus(self) -> bool {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return false; };
         view.becomeFirstResponder()
     }
 
     pub fn blur(self) -> bool {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return false; };
         view.resignFirstResponder()
     }
 
     pub fn set_image_view_path(self, path: &str) {
         use objc2_ui_kit::{UIImage, UIImageView};
-        let Some(iv) = downcast::<UIImageView>(&self.ui_view()) else {
+        let Some(iv) = self.try_downcast::<UIImageView>() else {
             return;
         };
         if path.is_empty() {
@@ -898,7 +929,7 @@ impl Node {
     pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
         use objc2_ui_kit::{UIImage, UIImageView};
         use objc2_foundation::NSData;
-        let Some(iv) = downcast::<UIImageView>(&self.ui_view()) else {
+        let Some(iv) = self.try_downcast::<UIImageView>() else {
             return;
         };
         let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
@@ -922,7 +953,7 @@ impl Node {
     }
 
     pub fn set_sf_symbol(self, name: &str) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         let image = Self::sf_symbol_image(name);
         if let Some(button) = downcast::<UIButton>(&view) {
             button.setImage_forState(
@@ -939,7 +970,7 @@ impl Node {
     }
 
     pub fn set_tint(self, color: Option<crate::Color>) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         unsafe {
             if let Some(c) = color {
                 view.setTintColor(Some(&c.to_uicolor()));
@@ -986,7 +1017,7 @@ impl Node {
     /// Update the displayed string on a text-label Node. No-op if
     /// the backing view isn't a UILabel.
     pub fn set_text(self, content: &str) {
-        let view = self.ui_view();
+        let Some(view) = self.try_ui_view() else { return; };
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             label.setText(Some(&NSString::from_str(content)));
         }

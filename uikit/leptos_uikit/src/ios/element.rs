@@ -181,6 +181,13 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
 {
     fn unmount(&mut self) {
         self.children.unmount();
+        // Drop reactive-attr effects before tearing the node down, so a
+        // signal write queued just before unmount can't re-run a setter
+        // against a freed node (and so the subscription is released
+        // promptly rather than leaking until the `ElementState` value
+        // drops). Each `RenderEffect` is the sole strong owner of its
+        // `EffectInner`; dropping it ends the effect's driver future.
+        self._effects.clear();
         self.el.teardown();
     }
 

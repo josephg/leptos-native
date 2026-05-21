@@ -214,9 +214,21 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
 {
     fn unmount(&mut self) {
         // Recurse first so children drop their Taffy/handler entries
-        // before we drop ours. Then teardown(self.el) removes our own
-        // entry and detaches us from our superview.
+        // before we drop ours.
         self.children.unmount();
+        // Drop our reactive-attr effects BEFORE tearing the node down.
+        // Each `RenderEffect` is the sole strong owner of its
+        // `EffectInner` (the spawned driver future holds only a Weak —
+        // `to_any_subscriber` downgrades). Dropping the handle closes
+        // the effect's notification channel, so its driver future ends
+        // and it can never re-run. If we left them (the old behavior),
+        // a signal write queued just before unmount would be delivered
+        // on the next run-loop tick and fire the setter against a
+        // node that `teardown` already removed — the use-after-free the
+        // setters' `try_*` guards otherwise have to swallow. This also
+        // releases the subscription promptly instead of leaking it
+        // until the `ElementState` value itself drops.
+        self._effects.clear();
         self.el.teardown();
     }
 
