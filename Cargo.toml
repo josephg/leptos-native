@@ -16,69 +16,26 @@ members = [
   "uikit/dom",
 
   # cocoa examples
-  "cocoa/examples/animation",
-  "cocoa/examples/async_derived",
-  "cocoa/examples/bind_tuple_form",
-  "cocoa/examples/checkbox",
-  "cocoa/examples/component_event_test",
-  "cocoa/examples/counter",
-  "cocoa/examples/counter_without_macros",
-  "cocoa/examples/counters",
-  "cocoa/examples/dark_mode",
-  "cocoa/examples/directives",
-  "cocoa/examples/error_boundary",
-  "cocoa/examples/greeter",
-  "cocoa/examples/grid",
-  "cocoa/examples/login_form",
-  "cocoa/examples/menu_demo",
-  "cocoa/examples/multi_error_boundary",
-  "cocoa/examples/pages",
-  "cocoa/examples/parent_child",
-  "cocoa/examples/persistent_counter",
-  "cocoa/examples/scroll_view",
-  "cocoa/examples/settings",
-  "cocoa/examples/show_fallback",
-  "cocoa/examples/showcase",
-  "cocoa/examples/slots",
-  "cocoa/examples/spotify",
-  "cocoa/examples/stores",
-  "cocoa/examples/timer",
-  "cocoa/examples/toolbar_demo",
-  "cocoa/examples/transition",
-  "cocoa/examples/two_windows",
+  "cocoa/examples/*",
 
   # Cocoa correctness/leak fuzzer (binary).
   "cocoa/fuzzer",
 
-  # Network-dependent async examples — listed in `members` so they
-  # build with `cargo build --workspace`, but kept OUT of
-  # `default-members` so they're skipped by `cargo build` with no
-  # args. See docs/book/src/async/ for what they demonstrate.
-  "cocoa/examples/async_patterns",
-  "cocoa/examples/ipify",
-  "cocoa/examples/ipify_compio",
-  "cocoa/examples/ipify_current_thread",
-  "cocoa/examples/placecats",
+#  "gtk/examples/*",
+
+#  # Network-dependent async examples — listed in `members` so they
+#  # build with `cargo build --workspace`, but kept OUT of
+#  # `default-members` so they're skipped by `cargo build` with no
+#  # args. See docs/book/src/async/ for what they demonstrate.
+#  "cocoa/examples/async_patterns",
+#  "cocoa/examples/ipify",
+#  "cocoa/examples/ipify_compio",
+#  "cocoa/examples/ipify_current_thread",
+#  "cocoa/examples/placecats",
 
   # iOS examples live in their own workspace at uikit/examples/.
   # See uikit/examples/Cargo.toml.
 
-  # GTK examples — analogous to the cocoa examples list. Each
-  # example's `[target.'cfg(target_os = "linux")'.dependencies]`
-  # gates the leptos_gtk dep so they compile to empty rlibs on
-  # macOS (still needed for `cargo build --workspace` to succeed
-  # cross-platform).
-  "gtk/examples/async_patterns",
-  "gtk/examples/checkbox",
-  "gtk/examples/counter",
-  "gtk/examples/counters",
-  "gtk/examples/greeter",
-  "gtk/examples/grid",
-  "gtk/examples/ipify",
-  "gtk/examples/login_form",
-  "gtk/examples/menu_demo",
-  "gtk/examples/persistent_settings",
-  "gtk/examples/settings",
 ]
 
 # `cargo test` / `cargo build` (no args) operate on `default-members`.
@@ -142,6 +99,16 @@ exclude = [
   # full TodoMVC). Kept in the source tree as documentation.
   "cocoa/examples/fetch",
   "cocoa/examples/todomvc",
+
+  # Network-dependent async examples — listed in `members` so they
+  # build with `cargo build --workspace`, but kept OUT of
+  # `default-members` so they're skipped by `cargo build` with no
+  # args. See docs/book/src/async/ for what they demonstrate.
+  "cocoa/examples/async_patterns",
+  "cocoa/examples/ipify",
+  "cocoa/examples/ipify_compio",
+  "cocoa/examples/ipify_current_thread",
+  "cocoa/examples/placecats",
 ]
 
 [workspace.package]

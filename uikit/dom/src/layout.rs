@@ -76,28 +76,28 @@ pub type NodeContext = renderer::NodeContext<IosBackend>;
 
 // Introspection over the global store (used by tests).
 pub fn node_count() -> usize {
-    renderer::node_count::<IosBackend>()
+    IosBackend::node_count()
 }
 pub fn style(id: NodeId) -> Option<Style> {
-    renderer::style::<IosBackend>(id)
+    IosBackend::style(id)
 }
 pub fn children(id: NodeId) -> Vec<NodeId> {
-    renderer::children::<IosBackend>(id)
+    IosBackend::children(id)
 }
 pub fn dirty(id: NodeId) -> bool {
-    renderer::dirty::<IosBackend>(id)
+    IosBackend::dirty(id)
 }
 pub fn parent(id: NodeId) -> Option<NodeId> {
-    renderer::parent::<IosBackend>(id)
+    IosBackend::parent(id)
 }
 pub fn contains(id: NodeId) -> bool {
-    renderer::contains::<IosBackend>(id)
+    IosBackend::contains(id)
 }
 pub fn layout(id: NodeId) -> Option<Layout> {
-    renderer::layout::<IosBackend>(id)
+    IosBackend::layout(id)
 }
 pub fn remove(id: NodeId) {
-    renderer::remove::<IosBackend>(id);
+    IosBackend::remove(id);
 }
 
 // ---------------------------------------------------------------------
@@ -117,7 +117,7 @@ fn layout_debug_enabled() -> bool {
 /// then schedule a relayout of the (former) parent's subtree.
 pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
     let node = *node.borrow();
-    let parent = renderer::parent::<IosBackend>(node.id());
+    let parent = IosBackend::parent(node.id());
     node.teardown();
     if let Some(pid) = parent {
         queue_relayout_for(pid);
@@ -131,26 +131,26 @@ pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
 // ---------------------------------------------------------------------
 
 pub fn schedule_relayout(node: Node) {
-    renderer::mark_dirty::<IosBackend>(node.id());
+    IosBackend::mark_dirty(node.id());
     queue_relayout_for(node.id());
 }
 
 fn queue_relayout_for(id: NodeId) {
-    let root = renderer::root_of::<IosBackend>(id);
-    renderer::queue_relayout::<IosBackend>(root);
+    let root = IosBackend::root_of(id);
+    IosBackend::queue_relayout(root);
     ensure_relayout_pass_scheduled();
 }
 
 fn ensure_relayout_pass_scheduled() {
-    if renderer::relayout_queued::<IosBackend>() {
+    if IosBackend::relayout_queued() {
         return;
     }
-    renderer::set_relayout_queued::<IosBackend>(true);
+    IosBackend::set_relayout_queued(true);
 
     DispatchQueue::main().exec_async(move || {
-        renderer::set_relayout_queued::<IosBackend>(false);
-        for root_id in renderer::take_pending_relayout::<IosBackend>() {
-            let Some(view) = renderer::view::<IosBackend>(root_id) else {
+        IosBackend::set_relayout_queued(false);
+        for root_id in IosBackend::take_pending_relayout() {
+            let Some(view) = IosBackend::view(root_id) else {
                 continue;
             };
             let root_view: Retained<UIView> = (*view).clone();
@@ -166,19 +166,19 @@ fn ensure_relayout_pass_scheduled() {
 
 pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = parent.borrow().id();
-    renderer::add_child::<IosBackend>(parent_id, child.borrow().id());
+    IosBackend::add_child(parent_id, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
 pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
     let parent_id = parent.borrow().id();
-    renderer::insert_child_at_index::<IosBackend>(parent_id, index, child.borrow().id());
+    IosBackend::insert_child_at_index(parent_id, index, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
 pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = parent.borrow().id();
-    renderer::remove_child::<IosBackend>(parent_id, child.borrow().id());
+    IosBackend::remove_child(parent_id, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
@@ -206,7 +206,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSi
         );
     }
     let root_id = root.borrow().id();
-    if !renderer::contains::<IosBackend>(root_id) {
+    if !IosBackend::contains(root_id) {
         return;
     }
 
@@ -216,7 +216,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSi
     // For axes where the root's style.size is `auto`, fill the
     // available space. Explicit axes are left alone.
     {
-        let mut style = renderer::style::<IosBackend>(root_id).unwrap_or_default();
+        let mut style = IosBackend::style(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -227,7 +227,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSi
             touched = true;
         }
         if touched {
-            renderer::set_style::<IosBackend>(root_id, style);
+            IosBackend::set_style(root_id, style);
         }
     }
 
@@ -235,7 +235,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSi
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    renderer::run_layout_pass::<IosBackend>(root_id, avail);
+    IosBackend::run_layout_pass(root_id, avail);
 
     // iOS-specific: scroll-view second pass.
     relayout_scroll_views(root_id);
@@ -245,7 +245,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSi
 }
 
 fn is_scroll_view(id: NodeId) -> bool {
-    renderer::meta::<IosBackend>(id).map(|m| m.is_scroll_view).unwrap_or(false)
+    IosBackend::meta(id).map(|m| m.is_scroll_view).unwrap_or(false)
 }
 
 /// Warn (once per process) when a `<scroll_view>` ends up with a
@@ -266,7 +266,7 @@ fn warn_if_scroll_view_unsized(
     static WARNED: Once = Once::new();
 
     if viewport.size.height < 0.5
-        && !renderer::children::<IosBackend>(root).is_empty()
+        && !IosBackend::children(root).is_empty()
     {
         WARNED.call_once(|| {
             eprintln!(
@@ -286,14 +286,14 @@ fn warn_if_scroll_view_unsized(
 
 fn relayout_scroll_views(root: NodeId) {
     if is_scroll_view(root) {
-        let viewport = match renderer::layout::<IosBackend>(root) {
+        let viewport = match IosBackend::layout(root) {
             Some(l) => l,
             None => return,
         };
         warn_if_scroll_view_unsized(root, &viewport);
         let viewport_w = viewport.size.width;
 
-        let saved_style = match renderer::style::<IosBackend>(root) {
+        let saved_style = match IosBackend::style(root) {
             Some(s) => s,
             None => return,
         };
@@ -302,30 +302,30 @@ fn relayout_scroll_views(root: NodeId) {
             width: Dimension::length(viewport_w),
             height: Dimension::auto(),
         };
-        renderer::set_style::<IosBackend>(root, probe_style);
-        renderer::mark_dirty::<IosBackend>(root);
+        IosBackend::set_style(root, probe_style);
+        IosBackend::mark_dirty(root);
 
         let avail = Size {
             width: AvailableSpace::Definite(viewport_w),
             height: AvailableSpace::MaxContent,
         };
-        renderer::run_layout_pass::<IosBackend>(root, avail);
+        IosBackend::run_layout_pass(root, avail);
 
-        renderer::set_style::<IosBackend>(root, saved_style);
-        renderer::mark_dirty::<IosBackend>(root);
+        IosBackend::set_style(root, saved_style);
+        IosBackend::mark_dirty(root);
         // Restore the scroll view's own final layout to the
         // first-pass viewport.
-        renderer::set_final_layout::<IosBackend>(root, viewport);
+        IosBackend::set_final_layout(root, viewport);
         return;
     }
 
-    for child in renderer::children::<IosBackend>(root) {
+    for child in IosBackend::children(root) {
         relayout_scroll_views(child);
     }
 }
 
 fn apply_frames(id: NodeId) {
-    for (_id, layout, view) in renderer::collect_subtree::<IosBackend>(id) {
+    for (_id, layout, view) in IosBackend::collect_subtree(id) {
         set_frame_from_layout(&view, &layout);
     }
 }
@@ -334,15 +334,15 @@ fn apply_frames(id: NodeId) {
 /// extent, and update the UIScrollView's `contentSize` so it scrolls.
 fn fixup_scroll_view_contents(root: NodeId) {
     if is_scroll_view(root) {
-        let Some(view) = renderer::view::<IosBackend>(root) else { return };
+        let Some(view) = IosBackend::view(root) else { return };
         let uiview: &UIView = &**view;
         let any: &AnyObject = uiview.as_ref();
         if let Some(scroll) = any.downcast_ref::<UIScrollView>() {
-            let viewport = renderer::layout::<IosBackend>(root).unwrap_or_default();
+            let viewport = IosBackend::layout(root).unwrap_or_default();
             let mut max_x: f32 = 0.0;
             let mut max_y: f32 = 0.0;
-            for child_id in renderer::children::<IosBackend>(root) {
-                let Some(cl) = renderer::layout::<IosBackend>(child_id) else {
+            for child_id in IosBackend::children(root) {
+                let Some(cl) = IosBackend::layout(child_id) else {
                     continue;
                 };
                 max_x = max_x.max(cl.location.x + cl.size.width);
@@ -363,7 +363,7 @@ fn fixup_scroll_view_contents(root: NodeId) {
         return;
     }
 
-    for child in renderer::children::<IosBackend>(root) {
+    for child in IosBackend::children(root) {
         fixup_scroll_view_contents(child);
     }
 }

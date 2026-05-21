@@ -11,6 +11,8 @@ use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
 };
+use ios_dom::layout::IosBackend;
+use renderer::LayoutBackend;
 
 // `Text` and `Placeholder` are aliases for `Element` — the renderer
 // trait wants distinct associated types, but on native they're all
@@ -117,7 +119,7 @@ impl Dom {
 /// The parent `Node` of `before` in the store, or `None` if it's a
 /// root. No view-wrapper synthesis needed under the thread-local store.
 fn parent_of(before: &Node) -> Option<Node> {
-    renderer::parent::<ios_dom::layout::IosBackend>(before.id())
+    IosBackend::parent(before.id())
         .map(Node::from_id)
 }
 

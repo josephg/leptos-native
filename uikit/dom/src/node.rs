@@ -25,9 +25,8 @@ use objc2_ui_kit::{UIButton, UIControl, UITextField, UIView};
 use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, fmt, rc::Rc};
-
-/// Per-port backend alias.
-type B = crate::layout::IosBackend;
+use crate::layout::IosBackend;
+use renderer::LayoutBackend;
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`.
@@ -65,7 +64,7 @@ impl Node {
         V: AsRef<UIView> + Message,
     {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(view) };
-        let id = renderer::new_leaf::<B>(
+        let id = IosBackend::new_leaf(
             default_style,
             SendWrapper::new(view.clone()),
             default_meta,
@@ -73,7 +72,7 @@ impl Node {
         );
         // Wire the handlers' view back-ref so teardown can nil
         // setDelegate / removeAllTargets while the view is still alive.
-        renderer::with_handlers_mut::<B, _>(id, |h| h.attach_view(view));
+        IosBackend::with_handlers_mut(id, |h| h.attach_view(view));
         Node { id }
     }
 
@@ -90,14 +89,14 @@ impl Node {
     /// The underlying UIView (owned clone). Main-thread only. Panics
     /// if the node is no longer in the store.
     pub fn ui_view(self) -> Retained<UIView> {
-        renderer::view::<B>(self.id)
+        IosBackend::view(self.id)
             .map(|sw| sw.take())
             .expect("Node id must exist in the store")
     }
 
     /// `Some(view)` if the node is still in the store.
     pub fn try_ui_view(self) -> Option<Retained<UIView>> {
-        renderer::view::<B>(self.id).map(|sw| sw.take())
+        IosBackend::view(self.id).map(|sw| sw.take())
     }
 
     /// Downcast the live UIView to `T`. `None` if the node is gone
@@ -142,32 +141,32 @@ impl Node {
         if let Some(view) = self.try_ui_view() {
             view.removeFromSuperview();
         }
-        renderer::remove::<B>(self.id);
+        IosBackend::remove(self.id);
     }
 
     // ---- Accessor surface ------------------------------------------
 
     pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = renderer::style::<B>(self.id).unwrap_or_default();
+        let style = IosBackend::style(self.id).unwrap_or_default();
         f(&style)
     }
 
     pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = renderer::style::<B>(self.id).unwrap_or_default();
+        let mut style = IosBackend::style(self.id).unwrap_or_default();
         let r = f(&mut style);
-        renderer::set_style::<B>(self.id, style);
+        IosBackend::set_style(self.id, style);
         r
     }
 
     pub fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R {
-        let meta = renderer::meta::<B>(self.id).unwrap_or_default();
+        let meta = IosBackend::meta(self.id).unwrap_or_default();
         f(&meta)
     }
 
     pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
-        let mut meta = renderer::meta::<B>(self.id).unwrap_or_default();
+        let mut meta = IosBackend::meta(self.id).unwrap_or_default();
         let r = f(&mut meta);
-        renderer::set_meta::<B>(self.id, meta);
+        IosBackend::set_meta(self.id, meta);
         r
     }
 
@@ -177,7 +176,7 @@ impl Node {
         self,
         f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
     ) -> R {
-        renderer::with_handlers_mut::<B, _>(self.id, f)
+        IosBackend::with_handlers_mut(self.id, f)
             .expect("Node id must exist in the store")
     }
 }
@@ -1093,7 +1092,7 @@ impl Node {
 
 impl WeakNode {
     pub fn upgrade(self) -> Option<Node> {
-        if renderer::contains::<B>(self.id) {
+        if IosBackend::contains(self.id) {
             Some(Node { id: self.id })
         } else {
             None
@@ -1101,7 +1100,7 @@ impl WeakNode {
     }
 
     pub fn is_alive(self) -> bool {
-        renderer::contains::<B>(self.id)
+        IosBackend::contains(self.id)
     }
 }
 
