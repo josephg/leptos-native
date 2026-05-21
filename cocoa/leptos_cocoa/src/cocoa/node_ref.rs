@@ -55,12 +55,12 @@ impl NodeRef {
     /// Reactive read — subscribes the current Effect to this
     /// ref. Returns the element if it's been mounted, else None.
     pub fn get(&self) -> Option<CocoaNode> {
-        self.0.get().map(|w| w.take())
+        self.0.get()
     }
 
     /// Non-reactive read.
     pub fn get_untracked(&self) -> Option<CocoaNode> {
-        self.0.get_untracked().map(|w| w.take())
+        self.0.get_untracked()
     }
 
     /// Run `f` once when the ref has been filled (i.e. when the
@@ -79,8 +79,8 @@ impl NodeRef {
 
     /// Internal: fill the ref. Called by builders' `Render::build`
     /// after constructing their underlying CocoaNode.
-    pub fn load(&self, el: &CocoaNode) {
-        self.0.set(Some(SendWrapper::new(el.clone())));
+    pub fn load(&self, el: CocoaNode) {
+        self.0.set(Some(el));
     }
 }
 

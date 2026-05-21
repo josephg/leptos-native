@@ -1102,7 +1102,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -1294,7 +1294,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -1541,7 +1541,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -1738,7 +1738,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -2039,7 +2039,7 @@ where
         effects.extend(apply_layout(el, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -2397,7 +2397,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -2619,7 +2619,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -2820,7 +2820,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -2976,7 +2976,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -3143,7 +3143,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -3343,7 +3343,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -3696,7 +3696,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
@@ -3850,7 +3850,7 @@ where
         effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         crate::cocoa::directives::run_all(self.directives, el);
