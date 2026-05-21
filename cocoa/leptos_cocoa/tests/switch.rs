@@ -32,7 +32,7 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 fn arm(
     when: impl Fn() -> bool + Send + 'static,
     text: &'static str,
-) -> leptos_native::control_flow::Match<leptos_cocoa::cocoa::element::Label, Dom> {
+) -> leptos_native::control_flow::Match<leptos_cocoa::cocoa::element::Label, CocoaDom> {
     leptos_native::control_flow::Match(
         leptos_native::control_flow::MatchProps::builder()
             .when(when)
@@ -44,9 +44,9 @@ fn arm(
 /// Mount a renderable view inside a host vstack so we can inspect
 /// what actually got mounted as direct subviews. Returns the host
 /// and the View::State (kept alive for the test's lifetime).
-fn mount_into_host<V: Render<Dom> + 'static>(
+fn mount_into_host<V: Render<CocoaDom> + 'static>(
     view: V,
-) -> (CocoaNode, <V as Render<Dom>>::State) {
+) -> (CocoaNode, <V as Render<CocoaDom>>::State) {
     let host = CocoaNode::create_container_with(common::test_mtm());
     let mut state = view.build();
     state.mount(host, None);

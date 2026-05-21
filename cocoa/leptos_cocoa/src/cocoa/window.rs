@@ -20,7 +20,7 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
-use crate::Dom;
+use crate::CocoaDom;
 use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaNode, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
@@ -270,11 +270,11 @@ impl<Ch> SupportsWindowEvent<CloseEvent> for Window<Ch> {}
 // panic. The impl is still required so `View<Window<...>>` can
 // satisfy `IntoView<Dom>` when a Window is returned from a
 // `#[component]`.
-impl<Ch> AddAnyAttr<Dom> for Window<Ch> {
+impl<Ch> AddAnyAttr<CocoaDom> for Window<Ch> {
     #[track_caller]
     fn add_any_attr<A>(self, _attr: A) -> Self
     where
-        A: ApplyAttr<Dom>,
+        A: ApplyAttr<CocoaDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Window. Spread attributes \
@@ -303,7 +303,7 @@ pub struct WindowState {
     _effects: Vec<RenderEffect<()>>,
 }
 
-impl<Ch: Render<Dom>> Render<Dom> for Window<Ch>
+impl<Ch: Render<CocoaDom>> Render<CocoaDom> for Window<Ch>
 where
     Ch::State: 'static,
 {
@@ -442,7 +442,7 @@ where
     }
 }
 
-impl Mountable<Dom> for WindowState {
+impl Mountable<CocoaDom> for WindowState {
     fn unmount(&mut self) {
         // Programmatic close → AppKit fires windowWillClose: →
         // delegate runs the cleanup closure (idempotent: it Option-
@@ -459,7 +459,7 @@ impl Mountable<Dom> for WindowState {
         // Element. The NSWindow was opened in `build()`.
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaDom>) -> bool {
         false
     }
 

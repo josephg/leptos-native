@@ -34,7 +34,7 @@
 //! cleanup happens before the process exits — rather than being
 //! skipped via `mem::forget`.
 
-use crate::{gtk::window::window, Dom};
+use crate::{gtk::window::window, GtkDom};
 use gtk4::prelude::*;
 use crate::dom::app::{init_app, run_loop};
 use reactive_graph::owner::Owner;
@@ -146,7 +146,7 @@ pub fn run<F, V>(
 ) -> AppHandle
 where
     F: FnOnce(&gtk4::Application) -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<GtkDom> + 'static,
 {
     let id = resolve_app_id(application_id.into());
     let app = init_app(&id);
@@ -211,7 +211,7 @@ where
 pub fn mount<F, V>(f: F) -> AppHandle
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<GtkDom> + 'static,
 {
     mount_to_window::<_, _, (i32, i32)>(None, "App", (640, 480), f)
 }
@@ -224,7 +224,7 @@ pub fn mount_to_window<F, V, S>(
 ) -> AppHandle
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<GtkDom> + 'static,
     S: Into<renderer::window::WindowSize> + 'static,
 {
     let title = title.to_owned();

@@ -17,7 +17,7 @@ mod app {
     #[component]
     pub fn Section<C>(
         title: &'static str,
-        children: TypedChildrenFn<C, Dom>,
+        children: TypedChildrenFn<C, CocoaDom>,
         #[prop(optional)] _marker: PhantomData<C>,
     ) -> impl IntoView
     where

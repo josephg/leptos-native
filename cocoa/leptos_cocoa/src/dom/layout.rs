@@ -750,25 +750,25 @@ impl renderer::LayoutElement for CocoaNode {
     }
 }
 impl renderer::UniversalElement for CocoaNode {
-    fn set_alpha(&self, alpha: f64) {
-        CocoaNode::set_alpha(*self, alpha)
+    fn set_alpha(self, alpha: f64) {
+        CocoaNode::set_alpha(self, alpha)
     }
-    fn set_tool_tip(&self, tip: &str) {
-        CocoaNode::set_tool_tip(*self, tip)
+    fn set_tool_tip(self, tip: &str) {
+        CocoaNode::set_tool_tip(self, tip)
     }
 }
 impl renderer::DecorationElement<Color> for CocoaNode {
-    fn set_background_color(&self, color: Color) {
-        set_background_color(*self, color);
+    fn set_background_color(self, color: Color) {
+        set_background_color(self, color);
     }
-    fn set_corner_radius(&self, radius: f32) {
-        set_corner_radius(*self, radius);
+    fn set_corner_radius(self, radius: f32) {
+        set_corner_radius(self, radius);
     }
-    fn set_border_width(&self, width: f32) {
-        set_border_width(*self, width);
+    fn set_border_width(self, width: f32) {
+        set_border_width(self, width);
     }
-    fn set_border_color(&self, color: Color) {
-        set_border_color(*self, color);
+    fn set_border_color(self, color: Color) {
+        set_border_color(self, color);
     }
 }
 

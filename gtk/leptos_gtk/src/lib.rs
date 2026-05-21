@@ -5,7 +5,7 @@
 //! Cargo.toml, then `use leptos_native::prelude::*` resolves to the
 //! gtk-specialized prelude here.
 //!
-//! The [`Dom`] unit type is this crate's [`renderer::Renderer`] impl.
+//! The [`GtkDom`] unit type is this crate's [`renderer::Renderer`] impl.
 
 #![cfg(feature = "gtk")]
 #![allow(missing_docs)]
@@ -18,7 +18,7 @@ pub mod keys;
 pub mod mount;
 pub mod renderer_gtk;
 
-pub use renderer_gtk::Dom;
+pub use renderer_gtk::GtkDom;
 
 pub mod dom;
 #[cfg(feature = "devtools")]
@@ -29,10 +29,10 @@ pub use {gio, glib, gtk4};
 
 
 /// GTK-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
-pub type AnyView = renderer::view::AnyView<Dom>;
+pub type AnyView = renderer::view::AnyView<GtkDom>;
 
 /// GTK-pinned alias of [`leptos_native::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<GtkDom>;
 
 /// Bind/attribute keys re-exported under the `leptos_native::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
@@ -101,10 +101,10 @@ pub mod tachys {
 }
 
 /// GTK-specialized [`IntoView`](leptos_native::IntoView). Pinning R to
-/// [`Dom`] lets user code write `impl IntoView` (the type parameter
+/// [`GtkDom`] lets user code write `impl IntoView` (the type parameter
 /// is resolved at the trait boundary).
-pub trait IntoView: leptos_native::IntoView<Dom> {}
-impl<T: leptos_native::IntoView<Dom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<GtkDom> {}
+impl<T: leptos_native::IntoView<GtkDom>> IntoView for T {}
 
 /// User prelude — items end-user examples bring into scope.
 pub mod prelude {
@@ -162,5 +162,5 @@ pub mod prelude {
     };
     pub use renderer::attrs::{auto_line, span, GridLine, Overflow};
 
-    pub use crate::Dom;
+    pub use crate::GtkDom;
 }

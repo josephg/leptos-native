@@ -2,7 +2,7 @@
 //! `leptos_uikit` builds on top of this. User code talks to
 //! `leptos_uikit::prelude::*` rather than to this crate directly.
 //!
-//! Provides [`Node`], [`Element`], [`Text`], and [`Placeholder`] types
+//! Provides [`UikitElem`], [`Element`], [`Text`], and [`Placeholder`] types
 //! that loosely mirror their `web_sys` equivalents in shape but are
 //! backed directly by `UIView` (and subclasses like `UIButton`,
 //! `UITextField`, `UISwitch`, `UISlider`). Plus the UIKit lifecycle
@@ -48,11 +48,9 @@ pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
 pub use key_event::KeyEvent;
-pub use node::{
-    Element, Node, WeakElement, WeakNode,
-};
+pub use node::UikitElem;
 pub use storage::{local_storage, Storage, StorageError};
-pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
+pub use renderer::{Event, Renderer};
 
 // Re-export the most common objc2 / objc2_ui_kit types so
 // downstream crates don't have to take a direct objc2 dependency

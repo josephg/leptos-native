@@ -368,9 +368,9 @@ pub trait LayoutElement: Copy + Clone + 'static {
 /// Element-level handles for opacity + tooltip. Tooltip has a default
 /// no-op implementation because iOS (and any future touch-only port)
 /// has no hover-tooltip concept.
-pub trait UniversalElement: Clone + 'static {
-    fn set_alpha(&self, alpha: f64);
-    fn set_tool_tip(&self, _tip: &str) {}
+pub trait UniversalElement: Copy + Clone + 'static {
+    fn set_alpha(self, alpha: f64);
+    fn set_tool_tip(self, _tip: &str) {}
 }
 
 // ---------------------------------------------------------------------
@@ -408,15 +408,15 @@ pub fn set_overflow<N: LayoutNodeOps>(node: N, overflow: Overflow) {
 /// Port-side glue for [`apply_decoration`]. Each port implements this
 /// on its `Element` type by routing to its existing visual-state
 /// setters. `C` is the port's color type.
-pub trait DecorationElement<C: 'static>: Clone + 'static {
-    fn set_background_color(&self, color: C);
-    fn set_corner_radius(&self, radius: f32);
-    fn set_border_width(&self, width: f32);
-    fn set_border_color(&self, color: C);
+pub trait DecorationElement<C: 'static>: Copy + Clone + 'static {
+    fn set_background_color(self, color: C);
+    fn set_corner_radius(self, radius: f32);
+    fn set_border_width(self, width: f32);
+    fn set_border_color(self, color: C);
 }
 
 pub fn apply_decoration<E, C>(
-    el: &E,
+    el: E,
     attrs: DecorationAttrs<C>,
 ) -> Vec<RenderEffect<()>>
 where
@@ -428,8 +428,7 @@ where
     macro_rules! install_setter {
         ($field:expr, $method:ident) => {
             if let Some(v) = $field {
-                let e = el.clone();
-                if let Some(eff) = install(v, move |x| e.$method(x)) {
+                if let Some(eff) = install(v, move |x| el.$method(x)) {
                     out.push(eff);
                 }
             }
@@ -450,7 +449,7 @@ where
 // ---------------------------------------------------------------------
 
 pub fn apply_layout<E>(
-    el: &E,
+    el: E,
     attrs: LayoutAttrs,
 ) -> Vec<RenderEffect<()>>
 where
@@ -542,7 +541,7 @@ where
 // ---------------------------------------------------------------------
 
 pub fn apply_universal<E>(
-    el: &E,
+    el: E,
     attrs: UniversalAttrs,
 ) -> Vec<RenderEffect<()>>
 where
@@ -550,14 +549,12 @@ where
 {
     let mut out = Vec::new();
     if let Some(a) = attrs.alpha {
-        let e = el.clone();
-        if let Some(eff) = install(a, move |v| e.set_alpha(v)) {
+        if let Some(eff) = install(a, move |v| el.set_alpha(v)) {
             out.push(eff);
         }
     }
     if let Some(t) = attrs.tool_tip {
-        let e = el.clone();
-        if let Some(eff) = install(t, move |s: String| e.set_tool_tip(&s)) {
+        if let Some(eff) = install(t, move |s: String| el.set_tool_tip(&s)) {
             out.push(eff);
         }
     }

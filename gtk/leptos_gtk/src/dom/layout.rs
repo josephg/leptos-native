@@ -213,11 +213,11 @@ impl renderer::LayoutElement for GtkNode {
     }
 }
 impl renderer::UniversalElement for GtkNode {
-    fn set_alpha(&self, alpha: f64) {
-        GtkNode::set_alpha(*self, alpha)
+    fn set_alpha(self, alpha: f64) {
+        GtkNode::set_alpha(self, alpha)
     }
-    fn set_tool_tip(&self, tip: &str) {
-        GtkNode::set_tool_tip(*self, tip)
+    fn set_tool_tip(self, tip: &str) {
+        GtkNode::set_tool_tip(self, tip)
     }
 }
 

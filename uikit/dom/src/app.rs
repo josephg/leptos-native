@@ -21,19 +21,19 @@
 //! The user's view-building closure is stored in a thread-local
 //! before `UIApplicationMain` is called.
 
+use crate::UikitElem;
 use objc2::{
     define_class, msg_send,
     rc::{Allocated, Retained},
     ClassType, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
+use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
 use objc2_ui_kit::{
     UIApplication, UIApplicationDelegate, UIEdgeInsets, UIScene,
     UISceneConfiguration, UISceneConnectionOptions, UISceneDelegate,
     UISceneSession, UIViewController, UIWindow, UIWindowScene,
     UIWindowSceneDelegate,
 };
-use objc2_foundation::{NSObject, NSObjectProtocol, NSString};
-use send_wrapper::SendWrapper;
 use std::cell::{Cell, RefCell};
 
 // ---------------------------------------------------------------------
@@ -44,7 +44,7 @@ use std::cell::{Cell, RefCell};
 /// called. The SceneDelegate takes it on
 /// `scene:willConnectToSession:` and calls it with the window and
 /// content root after creating them.
-type ViewBuilder = Box<dyn FnOnce(&UIWindow, &crate::node::Element)>;
+type ViewBuilder = Box<dyn FnOnce(&UIWindow, UikitElem)>;
 
 // TLS allowed under `MEMORY_POLICY.md` §2 "app-scoped pinning"
 // carve-out: this is a single-value slot used to hand the view
@@ -59,7 +59,7 @@ thread_local! {
 /// Store a view builder to be invoked when the first scene connects.
 /// Called by the mount entry point before `uiapplication_main`.
 pub fn store_view_builder(
-    f: impl FnOnce(&UIWindow, &crate::node::Element) + 'static,
+    f: impl FnOnce(&UIWindow, UikitElem) + 'static,
 ) {
     BUILDER.with_borrow_mut(|slot| {
         *slot = Some(Box::new(f));
@@ -155,7 +155,7 @@ impl AppDelegate {
 
 pub struct SceneDelegateState {
     pub window: RefCell<Option<Retained<UIWindow>>>,
-    pub content_root: RefCell<Option<crate::node::Element>>,
+    pub content_root: RefCell<Option<UikitElem>>,
 }
 
 define_class!(
@@ -205,7 +205,7 @@ define_class!(
                 .expect("scene:willConnectToSession: runs on main thread");
 
             // The scene we get is a UIScene; downcast to UIWindowScene
-            // (which it always is for UIWindowSceneDelegate).
+            // (which it is always for UIWindowSceneDelegate).
             let any: &objc2::runtime::AnyObject = scene.as_ref();
             let Some(window_scene) =
                 any.downcast_ref::<UIWindowScene>()
@@ -227,9 +227,9 @@ define_class!(
             // Content root — a vstack filling the window. The tag
             // already implies `flex_direction: Column`.
             let content_root =
-                crate::node::Element::create_container_with(mtm);
+                UikitElem::create_container_with(mtm);
             crate::layout::set_flex_direction(
-                content_root.as_node(),
+                content_root,
                 crate::layout::FlexDirection::Column,
             );
             // Fill the window via 100% size — Taffy resolves against
@@ -239,11 +239,11 @@ define_class!(
             {
                 use renderer::attrs::Dim;
                 renderer::setters::set_size_width(
-                    content_root.as_node(),
+                    content_root,
                     Dim::Pct(1.0),
                 );
                 renderer::setters::set_size_height(
-                    content_root.as_node(),
+                    content_root,
                     Dim::Pct(1.0),
                 );
             }
@@ -253,7 +253,7 @@ define_class!(
 
             BUILDER.with_borrow_mut(|slot| {
                 if let Some(build) = slot.take() {
-                    build(&window, &content_root);
+                    build(&window, content_root);
                 }
             });
 
@@ -282,7 +282,7 @@ impl SceneDelegate {
 // ---------------------------------------------------------------------
 
 pub struct RootViewControllerState {
-    pub content_root: SendWrapper<crate::node::Element>,
+    pub content_root: UikitElem,
     pub last_insets: Cell<UIEdgeInsets>,
     /// Extra bottom inset added for the on-screen keyboard, in
     /// view coordinates. Recomputed every layout tick from
@@ -341,7 +341,7 @@ define_class!(
             };
 
             let state = self.ivars();
-            let content_root: &crate::node::Element = &state.content_root;
+            let content_root: UikitElem = state.content_root;
 
             // Push insets + keyboard inset onto the content root's
             // padding, but only when they actually change — applying
@@ -356,7 +356,7 @@ define_class!(
             if insets_changed {
                 state.last_insets.set(insets);
                 state.last_keyboard_inset.set(kb_bottom_extra);
-                crate::layout::update_style(*content_root.as_node(), |s| {
+                crate::layout::update_style(content_root, |s| {
                     s.padding = taffy::Rect {
                         top: taffy::LengthPercentage::length(insets.top as f32),
                         bottom: taffy::LengthPercentage::length(
@@ -368,7 +368,7 @@ define_class!(
                 });
             }
 
-            crate::layout::compute_layout(content_root.as_node(), bounds.size);
+            crate::layout::compute_layout(content_root, bounds.size);
         }
     }
 );
@@ -376,10 +376,10 @@ define_class!(
 impl RootViewController {
     pub fn new(
         mtm: MainThreadMarker,
-        content_root: crate::node::Element,
+        content_root: UikitElem,
     ) -> Retained<Self> {
         let alloc = Self::alloc(mtm).set_ivars(RootViewControllerState {
-            content_root: SendWrapper::new(content_root),
+            content_root,
             last_insets: Cell::new(UIEdgeInsets {
                 top: 0.0,
                 bottom: 0.0,

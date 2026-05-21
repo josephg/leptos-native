@@ -7,7 +7,7 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use super::node_ref::NodeRef;
-use crate::Dom;
+use crate::GtkDom;
 use crate::dom::{
     layout::{
         set_align_content, set_align_items, set_column_gap, set_flex_basis,
@@ -42,7 +42,7 @@ use crate::dom::layout::{apply_layout, apply_universal};
 /// cocoa's `apply_common` (3-arg variant for ports without those
 /// extras).
 fn apply_common(
-    el: &GtkNode,
+    el: GtkNode,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
 ) -> Vec<RenderEffect<()>> {
@@ -62,7 +62,7 @@ pub struct ElementState<ChildState> {
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable<Dom>> Mountable<Dom>
+impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
     for ElementState<ChildState>
 {
     fn unmount(&mut self) {
@@ -102,7 +102,7 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
         self.children.mount(self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {
         false
     }
 
@@ -128,21 +128,19 @@ impl<ChildState> Drop for ElementState<ChildState> {
 /// Install Stack-specific flex-item attrs that aren't covered by
 /// [`LayoutAttrs`] / [`WithLayout`] (`flex_shrink`, `flex_basis`).
 fn apply_flex_item_extras(
-    el: &GtkNode,
+    el: GtkNode,
     shrink: Option<MaybeReactive<f32>>,
     basis: Option<MaybeReactive<f32>>,
 ) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(v) = shrink {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |s| set_flex_shrink(e, s))
+        if let Some(eff) = install(v, move |s| set_flex_shrink(el, s))
         {
             out.push(eff);
         }
     }
     if let Some(v) = basis {
-        let e = el.clone();
-        if let Some(eff) = install(v, move |b| set_flex_basis(e, b))
+        if let Some(eff) = install(v, move |b| set_flex_basis(el, b))
         {
             out.push(eff);
         }
@@ -307,9 +305,9 @@ impl<Ch> WithUniversal for Stack<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<Dom> for Stack<Ch>
+impl<Ch> Render<GtkDom> for Stack<Ch>
 where
-    Ch: Render<Dom>,
+    Ch: Render<GtkDom>,
 {
     type State = ElementState<Ch::State>;
 
@@ -374,8 +372,8 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_flex_item_extras(&el, self.shrink, self.basis));
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_flex_item_extras(el, self.shrink, self.basis));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         // Build children but DON'T mount them yet — same cascade
         // pattern as the cocoa port. Mounting is deferred until
@@ -528,9 +526,9 @@ impl<Ch> WithUniversal for Grid<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<Dom> for Grid<Ch>
+impl<Ch> Render<GtkDom> for Grid<Ch>
 where
-    Ch: Render<Dom>,
+    Ch: Render<GtkDom>,
 {
     type State = ElementState<Ch::State>;
 
@@ -601,7 +599,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         let child_state = self.children.build();
 
@@ -709,7 +707,7 @@ impl WithUniversal for Button {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<Dom> for Button {
+impl Render<GtkDom> for Button {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -736,7 +734,7 @@ impl Render<Dom> for Button {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -857,7 +855,7 @@ impl WithUniversal for Checkbox {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<Dom> for Checkbox {
+impl Render<GtkDom> for Checkbox {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -888,7 +886,7 @@ impl Render<Dom> for Checkbox {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1009,7 +1007,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 {
 }
 
-impl Render<Dom> for Slider {
+impl Render<GtkDom> for Slider {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1044,7 +1042,7 @@ impl Render<Dom> for Slider {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1151,7 +1149,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 {
 }
 
-impl Render<Dom> for PopUpButton {
+impl Render<GtkDom> for PopUpButton {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1185,7 +1183,7 @@ impl Render<Dom> for PopUpButton {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1273,7 +1271,7 @@ impl WithUniversal for Label {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<Dom> for Label {
+impl Render<GtkDom> for Label {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1291,7 +1289,7 @@ impl Render<Dom> for Label {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1431,7 +1429,7 @@ impl WithUniversal for TextField {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<Dom> for TextField {
+impl Render<GtkDom> for TextField {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1476,7 +1474,7 @@ impl Render<Dom> for TextField {
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.universal, self.layout));
+        effects.extend(apply_common(el, self.universal, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1499,10 +1497,10 @@ impl Render<Dom> for TextField {
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+            impl renderer::view::AddAnyAttr<crate::GtkDom> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                    __A: renderer::view::ApplyAttr<crate::GtkDom>,
                 {
                     self.directives.push(Box::new(move |el: GtkNode| {
                         attr.apply_to(el);
@@ -1519,11 +1517,11 @@ impl_add_any_attr_for_leaf!(
 );
 
 // Container builders panic on spread attrs — same as cocoa.
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
+impl<Children> renderer::view::AddAnyAttr<crate::GtkDom> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: renderer::view::ApplyAttr<crate::GtkDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/\
@@ -1534,11 +1532,11 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
+impl<Children> renderer::view::AddAnyAttr<crate::GtkDom> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: renderer::view::ApplyAttr<crate::GtkDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no \

@@ -209,7 +209,7 @@ impl OnAttribute {
     }
 }
 
-impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
+impl renderer::view::ApplyAttr<crate::GtkDom> for OnAttribute {
     fn apply_to(self, el: GtkNode) {
         OnAttribute::apply(self, el)
     }

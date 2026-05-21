@@ -33,8 +33,8 @@ fn with_reactive_scope<F: FnOnce()>(body: F) {
 /// stays alive until the closure returns.
 fn with_mounted_view<V, F>(view: V, size: (f64, f64), f: F)
 where
-    V: Render<leptos_cocoa::Dom>,
-    V::State: Mountable<leptos_cocoa::Dom>,
+    V: Render<leptos_cocoa::CocoaDom>,
+    V::State: Mountable<leptos_cocoa::CocoaDom>,
     F: FnOnce(&CocoaNode),
 {
     let mtm = common::test_mtm();

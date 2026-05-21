@@ -10,41 +10,11 @@
 //! setting, hydration tree walking) are present so the type-checker is
 //! happy, but they panic with `unimplemented!()` if actually called.
 
-use crate::node::{Element, Node};
+use crate::node::UikitElem;
 use objc2_ui_kit::UIEvent;
 use objc2::rc::Retained;
 use send_wrapper::SendWrapper;
 use std::fmt;
-
-/// Marker / placeholder types that exist solely so tachys' generic
-/// machinery has something concrete to alias. Most are never
-/// constructed at runtime on the native target.
-#[derive(Clone, Default)]
-pub struct ClassList;
-
-impl fmt::Debug for ClassList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("ClassList(<unsupported on native>)")
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct CssStyleDeclaration;
-
-impl fmt::Debug for CssStyleDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("CssStyleDeclaration(<unsupported on native>)")
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct TemplateElement;
-
-impl fmt::Debug for TemplateElement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("TemplateElement(<unsupported on native>)")
-    }
-}
 
 /// A UIKit event delivered to a handler. Currently a placeholder
 /// wrapper around a `UIEvent`.
@@ -90,114 +60,61 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(text: &str) -> Element {
-        Element::create_text(text)
+    pub fn create_text_node(text: &str) -> UikitElem {
+        UikitElem::create_text(text)
     }
 
-    pub fn create_placeholder() -> Element {
-        Element::create_placeholder()
+    pub fn create_placeholder() -> UikitElem {
+        UikitElem::create_placeholder()
     }
 
-    pub fn set_text(node: &Element, text: &str) {
+    pub fn set_text(node: UikitElem, text: &str) {
         node.set_text(text);
     }
 
     pub fn insert_node(
-        parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        parent: UikitElem,
+        new_child: UikitElem,
+        anchor: Option<UikitElem>,
     ) {
         parent.insert_node(new_child, anchor);
     }
 
     pub fn try_insert_node(
-        parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        parent: UikitElem,
+        new_child: UikitElem,
+        anchor: Option<UikitElem>,
     ) -> bool {
         parent.insert_node(new_child, anchor);
         true
     }
 
-    pub fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    pub fn remove_node(parent: UikitElem, child: UikitElem) -> Option<UikitElem> {
         parent.remove_child(child)
     }
 
-    pub fn remove(node: &Node) {
+    pub fn remove(node: UikitElem) {
         // Detach the view and remove the node (and its structural
         // subtree) from the store, returning node count to baseline.
         crate::layout::drop_node(node);
     }
 
-    pub fn get_parent(_node: &Node) -> Option<Node> {
+    pub fn get_parent(_node: UikitElem) -> Option<UikitElem> {
         unimplemented!(
             "ios_dom::Renderer::get_parent — hydration is not supported \
              on the native target"
         );
     }
 
-    pub fn first_child(_node: &Node) -> Option<Node> {
-        unimplemented!(
-            "ios_dom::Renderer::first_child — hydration is not \
-             supported on the native target"
-        );
-    }
-
-    pub fn next_sibling(_node: &Node) -> Option<Node> {
-        unimplemented!(
-            "ios_dom::Renderer::next_sibling — hydration is not \
-             supported on the native target"
-        );
-    }
-
-    pub fn log_node(node: &Node) {
+    pub fn log_node(node: UikitElem) {
         eprintln!("[ios_dom] {node:?}");
     }
 
-    pub fn clear_children(parent: &Element) {
+    pub fn clear_children(parent: UikitElem) {
         parent.clear_children();
     }
-
-    // ---- DOM-only / web-only stubs --------------------------------
-
-    pub fn class_list(_el: &Element) -> ClassList {
-        ClassList
-    }
-    pub fn add_class(_list: &ClassList, _name: &str) {}
-    pub fn remove_class(_list: &ClassList, _name: &str) {}
-
-    pub fn style(_el: &Element) -> CssStyleDeclaration {
-        CssStyleDeclaration
-    }
-    pub fn set_css_property(
-        _style: &CssStyleDeclaration,
-        _name: &str,
-        _value: &str,
-    ) {
-    }
-    pub fn remove_css_property(
-        _style: &CssStyleDeclaration,
-        _name: &str,
-    ) {
-    }
-
-    pub fn set_inner_html(_el: &Element, _html: &str) {
-    }
-
-    pub fn get_template<V: 'static>() -> TemplateElement {
-        unimplemented!(
-            "ios_dom::Renderer::get_template — <template> cloning is \
-             a web-only optimization"
-        );
-    }
-
-    pub fn clone_template(_tpl: &TemplateElement) -> Element {
-        unimplemented!(
-            "ios_dom::Renderer::clone_template — <template> cloning is \
-             a web-only optimization"
-        );
-    }
 }
+
 
 // ---------------------------------------------------------------------
 // CastFrom impls (orphan rule — Node/Element are local to ios_dom;
@@ -207,8 +124,8 @@ impl Renderer {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<Node> for Node {
-    fn cast_from(source: Node) -> Option<Node> {
+impl CastFrom<UikitElem> for UikitElem {
+    fn cast_from(source: UikitElem) -> Option<UikitElem> {
         Some(source)
     }
 }

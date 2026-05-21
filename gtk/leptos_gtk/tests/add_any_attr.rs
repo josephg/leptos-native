@@ -9,7 +9,7 @@ use leptos_gtk::gtk4::prelude::*;
 use leptos_gtk::{
     event_gtk::{click, on},
     gtk::element::button,
-    Dom,
+    GtkDom,
 };
 use renderer::view::{AddAnyAttr, Render};
 use std::sync::{Arc, Mutex};
@@ -45,7 +45,7 @@ fn add_any_attr_routes_on_click_to_button() {
 fn add_any_attr_panics_on_reactive_closure() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let view = move || button().title("hi");
-        let _ = <_ as AddAnyAttr<Dom>>::add_any_attr(
+        let _ = <_ as AddAnyAttr<GtkDom>>::add_any_attr(
             view,
             (on(click, |_: ()| {}),),
         );
@@ -59,7 +59,7 @@ fn add_any_attr_panics_on_reactive_closure() {
 fn add_any_attr_panics_on_string() {
     let result = std::panic::catch_unwind(|| {
         let s: String = "hello".into();
-        let _ = <String as AddAnyAttr<Dom>>::add_any_attr(
+        let _ = <String as AddAnyAttr<GtkDom>>::add_any_attr(
             s,
             (on(click, |_: ()| {}),),
         );

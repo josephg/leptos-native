@@ -24,7 +24,7 @@ use objc2::{
 use objc2_ui_kit::{UIButton, UIControl, UITextField, UIView};
 use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 use crate::layout::IosBackend;
 use renderer::LayoutBackend;
 
@@ -35,24 +35,12 @@ use renderer::LayoutBackend;
 /// handler retains) lives in `LayoutState<IosBackend>`; accessors read
 /// through the store keyed by `id`. A `Node` owns nothing — capturing
 /// one in a handler closure can't form a retain cycle.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Node {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct UikitElem {
     pub(crate) id: NodeId,
 }
 
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Node").field("id", &self.id).finish()
-    }
-}
-
-impl AsRef<Node> for Node {
-    fn as_ref(&self) -> &Node {
-        self
-    }
-}
-
-impl Node {
+impl UikitElem {
     /// Typed registration primitive: hand in a concrete UIView
     /// subclass, get back a `Node`.
     pub fn from_view<V>(
@@ -73,12 +61,12 @@ impl Node {
         // Wire the handlers' view back-ref so teardown can nil
         // setDelegate / removeAllTargets while the view is still alive.
         IosBackend::with_handlers_mut(id, |h| h.attach_view(view));
-        Node { id }
+        UikitElem { id }
     }
 
     /// Wrap an existing store id as a `Node`.
     pub fn from_id(id: NodeId) -> Self {
-        Node { id }
+        UikitElem { id }
     }
 
     /// The node's `NodeId`.
@@ -131,7 +119,7 @@ impl Node {
         self.ui_view()
     }
 
-    pub fn ptr_eq(self, other: &Node) -> bool {
+    pub fn ptr_eq(self, other: UikitElem) -> bool {
         self.id == other.id
     }
 
@@ -185,25 +173,7 @@ impl Node {
 // Node — typed-builder / renderer-protocol surface
 // ---------------------------------------------------------------------
 
-/// Backwards-compatibility alias. `Element` used to be a distinct
-/// wrapper over `Node`; after the kind-discriminant + Text/Placeholder
-/// unification, the wrapper had no remaining state. `Node` is now
-/// the single user-facing type for every UIView-backed arena entry.
-pub type Element = Node;
-
-impl Node {
-    /// Identity. Kept (along with [`Self::into_node`]) so the
-    /// pre-unification call style `el.as_node()` / `el.into_node()`
-    /// keeps compiling — new code can just use the Node directly.
-    pub fn as_node(&self) -> &Node {
-        self
-    }
-
-    /// Identity. See [`Self::as_node`].
-    pub fn into_node(self) -> Node {
-        self
-    }
-
+impl UikitElem {
     /// Generic UIView container (default style). Used by
     /// `<view>` / `<stack>` builders and by `RootViewController`
     /// for the content root.
@@ -217,7 +187,7 @@ impl Node {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
         let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
         let view: Retained<UIView> = UIView::initWithFrame(UIView::alloc(mtm), frame);
-        Node::from_view(view, Style::default(), IosMeta::default())
+        UikitElem::from_view(view, Style::default(), IosMeta::default())
     }
 
 
@@ -238,7 +208,7 @@ impl Node {
         direct
     }
 
-    pub fn insert_node(self, child: &Node, marker: Option<&Node>) {
+    pub fn insert_node(self, child: UikitElem, marker: Option<UikitElem>) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
         let child_view = child.ui_view();
@@ -246,7 +216,7 @@ impl Node {
         match marker {
             None => {
                 parent.addSubview(&child_view);
-                crate::layout::attach_child(self, *child);
+                crate::layout::attach_child(self, child);
             }
             Some(marker) => {
                 let marker_view = marker.ui_view();
@@ -263,14 +233,14 @@ impl Node {
                 }
                 crate::layout::insert_child_at(
                     self,
-                    *child,
+                    child,
                     child_index,
                 );
             }
         }
     }
 
-    pub fn remove_child(self, child: &Node) -> Option<Node> {
+    pub fn remove_child(self, child: UikitElem) -> Option<UikitElem> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const UIView = &*parent_retained;
         let child_view = child.ui_view();
@@ -286,8 +256,8 @@ impl Node {
             return None;
         }
         child_view.removeFromSuperview();
-        crate::layout::detach_child(self, *child);
-        Some(*child)
+        crate::layout::detach_child(self, child);
+        Some(child)
     }
 
     pub fn clear_children(self) {
@@ -979,13 +949,6 @@ impl Node {
         }
     }
 
-}
-
-// ---------------------------------------------------------------------
-// Node: text-label & placeholder constructors
-// ---------------------------------------------------------------------
-
-impl Node {
     /// Build a text-label Node — a UILabel. Used by the renderer's
     /// `create_text_node`, which is the `Render` impl for `&str` /
     /// `String` / numerics.
@@ -1010,7 +973,7 @@ impl Node {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Node::from_view(view, style, IosMeta::default())
+        UikitElem::from_view(view, style, IosMeta::default())
     }
 
     /// Update the displayed string on a text-label Node. No-op if
@@ -1048,7 +1011,7 @@ impl Node {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Node::from_view(view, style, IosMeta::default())
+        UikitElem::from_view(view, style, IosMeta::default())
     }
 }
 
@@ -1063,46 +1026,3 @@ where
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<T>().map(|r| r.retain())
 }
-
-// ---------------------------------------------------------------------
-// Weak handles — now trivial: a Node is already a non-owning Copy id.
-// ---------------------------------------------------------------------
-//
-// With the thread-local store a `Node` is just a generational `NodeId`
-// that owns nothing; capturing it in a UIControl target / UITextView
-// delegate closure can't form a retain cycle. A stale id resolves to
-// `None`/no-op.
-
-/// Non-owning reference to a `Node` — the same `Copy` id; `upgrade`
-/// checks presence in the store.
-#[derive(Clone, Copy, Debug)]
-pub struct WeakNode {
-    id: NodeId,
-}
-
-impl Node {
-    pub fn downgrade(self) -> WeakNode {
-        WeakNode { id: self.id }
-    }
-
-    pub fn weak(self) -> WeakNode {
-        self.downgrade()
-    }
-}
-
-impl WeakNode {
-    pub fn upgrade(self) -> Option<Node> {
-        if IosBackend::contains(self.id) {
-            Some(Node { id: self.id })
-        } else {
-            None
-        }
-    }
-
-    pub fn is_alive(self) -> bool {
-        IosBackend::contains(self.id)
-    }
-}
-
-/// Backwards-compat alias for [`WeakNode`] — see [`Element`].
-pub type WeakElement = WeakNode;

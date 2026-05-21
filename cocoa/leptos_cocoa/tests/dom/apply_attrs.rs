@@ -70,7 +70,7 @@ fn padding_static_lands_in_padding_field() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
-    let effects = layout::apply_layout(&el, attrs);
+    let effects = layout::apply_layout(el, attrs);
     assert!(effects.is_empty(), "static value must not retain effects");
 
     let s = style_of(&el);
@@ -86,7 +86,7 @@ fn flex_grow_static_lands_in_flex_grow() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.flex_grow = Some(MaybeReactive::Static(2.5));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     assert_eq!(style_of(&el).flex_grow, 2.5);
 }
@@ -97,7 +97,7 @@ fn align_self_static_converts_to_taffy_alignitems() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.align_self = Some(MaybeReactive::Static(AlignSelf::Center));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     assert_eq!(style_of(&el).align_self, Some(layout::AlignItems::Center));
 }
@@ -108,7 +108,7 @@ fn align_self_auto_clears_to_none() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.align_self = Some(MaybeReactive::Static(AlignSelf::Auto));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     assert_eq!(style_of(&el).align_self, None);
 }
@@ -123,7 +123,7 @@ fn width_dim_lands_in_size_width() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.width = Some(MaybeReactive::Static(Dim::Px(120.0)));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     let s = style_of(&el);
     assert_eq!(s.size.width, Dimension::length(120.0));
@@ -137,7 +137,7 @@ fn height_dim_pct_lands_in_size_height_as_percent() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.height = Some(MaybeReactive::Static(Dim::Pct(0.5)));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     assert_eq!(style_of(&el).size.height, Dimension::percent(0.5));
 }
@@ -151,7 +151,7 @@ fn min_max_dim_land_in_their_slots() {
     attrs.min_height = Some(MaybeReactive::Static(Dim::Px(50.0)));
     attrs.max_width = Some(MaybeReactive::Static(Dim::Px(400.0)));
     attrs.max_height = Some(MaybeReactive::Static(Dim::Px(500.0)));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     let s = style_of(&el);
     assert_eq!(s.min_size.width, Dimension::length(40.0));
@@ -170,7 +170,7 @@ fn grid_column_start_static_lands_as_line() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.grid_column_start = Some(MaybeReactive::Static(GridLine::Line(2)));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     let s = style_of(&el);
     assert!(matches!(s.grid_column.start, renderer::GridPlacement::Line(_)));
@@ -183,7 +183,7 @@ fn grid_row_end_static_span() {
 
     let mut attrs = LayoutAttrs::default();
     attrs.grid_row_end = Some(MaybeReactive::Static(GridLine::Span(3)));
-    let _ = layout::apply_layout(&el, attrs);
+    let _ = layout::apply_layout(el, attrs);
 
     assert_eq!(style_of(&el).grid_row.end, renderer::GridPlacement::Span(3));
 }
@@ -203,7 +203,7 @@ fn reactive_padding_re_runs_on_signal_change() {
         attrs.padding = Some(MaybeReactive::Reactive(Box::new(move || {
             renderer::attrs::Edges::all(pad.get())
         })));
-        let effects = layout::apply_layout(&el, attrs);
+        let effects = layout::apply_layout(el, attrs);
         assert_eq!(effects.len(), 1, "reactive value must retain one effect");
 
         // Initial fire (synchronous on RenderEffect::new).
@@ -236,7 +236,7 @@ fn reactive_width_drives_size_width() {
         let w = RwSignal::new(Dim::Px(50.0));
         let mut attrs = LayoutAttrs::default();
         attrs.width = Some(MaybeReactive::Reactive(Box::new(move || w.get())));
-        let effects = layout::apply_layout(&el, attrs);
+        let effects = layout::apply_layout(el, attrs);
 
         assert_eq!(style_of(&el).size.width, Dimension::length(50.0));
 
@@ -256,7 +256,7 @@ fn empty_layout_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
     let el = CocoaNode::create_container();
 
-    let effects = layout::apply_layout(&el, LayoutAttrs::default());
+    let effects = layout::apply_layout(el, LayoutAttrs::default());
     assert!(effects.is_empty(), "no fields = no effects");
 
     // Style remains at default — flex_grow=0, padding=zero, etc.
@@ -275,7 +275,7 @@ fn alpha_static_sets_view_alpha() {
 
     let mut attrs = UniversalAttrs::default();
     attrs.alpha = Some(MaybeReactive::Static(0.5));
-    let _ = layout::apply_universal(&el, attrs);
+    let _ = layout::apply_universal(el, attrs);
 
     // NSView::alphaValue is a CGFloat; tolerance for f64 compare.
     let alpha = el.ns_view().alphaValue();
@@ -288,7 +288,7 @@ fn tool_tip_static_sets_view_tool_tip() {
 
     let mut attrs = UniversalAttrs::default();
     attrs.tool_tip = Some(MaybeReactive::Static("hello".to_string()));
-    let _ = layout::apply_universal(&el, attrs);
+    let _ = layout::apply_universal(el, attrs);
 
     let tip = el.ns_view().toolTip();
     assert_eq!(tip.as_deref().map(|s| s.to_string()), Some("hello".to_string()));
@@ -303,7 +303,7 @@ fn reactive_alpha_re_runs_on_signal_change() {
         let a = RwSignal::new(1.0_f64);
         let mut attrs = UniversalAttrs::default();
         attrs.alpha = Some(MaybeReactive::Reactive(Box::new(move || a.get())));
-        let effects = layout::apply_universal(&el, attrs);
+        let effects = layout::apply_universal(el, attrs);
 
         assert!((el.ns_view().alphaValue() - 1.0).abs() < 1e-6);
 
@@ -319,7 +319,7 @@ fn empty_universal_attrs_returns_no_effects() {
     let _mtm = common::test_mtm();
     let el = CocoaNode::create_container();
 
-    let effects = layout::apply_universal(&el, UniversalAttrs::default());
+    let effects = layout::apply_universal(el, UniversalAttrs::default());
     assert!(effects.is_empty());
 }
 

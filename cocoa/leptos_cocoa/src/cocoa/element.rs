@@ -8,7 +8,7 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::dom::{event, layout::*, CocoaNode, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
-use crate::Dom;
+use crate::CocoaDom;
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
     DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
@@ -100,7 +100,7 @@ use renderer::{apply_decoration, apply_universal};
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
 /// skips `text_color` (uses `attributedTitle` if styling is needed).
-fn apply_text(el: &CocoaNode, attrs: CocoaText) -> Vec<RenderEffect<()>> {
+fn apply_text(el: CocoaNode, attrs: CocoaText) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(c) = attrs.text_color {
         let el_for = el.clone();
@@ -144,7 +144,7 @@ use renderer::apply_layout;
 /// The macro consolidates the 3-or-4-line apply-cascade tail of
 /// every `Render::build` into one call.
 fn apply_common(
-    el: &CocoaNode,
+    el: CocoaNode,
     decoration: CocoaDecoration,
     universal: UniversalAttrs,
     text: Option<CocoaText>,
@@ -198,7 +198,7 @@ pub struct ElementState<ChildState> {
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable<Dom>> Mountable<Dom>
+impl<ChildState: Mountable<CocoaDom>> Mountable<CocoaDom>
     for ElementState<ChildState>
 {
     fn unmount(&mut self) {
@@ -238,7 +238,7 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
         self.children.mount(self.el, None);
     }
 
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, child: &mut dyn Mountable<CocoaDom>) -> bool {
         crate::renderer_cocoa::insert_before_node(self.el, child)
     }
 
@@ -479,9 +479,9 @@ impl<Ch> WithDecoration for Stack<Ch> {
     fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
-impl<Ch> Render<Dom> for Stack<Ch>
+impl<Ch> Render<CocoaDom> for Stack<Ch>
 where
-    Ch: Render<Dom>,
+    Ch: Render<CocoaDom>,
 {
     type State = ElementState<Ch::State>;
 
@@ -522,7 +522,7 @@ where
         // (they're LayoutAttrs fields). Decoration attrs go through
         // apply_decoration. `hidden` goes through apply_layout (it
         // toggles Taffy display + NSView isHidden in one place).
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         // Build children but DON'T mount them yet. Mounting is
         // deferred until ElementState::mount runs (when self.el has
@@ -722,9 +722,9 @@ impl<Ch> WithDecoration for Grid<Ch> {
     fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
-impl<Ch> Render<Dom> for Grid<Ch>
+impl<Ch> Render<CocoaDom> for Grid<Ch>
 where
-    Ch: Render<Dom>,
+    Ch: Render<CocoaDom>,
 {
     type State = ElementState<Ch::State>;
 
@@ -802,7 +802,7 @@ where
             }
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         let child_state = self.children.build();
 
@@ -1047,7 +1047,7 @@ impl WithDecoration for Button {
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
 
-impl Render<Dom> for Button
+impl Render<CocoaDom> for Button
 where
 {
     type State = ElementState<()>;
@@ -1099,7 +1099,7 @@ where
         // can read `button.title().length()` to pick the right
         // `imagePosition`.
         wire_attr!(effects, el, self.sf_symbol, |n: CocoaNode, s: String| n.set_button_sf_symbol(&s));
-        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1251,7 +1251,7 @@ impl WithText for Checkbox {
 }
 
 
-impl Render<Dom> for Checkbox
+impl Render<CocoaDom> for Checkbox
 where
 {
     type State = ElementState<()>;
@@ -1291,7 +1291,7 @@ where
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1464,7 +1464,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl Render<Dom> for Slider
+impl Render<CocoaDom> for Slider
 where
 {
     type State = ElementState<()>;
@@ -1538,7 +1538,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1683,7 +1683,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl Render<Dom> for PopUpButton
+impl Render<CocoaDom> for PopUpButton
 where
 {
     type State = ElementState<()>;
@@ -1735,7 +1735,7 @@ where
             h.apply_to(el);
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -1945,7 +1945,7 @@ impl Label {
 }
 
 
-impl Render<Dom> for Label
+impl Render<CocoaDom> for Label
 where
 {
     type State = ElementState<()>;
@@ -2025,9 +2025,9 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(&el, self.decoration));
-        effects.extend(apply_universal(&el, self.universal));
-        effects.extend(apply_text(&el, self.text));
+        effects.extend(apply_decoration(el, self.decoration));
+        effects.extend(apply_universal(el, self.universal));
+        effects.extend(apply_text(el, self.text));
         // Apply bold AFTER apply_text so font_size is set first; bold
         // reads the current point size to preserve it.
         if let Some(b) = self.bold {
@@ -2036,7 +2036,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_layout(&el, self.layout));
+        effects.extend(apply_layout(el, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2313,7 +2313,7 @@ impl TextField {
 }
 
 
-impl Render<Dom> for TextField
+impl Render<CocoaDom> for TextField
 where
 {
     type State = ElementState<()>;
@@ -2394,7 +2394,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2550,7 +2550,7 @@ impl DatePicker {
 }
 
 
-impl Render<Dom> for DatePicker
+impl Render<CocoaDom> for DatePicker
 where
 {
     type State = ElementState<()>;
@@ -2616,7 +2616,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2754,7 +2754,7 @@ impl WithUniversal for Stepper {
 }
 
 
-impl Render<Dom> for Stepper
+impl Render<CocoaDom> for Stepper
 where
 {
     type State = ElementState<()>;
@@ -2817,7 +2817,7 @@ where
             }
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -2932,7 +2932,7 @@ impl ProgressIndicator {
 }
 
 
-impl Render<Dom> for ProgressIndicator
+impl Render<CocoaDom> for ProgressIndicator
 where
 {
     type State = ElementState<()>;
@@ -2973,7 +2973,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3097,7 +3097,7 @@ impl WithUniversal for ColorWell {
 }
 
 
-impl Render<Dom> for ColorWell
+impl Render<CocoaDom> for ColorWell
 where
 {
     type State = ElementState<()>;
@@ -3140,7 +3140,7 @@ where
             }
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3285,7 +3285,7 @@ impl SegmentedControl {
 }
 
 
-impl Render<Dom> for SegmentedControl
+impl Render<CocoaDom> for SegmentedControl
 where
 {
     type State = ElementState<()>;
@@ -3340,7 +3340,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3467,9 +3467,9 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<Dom> for ScrollView<Ch>
+impl<Ch> Render<CocoaDom> for ScrollView<Ch>
 where
-    Ch: Render<Dom>,
+    Ch: Render<CocoaDom>,
 {
     type State = ElementState<Ch::State>;
 
@@ -3507,7 +3507,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         // Same cascade pattern as View: defer child mount to
         // ElementState::mount, so the tree-aware insert_node
@@ -3649,7 +3649,7 @@ impl WithUniversal for ImageView {
 }
 
 
-impl Render<Dom> for ImageView
+impl Render<CocoaDom> for ImageView
 where
 {
     type State = ElementState<()>;
@@ -3693,7 +3693,7 @@ where
             }
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3806,7 +3806,7 @@ impl WithText for TextView {
 }
 
 
-impl Render<Dom> for TextView
+impl Render<CocoaDom> for TextView
 where
 {
     type State = ElementState<()>;
@@ -3847,7 +3847,7 @@ where
             effects.push(eff);
         }
 
-        effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
@@ -3887,10 +3887,10 @@ where
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+            impl renderer::view::AddAnyAttr<crate::CocoaDom> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                    __A: renderer::view::ApplyAttr<crate::CocoaDom>,
                 {
                     self.directives.push(Box::new(move |el: CocoaNode| {
                         attr.apply_to(el);
@@ -3919,11 +3919,11 @@ impl_add_any_attr_for_leaf!(
 // Future: NSClickGestureRecognizer integration so `<vstack on:click=…>`
 // becomes meaningful, then route through that.
 
-impl<Children> renderer::view::AddAnyAttr<Dom> for Stack<Children> {
+impl<Children> renderer::view::AddAnyAttr<CocoaDom> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<Dom>,
+        __A: renderer::view::ApplyAttr<CocoaDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/             stack_view). Containers have no NSControl target/action              slot — click and other UIControl events have no install              path. Attach to a child button/label/text_field instead."
@@ -3931,11 +3931,11 @@ impl<Children> renderer::view::AddAnyAttr<Dom> for Stack<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<Dom> for Grid<Children> {
+impl<Children> renderer::view::AddAnyAttr<CocoaDom> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<Dom>,
+        __A: renderer::view::ApplyAttr<CocoaDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
@@ -3943,11 +3943,11 @@ impl<Children> renderer::view::AddAnyAttr<Dom> for Grid<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<Dom> for ScrollView<Children> {
+impl<Children> renderer::view::AddAnyAttr<CocoaDom> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<Dom>,
+        __A: renderer::view::ApplyAttr<CocoaDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView              isn't an NSControl — click handlers have no install path.              Attach to inner content instead."

@@ -10,6 +10,8 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
+use ios_dom::UikitElem;
+
 pub struct ClickEvent;
 pub const click: ClickEvent = ClickEvent;
 
@@ -143,7 +145,7 @@ pub enum PendingHandler {
 }
 
 impl PendingHandler {
-    pub fn apply_to(self, el: &ios_dom::Element) {
+    pub fn apply_to(self, el: UikitElem) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
             // Change is universal "value changed". on_value_change
@@ -179,7 +181,7 @@ pub struct OnAttribute {
 }
 
 impl OnAttribute {
-    pub fn apply(mut self, el: &ios_dom::Element) {
+    pub fn apply(mut self, el: UikitElem) {
         if let Some(h) = self.handler.take() {
             h.apply_to(el);
         }
@@ -196,7 +198,7 @@ impl OnAttribute {
 // are SSR-coupled and gone in this fork.
 
 impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
-    fn apply_to(self, el: &ios_dom::Element) {
+    fn apply_to(self, el: UikitElem) {
         OnAttribute::apply(self, el)
     }
 }

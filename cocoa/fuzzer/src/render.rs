@@ -27,7 +27,7 @@ use leptos_native::cocoa::element::{
     SegmentedControl, Slider, Stack, Stepper, TextField, TextView,
 };
 use leptos_native::dom::Date;
-use leptos_native::Dom;
+use leptos_native::CocoaDom;
 use reactive_graph::traits::Get;
 // `hidden` / `padding` come from the renderer's shared layout-attr
 // trait; `into_any` from the renderer's view erasure trait.
@@ -93,11 +93,11 @@ macro_rules! set_padding_attr {
 
 /// Render a node into a type-erased cocoa view, optionally
 /// installing reactive bindings into `store`.
-pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
+pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
     match node {
         Node::Container { kind, padding, gap, children } => {
             // Build children up-front so we can pass them as a Vec.
-            let kids: Vec<AnyView<Dom>> =
+            let kids: Vec<AnyView<CocoaDom>> =
                 children.iter().map(|c| build(c, store)).collect();
 
             // Stack-shaped container ctor (vstack/hstack/view).
@@ -345,7 +345,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
             let on_spec = (**on).clone();
             let off_spec = off.as_ref().map(|b| (**b).clone());
             let store_for_closure = store.clone();
-            let closure = move || -> AnyView<Dom> {
+            let closure = move || -> AnyView<CocoaDom> {
                 let store = &store_for_closure;
                 if when_sig.get() {
                     build(&on_spec, store)
@@ -380,7 +380,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
             let count_sig = match count {
                 Attr::Static(v) => {
                     // Static dynamic-list is just a static vstack.
-                    let kids: Vec<AnyView<Dom>> = (0..*v)
+                    let kids: Vec<AnyView<CocoaDom>> = (0..*v)
                         .map(|_| build(template, store))
                         .collect();
                     return vstack().child(kids).into_any();
@@ -392,9 +392,9 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
             let template = (**template).clone();
             let store = store.clone();
             let max = *max;
-            let closure = move || -> AnyView<Dom> {
+            let closure = move || -> AnyView<CocoaDom> {
                 let n = count_sig.get().min(max);
-                let kids: Vec<AnyView<Dom>> = (0..n)
+                let kids: Vec<AnyView<CocoaDom>> = (0..n)
                     .map(|_| build(&template, &store))
                     .collect();
                 vstack().child(kids).into_any()
@@ -414,7 +414,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
             // covering grid layout properly is its own audit item.
             // (Render the children as a stack to at least exercise
             // the recursive mount path.)
-            let kids: Vec<AnyView<Dom>> = children
+            let kids: Vec<AnyView<CocoaDom>> = children
                 .iter()
                 .map(|(_, _, kid_spec)| build(kid_spec, store))
                 .collect();

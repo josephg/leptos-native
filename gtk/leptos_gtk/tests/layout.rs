@@ -29,8 +29,8 @@ fn with_reactive_scope<F: FnOnce()>(body: F) {
 /// pass the content_root to `f`.
 fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
-    V: Render<leptos_gtk::Dom>,
-    V::State: Mountable<leptos_gtk::Dom>,
+    V: Render<leptos_gtk::GtkDom>,
+    V::State: Mountable<leptos_gtk::GtkDom>,
     F: FnOnce(&GtkNode),
 {
     let app = common::init_app_registered("org.test.leptos_gtk.layout");

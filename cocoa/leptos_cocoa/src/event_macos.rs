@@ -334,7 +334,7 @@ impl OnAttribute {
 // also had `Attribute` / `NextAttribute` / `ToTemplate` impls — those
 // are SSR-coupled and gone in this fork.
 
-impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
+impl renderer::view::ApplyAttr<crate::CocoaDom> for OnAttribute {
     fn apply_to(self, el: CocoaNode) {
         OnAttribute::apply(self, el)
     }

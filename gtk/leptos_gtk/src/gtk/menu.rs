@@ -19,7 +19,7 @@ use crate::event_gtk::{
     ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
 };
 use crate::gtk::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::Dom;
+use crate::GtkDom;
 use gtk4::prelude::*;
 use crate::dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
 use reactive_graph::effect::RenderEffect;
@@ -112,7 +112,7 @@ impl<'a> MenuParent<'a> {
     }
 }
 
-/// Port-local analogue of [`Mountable<Dom>`] for the menu tree.
+/// Port-local analogue of [`Mountable<GtkDom>`] for the menu tree.
 /// Implemented by every menu builder + the wrapper types the macro
 /// produces (`()`, tuples, `Option`, `Vec`).
 pub trait MenuMountable: Send + 'static {
@@ -191,7 +191,7 @@ pub struct MenuBarState<CS> {
     _children: CS,
 }
 
-impl<C> Render<Dom> for MenuBar<C>
+impl<C> Render<GtkDom> for MenuBar<C>
 where
     C: MenuMountable,
 {
@@ -229,7 +229,7 @@ where
     }
 }
 
-impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
+impl<CS: 'static> Mountable<GtkDom> for MenuBarState<CS> {
     fn unmount(&mut self) {}
     fn mount(
         &mut self,
@@ -237,7 +237,7 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
         _marker: Option<GtkNode>,
     ) {
     }
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {
         false
     }
     fn elements(&self) -> Vec<GtkNode> {

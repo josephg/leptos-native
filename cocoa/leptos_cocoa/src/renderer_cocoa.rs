@@ -1,5 +1,5 @@
 //! `Dom`: this crate's [`renderer::Renderer`] impl, plus the orphan-rule
-//! [`Mountable<Dom>`] / [`CastFrom`] impls that sit on the cocoa_dom
+//! [`Mountable<CocoaDom>`] / [`CastFrom`] impls that sit on the cocoa_dom
 //! types.
 //!
 //! `Dom` is a unit struct (not a type alias for `cocoa_dom::Renderer`)
@@ -12,7 +12,7 @@
 
 use crate::dom::layout::CocoaBackend;
 use crate::dom::Renderer as CocoaRenderer;
-use renderer::{renderer::Renderer as RendererTrait, view::Mountable, LayoutBackend};
+use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
 
 // Re-export the concrete tree types under the names tachys/leptos/
 // the platform expects. `Text` and `Placeholder` are aliases for
@@ -34,9 +34,9 @@ pub type Placeholder = CocoaNode;
 /// so we can attach the trait impl + the additional `synthesise_parent_*`
 /// helpers below.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Dom;
+pub struct CocoaDom;
 
-impl RendererTrait for Dom {
+impl Renderer for CocoaDom {
     type Backend = CocoaBackend;
     type Node = CocoaNode;
 
@@ -84,16 +84,6 @@ impl RendererTrait for Dom {
             .map(CocoaNode::from_id)
     }
 
-    fn first_child(node: CocoaNode) -> Option<CocoaNode> {
-        let _ = node;
-        None
-    }
-
-    fn next_sibling(node: CocoaNode) -> Option<CocoaNode> {
-        let _ = node;
-        None
-    }
-
     fn log_node(node: CocoaNode) {
         CocoaRenderer::log_node(node);
     }
@@ -115,13 +105,13 @@ impl RendererTrait for Dom {
     }
 }
 
-impl Dom {
+impl CocoaDom {
     /// Mount `new_child` immediately before `before`. Panics if `before`
     /// has no parent (mirror of `try_mount_before`).
     #[track_caller]
     pub fn mount_before<M>(new_child: &mut M, before: CocoaNode)
     where
-        M: Mountable<Dom>,
+        M: Mountable<CocoaDom>,
     {
         let parent = parent_of(before)
             .expect("Dom::mount_before — node has no parent");
@@ -153,7 +143,7 @@ pub(crate) fn parent_of(before: CocoaNode) -> Option<CocoaNode> {
 /// a different anchor in that case.
 pub(crate) fn insert_before_node(
     before: CocoaNode,
-    child: &mut dyn Mountable<Dom>,
+    child: &mut dyn Mountable<CocoaDom>,
 ) -> bool {
     let Some(parent) = parent_of(before) else {
         return false;
@@ -162,13 +152,13 @@ pub(crate) fn insert_before_node(
     true
 }
 
-impl Mountable<Dom> for CocoaNode {
+impl Mountable<CocoaDom> for CocoaNode {
     fn unmount(&mut self) {
         self.teardown();
     }
 
     fn mount(&mut self, parent: CocoaNode, marker: Option<CocoaNode>) {
-        <Dom as RendererTrait>::insert_node(parent, *self, marker);
+        CocoaDom::insert_node(parent, *self, marker);
     }
 
     fn try_mount(
@@ -179,7 +169,7 @@ impl Mountable<Dom> for CocoaNode {
         CocoaRenderer::try_insert_node(parent, *self, marker)
     }
 
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, child: &mut dyn Mountable<CocoaDom>) -> bool {
         insert_before_node(*self, child)
     }
 

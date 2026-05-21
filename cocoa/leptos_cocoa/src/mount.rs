@@ -57,12 +57,12 @@ use crate::{
         split::{IntoSplitView, SplitPaneList},
         window::window,
     },
-    Dom,
+    CocoaDom,
 };
 use renderer::view::Render;
 
 #[allow(unused_imports)]
-use Dom as _ResolveDom;
+use CocoaDom as _ResolveDom;
 
 /// Owns everything the mounted app needs to keep alive for its
 /// run-loop lifetime: the user-built view state (type-erased), the
@@ -152,7 +152,7 @@ impl Drop for AppHandle {
 pub fn run<F, V>(f: F) -> AppHandle
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<CocoaDom> + 'static,
 {
     let mtm = MainThreadMarker::new()
         .expect("leptos_native::mount::run must be called from the main thread");
@@ -188,7 +188,7 @@ where
 pub fn mount<F, V>(f: F) -> AppHandle
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<CocoaDom> + 'static,
 {
     mount_to_window("App", (640.0, 480.0), f)
 }
@@ -209,7 +209,7 @@ where
 pub fn mount_to_window<F, V, S>(title: &str, size: S, f: F) -> AppHandle
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom> + 'static,
+    V: Render<CocoaDom> + 'static,
     S: Into<crate::cocoa::window::WindowSize> + 'static,
 {
     let title = title.to_owned();

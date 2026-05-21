@@ -560,14 +560,14 @@ fn explicit_unmount_clears_text_view_delegate() {
 /// Builds the dynamic-child code path the fuzzer uses for Show
 /// without exercising any flip.
 fn drop_reactive_child_text_view_no_toggle() {
-    use leptos_cocoa::Dom;
+    use leptos_cocoa::CocoaDom;
     use renderer::view::{AnyView, IntoAny};
     use leptos_cocoa::cocoa::element::vstack;
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {
         let value = RwSignal::new(String::new());
-        let view = vstack().child(move || -> AnyView<Dom> {
+        let view = vstack().child(move || -> AnyView<CocoaDom> {
             text_view().bind(leptos_cocoa::attr::Value, value).into_any()
         });
         let mut state = view.build();

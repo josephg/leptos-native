@@ -44,6 +44,4 @@ pub use color::Color;
 pub use main_thread::on_main;
 
 pub use node::GtkNode;
-pub use renderer::{
-    ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,
-};
+pub use renderer::Event;

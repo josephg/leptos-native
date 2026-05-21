@@ -326,7 +326,7 @@ fn run_one(
             // Field declaration order matters — Drop runs in
             // top-down field order, and we need state to unmount
             // before the window closes.
-            state: Box<dyn renderer::view::Mountable<leptos_native::Dom>>,
+            state: Box<dyn renderer::view::Mountable<leptos_native::CocoaDom>>,
             window: window::OpenedWindow,
             #[allow(dead_code)]
             store: SignalStore,
@@ -355,7 +355,7 @@ fn run_one(
             })?;
             let extra_store = SignalStore::new();
             let view = build(&extra_spec, &extra_store);
-            let mut st: Box<dyn renderer::view::Mountable<leptos_native::Dom>> =
+            let mut st: Box<dyn renderer::view::Mountable<leptos_native::CocoaDom>> =
                 Box::new(catch_ns("build-extra", || view.build())?);
             catch_ns("mount-extra", || {
                 st.mount(win.content_root, None);

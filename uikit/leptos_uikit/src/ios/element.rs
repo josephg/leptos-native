@@ -27,7 +27,7 @@ use ios_dom::{
         GridTemplateComponent, JustifyContent, JustifyItems, Position,
         TrackSizingFunction,
     },
-    Element as IosElement,
+    UikitElem,
 };
 use reactive_graph::effect::RenderEffect;
 
@@ -69,13 +69,13 @@ pub trait WithText: Sized {
 }
 
 // `apply_universal` lives in `renderer::apply_universal`. The
-// `UniversalElement` impl for `IosElement` uses the trait's default
+// `UniversalElement` impl for `UikitElem` uses the trait's default
 // no-op for `set_tool_tip` (UIView has no hover-tooltip concept).
 use ios_dom::layout::apply_universal;
 
 /// Apply [`IosText`] (text_color, alignment, font_size) to the live
 /// UIView.
-fn apply_text(el: &IosElement, attrs: IosText) -> Vec<RenderEffect<()>> {
+fn apply_text(el: UikitElem, attrs: IosText) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(c) = attrs.text_color {
         let el_for = el.clone();
@@ -101,7 +101,7 @@ fn apply_text(el: &IosElement, attrs: IosText) -> Vec<RenderEffect<()>> {
 }
 
 // `apply_layout` lives in `renderer::apply_layout`; the
-// `LayoutElement` impl for `IosElement` is in `ios_dom::layout`.
+// `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
 use ios_dom::layout::apply_layout;
 
 /// Apply the always-present `universal` (+ optional `text`) and
@@ -109,7 +109,7 @@ use ios_dom::layout::apply_layout;
 /// because `hidden=Display::None` lives in `LayoutAttrs`. iOS-port
 /// counterpart to cocoa's `apply_common`.
 fn apply_common(
-    el: &IosElement,
+    el: UikitElem,
     universal: UniversalAttrs,
     text: Option<IosText>,
     layout: LayoutAttrs,
@@ -126,7 +126,7 @@ fn apply_common(
 /// border width + color. All four sit on the underlying UIView
 /// (or its CALayer); each is reactive via `MaybeReactive`.
 fn apply_chrome(
-    el: &IosElement,
+    el: UikitElem,
     background_color: Option<MaybeReactive<ios_dom::Color>>,
     corner_radius: Option<MaybeReactive<f64>>,
     border_width: Option<MaybeReactive<f64>>,
@@ -171,7 +171,7 @@ fn apply_chrome(
 // ---------------------------------------------------------------------
 
 pub struct ElementState<ChildState> {
-    pub el: IosElement,
+    pub el: UikitElem,
     pub(crate) _effects: Vec<RenderEffect<()>>,
     pub(crate) children: ChildState,
 }
@@ -193,18 +193,18 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
 
     fn mount(
         &mut self,
-        parent: &IosElement,
-        marker: Option<&ios_dom::Node>,
+        parent: UikitElem,
+        marker: Option<UikitElem>,
     ) {
-        parent.insert_node(&self.el, marker);
-        self.children.mount(&self.el, None);
+        parent.insert_node(self.el, marker);
+        self.children.mount(self.el, None);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        crate::renderer_ios::insert_before_node(&self.el, child)
+        crate::renderer_ios::insert_before_node(self.el, child)
     }
 
-    fn elements(&self) -> Vec<IosElement> {
+    fn elements(&self) -> Vec<UikitElem> {
         vec![self.el.clone()]
     }
 }
@@ -242,7 +242,7 @@ pub struct View<Children> {
     layout: LayoutAttrs,
     universal: UniversalAttrs,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     children: Children,
 }
 
@@ -420,18 +420,18 @@ impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
 impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_vstack();
+        let el = UikitElem::create_vstack();
         let mut effects = Vec::new();
         if let Some(dir) = self.flex_direction {
-            set_flex_direction(&el, dir);
+            set_flex_direction(el, dir);
         }
         if let Some(g) = self.gap {
-            set_gap(&el, g);
+            set_gap(el, g);
         }
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(&e, a))
+                install(v, move |a| set_align_content(e, a))
             {
                 effects.push(eff);
             }
@@ -439,18 +439,18 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(&e, j))
+                install(v, move |j| set_justify_items(e, j))
             {
                 effects.push(eff);
             }
         }
         if let Some(r) = self.aspect_ratio {
-            set_aspect_ratio(&el, r);
+            set_aspect_ratio(el, r);
         }
         if self.position_absolute {
-            ios_dom::layout::set_position(&el, Position::Absolute);
+            ios_dom::layout::set_position(el, Position::Absolute);
             set_inset(
-                &el,
+                el,
                 self.inset_top,
                 self.inset_right,
                 self.inset_bottom,
@@ -458,18 +458,18 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
             );
         }
         effects.extend(apply_chrome(
-            &el,
+            el,
             self.background_color,
             self.corner_radius,
             self.border_width,
             self.border_color,
         ));
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
         let child_state = self.children.build();
         for handler in self.handlers {
-            handler.apply_to(&el);
+            handler.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
         ElementState {
             el,
             _effects: effects,
@@ -515,7 +515,7 @@ pub struct Grid<Children> {
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
     handlers:         Vec<PendingHandler>,
-    pending_spreads:  Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads:  Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     children:         Children,
 }
 
@@ -680,25 +680,25 @@ impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
 impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_grid();
+        let el = UikitElem::create_grid();
         let mut effects = Vec::new();
 
         if let Some(c) = self.columns {
-            set_grid_template_columns(&el, c);
+            set_grid_template_columns(el, c);
         }
         if let Some(r) = self.rows {
-            set_grid_template_rows(&el, r);
+            set_grid_template_rows(el, r);
         }
         if let Some(c) = self.auto_columns {
-            set_grid_auto_columns(&el, c);
+            set_grid_auto_columns(el, c);
         }
         if let Some(r) = self.auto_rows {
-            set_grid_auto_rows(&el, r);
+            set_grid_auto_rows(el, r);
         }
         if let Some(v) = self.auto_flow {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |f| set_grid_auto_flow(&e, f))
+                install(v, move |f| set_grid_auto_flow(e, f))
             {
                 effects.push(eff);
             }
@@ -706,27 +706,27 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         // Shorthand gap first; per-axis overrides win.
         if let Some(v) = self.gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
+            if let Some(eff) = install(v, move |g| set_gap(e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.column_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_column_gap(&e, g))
+            if let Some(eff) = install(v, move |g| set_column_gap(e, g))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.row_gap {
             let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_row_gap(&e, g)) {
+            if let Some(eff) = install(v, move |g| set_row_gap(e, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.justify_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(&e, j))
+                install(v, move |j| set_justify_items(e, j))
             {
                 effects.push(eff);
             }
@@ -734,7 +734,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.align_items {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(&e, a))
+                install(v, move |a| set_align_items(e, a))
             {
                 effects.push(eff);
             }
@@ -742,7 +742,7 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.justify_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(&e, j))
+                install(v, move |j| set_justify_content(e, j))
             {
                 effects.push(eff);
             }
@@ -750,25 +750,25 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
         if let Some(v) = self.align_content {
             let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(&e, a))
+                install(v, move |a| set_align_content(e, a))
             {
                 effects.push(eff);
             }
         }
 
         effects.extend(apply_chrome(
-            &el,
+            el,
             self.background_color,
             self.corner_radius,
             self.border_width,
             self.border_color,
         ));
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
         let child_state = self.children.build();
         for handler in self.handlers {
-            handler.apply_to(&el);
+            handler.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
         ElementState {
             el,
             _effects: effects,
@@ -783,7 +783,7 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self.pending_spreads.push(Box::new(move |el: &IosElement| {
+        self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
         }));
         self
@@ -799,7 +799,7 @@ pub struct Button {
     enabled: Option<MaybeReactive<bool>>,
     sf_symbol: Option<MaybeReactive<String>>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -870,7 +870,7 @@ impl WithText for Button {
 impl Render<Dom> for Button {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_button().0;
+        let el = UikitElem::create_button().0;
         let mut effects = Vec::new();
 
         let el_for_title = el.clone();
@@ -899,14 +899,14 @@ impl Render<Dom> for Button {
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         ElementState {
@@ -925,7 +925,7 @@ impl Render<Dom> for Button {
 pub struct Label {
     text_value: MaybeReactive<String>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -994,7 +994,7 @@ impl WithText for Label {
 impl Render<Dom> for Label {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_label().0;
+        let el = UikitElem::create_label().0;
         let mut effects = Vec::new();
 
         // bind:value getter wins over .text(...) — same as cocoa.
@@ -1010,15 +1010,15 @@ impl Render<Dom> for Label {
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         ElementState {
@@ -1043,7 +1043,7 @@ pub struct TextField {
     secure: bool,
     pending_bind: Option<crate::ios::bind::BoundValue>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1134,9 +1134,9 @@ impl Render<Dom> for TextField {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = if self.secure {
-            IosElement::create_secure_text_field().0
+            UikitElem::create_secure_text_field().0
         } else {
-            IosElement::create_text_field().0
+            UikitElem::create_text_field().0
         };
         let mut effects = Vec::new();
 
@@ -1165,20 +1165,20 @@ impl Render<Dom> for TextField {
 
         // Two-way `bind:value=signal`.
         if let Some(bound) = self.pending_bind {
-            let eff = crate::ios::bind::install_text_field_value_bind(&el, bound);
+            let eff = crate::ios::bind::install_text_field_value_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1203,7 +1203,7 @@ pub struct Switch {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_checked: Option<crate::ios::bind::BoundChecked>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1275,7 +1275,7 @@ impl WithUniversal for Switch {
 impl Render<Dom> for Switch {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_switch().0;
+        let el = UikitElem::create_switch().0;
         let mut effects = Vec::new();
 
         // One-way `.checked(...)`.
@@ -1298,20 +1298,20 @@ impl Render<Dom> for Switch {
         // Two-way `bind:checked=signal`.
         if let Some(bound) = self.pending_bind_checked {
             let eff =
-                crate::ios::bind::install_switch_checked_bind(&el, bound);
+                crate::ios::bind::install_switch_checked_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1335,7 +1335,7 @@ pub struct Slider {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1407,7 +1407,7 @@ impl WithUniversal for Slider {
 impl Render<Dom> for Slider {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_slider().0;
+        let el = UikitElem::create_slider().0;
         let mut effects = Vec::new();
 
         // min/max set FIRST so initial set_double_value clamps correctly.
@@ -1432,20 +1432,20 @@ impl Render<Dom> for Slider {
 
         if let Some(bound) = self.pending_bind {
             let eff =
-                crate::ios::bind::install_slider_value_bind(&el, bound);
+                crate::ios::bind::install_slider_value_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1470,7 +1470,7 @@ pub struct Stepper {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1547,7 +1547,7 @@ impl WithUniversal for Stepper {
 impl Render<Dom> for Stepper {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_stepper().0;
+        let el = UikitElem::create_stepper().0;
         let mut effects = Vec::new();
 
         // Bounds + increment first so the initial value clamps.
@@ -1571,20 +1571,20 @@ impl Render<Dom> for Stepper {
 
         if let Some(bound) = self.pending_bind {
             let eff =
-                crate::ios::bind::install_stepper_value_bind(&el, bound);
+                crate::ios::bind::install_stepper_value_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1644,7 +1644,7 @@ impl WithUniversal for ProgressIndicator {
 impl Render<Dom> for ProgressIndicator {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_progress_indicator().0;
+        let el = UikitElem::create_progress_indicator().0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -1654,10 +1654,10 @@ impl Render<Dom> for ProgressIndicator {
             effects.push(eff);
         }
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1680,7 +1680,7 @@ pub struct ImageView {
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<ios_dom::Color>>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1760,7 +1760,7 @@ impl WithUniversal for ImageView {
 impl Render<Dom> for ImageView {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_image_view().0;
+        let el = UikitElem::create_image_view().0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -1798,15 +1798,15 @@ impl Render<Dom> for ImageView {
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1829,7 +1829,7 @@ pub struct SegmentedControl {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -1900,7 +1900,7 @@ impl WithUniversal for SegmentedControl {
 impl Render<Dom> for SegmentedControl {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_segmented_control().0;
+        let el = UikitElem::create_segmented_control().0;
         let mut effects = Vec::new();
 
         el.set_segmented_items(&self.items);
@@ -1922,20 +1922,20 @@ impl Render<Dom> for SegmentedControl {
         }
 
         if let Some(bound) = self.pending_bind_selection {
-            let eff = crate::ios::bind::install_segmented_selection_bind(&el, bound);
+            let eff = crate::ios::bind::install_segmented_selection_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -1960,7 +1960,7 @@ pub struct PopUpButton {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2030,7 +2030,7 @@ impl WithUniversal for PopUpButton {
 impl Render<Dom> for PopUpButton {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_pop_up_button().0;
+        let el = UikitElem::create_pop_up_button().0;
         let mut effects = Vec::new();
 
         // The change callback: invoked when a menu item is picked.
@@ -2076,14 +2076,14 @@ impl Render<Dom> for PopUpButton {
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         ElementState {
@@ -2105,7 +2105,7 @@ pub struct ColorWell {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_value: Option<crate::ios::bind::BoundColor>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2166,7 +2166,7 @@ impl WithUniversal for ColorWell {
 impl Render<Dom> for ColorWell {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_color_well().0;
+        let el = UikitElem::create_color_well().0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -2186,19 +2186,19 @@ impl Render<Dom> for ColorWell {
         }
 
         if let Some(bound) = self.pending_bind_value {
-            let eff = crate::ios::bind::install_color_well_value_bind(&el, bound);
+            let eff = crate::ios::bind::install_color_well_value_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
         ElementState {
@@ -2219,7 +2219,7 @@ pub struct DatePicker {
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundDate>,
     handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(&IosElement) + Send + 'static>>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<crate::ios::NodeRef>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
@@ -2304,7 +2304,7 @@ impl WithUniversal for DatePicker {
 impl Render<Dom> for DatePicker {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_date_picker().0;
+        let el = UikitElem::create_date_picker().0;
         let mut effects = Vec::new();
 
         let el_for = el.clone();
@@ -2324,14 +2324,14 @@ impl Render<Dom> for DatePicker {
         }
 
         if let Some(bound) = self.pending_bind {
-            let eff = crate::ios::bind::install_date_picker_bind(&el, bound);
+            let eff = crate::ios::bind::install_date_picker_bind(el, bound);
             effects.push(eff);
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
-        for f in self.pending_spreads { f(&el); }
+        for f in self.pending_spreads { f(el); }
 
 
         if let Some(s) = self.style {
@@ -2359,10 +2359,10 @@ impl Render<Dom> for DatePicker {
             }
         }
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -2441,7 +2441,7 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
 impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_scroll_view().0;
+        let el = UikitElem::create_scroll_view().0;
         let mut effects = Vec::new();
 
         if let Some(b) = self.has_horizontal_scroller {
@@ -2461,7 +2461,7 @@ impl<Ch: Render<Dom>> Render<Dom> for ScrollView<Ch> {
             }
         }
 
-        effects.extend(apply_common(&el, self.universal, None, self.layout));
+        effects.extend(apply_common(el, self.universal, None, self.layout));
 
         let child_state = self.children.build();
 
@@ -2540,7 +2540,7 @@ impl WithText for TextView {
 impl Render<Dom> for TextView {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
-        let el = IosElement::create_text_view().0;
+        let el = UikitElem::create_text_view().0;
         let mut effects = Vec::new();
 
         let el_for_value = el.clone();
@@ -2564,14 +2564,14 @@ impl Render<Dom> for TextView {
 
         if let Some(bound) = self.pending_bind {
             let eff =
-                crate::ios::bind::install_text_view_value_bind(&el, bound);
+                crate::ios::bind::install_text_view_value_bind(el, bound);
             effects.push(eff);
         }
 
-        effects.extend(apply_common(&el, self.universal, Some(self.text), self.layout));
+        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
-            r.load(&el);
+            r.load(el);
         }
 
 
@@ -2601,7 +2601,7 @@ macro_rules! impl_add_any_attr_for_leaf {
                 where
                     __A: renderer::view::ApplyAttr<crate::Dom>,
                 {
-                    self.pending_spreads.push(Box::new(move |el: &IosElement| {
+                    self.pending_spreads.push(Box::new(move |el: UikitElem| {
                         attr.apply_to(el);
                     }));
                     self
@@ -2655,7 +2655,7 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
     where
         __A: renderer::view::ApplyAttr<crate::Dom>,
     {
-        self.pending_spreads.push(Box::new(move |el: &IosElement| {
+        self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
         }));
         self

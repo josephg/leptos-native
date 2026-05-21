@@ -28,7 +28,6 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, GetUntracked, Set},
 };
-use send_wrapper::SendWrapper;
 use std::cell::Cell;
 use crate::dom::CocoaNode;
 
@@ -43,7 +42,7 @@ use crate::dom::CocoaNode;
 /// reactive_graph's storage) while runtime-enforcing main-thread
 /// access.
 #[derive(Debug)]
-pub struct NodeRef(RwSignal<Option<SendWrapper<CocoaNode>>>);
+pub struct NodeRef(RwSignal<Option<CocoaNode>>);
 
 impl NodeRef {
     /// Create a new, unfilled NodeRef. Filled when the builder

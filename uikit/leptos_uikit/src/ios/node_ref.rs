@@ -4,24 +4,23 @@
 //! container, query the underlying UIView for sizing.
 //!
 //! Mirrors `tachys::cocoa::node_ref::NodeRef`, monomorphic over
-//! `ios_dom::Element` (no `<E>` parameter — there's only one element
+//! `ios_dom::UikitElem` (no `<E>` parameter — there's only one element
 //! type on iOS).
 
-use ios_dom::Element;
+use ios_dom::UikitElem;
 use reactive_graph::{
     effect::Effect,
     signal::RwSignal,
     traits::{Get, GetUntracked, Set},
 };
-use send_wrapper::SendWrapper;
 use std::cell::Cell;
 
-/// A reactive reference to a built `ios_dom::Element`. Construct
+/// A reactive reference to a built `ios_dom::UikitElem`. Construct
 /// via [`NodeRef::new`], pass to a builder via `node_ref=…`, then
 /// read via [`get`](Self::get) / [`get_untracked`](Self::get_untracked) /
 /// [`on_load`](Self::on_load).
 #[derive(Debug)]
-pub struct NodeRef(RwSignal<Option<SendWrapper<Element>>>);
+pub struct NodeRef(RwSignal<Option<UikitElem>>);
 
 impl NodeRef {
     /// Create a new, unfilled NodeRef. Filled when the builder
@@ -32,18 +31,18 @@ impl NodeRef {
     }
 
     /// Reactive read — subscribes the current Effect to this ref.
-    pub fn get(&self) -> Option<Element> {
-        self.0.get().map(|w| w.take())
+    pub fn get(&self) -> Option<UikitElem> {
+        self.0.get()
     }
 
     /// Non-reactive read.
-    pub fn get_untracked(&self) -> Option<Element> {
-        self.0.get_untracked().map(|w| w.take())
+    pub fn get_untracked(&self) -> Option<UikitElem> {
+        self.0.get_untracked()
     }
 
     /// Run `f` once when the ref is filled. Useful for "focus this
     /// field on first show" patterns.
-    pub fn on_load<F: FnOnce(Element) + 'static>(self, f: F) {
+    pub fn on_load<F: FnOnce(UikitElem) + 'static>(self, f: F) {
         let f = Cell::new(Some(f));
         Effect::new(move |_| {
             if let Some(el) = self.get() {
@@ -55,8 +54,8 @@ impl NodeRef {
     }
 
     /// Internal: fill the ref. Called by builders' `Render::build`.
-    pub fn load(&self, el: &Element) {
-        self.0.set(Some(SendWrapper::new(el.clone())));
+    pub fn load(&self, el: UikitElem) {
+        self.0.set(Some(el));
     }
 }
 

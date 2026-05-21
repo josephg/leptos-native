@@ -15,7 +15,7 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     /// `GtkBackend`, iOS to `IosBackend`.
     type Backend: LayoutBackend;
 
-    /// The basic type of node in the view tree. Native ports use a
+    /// The basic type of node in the view tree. Native ports wrap a
     /// bare `NodeId` (`Copy + Send`) — every entry is structurally
     /// Element-shaped, and text-label / placeholder distinctions are
     /// just different default styles + concrete view classes set at
@@ -60,12 +60,6 @@ pub trait Renderer: Send + Sized + Debug + 'static {
 
     /// Gets the parent of a node, if any.
     fn get_parent(node: Self::Node) -> Option<Self::Node>;
-
-    /// Returns the first child of a node, if any.
-    fn first_child(node: Self::Node) -> Option<Self::Node>;
-
-    /// Returns the next sibling of a node, if any.
-    fn next_sibling(node: Self::Node) -> Option<Self::Node>;
 
     /// Logs a node in a platform-appropriate way (used for debugging).
     fn log_node(node: Self::Node);

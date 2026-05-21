@@ -19,7 +19,7 @@ use crate::ios::element::{
     ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
     Stepper, Switch, TextField, TextView,
 };
-use ios_dom::Element as IosElement;
+use ios_dom::UikitElem;
 use objc2::rc::Retained;
 use reactive_graph::{
     effect::RenderEffect,
@@ -30,7 +30,7 @@ use reactive_graph::{
 /// Downcast the element's UIView to a specific subclass at install
 /// time. Same shape and rationale as the cocoa port's helper —
 /// see `cocoa::bind::typed_view` and `MEMORY_POLICY.md` §3 + §7.
-fn typed_view<T>(el: &IosElement, ctx: &'static str) -> Retained<T>
+fn typed_view<T>(el: UikitElem, ctx: &'static str) -> Retained<T>
 where
     T: objc2::Message + objc2::DowncastTarget,
 {
@@ -140,7 +140,7 @@ where
 }
 
 pub(crate) fn install_text_field_value_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundValue,
 ) -> RenderEffect<()> {
     // Outgoing: editingChanged (every keystroke / paste / clear).
@@ -182,7 +182,7 @@ where
 }
 
 pub(crate) fn install_switch_checked_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundChecked,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UISwitch;
@@ -228,7 +228,7 @@ where
 }
 
 pub(crate) fn install_slider_value_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UISlider;
@@ -268,7 +268,7 @@ where
 }
 
 pub(crate) fn install_stepper_value_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundFloat,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UIStepper;
@@ -308,7 +308,7 @@ where
 }
 
 pub(crate) fn install_date_picker_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundDate,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UIDatePicker;
@@ -358,7 +358,7 @@ where
 }
 
 pub(crate) fn install_segmented_selection_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundIndex,
 ) -> RenderEffect<()> {
     use objc2_ui_kit::UISegmentedControl;
@@ -426,7 +426,7 @@ where
 }
 
 pub(crate) fn install_color_well_value_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundColor,
 ) -> RenderEffect<()> {
     use objc2_foundation::NSObjectProtocol;
@@ -480,7 +480,7 @@ where
 }
 
 pub(crate) fn install_text_view_value_bind(
-    el: &IosElement,
+    el: UikitElem,
     bound: BoundValue,
 ) -> RenderEffect<()> {
     let mut setter = bound.setter;

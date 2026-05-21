@@ -3,14 +3,14 @@
 //!
 //! Native menus live *off* the Taffy layout tree (they're not
 //! NSViews), so they have their own port-local mount cascade —
-//! [`MenuMountable`] — that parallels [`Mountable<Dom>`] but threads
+//! [`MenuMountable`] — that parallels [`Mountable<CocoaDom>`] but threads
 //! a [`MenuParent`] (either an `NSMenu` main-menu or a submenu)
 //! through the build.
 //!
 //! Three builder types:
 //!
 //! - [`MenuBar<C>`] — top-level container. The only menu builder
-//!   that implements [`Render<Dom>`]; siblings to `<window>` in
+//!   that implements [`Render<CocoaDom>`]; siblings to `<window>` in
 //!   `run()` see it as just another renderable. Build-time:
 //!   constructs a fresh `cocoa_dom::menu::MenuBar`, descends into
 //!   children, then `setMainMenu:`s it on NSApp.
@@ -29,7 +29,7 @@ use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::event_macos::{
     ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
 };
-use crate::Dom;
+use crate::CocoaDom;
 use crate::dom::{menu::{self as dom_menu, MenuBar as DomMenuBar}, CocoaNode, Icon, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSMenuItem};
@@ -52,7 +52,7 @@ pub enum MenuParent<'a> {
     Menu(&'a dom_menu::Menu),
 }
 
-/// Port-local analogue of [`Mountable<Dom>`] for the menu tree.
+/// Port-local analogue of [`Mountable<CocoaDom>`] for the menu tree.
 /// Implemented by every menu builder + the wrapper types the macro
 /// produces (`()`, tuples, `Option`, `Vec`).
 ///
@@ -168,7 +168,7 @@ pub struct MenuBarState<CS> {
     _children: CS,
 }
 
-impl<C> Render<Dom> for MenuBar<C>
+impl<C> Render<CocoaDom> for MenuBar<C>
 where
     C: MenuMountable,
 {
@@ -203,7 +203,7 @@ where
     }
 }
 
-impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
+impl<CS: 'static> Mountable<CocoaDom> for MenuBarState<CS> {
     fn unmount(&mut self) {
         // No-op for now: NSApp.mainMenu sticks around for the
         // process lifetime by convention, and an explicit clear
@@ -217,7 +217,7 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
         // The menu bar is its own root; nothing to attach under
         // a view-tree parent.
     }
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaDom>) -> bool {
         false
     }
     fn elements(&self) -> Vec<CocoaNode> {

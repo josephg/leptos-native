@@ -10,7 +10,7 @@
 //! GTK-style measure/allocate protocol — UIView frames are
 //! authoritative once set.
 
-use crate::node::Node;
+use crate::node::UikitElem;
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -115,8 +115,7 @@ fn layout_debug_enabled() -> bool {
 
 /// Remove the node (and its structural subtree) and detach its view,
 /// then schedule a relayout of the (former) parent's subtree.
-pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
-    let node = *node.borrow();
+pub fn drop_node(node: UikitElem) {
     let parent = IosBackend::parent(node.id());
     node.teardown();
     if let Some(pid) = parent {
@@ -130,7 +129,7 @@ pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
 // each to its current subtree root and recomputes just those roots.
 // ---------------------------------------------------------------------
 
-pub fn schedule_relayout(node: Node) {
+pub fn schedule_relayout(node: UikitElem) {
     IosBackend::mark_dirty(node.id());
     queue_relayout_for(node.id());
 }
@@ -180,7 +179,7 @@ fn ensure_relayout_pass_scheduled() {
             };
             let root_view: Retained<UIView> = (*view).clone();
             let size = root_view.frame().size;
-            compute_layout(Node::from_id(root_id), size);
+            compute_layout(UikitElem::from_id(root_id), size);
         }
     });
 }
@@ -189,21 +188,21 @@ fn ensure_relayout_pass_scheduled() {
 // Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
-    let parent_id = parent.borrow().id();
-    IosBackend::add_child(parent_id, child.borrow().id());
+pub fn attach_child(parent: UikitElem, child: UikitElem) {
+    let parent_id = parent.id();
+    IosBackend::add_child(parent_id, child.id());
     queue_relayout_for(parent_id);
 }
 
-pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
-    let parent_id = parent.borrow().id();
-    IosBackend::insert_child_at_index(parent_id, index, child.borrow().id());
+pub fn insert_child_at(parent: UikitElem, child: UikitElem, index: usize) {
+    let parent_id = parent.id();
+    IosBackend::insert_child_at_index(parent_id, index, child.id());
     queue_relayout_for(parent_id);
 }
 
-pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
-    let parent_id = parent.borrow().id();
-    IosBackend::remove_child(parent_id, child.borrow().id());
+pub fn detach_child(parent: UikitElem, child: UikitElem) {
+    let parent_id = parent.id();
+    IosBackend::remove_child(parent_id, child.id());
     queue_relayout_for(parent_id);
 }
 
@@ -211,11 +210,11 @@ pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::bor
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: Node, f: impl FnOnce(&mut Style)) {
+pub fn update_style(node: UikitElem, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: Node, style: Style) {
+pub fn set_style(node: UikitElem, style: Style) {
     update_style(node, |s| *s = style);
 }
 
@@ -223,14 +222,14 @@ pub fn set_style(node: Node, style: Style) {
 // Layout computation
 // ---------------------------------------------------------------------
 
-pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: NSSize) {
+pub fn compute_layout(root: UikitElem, available_size: NSSize) {
     if layout_debug_enabled() {
         eprintln!(
             "[compute_layout] avail {:.0}x{:.0}",
             available_size.width, available_size.height
         );
     }
-    let root_id = root.borrow().id();
+    let root_id = root.id();
     if !IosBackend::contains(root_id) {
         return;
     }
@@ -526,32 +525,28 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 // cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for Node {
-    fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
-        update_style(*self, f);
+impl renderer::LayoutNodeOps for UikitElem {
+    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
+        update_style(self, f);
     }
-    fn schedule_relayout(&self) {
-        schedule_relayout(*self);
+    fn schedule_relayout(self) {
+        schedule_relayout(self);
     }
-    fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        Node::with_style(*self, f)
+    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
+        UikitElem::with_style(self, f)
     }
 }
 
 // iOS Node impls — `set_tool_tip` uses the default no-op (UIView
 // has no hover tooltips).
-impl renderer::LayoutElement for Node {
-    type Node = Node;
-    fn as_node(&self) -> &Self::Node {
-        self
-    }
-    fn set_view_hidden(&self, hidden: bool) {
-        Node::set_hidden(*self, hidden);
+impl renderer::LayoutElement for UikitElem {
+    fn set_view_hidden(self, hidden: bool) {
+        UikitElem::set_hidden(self, hidden);
     }
 }
-impl renderer::UniversalElement for Node {
-    fn set_alpha(&self, alpha: f64) {
-        Node::set_alpha(*self, alpha)
+impl renderer::UniversalElement for UikitElem {
+    fn set_alpha(self, alpha: f64) {
+        UikitElem::set_alpha(self, alpha)
     }
 }
 
@@ -576,31 +571,31 @@ pub use renderer::{
 
 /// Force a node's `aspect_ratio` (width / height). Useful for
 /// square photo cells (`aspect_ratio = 1.0`).
-pub fn set_aspect_ratio(node: &Node, ratio: f32) {
-    update_style(*node, |s| s.aspect_ratio = Some(ratio));
-    schedule_relayout(*node);
+pub fn set_aspect_ratio(node: UikitElem, ratio: f32) {
+    update_style(node, |s| s.aspect_ratio = Some(ratio));
+    schedule_relayout(node);
 }
 
 /// Set Taffy's `position` flag. `Position::Absolute` removes the
 /// node from the parent's flex layout — it positions itself
 /// relative to the parent's content area using `inset_*`. Used for
 /// overlay badges.
-pub fn set_position(node: &Node, position: Position) {
-    update_style(*node, |s| s.position = position);
-    schedule_relayout(*node);
+pub fn set_position(node: UikitElem, position: Position) {
+    update_style(node, |s| s.position = position);
+    schedule_relayout(node);
 }
 
 /// Set the four insets at once. Each value is points; `None`
 /// leaves that side as `Auto`. With `Position::Absolute`, an inset
 /// of 0 anchors that edge to the parent's content edge.
 pub fn set_inset(
-    node: &Node,
+    node: UikitElem,
     top: Option<f32>,
     right: Option<f32>,
     bottom: Option<f32>,
     left: Option<f32>,
 ) {
-    update_style(*node, |s| {
+    update_style(node, |s| {
         let to_dim = |v: Option<f32>| match v {
             Some(px) => LengthPercentageAuto::length(px),
             None => LengthPercentageAuto::auto(),
@@ -612,5 +607,5 @@ pub fn set_inset(
             left: to_dim(left),
         };
     });
-    schedule_relayout(*node);
+    schedule_relayout(node);
 }
