@@ -17,6 +17,29 @@ relayout-teleport bug didn't affect GTK — it relayouts from the real
 widget root via the `TaffyLayout` allocate cycle, not a captured id.
 
 
+## 2026-05-20 — Chrome DevTools Protocol server (GTK transport)
+
+GTK is the first port wired to the new `leptos_devtools` CDP server (the
+cross-cutting design is logged in `implementation_log.md`). The
+GTK-specific piece is the socket transport: `gtk_dom::devtools` listens
+with a `gio::SocketListener` (its async accept + read/write futures are
+glib-MainContext integrated), turns each `SocketConnection` into a single
+`futures` `AsyncRead+AsyncWrite` via `into_async_read_write()`, and drives
+`leptos_devtools::serve_connection::<_, GtkBackend>` on the glib main-loop
+executor (`any_spawner::Executor::spawn_local`). No tokio runtime or
+second reactor — the connection future is polled on the GTK main thread,
+so the CDP dispatcher touches the thread-local layout tree synchronously.
+
+The gio stream is wrapped in a `MainThreadStream` newtype with a
+documented `unsafe impl Send` (hyper's `with_upgrades()` demands a `Send`
+transport, but it never leaves the main thread). Behind the `devtools`
+cargo feature, started from `mount.rs`'s `activate` when `LEPTOS_DEVTOOLS`
+is set. `make_view.rs` tags each control (`button`, `vstack`, …) and
+`layout.rs` gained `schedule_relayout_for(NodeId)` so live edits reflow.
+Run: `LEPTOS_DEVTOOLS=9223 cargo run -p counter_gtk --features leptos_native/devtools`.
+
+---
+
 ## 2026-05-20 — `detach_child_widget`: set_child-based parents at teardown
 
 Switching `mount.rs` from `std::mem::forget`-ing the app state to an

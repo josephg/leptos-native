@@ -5,7 +5,7 @@
 
 mod common;
 
-use gtk_dom::gtk::prelude::*;
+use leptos_gtk::gtk4::prelude::*;
 use leptos_gtk::{
     event_gtk::{click, on},
     gtk::element::button,
@@ -13,9 +13,10 @@ use leptos_gtk::{
 };
 use renderer::view::{AddAnyAttr, Render};
 use std::sync::{Arc, Mutex};
+use leptos_gtk::dom::spawner;
 
 fn add_any_attr_routes_on_click_to_button() {
-    let _ = gtk_dom::spawner::init();
+    let _ = spawner::init();
     let owner = reactive_graph::owner::Owner::new();
     owner.with(|| {
         let fired = Arc::new(Mutex::new(0));
@@ -33,7 +34,7 @@ fn add_any_attr_routes_on_click_to_button() {
         let __w = st
             .el
             .widget();
-        let b = __w.downcast_ref::<gtk_dom::gtk::Button>()
+        let b = __w.downcast_ref::<gtk4::Button>()
             .unwrap();
         b.emit_clicked();
 

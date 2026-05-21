@@ -10,9 +10,10 @@ use leptos_gtk::prelude::*;
 use leptos_gtk::gtk::element::{button, label, vstack};
 use reactive_graph::owner::Owner;
 use renderer::view::Render;
+use leptos_gtk::dom::spawner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = gtk_dom::spawner::init();
+    let _ = spawner::init();
     let owner = Owner::new();
     owner.with(f);
 }

@@ -21,13 +21,13 @@ use crate::event_gtk::{
 use crate::gtk::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::Dom;
 use gtk4::prelude::*;
-use gtk_dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
+use crate::dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
 use reactive_graph::effect::RenderEffect;
 use renderer::menu::Modifiers;
 use renderer::view::{Mountable, Render};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
+use crate::dom::GtkNode;
 // ---------------------------------------------------------------------
 // SectionCursor — gio-section-aware grouping for <menu_separator/>
 // ---------------------------------------------------------------------
@@ -233,14 +233,14 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
     fn unmount(&mut self) {}
     fn mount(
         &mut self,
-        _parent: &gtk_dom::Node,
-        _marker: Option<&gtk_dom::Node>,
+        _parent: &GtkNode,
+        _marker: Option<&GtkNode>,
     ) {
     }
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<gtk_dom::Node> {
+    fn elements(&self) -> Vec<GtkNode> {
         Vec::new()
     }
 }

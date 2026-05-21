@@ -11,7 +11,7 @@
 
 #![allow(missing_docs)]
 
-use gtk_dom::Renderer as GtkRenderer;
+use crate::dom::Renderer as GtkRenderer;
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
@@ -23,57 +23,58 @@ use renderer::{
 // they're all widget-backed Elements; the only thing distinguishing
 // a "text node" or "placeholder" from a regular Element is the
 // widget subclass + default style applied at creation.
-pub use gtk_dom::{
-    ClassList, CssStyleDeclaration, Event, Node, TemplateElement,
+pub use crate::dom::{
+    ClassList, CssStyleDeclaration, Event, GtkNode, TemplateElement,
 };
-pub type Text = Node;
-pub type Placeholder = Node;
+pub type Text = GtkNode;
+pub type Placeholder = GtkNode;
+use renderer::scene::LayoutBackend;
 
 /// The GTK renderer surface — implements [`renderer::Renderer`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Dom;
 
 impl RendererTrait for Dom {
-    type Backend = gtk_dom::layout::GtkBackend;
-    type Node = Node;
+    type Backend = crate::dom::layout::GtkBackend;
+    type Node = GtkNode;
 
     fn intern(text: &str) -> &str {
         GtkRenderer::intern(text)
     }
 
-    fn create_text_node(text: &str) -> Node {
+    fn create_text_node(text: &str) -> GtkNode {
         GtkRenderer::create_text_node(text)
     }
 
-    fn create_placeholder() -> Node {
+    fn create_placeholder() -> GtkNode {
         GtkRenderer::create_placeholder()
     }
 
-    fn set_text(node: &Node, text: &str) {
+    fn set_text(node: &GtkNode, text: &str) {
         GtkRenderer::set_text(node, text);
     }
 
     fn insert_node(
-        parent: &Node,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        parent: &GtkNode,
+        new_child: &GtkNode,
+        anchor: Option<&GtkNode>,
     ) {
         GtkRenderer::insert_node(parent, new_child, anchor);
     }
 
-    fn remove_node(parent: &Node, child: &Node) -> Option<Node> {
+    fn remove_node(parent: &GtkNode, child: &GtkNode) -> Option<GtkNode> {
         GtkRenderer::remove_node(parent, child)
     }
 
-    fn clear_children(parent: &Node) {
+    fn clear_children(parent: &GtkNode) {
         GtkRenderer::clear_children(parent);
     }
 
-    fn remove(node: &Node) {
+    fn remove(node: &GtkNode) {
         GtkRenderer::remove(node);
     }
 
-    fn get_parent(node: &Node) -> Option<Node> {
+    fn get_parent(node: &GtkNode) -> Option<GtkNode> {
         // The default `try_mount_before` impl on the trait calls
         // get_parent. gtk_dom's get_parent panics with a hydration
         // message; here we return None so try_mount_before falls back
@@ -82,17 +83,17 @@ impl RendererTrait for Dom {
         None
     }
 
-    fn first_child(node: &Node) -> Option<Node> {
+    fn first_child(node: &GtkNode) -> Option<GtkNode> {
         let _ = node;
         None
     }
 
-    fn next_sibling(node: &Node) -> Option<Node> {
+    fn next_sibling(node: &GtkNode) -> Option<GtkNode> {
         let _ = node;
         None
     }
 
-    fn log_node(node: &Node) {
+    fn log_node(node: &GtkNode) {
         GtkRenderer::log_node(node);
     }
 
@@ -101,7 +102,7 @@ impl RendererTrait for Dom {
     /// LayoutHandle so the new child registers in the same Taffy
     /// tree.
     #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: &Node) -> bool
+    fn try_mount_before<M>(new_child: &mut M, before: &GtkNode) -> bool
     where
         M: Mountable<Self>,
     {
@@ -117,7 +118,7 @@ impl Dom {
     /// Mount `new_child` immediately before `before`. Panics if
     /// `before` has no parent (mirror of `try_mount_before`).
     #[track_caller]
-    pub fn mount_before<M>(new_child: &mut M, before: &Node)
+    pub fn mount_before<M>(new_child: &mut M, before: &GtkNode)
     where
         M: Mountable<Dom>,
     {
@@ -130,28 +131,28 @@ impl Dom {
 /// The parent `Node` of `before` in the store, or `None` if it's a
 /// root. The parent is a real node — no widget-wrapper synthesis is
 /// needed under the thread-local store.
-fn parent_of(before: &Node) -> Option<Node> {
-    renderer::parent::<gtk_dom::layout::GtkBackend>(before.id())
-        .map(Node::from_id)
+fn parent_of(before: &GtkNode) -> Option<GtkNode> {
+    crate::dom::layout::GtkBackend::parent(before.id())
+        .map(GtkNode::from_id)
 }
 
 // ---------------------------------------------------------------------
 // Mountable<Dom> impls — orphan-rule says these live in this crate.
 // ---------------------------------------------------------------------
 
-impl Mountable<Dom> for Node {
+impl Mountable<Dom> for GtkNode {
     fn unmount(&mut self) {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: &Node, marker: Option<&Node>) {
+    fn mount(&mut self, parent: &GtkNode, marker: Option<&GtkNode>) {
         <Dom as RendererTrait>::insert_node(parent, self, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: &Node,
-        marker: Option<&Node>,
+        parent: &GtkNode,
+        marker: Option<&GtkNode>,
     ) -> bool {
         GtkRenderer::try_insert_node(parent, self, marker)
     }
@@ -160,7 +161,7 @@ impl Mountable<Dom> for Node {
         false
     }
 
-    fn elements(&self) -> Vec<Node> {
+    fn elements(&self) -> Vec<GtkNode> {
         vec![self.clone()]
     }
 }

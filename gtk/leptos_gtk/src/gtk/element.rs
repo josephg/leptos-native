@@ -8,7 +8,7 @@
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use super::node_ref::NodeRef;
 use crate::Dom;
-use gtk_dom::{
+use crate::dom::{
     layout::{
         set_align_content, set_align_items, set_column_gap, set_flex_basis,
         set_flex_direction, set_flex_shrink, set_flex_wrap, set_gap,
@@ -18,7 +18,7 @@ use gtk_dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    Node as GtkElement,
+    GtkNode as GtkElement,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
@@ -29,7 +29,7 @@ use renderer::view::{Mountable, Render};
 // `apply_layout` / `apply_universal` live in `renderer`. The
 // `LayoutElement` / `UniversalElement` impls for `GtkElement` are in
 // `gtk_dom::layout` (orphan rule).
-use gtk_dom::layout::{apply_layout, apply_universal};
+use crate::dom::layout::{apply_layout, apply_universal};
 
 /// Apply the two "always there" attribute structs every builder
 /// owns: `universal` then `layout`. Layout LAST because
@@ -80,7 +80,7 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
     fn mount(
         &mut self,
         parent: &GtkElement,
-        marker: Option<&gtk_dom::Node>,
+        marker: Option<&crate::dom::GtkNode>,
     ) {
         // Insert self.el under parent. If parent has a Taffy tree
         // handle, this also registers self.el (and recursively, on
@@ -90,8 +90,8 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
         // If this element is a container, install our TaffyLayout
         // now that it's registered.
         let widget = self.el.widget();
-        if gtk_dom::node::is_container_widget(&widget) {
-            gtk_dom::node::install_taffy_layout_for_container(
+        if crate::dom::node::is_container_widget(&widget) {
+            crate::dom::node::install_taffy_layout_for_container(
                 &widget,
                 self.el.id(),
                 /* is_root */ false,

@@ -5,23 +5,25 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Node};
+
+use leptos_gtk::dom::{spawner, GtkNode};
+use leptos_gtk::gtk4::prelude::*;
 use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = gtk_dom::spawner::init();
+    let _ = spawner::init();
     let owner = Owner::new();
     owner.with(f);
 }
 
 fn set_attribute_with_same_value_does_not_re_set() {
     with_reactive_scope(|| {
-        let text_field = Node::create_text_field().0;
+        let text_field = GtkNode::create_text_field().0;
 
         text_field.set_value("hello");
         let __w = text_field
             .widget();
-        let after_first = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+        let after_first = __w.downcast_ref::<gtk4::Entry>()
             .unwrap()
             .text()
             .to_string();
@@ -31,7 +33,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
         let __w = text_field
             .widget();
-        let after_second = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+        let after_second = __w.downcast_ref::<gtk4::Entry>()
             .unwrap()
             .text()
             .to_string();
@@ -41,12 +43,12 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
 fn set_bool_attribute_with_same_value_idempotent() {
     with_reactive_scope(|| {
-        let checkbox = Node::create_checkbox().0;
+        let checkbox = GtkNode::create_checkbox().0;
 
         checkbox.set_checked(true);
         let __w = checkbox
             .widget();
-        let cb = __w.downcast_ref::<gtk_dom::gtk::CheckButton>()
+        let cb = __w.downcast_ref::<gtk4::CheckButton>()
             .unwrap();
         assert!(cb.is_active());
 

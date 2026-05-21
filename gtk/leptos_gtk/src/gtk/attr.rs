@@ -20,7 +20,7 @@
 //! [`RenderEffect`]: reactive_graph::effect::RenderEffect
 
 pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
-use gtk_dom::layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent};
+use crate::dom::layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent};
 
 /// Conversion trait so attribute setters can take either a bare
 /// value or a `Fn() -> T` closure transparently. Port-local — see

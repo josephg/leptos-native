@@ -36,7 +36,7 @@
 
 use crate::{gtk::window::window, Dom};
 use gtk4::prelude::*;
-use gtk_dom::app::{init_app, run_loop};
+use crate::dom::app::{init_app, run_loop};
 use reactive_graph::owner::Owner;
 use renderer::view::Render;
 use std::cell::RefCell;
@@ -176,6 +176,12 @@ where
         // rather than leaked.
         let owner = Owner::new();
         owner.set();
+
+        // Start the Chrome DevTools Protocol server if compiled in and
+        // requested at runtime (`LEPTOS_DEVTOOLS` env var). The spawner
+        // and glib main loop are both live by the time `activate` fires.
+        #[cfg(feature = "devtools")]
+        crate::devtools::start_from_env();
 
         let view = f(app);
         // Stub tree for the top-level build; the actual Window child

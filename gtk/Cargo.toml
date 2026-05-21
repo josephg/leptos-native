@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "leptos_gtk",
-    "dom",
     "examples/*",
 ]
 
@@ -15,6 +14,7 @@ rust-version = "1.88"
 renderer = { path = "../common/renderer", version = "0.1.0" }
 leptos_macro = { path = "../common/leptos_macro", version = "0.1.0" }
 leptos_native = { path = "../common/leptos_native", version = "0.1.0" }
+leptos_devtools = { path = "../common/devtools", version = "0.1.0" }
 
 # --- crates.io utility deps (formerly vendored, unmodified) ---
 throw_error = { default-features = false, version = "0.3.1" }

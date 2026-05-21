@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   # common (renderer-agnostic)
   "common/renderer",
+  "common/devtools",
   "common/leptos_macro",
   "common/leptos_native",
   "apple_shared",
@@ -152,6 +153,7 @@ rust-version = "1.88"
 [workspace.dependencies]
 # --- workspace member crates (path-pinned) ---
 renderer = { path = "./common/renderer", version = "0.1.0" }
+leptos_devtools = { path = "./common/devtools", version = "0.1.0" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos_native = { path = "./common/leptos_native", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }

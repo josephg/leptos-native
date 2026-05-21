@@ -1,19 +1,40 @@
-//! Shared test helpers for `leptos_gtk`. Mirror of
-//! `cocoa/leptos_cocoa/tests/common/mod.rs`.
+//! Shared test helpers — GTK init, custom test runner.
+//!
+//! Mirrors `cocoa_dom/tests/common/mod.rs`. GTK4 (like AppKit) is
+//! main-thread-only — `gtk::init()` records the calling thread as the
+//! main thread, and any subsequent GTK call from another thread
+//! panics. Cargo's default test harness spawns a worker thread per
+//! test, so we use `harness = false` and run all tests sequentially
+//! on the main thread (the binary's `fn main()`).
 
 #![cfg(feature = "gtk")]
-#![allow(dead_code)]
+#![allow(dead_code)] // helpers used by some test files but not all
 
-use leptos_gtk::dom::app;
-
+/// Initialise GTK once for the test binary's lifetime. Idempotent —
+/// gtk::init's underlying gtk_init_check is safe to call multiple
+/// times, but skip the second one to be tidy.
 pub fn ensure_gtk_init() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        let _ = gtk4::init();
+        // Tests run headless (no display) — `gtk_init_check` reports
+        // failure if it can't connect to a display. Try anyway, but
+        // fall back to forcing the runtime flag so widget construction
+        // doesn't panic on the `assert_initialized_main_thread!`
+        // check that every gtk-rs setter expands to.
+        if gtk4::init().is_err() {
+            // Headless path: gtk::init() failed (no DISPLAY /
+            // WAYLAND_DISPLAY). We still need the runtime to think
+            // GTK is initialized so widget constructors don't panic
+            // on `assert_initialized_main_thread!`. There's no public
+            // API to fake this, so skip the affected tests at the
+            // call site by checking `is_headless()`.
+        }
     });
 }
 
+/// Whether the test binary has a display available. Used to skip
+/// tests that need real widget construction when running over SSH.
 pub fn is_headless() -> bool {
     !gtk4::is_initialized()
 }
@@ -23,11 +44,13 @@ pub fn is_headless() -> bool {
 ///
 /// Production never needs this: `app.run()` registers the
 /// application (emitting `startup`) before any window is created
-/// inside `activate`. These tests build windows directly, skipping
-/// `run()`, so GTK logs a `Gtk-CRITICAL` ("New application windows
-/// must be added after the GApplication::startup signal has been
-/// emitted") unless we register first. `register()` emits `startup`
-/// synchronously without running the loop.
+/// inside `activate`. But these tests build windows directly,
+/// skipping `run()` — so GTK logs a `Gtk-CRITICAL` ("New
+/// application windows must be added after the
+/// GApplication::startup signal has been emitted") the moment the
+/// window is attached to the un-registered app. `register()` emits
+/// `startup` synchronously without running the loop, which is
+/// exactly what the warning asks for.
 pub fn init_app_registered(application_id: &str) -> gtk4::Application {
     use gtk4::prelude::*;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -40,11 +63,19 @@ pub fn init_app_registered(application_id: &str) -> gtk4::Application {
     // The suffix element must start with a letter — GApplication
     // rejects id segments that begin with a digit.
     let id = format!("{application_id}.t{}", N.fetch_add(1, Ordering::Relaxed));
-    let app = app::init_app(&id);
+    let app = leptos_gtk::dom::app::init_app(&id);
     let _ = app.register(None::<&gtk4::gio::Cancellable>);
     app
 }
 
+/// Custom test runner — same shape as the cocoa one. Runs each
+/// `fn()` on the current (main) thread, catches panics, prints a
+/// libtest-style summary, and exits with code 1 on any failure.
+///
+/// On a headless system (no DISPLAY / WAYLAND_DISPLAY,
+/// `gtk::init()` fails), the runner skips the entire suite — most
+/// tests need to construct widgets, which requires a real display
+/// connection.
 pub fn run_tests(tests: &[(&'static str, fn())]) {
     ensure_gtk_init();
 
@@ -113,3 +144,8 @@ fn downcast_panic(payload: &Box<dyn std::any::Any + Send>) -> String {
         "<non-string panic payload>".to_string()
     }
 }
+
+/// Suppress unused-warnings for items we expose for use across tests
+/// even though some test files don't touch all of them.
+#[allow(dead_code)]
+pub(crate) fn _force_link() {}

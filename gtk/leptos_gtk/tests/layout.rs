@@ -10,14 +10,16 @@
 
 mod common;
 
-use gtk_dom::layout;
 use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use reactive_graph::owner::Owner;
 use renderer::attrs::WithLayout;
 use renderer::view::{Mountable, Render};
+use leptos_gtk::dom::{layout, layout::GtkBackend, spawner, window, GtkNode};
+use renderer::LayoutBackend;
+use leptos_gtk::gtk4::prelude::*;
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
-    let _ = gtk_dom::spawner::init();
+    let _ = spawner::init();
     let owner = Owner::new();
     owner.with(body);
 }
@@ -29,10 +31,10 @@ fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
     V: Render<leptos_gtk::Dom>,
     V::State: Mountable<leptos_gtk::Dom>,
-    F: FnOnce(&gtk_dom::Node),
+    F: FnOnce(&GtkNode),
 {
-    let app = gtk_dom::app::init_app("org.test.leptos_gtk.layout");
-    let opened = gtk_dom::window::open_window(
+    let app = common::init_app_registered("org.test.leptos_gtk.layout");
+    let opened = window::open_window(
         &app,
         "test",
         (size.0 as i32, size.1 as i32),
@@ -50,16 +52,16 @@ where
 /// Walk the Taffy tree under `root` and collect the layouts of all
 /// leaf widgets that match `pred`.
 fn find_leaf_widgets<P>(
-    root: &gtk_dom::Node,
+    root: &GtkNode,
     mut pred: P,
 ) -> Vec<layout::Layout>
 where
-    P: FnMut(&gtk_dom::gtk::Widget) -> bool,
+    P: FnMut(&gtk4::Widget) -> bool,
 {
     let mut out = Vec::new();
     walk(root.as_node().id(), &mut |id, w| {
         if pred(w) {
-            if let Some(layout) = layout::layout(id) {
+            if let Some(layout) = GtkBackend::layout(id) {
                 out.push(layout);
             }
         }
@@ -69,10 +71,10 @@ where
 
 fn walk<F>(id: layout::NodeId, f: &mut F)
 where
-    F: FnMut(layout::NodeId, &gtk_dom::gtk::Widget),
+    F: FnMut(layout::NodeId, &gtk4::Widget),
 {
-    let widget = layout::view(id);
-    let children = layout::children(id);
+    let widget = GtkBackend::view(id);
+    let children = GtkBackend::children(id);
     if let Some(w) = widget {
         f(id, &w);
     }
@@ -82,14 +84,13 @@ where
 }
 
 fn leaf_controls_have_nonzero_intrinsic_size() {
-    use gtk_dom::gtk::prelude::*;
     with_reactive_scope(|| {
         let view = vstack().padding(16.0).gap(12.0).child(
             label().text("Hello"),
         );
         with_mounted_view(view, (320.0, 200.0), |root| {
             let labels = find_leaf_widgets(root, |w| {
-                w.is::<gtk_dom::gtk::Label>()
+                w.is::<gtk4::Label>()
             });
             assert!(!labels.is_empty(), "no Label found in tree");
             for l in &labels {
@@ -109,7 +110,6 @@ fn leaf_controls_have_nonzero_intrinsic_size() {
 }
 
 fn buttons_in_hstack_have_natural_size() {
-    use gtk_dom::gtk::prelude::*;
     with_reactive_scope(|| {
         let view = hstack()
             .gap(8.0)
@@ -117,7 +117,7 @@ fn buttons_in_hstack_have_natural_size() {
             .child(button().title("Cancel"));
         with_mounted_view(view, (320.0, 100.0), |root| {
             let buttons = find_leaf_widgets(root, |w| {
-                w.is::<gtk_dom::gtk::Button>()
+                w.is::<gtk4::Button>()
             });
             assert_eq!(buttons.len(), 2, "expected 2 buttons in tree");
             for (i, b) in buttons.iter().enumerate() {
@@ -149,11 +149,11 @@ fn vstack_label_plus_hstack_has_full_height() {
             );
         with_mounted_view(view, (320.0, 200.0), |root| {
             // First child of the content_root is the outer vstack.
-            let kids = layout::children(root.as_node().id());
+            let kids = GtkBackend::children(root.as_node().id());
             assert!(!kids.is_empty(), "content_root has no children");
             let outer_id = kids[0];
             let outer_layout =
-                layout::layout(outer_id).expect("outer layout missing");
+                GtkBackend::layout(outer_id).expect("outer layout missing");
             assert!(
                 outer_layout.size.height >= 60.0,
                 "vstack height {} suspiciously small",

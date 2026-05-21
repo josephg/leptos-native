@@ -5,6 +5,123 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-05-20 — Chrome DevTools Protocol server (cross-cutting; GTK wired first)
+
+Added a Chrome DevTools Protocol (CDP) server so a running app can be
+inspected from the Chrome DevTools frontend: view tree, per-node Taffy
+style, computed box model (location/size/padding/border/margin), and
+**live style editing**. Wired into GTK first (host OS); cocoa/iOS get
+the same generic crate plus a per-port socket later.
+
+- **`common/renderer/src/scene.rs` — introspection hooks (unconditional).**
+  Added a `debug_tag_name: &'static str` field on `NodeData` (set once at
+  construction; `""` if unset), plus `set_debug_tag_name` / `debug_tag_name`
+  and `all_node_ids` / `roots` accessors. The store had no way to
+  enumerate roots or name a node; CDP needs both. Cheap enough
+  (`&'static str` + a few read fns) to live in the core without a
+  feature gate — the heavy deps stay isolated in the devtools crate.
+- **`common/devtools` (`leptos_devtools`) — new crate, generic over
+  `LayoutBackend`.** Maps the tree → `DOM.Node`, computed `Layout` →
+  `DOM.BoxModel`, and Taffy `Style` ⇄ a **curated CSS subset**
+  (display, flex-direction, flex-grow/shrink, width/height/min/max,
+  padding-*, margin-*, gap). `CSS.setStyleTexts` parses that subset back
+  onto the node's `Style`, writes via `renderer::set_style`, then calls a
+  port-supplied relayout hook. Inline styles are exposed with synthetic
+  stylesheet ids + ranges so the Styles pane is editable. Unknown CSS
+  props are silently ignored (acceptable per the failure-mode hierarchy —
+  the contract is "subset only").
+- **Transport: no extra async runtime.** `yawc` (server side, over
+  `hyper` http1 `+ .with_upgrades()`) runs on the port's *own* main-loop
+  executor via `spawn_local`. The crate is transport-agnostic: it takes
+  any `futures` `AsyncRead+AsyncWrite` stream (wrapped in the futures→
+  tokio `Adapter` from yawc's smol example) and serves CDP over it. The
+  HTTP discovery routes (`/json`, `/json/version`) fall out of the same
+  hyper `service_fn`. Because the connection future is polled on the main
+  thread, the CDP dispatcher reads/mutates the thread-local tree
+  synchronously — no snapshot, no cross-thread bridge.
+- **`Send` caveat.** hyper's `with_upgrades()` requires the IO to be
+  `Send` (`hyper::upgrade::Upgraded` is `Send`), even though we only ever
+  poll the connection on the main thread. The session future itself stays
+  `!Send` under `spawn_local`; only the socket type carries the bound. On
+  GTK the gio stream is wrapped in a `MainThreadStream` newtype with a
+  documented `unsafe impl Send` (sound: it never crosses threads).
+- **GTK wiring.** `gtk_dom::devtools` binds a `gio::SocketListener`
+  (glib-MainContext-integrated accept + read/write), converts each
+  connection via `into_async_read_write()`, and feeds it to
+  `leptos_devtools::serve_connection::<_, GtkBackend>`. Started from
+  `mount.rs`'s `activate` handler when the `devtools` feature is on **and**
+  `LEPTOS_DEVTOOLS` is set (a port number, default 9223). `make_view.rs`
+  sets `debug_tag_name` per control; `layout.rs` gained
+  `schedule_relayout_for(NodeId)` (a by-id sibling of `schedule_relayout`)
+  for the edit hook.
+- **Verified** against `counter_gtk` (`LEPTOS_DEVTOOLS=9223`): discovery
+  endpoints, `DOM.getDocument` (app → vstack → stack …), matched styles,
+  `DOM.getBoxModel` (320×200), and a `CSS.setStyleTexts` `padding: 40px`
+  edit that reflowed the live window (content box inset to (40,40)). Unit
+  test (`common/devtools/tests/mapping.rs`) covers box-model math and the
+  style round-trip against a stub backend.
+
+**Follow-up (same day) — element attributes, computed layout, hover
+highlight.** Three additions, all routed through a new `Hooks` struct
+passed to `serve_connection` (replacing the bare `schedule` arg):
+`schedule_relayout`, `set_highlight: Fn(Option<NodeId>)`, and
+`node_attributes: Fn(NodeId) -> Vec<(String,String)>`.
+- **Attributes in the tree.** `DOM.Node.attributes` is now filled from a
+  port-supplied reader. GTK's downcasts the widget — `button` →
+  `title`, `label` → `value`, `text_field` → `value`, `checkbox` →
+  `checked`, `slider`/`pop_up_button` → value/selected.
+- **Computed layout in px.** `CSS.getComputedStyleForNode` now returns
+  *used* values for the box metrics (width/height/padding/border/margin)
+  read from the computed Taffy `Layout`, not the style — so the Computed
+  pane shows `46px` instead of `auto`. (The editable inline style in the
+  Styles pane still shows the authored style values, e.g. `auto`.)
+- **Hover highlight.** `Overlay.highlightNode`/`hideHighlight` drive a
+  per-window `HighlightOverlayWidget` (GTK; sibling of `debug_overlay`)
+  that paints the Chrome-style margin/border/padding/content regions over
+  the node, using `Widget::compute_bounds` for on-screen coords. `window.rs`
+  now wraps content in one `gtk::Overlay` shared by the debug overlay and
+  the highlight overlay.
+- `DOM.getDocument` now honours the `depth` param (default −1 = full
+  tree) so the Elements tree populates in one round trip.
+- *Not yet:* inspect-from-app mode (see follow-up 2).
+
+**Follow-up 2 — inspect-from-app, computed box diagram, idmap/event
+refactor.**
+- **Inspect-from-app mode.** `Overlay.setInspectMode` toggles a GTK
+  pointer watcher (capture-phase `EventControllerMotion` + `GestureClick`
+  on the window). While active, motion hit-tests the Taffy tree (deepest
+  node whose `compute_bounds` contains the cursor), highlights it, and
+  emits `Overlay.nodeHighlightRequested`; a click emits
+  `Overlay.inspectNodeRequested` and claims the event so the real control
+  doesn't fire. New `Hooks::set_inspect_mode` + free fns
+  `notify_node_hovered` / `notify_node_picked`.
+- **Backend-pushed events.** The server now fans out unsolicited events:
+  `events.rs` holds a thread-local registry of per-session unbounded
+  senders; `run_session` `split()`s the WebSocket and `select!`s incoming
+  frames against the outgoing event channel. (Enabled `futures` features
+  `std` + `async-await`.)
+- **Global idmap.** The CDP↔taffy id map moved from per-session to a
+  thread-local in `idmap.rs` (free fns `cdp_id`/`taffy`) so the inspect
+  path can translate a taffy id into the same CDP id the frontend holds.
+  Dropped the `idmap` arg threaded through the `mapping` fns.
+- **Computed box diagram.** `CSS.getComputedStyleForNode` now also emits
+  `box-sizing: border-box` (Taffy is border-box) and `position`, so the
+  Computed pane's box-model diagram renders.
+- **Not a bug — "min-width doesn't relayout".** Verified min-width *does*
+  reflow when it changes the used size (a row button went 46→150px). On a
+  cross-axis-stretched child (a label in a column) a min-width below the
+  stretched width is a no-op — correct flexbox behavior, not a scheduling
+  problem.
+
+See `gtk_implementation_log.md` for the GTK-specific note. TODO when
+porting to cocoa/iOS: supply a dispatch-source-backed `AsyncRead/AsyncWrite`
+in place of gio, set `debug_tag_name` in their `make_view.rs`, a
+`node_attributes` reader + highlight overlay for their toolkit, and start
+the server from their `mount.rs`.
+
+---
+
+
 ## 2026-05-20 — Post-`NodeId`-refactor polish: teleport fix, overlay/fuzzer, ElementState::Drop
 
 Follow-up pass after the `NodeId`-over-thread-local-store refactor below.
