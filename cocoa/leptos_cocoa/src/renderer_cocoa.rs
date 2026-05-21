@@ -20,7 +20,7 @@ use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
 // distinguishing a "text node" or "placeholder" from a regular
 // Element is the NSView subclass + default style applied at creation.
 pub use crate::dom::{
-    ClassList, CocoaElem, CssStyleDeclaration, Event, TemplateElement,
+    CocoaElem, Event,
 };
 use crate::dom::layout;
 

@@ -107,8 +107,7 @@ pub trait LayoutBackend: 'static + Sized {
     /// store. The store is a main-thread-lifetime singleton; ports back
     /// it with a `thread_local!`.
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R;
-
-
+    
     // *** Utility methods. These methods are implemented in the trait to make them available for
     // downstream consumers. It is not expected that implementers of LayoutBackend override these
     // methods.
