@@ -22,13 +22,10 @@ use objc2_app_kit::{
     NSButton, NSControl, NSTextField, NSView, NSWindowOrderingMode,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use renderer::NodeId;
+use renderer::{LayoutBackend, NodeId};
 use send_wrapper::SendWrapper;
 use std::fmt;
-
-/// Per-port backend alias so calls read `node::B` rather than spelling
-/// `crate::layout::CocoaBackend` everywhere.
-type B = crate::layout::CocoaBackend;
+use crate::layout::CocoaBackend;
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`; cloning is a bitwise copy.
@@ -67,7 +64,7 @@ impl Node {
         V: AsRef<NSView> + Message,
     {
         let view: Retained<NSView> = unsafe { Retained::cast_unchecked(view) };
-        let id = renderer::new_leaf::<B>(
+        let id = CocoaBackend::new_leaf(
             default_style,
             SendWrapper::new(view.clone()),
             default_meta,
@@ -75,7 +72,7 @@ impl Node {
         );
         // Wire the handlers' view back-ref so teardown can nil
         // setTarget/setDelegate while the view is still alive.
-        renderer::with_handlers_mut::<B, _>(id, |h| h.attach_view(view));
+        CocoaBackend::with_handlers_mut(id, |h| h.attach_view(view));
         Node { id }
     }
 
@@ -94,14 +91,14 @@ impl Node {
     /// Borrow the underlying NSView (owned clone). Main-thread only.
     /// Panics if the node is no longer in the store.
     pub fn ns_view(self) -> Retained<NSView> {
-        renderer::view::<B>(self.id)
+        CocoaBackend::view(self.id)
             .map(|sw| sw.take())
             .expect("Node id must exist in the store")
     }
 
     /// `Some(view)` if the node is still in the store, else `None`.
     pub fn try_ns_view(self) -> Option<Retained<NSView>> {
-        renderer::view::<B>(self.id).map(|sw| sw.take())
+        CocoaBackend::view(self.id).map(|sw| sw.take())
     }
 
     /// Downcast the live NSView to `T`. `None` if the node is gone
@@ -158,36 +155,36 @@ impl Node {
         if let Some(view) = self.try_ns_view() {
             view.removeFromSuperview();
         }
-        renderer::remove::<B>(self.id);
+        CocoaBackend::remove(self.id);
     }
 
     // ---- Accessor surface ------------------------------------------
 
     /// Borrow the node's [`renderer::Style`] for read.
     pub fn with_style<R>(self, f: impl FnOnce(&renderer::Style) -> R) -> R {
-        let style = renderer::style::<B>(self.id).unwrap_or_default();
+        let style = CocoaBackend::style(self.id).unwrap_or_default();
         f(&style)
     }
 
     /// Mutate the node's [`renderer::Style`] (marks it dirty).
     pub fn with_style_mut<R>(self, f: impl FnOnce(&mut renderer::Style) -> R) -> R {
-        let mut style = renderer::style::<B>(self.id).unwrap_or_default();
+        let mut style = CocoaBackend::style(self.id).unwrap_or_default();
         let r = f(&mut style);
-        renderer::set_style::<B>(self.id, style);
+        CocoaBackend::set_style(self.id, style);
         r
     }
 
     /// Borrow the node's [`CocoaMeta`] for read.
     pub fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R {
-        let meta = renderer::meta::<B>(self.id).unwrap_or_default();
+        let meta = CocoaBackend::meta(self.id).unwrap_or_default();
         f(&meta)
     }
 
     /// Mutate the node's [`CocoaMeta`].
     pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R {
-        let mut meta = renderer::meta::<B>(self.id).unwrap_or_default();
+        let mut meta = CocoaBackend::meta(self.id).unwrap_or_default();
         let r = f(&mut meta);
-        renderer::set_meta::<B>(self.id, meta);
+        CocoaBackend::set_meta(self.id, meta);
         r
     }
 
@@ -198,7 +195,7 @@ impl Node {
         self,
         f: impl FnOnce(&mut crate::event::NodeHandlers) -> R,
     ) -> R {
-        renderer::with_handlers_mut::<B, _>(self.id, f)
+        CocoaBackend::with_handlers_mut(self.id, f)
             .expect("Node id must exist in the store")
     }
 
@@ -949,7 +946,7 @@ impl Node {
 
         let wrapper = self.with_meta(|m| m.child_taffy_parent);
         if let Some(wid) = wrapper {
-            renderer::set_style::<B>(
+            CocoaBackend::set_style(
                 wid,
                 crate::layout::build_scroll_wrapper_style(axis),
             );
@@ -1374,7 +1371,7 @@ impl Node {
 impl WeakNode {
     /// Recover a `Node` if the entry is still in the store.
     pub fn upgrade(self) -> Option<Node> {
-        if renderer::contains::<B>(self.id) {
+        if CocoaBackend::contains(self.id) {
             Some(Node { id: self.id })
         } else {
             None
@@ -1383,7 +1380,7 @@ impl WeakNode {
 
     /// Whether the entry is still present.
     pub fn is_alive(self) -> bool {
-        renderer::contains::<B>(self.id)
+        CocoaBackend::contains(self.id)
     }
 }
 

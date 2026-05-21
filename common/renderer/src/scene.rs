@@ -223,7 +223,7 @@ pub trait LayoutBackend: 'static + Sized {
         Self::with_tree(|s| s.nodes.contains_key(key(id)))
     }
 
-    fn with_handlers_mut<B: LayoutBackend, R>(
+    fn with_handlers_mut<R>(
         id: NodeId,
         f: impl FnOnce(&mut Self::Handlers) -> R,
     ) -> Option<R> {

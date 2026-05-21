@@ -11,10 +11,7 @@
 #![allow(missing_docs)]
 
 use cocoa_dom::Renderer as CocoaRenderer;
-use renderer::{
-    renderer::Renderer as RendererTrait,
-    view::Mountable,
-};
+use renderer::{renderer::Renderer as RendererTrait, view::Mountable, LayoutBackend};
 
 // Re-export the concrete tree types under the names tachys/leptos/
 // the platform expects. `Text` and `Placeholder` are aliases for
@@ -25,6 +22,8 @@ use renderer::{
 pub use cocoa_dom::{
     ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
 };
+use cocoa_dom::layout::CocoaBackend;
+
 pub type Text = Element;
 pub type Placeholder = Element;
 
@@ -80,7 +79,7 @@ impl RendererTrait for Dom {
         // The parent is a real node in the store; look it up by id.
         // Used by `UnitState::insert_before_this` (the mount anchor
         // for `<Switch>` and other placeholder-based control-flow).
-        renderer::parent::<cocoa_dom::layout::CocoaBackend>(node.id())
+        CocoaBackend::parent(node.id())
             .map(Node::from_id)
     }
 
@@ -133,7 +132,7 @@ impl Dom {
 /// is a root (or detached). The parent is a real node; no NSView
 /// wrapper synthesis is needed under the thread-local store.
 pub(crate) fn parent_of(before: &Node) -> Option<Node> {
-    renderer::parent::<cocoa_dom::layout::CocoaBackend>(before.id())
+    CocoaBackend::parent(before.id())
         .map(Node::from_id)
 }
 

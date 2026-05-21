@@ -131,37 +131,37 @@ impl LayoutBackend for CocoaBackend {
 /// Total node count in the per-thread store (orphans included). Used
 /// by leak detectors to verify teardown returns to baseline.
 pub fn node_count() -> usize {
-    renderer::node_count::<CocoaBackend>()
+    CocoaBackend::node_count()
 }
 
 /// The Taffy style for `id`, if present.
 pub fn style(id: NodeId) -> Option<Style> {
-    renderer::style::<CocoaBackend>(id)
+    CocoaBackend::style(id)
 }
 
 /// Children of `id` (cloned).
 pub fn children(id: NodeId) -> Vec<NodeId> {
-    renderer::children::<CocoaBackend>(id)
+    CocoaBackend::children(id)
 }
 
 /// Whether `id`'s cached layout is dirty (or it's absent).
 pub fn dirty(id: NodeId) -> bool {
-    renderer::dirty::<CocoaBackend>(id)
+    CocoaBackend::dirty(id)
 }
 
 /// Parent of `id`, if attached.
 pub fn parent(id: NodeId) -> Option<NodeId> {
-    renderer::parent::<CocoaBackend>(id)
+    CocoaBackend::parent(id)
 }
 
 /// Whether `id` is still present in the store.
 pub fn contains(id: NodeId) -> bool {
-    renderer::contains::<CocoaBackend>(id)
+    CocoaBackend::contains(id)
 }
 
 /// Remove `id` and its structural subtree from the store.
 pub fn remove(id: NodeId) {
-    renderer::remove::<CocoaBackend>(id);
+    CocoaBackend::remove(id);
 }
 
 pub type NodeContext = renderer::NodeContext<CocoaBackend>;
@@ -243,7 +243,7 @@ pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
 /// parent's subtree so its flex layout recomputes without the node.
 pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
     let node = *node.borrow();
-    let parent = renderer::parent::<CocoaBackend>(node.id());
+    let parent = CocoaBackend::parent(node.id());
     node.teardown();
     if let Some(pid) = parent {
         queue_relayout_for(pid);
@@ -261,7 +261,7 @@ pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
 /// Mark `node` dirty (so leaf measure callbacks re-run on content
 /// change) and queue its subtree root for the next relayout pass.
 pub fn schedule_relayout(node: Node) {
-    renderer::mark_dirty::<CocoaBackend>(node.id());
+    CocoaBackend::mark_dirty(node.id());
     queue_relayout_for(node.id());
 }
 
@@ -278,7 +278,7 @@ pub fn schedule_relayout(node: Node) {
 /// regression. Deferring `root_of` to drain time means the node is
 /// attached by then and resolves to the real window root.
 fn queue_relayout_for(id: NodeId) {
-    renderer::queue_relayout::<CocoaBackend>(id);
+    CocoaBackend::queue_relayout(id);
     ensure_relayout_pass_scheduled();
 }
 
@@ -289,29 +289,29 @@ fn ensure_relayout_pass_scheduled() {
     crate::animation::capture_for_layout();
 
     // Dedup: one "is a pass queued?" flag in the store.
-    if renderer::relayout_queued::<CocoaBackend>() {
+    if CocoaBackend::relayout_queued() {
         return;
     }
-    renderer::set_relayout_queued::<CocoaBackend>(true);
+    CocoaBackend::set_relayout_queued(true);
 
     DispatchQueue::main().exec_async(move || {
-        renderer::set_relayout_queued::<CocoaBackend>(false);
+        CocoaBackend::set_relayout_queued(false);
         // Resolve each touched node to its CURRENT subtree root (it's
         // attached by now, even if it wasn't when enqueued), dedup,
         // and recompute each unique root once. A node freed before now
         // isn't in the store and is skipped.
         let mut roots: Vec<NodeId> = Vec::new();
-        for id in renderer::take_pending_relayout::<CocoaBackend>() {
-            if !renderer::contains::<CocoaBackend>(id) {
+        for id in CocoaBackend::take_pending_relayout() {
+            if !CocoaBackend::contains(id) {
                 continue;
             }
-            let root = renderer::root_of::<CocoaBackend>(id);
+            let root = CocoaBackend::root_of(id);
             if !roots.contains(&root) {
                 roots.push(root);
             }
         }
         for root_id in roots {
-            let Some(view) = renderer::view::<CocoaBackend>(root_id) else {
+            let Some(view) = CocoaBackend::view(root_id) else {
                 continue;
             };
             let root_view: Retained<NSView> = (*view).clone();
@@ -336,19 +336,19 @@ fn taffy_child_parent(parent: Node) -> NodeId {
 
 pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = taffy_child_parent(*parent.borrow());
-    renderer::add_child::<CocoaBackend>(parent_id, child.borrow().id());
+    CocoaBackend::add_child(parent_id, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
 pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
     let parent_id = taffy_child_parent(*parent.borrow());
-    renderer::insert_child_at_index::<CocoaBackend>(parent_id, index, child.borrow().id());
+    CocoaBackend::insert_child_at_index(parent_id, index, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
 pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
     let parent_id = taffy_child_parent(*parent.borrow());
-    renderer::remove_child::<CocoaBackend>(parent_id, child.borrow().id());
+    CocoaBackend::remove_child(parent_id, child.borrow().id());
     queue_relayout_for(parent_id);
 }
 
@@ -402,7 +402,7 @@ fn compute_layout_inner(
         );
     }
     let root_id = root.id();
-    if !renderer::contains::<CocoaBackend>(root_id) {
+    if !CocoaBackend::contains(root_id) {
         return;
     }
 
@@ -414,7 +414,7 @@ fn compute_layout_inner(
     // Explicit sizes (length, percent) are LEFT ALONE.
     {
         let mut style =
-            renderer::style::<CocoaBackend>(root_id).unwrap_or_default();
+            CocoaBackend::style(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -425,7 +425,7 @@ fn compute_layout_inner(
             touched = true;
         }
         if touched {
-            renderer::set_style::<CocoaBackend>(root_id, style);
+            CocoaBackend::set_style(root_id, style);
         }
     }
 
@@ -433,7 +433,7 @@ fn compute_layout_inner(
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    renderer::run_layout_pass::<CocoaBackend>(root_id, avail);
+    CocoaBackend::run_layout_pass(root_id, avail);
 
     warn_zero_height_scroll_views(root_id);
 
@@ -463,13 +463,13 @@ fn warn_zero_height_scroll_views(root: NodeId) {
     static WARNED: Once = Once::new();
 
     fn visit(id: NodeId, warned: &Once) {
-        let is_sv = renderer::meta::<CocoaBackend>(id)
+        let is_sv = CocoaBackend::meta(id)
             .map(|m| m.is_scroll_view)
             .unwrap_or(false);
         if is_sv {
-            if let Some(layout) = renderer::layout::<CocoaBackend>(id) {
+            if let Some(layout) = CocoaBackend::layout(id) {
                 let has_children =
-                    !renderer::children::<CocoaBackend>(id).is_empty();
+                    !CocoaBackend::children(id).is_empty();
                 if has_children && layout.size.height < 0.5 {
                     warned.call_once(|| {
                         eprintln!(
@@ -490,7 +490,7 @@ fn warn_zero_height_scroll_views(root: NodeId) {
                 }
             }
         }
-        for k in renderer::children::<CocoaBackend>(id) {
+        for k in CocoaBackend::children(id) {
             visit(k, warned);
         }
     }
@@ -504,7 +504,7 @@ fn apply_frames(id: NodeId) {
     let pending = crate::animation::take_pending_layout_animation();
     #[cfg(not(feature = "animation"))]
     let pending: Option<()> = None;
-    for (_id, layout, view) in renderer::collect_subtree::<CocoaBackend>(id) {
+    for (_id, layout, view) in CocoaBackend::collect_subtree(id) {
         set_frame_from_layout(&view, &layout, pending);
     }
 }
@@ -518,7 +518,7 @@ fn apply_frames_descendants_only(root_id: NodeId) {
     let pending = crate::animation::take_pending_layout_animation();
     #[cfg(not(feature = "animation"))]
     let pending: Option<()> = None;
-    for (id, layout, view) in renderer::collect_subtree::<CocoaBackend>(root_id) {
+    for (id, layout, view) in CocoaBackend::collect_subtree(root_id) {
         if id != root_id {
             set_frame_from_layout(&view, &layout, pending);
         }
@@ -542,7 +542,7 @@ pub(crate) fn mark_intrinsic_width_from_content(node: Node, on: bool) {
     node.with_meta_mut(|m| m.intrinsic_width_from_content = on);
     // with_meta_mut doesn't mark dirty — the next measure pass needs
     // to see the new flag, so kick the store.
-    renderer::mark_dirty::<CocoaBackend>(node.id());
+    CocoaBackend::mark_dirty(node.id());
 }
 
 fn measure_leaf_size(

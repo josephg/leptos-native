@@ -37,6 +37,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use taffy::NodeId;
+use renderer::LayoutBackend;
 
 /// Tag value the overlay reports for `-tag`. `apply_layout` reads
 /// this to skip the overlay when matching subviews to Taffy children.
@@ -202,9 +203,9 @@ fn walk_inner(
     // Padding still comes from Taffy: it's a styled property, not
     // something inferable from the rendered frame.
     let (loc_x, loc_y, size_w, size_h, pad_t, pad_r, pad_b, pad_l, kids, view) = {
-        let layout = renderer::layout::<CocoaBackend>(node_id).unwrap_or_default();
-        let kids: Vec<NodeId> = renderer::children::<CocoaBackend>(node_id);
-        let view = renderer::get_node_context::<CocoaBackend>(node_id)
+        let layout = CocoaBackend::layout(node_id).unwrap_or_default();
+        let kids: Vec<NodeId> = CocoaBackend::children(node_id);
+        let view = CocoaBackend::get_node_context(node_id)
             .map(|c| (*c.view).clone());
         let frame = view.as_ref().map(|v| v.frame());
         let (lx, ly, sw, sh) = match frame {
@@ -283,7 +284,7 @@ fn walk_inner(
         let frames: Vec<NSRect> = kids
             .iter()
             .map(|id| {
-                renderer::get_node_context::<CocoaBackend>(*id)
+                CocoaBackend::get_node_context(*id)
                     .map(|c| c.view.frame())
                     .unwrap_or_default()
             })

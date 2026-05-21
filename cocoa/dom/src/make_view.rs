@@ -42,6 +42,8 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use send_wrapper::SendWrapper;
+use renderer::LayoutBackend;
+use crate::layout::CocoaBackend;
 
 fn mtm() -> MainThreadMarker {
     MainThreadMarker::new().expect("cocoa_dom must run on the main thread")
@@ -395,13 +397,13 @@ impl Element {
         if let Some(doc_view) = scroll_view_document(&el.ns_view()) {
             let wrapper_style = build_scroll_wrapper_style(ScrollAxis::Vertical);
             let parent_id = el.id();
-            let wrapper_id = renderer::new_leaf::<crate::layout::CocoaBackend>(
+            let wrapper_id = CocoaBackend::new_leaf(
                 wrapper_style,
                 SendWrapper::new(doc_view),
                 CocoaMeta::default(),
                 NodeHandlers::default(),
             );
-            renderer::add_child::<crate::layout::CocoaBackend>(parent_id, wrapper_id);
+            CocoaBackend::add_child(parent_id, wrapper_id);
             el.with_meta_mut(|m| {
                 m.child_taffy_parent = Some(wrapper_id);
             });
