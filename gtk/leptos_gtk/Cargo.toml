@@ -27,21 +27,21 @@ gtk = ["dep:gtk4", "dep:glib", "dep:gio", "dep:any_spawner"]
 debug-overlay = []
 # Chrome DevTools Protocol server. Forwards to `gtk_dom/devtools`;
 # started at runtime via the `LEPTOS_DEVTOOLS` env var.
-devtools = ["gtk"]
+devtools = ["dep:futures", "dep:leptos_devtools"]
 
 [dependencies]
 renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
 leptos_native = { workspace = true }
-leptos_macro = { workspace = true }
-either_of = { workspace = true }
-oco_ref = { workspace = true }
+#leptos_macro = { workspace = true }
+#either_of = { workspace = true }
+#oco_ref = { workspace = true }
 send_wrapper = { workspace = true, default-features = true }
 gtk4 = { workspace = true, default-features = true, optional = true }
 glib = { workspace = true, default-features = true, optional = true }
 gio = { workspace = true, default-features = true, optional = true }
 any_spawner = { workspace = true, features = ["glib"], optional = true }
-taffy = { workspace = true, optional = true }
+#taffy = { workspace = true, optional = true }
 leptos_devtools = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 

@@ -1198,19 +1198,15 @@ name = "leptos_gtk"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
- "either_of",
  "futures",
  "gio",
  "glib 0.21.5",
  "gtk4",
  "leptos_devtools",
- "leptos_macro",
  "leptos_native",
- "oco_ref",
  "reactive_graph",
  "renderer",
  "send_wrapper",
- "taffy",
 ]
 
 [[package]]

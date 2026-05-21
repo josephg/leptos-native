@@ -70,7 +70,7 @@ pub fn open_window(
         #[cfg(feature = "debug-overlay")]
         crate::dom::debug_overlay::add_to(&overlay, &gtk_window, root_id);
         #[cfg(feature = "devtools")]
-        crate::highlight::add_to(&overlay, &gtk_window, root_id);
+        crate::dom::highlight::add_to(&overlay, &gtk_window, root_id);
         gtk_window.set_child(Some(&overlay));
     }
     #[cfg(not(any(feature = "debug-overlay", feature = "devtools")))]

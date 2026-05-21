@@ -21,9 +21,11 @@ pub mod renderer_gtk;
 pub use renderer_gtk::Dom;
 
 pub mod dom;
+#[cfg(feature = "devtools")]
+pub mod devtools;
 
 // Reexport these so 3rd party code can use our version of them.
-pub use {gtk4, gio, glib};
+pub use {gio, glib, gtk4};
 
 
 /// GTK-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.

@@ -181,7 +181,7 @@ where
         // requested at runtime (`LEPTOS_DEVTOOLS` env var). The spawner
         // and glib main loop are both live by the time `activate` fires.
         #[cfg(feature = "devtools")]
-        gtk_dom::devtools::start_from_env();
+        crate::devtools::start_from_env();
 
         let view = f(app);
         // Stub tree for the top-level build; the actual Window child

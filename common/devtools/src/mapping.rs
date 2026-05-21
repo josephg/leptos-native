@@ -262,7 +262,7 @@ pub fn apply_css_text<B: LayoutBackend>(
     text: &str,
     schedule: &dyn Fn(NodeId),
 ) {
-    let Some(mut style) = renderer::style::<B>(id) else {
+    let Some(mut style) = B::style(id) else {
         return;
     };
     for decl in text.split(';') {
@@ -270,7 +270,7 @@ pub fn apply_css_text<B: LayoutBackend>(
             apply_decl(&mut style, name.trim(), value.trim());
         }
     }
-    renderer::set_style::<B>(id, style);
+    B::set_style(id, style);
     schedule(id);
 }
 
@@ -291,7 +291,7 @@ pub fn sheet_node(sheet: &str) -> Option<i64> {
 /// Build a `CSS.CSSStyle` for the node's inline (Taffy) style.
 pub fn css_style_json<B: LayoutBackend>(id: NodeId) -> Value {
     let cdp = idmap::cdp_id(id);
-    let style = renderer::style::<B>(id).unwrap_or_default();
+    let style = B::style(id).unwrap_or_default();
     let decls = css_decls(&style);
 
     let mut props = Vec::new();
@@ -328,7 +328,7 @@ pub fn css_style_json<B: LayoutBackend>(id: NodeId) -> Value {
 /// computed Taffy [`Layout`] in px, not the (often `auto`) style. The
 /// non-box properties (display, flex-*) come from the style.
 pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
-    let style = renderer::style::<B>(id).unwrap_or_default();
+    let style = B::style(id).unwrap_or_default();
     let mut out: Vec<Value> = Vec::new();
     let mut push = |n: &str, v: String| out.push(json!({ "name": n, "value": v }));
 
@@ -348,7 +348,7 @@ pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
         .into(),
     );
 
-    let l = renderer::layout::<B>(id).unwrap_or_default();
+    let l = B::layout(id).unwrap_or_default();
     let px = |v: f32| format!("{}px", fmt_num(v));
     push("width", px(l.size.width));
     push("height", px(l.size.height));
@@ -373,7 +373,7 @@ pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
 // ---------------------------------------------------------------------
 
 fn node_name<B: LayoutBackend>(id: NodeId) -> String {
-    let tag = renderer::debug_tag_name::<B>(id);
+    let tag = B::debug_tag_name(id);
     if tag.is_empty() {
         "node".into()
     } else {
@@ -400,12 +400,12 @@ fn attrs_array(pairs: Vec<(String, String)>) -> Vec<String> {
 /// `children` array but still reports `childNodeCount`).
 pub fn node_json<B: LayoutBackend>(id: NodeId, depth: i32, attrs: AttrFn) -> Value {
     let cdp = idmap::cdp_id(id);
-    let kids = renderer::children::<B>(id);
+    let kids = B::children(id);
     let name = node_name::<B>(id);
     let mut node = json!({
         "nodeId": cdp,
         "backendNodeId": cdp,
-        "parentId": renderer::parent::<B>(id).map(idmap::cdp_id),
+        "parentId": B::parent(id).map(idmap::cdp_id),
         "nodeType": 1,
         "nodeName": name.to_uppercase(),
         "localName": name,
@@ -427,7 +427,7 @@ pub fn node_json<B: LayoutBackend>(id: NodeId, depth: i32, attrs: AttrFn) -> Val
 /// Roots (and their descendants) are expanded to `depth` (a negative
 /// value means the entire subtree, matching CDP's convention).
 pub fn document_json<B: LayoutBackend>(attrs: AttrFn, depth: i32) -> Value {
-    let roots = renderer::roots::<B>();
+    let roots = B::roots();
     let children: Vec<Value> =
         roots.iter().map(|r| node_json::<B>(*r, depth, attrs)).collect();
     let root_el = json!({
@@ -462,10 +462,10 @@ pub fn child_nodes_json<B: LayoutBackend>(cdp: i64, attrs: AttrFn) -> Vec<Value>
         return vec![document_json::<B>(attrs, 1)["children"][0].clone()];
     }
     let kids: Vec<NodeId> = if cdp == ROOT_ID {
-        renderer::roots::<B>()
+        B::roots()
     } else {
         match idmap::taffy(cdp) {
-            Some(node) => renderer::children::<B>(node),
+            Some(node) => B::children(node),
             None => return Vec::new(),
         }
     };
@@ -482,11 +482,11 @@ fn abs_origin<B: LayoutBackend>(id: NodeId) -> (f32, f32) {
     let (mut x, mut y) = (0.0_f32, 0.0_f32);
     let mut cur = Some(id);
     while let Some(c) = cur {
-        if let Some(l) = renderer::layout::<B>(c) {
+        if let Some(l) = B::layout(c) {
             x += l.location.x;
             y += l.location.y;
         }
-        cur = renderer::parent::<B>(c);
+        cur = B::parent(c);
     }
     (x, y)
 }
@@ -499,7 +499,7 @@ fn quad(x: f32, y: f32, w: f32, h: f32) -> Value {
 /// `DOM.BoxModel` from the computed layout. `None` if the node has no
 /// stored layout (synthetic nodes, freed nodes).
 pub fn box_model_json<B: LayoutBackend>(id: NodeId) -> Option<Value> {
-    let l = renderer::layout::<B>(id)?;
+    let l = B::layout(id)?;
     let (bx, by) = abs_origin::<B>(id);
     let (bw, bh) = (l.size.width, l.size.height);
 

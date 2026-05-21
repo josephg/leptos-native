@@ -27,8 +27,6 @@ pub mod app;
 pub mod color;
 #[cfg(feature = "debug-overlay")]
 pub mod debug_overlay;
-#[cfg(feature = "devtools")]
-pub mod devtools;
 pub mod event;
 #[cfg(feature = "devtools")]
 pub mod highlight;

@@ -9,11 +9,12 @@
 //! Mirrors the structure of [`crate::debug_overlay`], but driven by the
 //! CDP server rather than the `~` key, and showing only one node.
 
-use crate::layout::{self, NodeId};
+use super::layout::{NodeId, GtkBackend};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::{Cell, RefCell};
+use renderer::LayoutBackend;
 
 thread_local! {
     /// The node the frontend is hovering, or `None`.
@@ -76,7 +77,7 @@ mod imp {
             let Some(node) = HIGHLIGHT.with(|h| h.get()) else { return };
             let Some(root_id) = *self.root_id.borrow() else { return };
             // Only the overlay that owns this node's window draws it.
-            if renderer::root_of::<layout::GtkBackend>(node) != root_id {
+            if GtkBackend::root_of(node) != root_id {
                 return;
             }
             let target: gtk4::Widget = self.obj().clone().upcast();
@@ -115,9 +116,9 @@ fn fill(snap: &gtk4::Snapshot, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]) {
 /// Draw the four box-model regions for `node`, outer-first so each
 /// smaller box paints on top, leaving each region visible as a ring.
 fn draw_node(node: NodeId, snap: &gtk4::Snapshot, target: &gtk4::Widget) {
-    let Some(view) = layout::view(node) else { return };
+    let Some(view) = GtkBackend::view(node) else { return };
     let Some(b) = view.compute_bounds(target) else { return };
-    let lb = layout::layout(node).unwrap_or_default();
+    let lb = GtkBackend::layout(node).unwrap_or_default();
 
     let (bx, by, bw, bh) = (b.x(), b.y(), b.width(), b.height());
 
@@ -177,14 +178,14 @@ pub fn set_inspect_mode(on: bool) {
 /// nodes overwrite, so the topmost leaf under the cursor wins.
 fn hit_test(root_id: NodeId, x: f32, y: f32, target: &gtk4::Widget) -> Option<NodeId> {
     fn rec(id: NodeId, x: f32, y: f32, target: &gtk4::Widget, best: &mut Option<NodeId>) {
-        if let Some(view) = layout::view(id) {
+        if let Some(view) = GtkBackend::view(id) {
             if let Some(b) = view.compute_bounds(target) {
                 if x >= b.x() && x <= b.x() + b.width() && y >= b.y() && y <= b.y() + b.height() {
                     *best = Some(id);
                 }
             }
         }
-        for c in layout::children(id) {
+        for c in GtkBackend::children(id) {
             rec(c, x, y, target, best);
         }
     }

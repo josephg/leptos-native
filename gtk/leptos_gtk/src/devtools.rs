@@ -12,20 +12,22 @@
 //! `LEPTOS_DEVTOOLS` is set (to a port number, or any value for the
 //! default port). See [`start_from_env`].
 
-use crate::layout::{schedule_relayout_for, GtkBackend};
+use crate::dom::layout::{schedule_relayout_for, GtkBackend};
 use futures::{AsyncRead, AsyncWrite};
 use gtk4::prelude::*;
 use renderer::NodeId;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
+use crate::dom::highlight;
+use renderer::LayoutBackend;
 
 const DEFAULT_PORT: u16 = 9223;
 
 /// Displayable attributes for a node, read from its GTK widget — shown
 /// next to the tag in the Elements tree (e.g. `button title="Reset"`).
 fn node_attributes(id: NodeId) -> Vec<(String, String)> {
-    let Some(w) = renderer::view::<GtkBackend>(id) else {
+    let Some(w) = GtkBackend::view(id) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -82,9 +84,9 @@ pub fn start(port: u16) {
                     Ok(stream) => {
                         let hooks = leptos_devtools::Hooks {
                             schedule_relayout: Rc::new(schedule_relayout_for),
-                            set_highlight: Rc::new(crate::highlight::set_highlight),
+                            set_highlight: Rc::new(highlight::set_highlight),
                             node_attributes: Rc::new(node_attributes),
-                            set_inspect_mode: Rc::new(crate::highlight::set_inspect_mode),
+                            set_inspect_mode: Rc::new(highlight::set_inspect_mode),
                         };
                         any_spawner::Executor::spawn_local(
                             leptos_devtools::serve_connection::<_, GtkBackend>(
