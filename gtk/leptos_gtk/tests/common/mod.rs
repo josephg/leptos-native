@@ -16,6 +16,33 @@ pub fn is_headless() -> bool {
     !gtk4::is_initialized()
 }
 
+/// `init_app` + register the GApplication so tests can attach
+/// `GtkApplicationWindow`s without entering the main loop.
+///
+/// Production never needs this: `app.run()` registers the
+/// application (emitting `startup`) before any window is created
+/// inside `activate`. These tests build windows directly, skipping
+/// `run()`, so GTK logs a `Gtk-CRITICAL` ("New application windows
+/// must be added after the GApplication::startup signal has been
+/// emitted") unless we register first. `register()` emits `startup`
+/// synchronously without running the loop.
+pub fn init_app_registered(application_id: &str) -> gtk4::Application {
+    use gtk4::prelude::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    // Each call builds a fresh `Application`. Registering two app
+    // objects with the same id in one process collides (GApplication
+    // single-instance) — the second `register()` fails, leaving the
+    // app unregistered and the CRITICAL un-suppressed. Suffix a
+    // per-call counter so every test gets a uniquely-registerable id.
+    static N: AtomicU32 = AtomicU32::new(0);
+    // The suffix element must start with a letter — GApplication
+    // rejects id segments that begin with a digit.
+    let id = format!("{application_id}.t{}", N.fetch_add(1, Ordering::Relaxed));
+    let app = gtk_dom::app::init_app(&id);
+    let _ = app.register(None::<&gtk4::gio::Cancellable>);
+    app
+}
+
 pub fn run_tests(tests: &[(&'static str, fn())]) {
     ensure_gtk_init();
 

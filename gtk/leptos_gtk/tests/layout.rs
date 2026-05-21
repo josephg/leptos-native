@@ -33,7 +33,7 @@ where
     V::State: Mountable<leptos_gtk::Dom>,
     F: FnOnce(&gtk_dom::GtkNode),
 {
-    let app = gtk_dom::app::init_app("org.test.leptos_gtk.layout");
+    let app = common::init_app_registered("org.test.leptos_gtk.layout");
     let opened = gtk_dom::window::open_window(
         &app,
         "test",

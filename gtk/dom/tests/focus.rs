@@ -24,9 +24,10 @@ fn blur_unmounted_returns_false() {
 }
 
 fn focus_mounted_text_field_succeeds() {
-    let app = gtk_dom::app::init_app("org.test.gtk_dom.focus");
     // Build a window directly (without `app.run()`) so we have a
-    // mounted widget hierarchy without entering the main loop.
+    // mounted widget hierarchy without entering the main loop. The
+    // app must be registered first (see `init_app_registered`).
+    let app = common::init_app_registered("org.test.gtk_dom.focus");
     let win = gtk_dom::window::open_window(&app, "focus-test", (320, 200));
 
     let field = GtkNode::create_text_field().0;
@@ -40,7 +41,7 @@ fn focus_mounted_text_field_succeeds() {
 }
 
 fn blur_clears_focus() {
-    let app = gtk_dom::app::init_app("org.test.gtk_dom.blur");
+    let app = common::init_app_registered("org.test.gtk_dom.blur");
     let win = gtk_dom::window::open_window(&app, "blur-test", (320, 200));
 
     let field = GtkNode::create_text_field().0;
@@ -52,7 +53,7 @@ fn blur_clears_focus() {
 }
 
 fn focus_on_button_works() {
-    let app = gtk_dom::app::init_app("org.test.gtk_dom.button-focus");
+    let app = common::init_app_registered("org.test.gtk_dom.button-focus");
     let win = gtk_dom::window::open_window(&app, "button-focus", (320, 200));
 
     let button = GtkNode::create_button().0;
