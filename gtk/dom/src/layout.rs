@@ -4,7 +4,7 @@
 //! this file plugs GTK-specific types into it via [`GtkBackend`].
 //! The shape mirrors `cocoa_dom::layout`: per-element wrappers
 //! ([`set_as_root`], [`attach_child`], the `set_*` setters)
-//! route through the new [`Node`] accessors (`with_style`,
+//! route through the new [`GtkNode`] accessors (`with_style`,
 //! `tree_id`) and dispatch into
 //! the shared tree.
 //!
@@ -15,7 +15,7 @@
 //! on the next frame, and our [`super::taffy_layout::TaffyLayout`]
 //! `LayoutManager` is what runs Taffy from inside that pass.
 
-use crate::node::Node;
+use crate::node::GtkNode;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 
@@ -78,33 +78,33 @@ impl LayoutBackend for GtkBackend {
 pub type NodeContext = renderer::NodeContext<GtkBackend>;
 
 // Introspection over the global store (used by tests).
-pub fn node_count() -> usize {
-    renderer::node_count::<GtkBackend>()
-}
-pub fn style(id: NodeId) -> Option<Style> {
-    renderer::style::<GtkBackend>(id)
-}
-pub fn children(id: NodeId) -> Vec<NodeId> {
-    renderer::children::<GtkBackend>(id)
-}
-pub fn dirty(id: NodeId) -> bool {
-    renderer::dirty::<GtkBackend>(id)
-}
-pub fn parent(id: NodeId) -> Option<NodeId> {
-    renderer::parent::<GtkBackend>(id)
-}
-pub fn contains(id: NodeId) -> bool {
-    renderer::contains::<GtkBackend>(id)
-}
-pub fn layout(id: NodeId) -> Option<Layout> {
-    renderer::layout::<GtkBackend>(id)
-}
-pub fn view(id: NodeId) -> Option<gtk4::Widget> {
-    renderer::view::<GtkBackend>(id)
-}
-pub fn remove(id: NodeId) {
-    renderer::remove::<GtkBackend>(id);
-}
+// pub fn node_count() -> usize {
+//     GtkBackend::node_count()
+// }
+// pub fn style(id: NodeId) -> Option<Style> {
+//     GtkBackend::style(id)
+// }
+// pub fn children(id: NodeId) -> Vec<NodeId> {
+//     renderer::children::<GtkBackend>(id)
+// }
+// pub fn dirty(id: NodeId) -> bool {
+//     renderer::dirty::<GtkBackend>(id)
+// }
+// pub fn parent(id: NodeId) -> Option<NodeId> {
+//     renderer::parent::<GtkBackend>(id)
+// }
+// pub fn contains(id: NodeId) -> bool {
+//     renderer::contains::<GtkBackend>(id)
+// }
+// pub fn layout(id: NodeId) -> Option<Layout> {
+//     renderer::layout::<GtkBackend>(id)
+// }
+// pub fn view(id: NodeId) -> Option<gtk4::Widget> {
+//     renderer::view::<GtkBackend>(id)
+// }
+// pub fn remove(id: NodeId) {
+//     renderer::remove::<GtkBackend>(id);
+// }
 
 // ---------------------------------------------------------------------
 // Per-Node helpers — read/write Node state via its accessors.
@@ -113,9 +113,9 @@ pub fn remove(id: NodeId) {
 /// Drop the node (and its structural subtree) from the store and
 /// unparent its widget, then queue a resize of the (former) parent's
 /// root so its layout recomputes.
-pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
+pub fn drop_node(node: impl std::borrow::Borrow<GtkNode>) {
     let node = *node.borrow();
-    let parent = renderer::parent::<GtkBackend>(node.id());
+    let parent = GtkBackend::parent(node.id());
     node.teardown();
     if let Some(pid) = parent {
         queue_root_resize_for(pid);
@@ -126,21 +126,21 @@ pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
 // Tree-edge mirroring
 // ---------------------------------------------------------------------
 
-pub fn attach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+pub fn attach_child(parent: impl std::borrow::Borrow<GtkNode>, child: impl std::borrow::Borrow<GtkNode>) {
     let parent_id = parent.borrow().id();
-    renderer::add_child::<GtkBackend>(parent_id, child.borrow().id());
+    GtkBackend::add_child(parent_id, child.borrow().id());
     queue_root_resize_for(parent_id);
 }
 
-pub fn insert_child_at(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>, index: usize) {
+pub fn insert_child_at(parent: impl std::borrow::Borrow<GtkNode>, child: impl std::borrow::Borrow<GtkNode>, index: usize) {
     let parent_id = parent.borrow().id();
-    renderer::insert_child_at_index::<GtkBackend>(parent_id, index, child.borrow().id());
+    GtkBackend::insert_child_at_index(parent_id, index, child.borrow().id());
     queue_root_resize_for(parent_id);
 }
 
-pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::borrow::Borrow<Node>) {
+pub fn detach_child(parent: impl std::borrow::Borrow<GtkNode>, child: impl std::borrow::Borrow<GtkNode>) {
     let parent_id = parent.borrow().id();
-    renderer::remove_child::<GtkBackend>(parent_id, child.borrow().id());
+    GtkBackend::remove_child(parent_id, child.borrow().id());
     queue_root_resize_for(parent_id);
 }
 
@@ -148,8 +148,8 @@ pub fn detach_child(parent: impl std::borrow::Borrow<Node>, child: impl std::bor
 /// measure+allocate on that root's widget. `queue_resize` calls
 /// coalesce into one pass per frame, so no extra dedup is needed.
 fn queue_root_resize_for(id: NodeId) {
-    let root = renderer::root_of::<GtkBackend>(id);
-    if let Some(widget) = renderer::view::<GtkBackend>(root) {
+    let root = GtkBackend::root_of(id);
+    if let Some(widget) = GtkBackend::view(root) {
         widget.queue_resize();
     }
     #[cfg(feature = "debug-overlay")]
@@ -160,25 +160,25 @@ fn queue_root_resize_for(id: NodeId) {
 // Style mutation
 // ---------------------------------------------------------------------
 
-pub fn update_style(node: Node, f: impl FnOnce(&mut Style)) {
+pub fn update_style(node: GtkNode, f: impl FnOnce(&mut Style)) {
     node.with_style_mut(f);
 }
 
-pub fn set_style(node: Node, style: Style) {
+pub fn set_style(node: GtkNode, style: Style) {
     update_style(node, |s| *s = style);
 }
 
 /// Mark this node dirty and queue a GTK resize of its root. Call after
 /// content changes that affect intrinsic size (button title, label
 /// text) so the cached measurement is invalidated.
-pub fn schedule_relayout(node: Node) {
+pub fn schedule_relayout(node: GtkNode) {
     schedule_relayout_for(node.id());
 }
 
 /// [`schedule_relayout`] keyed by raw `NodeId`. Used by tooling (the
 /// devtools inspector) that holds ids rather than `Node` handles.
 pub fn schedule_relayout_for(id: NodeId) {
-    renderer::mark_dirty::<GtkBackend>(id);
+    GtkBackend::mark_dirty(id);
     queue_root_resize_for(id);
 }
 
@@ -187,7 +187,7 @@ pub fn schedule_relayout_for(id: NodeId) {
 // cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for Node {
+impl renderer::LayoutNodeOps for GtkNode {
     fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
         update_style(*self, f);
     }
@@ -195,17 +195,17 @@ impl renderer::LayoutNodeOps for Node {
         schedule_relayout(*self);
     }
     fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        Node::with_style(*self, f)
+        GtkNode::with_style(*self, f)
     }
 }
 
-impl renderer::LayoutElement for Node {
-    type Node = Node;
+impl renderer::LayoutElement for GtkNode {
+    type Node = GtkNode;
     fn as_node(&self) -> &Self::Node {
         self
     }
     fn set_view_hidden(&self, hidden: bool) {
-        Node::set_hidden(*self, hidden);
+        GtkNode::set_hidden(*self, hidden);
     }
     fn set_clip(&self, clip: bool) {
         use gtk4::prelude::WidgetExt;
@@ -216,12 +216,12 @@ impl renderer::LayoutElement for Node {
         });
     }
 }
-impl renderer::UniversalElement for Node {
+impl renderer::UniversalElement for GtkNode {
     fn set_alpha(&self, alpha: f64) {
-        Node::set_alpha(*self, alpha)
+        GtkNode::set_alpha(*self, alpha)
     }
     fn set_tool_tip(&self, tip: &str) {
-        Node::set_tool_tip(*self, tip)
+        GtkNode::set_tool_tip(*self, tip)
     }
 }
 
@@ -247,9 +247,9 @@ pub use renderer::{
 // layout against a fixed available size without running a GTK main
 // loop; this helper mirrors `cocoa_dom::layout::compute_layout`.
 
-pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: (f32, f32)) {
+pub fn compute_layout(root: impl std::borrow::Borrow<GtkNode>, available_size: (f32, f32)) {
     let root_id = root.borrow().id();
-    if !renderer::contains::<GtkBackend>(root_id) {
+    if !GtkBackend::contains(root_id) {
         return;
     }
     let (w, h) = available_size;
@@ -257,7 +257,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: (f32
     // For axes where the root's style.size is `auto`, fill the
     // available space. Explicit axes are left alone.
     {
-        let mut style = renderer::style::<GtkBackend>(root_id).unwrap_or_default();
+        let mut style = GtkBackend::style(root_id).unwrap_or_default();
         let mut touched = false;
         if style.size.width == Dimension::auto() {
             style.size.width = Dimension::length(w);
@@ -268,7 +268,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: (f32
             touched = true;
         }
         if touched {
-            renderer::set_style::<GtkBackend>(root_id, style);
+            GtkBackend::set_style(root_id, style);
         }
     }
 
@@ -276,7 +276,7 @@ pub fn compute_layout(root: impl std::borrow::Borrow<Node>, available_size: (f32
         width: AvailableSpace::Definite(w),
         height: AvailableSpace::Definite(h),
     };
-    renderer::run_layout_pass::<GtkBackend>(root_id, avail);
+    GtkBackend::run_layout_pass(root_id, avail);
 }
 
 // ---------------------------------------------------------------------

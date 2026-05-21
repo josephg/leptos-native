@@ -7,7 +7,7 @@
 //! - Taffy `Style` ⇄ a curated subset of CSS declarations, so the
 //!   Styles pane can both display and edit them.
 
-use crate::idmap::{IdMap, DOCUMENT_ID, ROOT_ID};
+use crate::idmap::{self, DOCUMENT_ID, ROOT_ID};
 use renderer::{
     Dimension, Display, FlexDirection, LayoutBackend, LengthPercentage,
     LengthPercentageAuto, NodeId, Style,
@@ -289,8 +289,8 @@ pub fn sheet_node(sheet: &str) -> Option<i64> {
 }
 
 /// Build a `CSS.CSSStyle` for the node's inline (Taffy) style.
-pub fn css_style_json<B: LayoutBackend>(idmap: &mut IdMap, id: NodeId) -> Value {
-    let cdp = idmap.cdp_id(id);
+pub fn css_style_json<B: LayoutBackend>(id: NodeId) -> Value {
+    let cdp = idmap::cdp_id(id);
     let style = renderer::style::<B>(id).unwrap_or_default();
     let decls = css_decls(&style);
 
@@ -336,6 +336,17 @@ pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
     push("flex-direction", flex_dir_str(style.flex_direction).into());
     push("flex-grow", fmt_num(style.flex_grow));
     push("flex-shrink", fmt_num(style.flex_shrink));
+    // The Computed-pane box-model diagram needs these to interpret the
+    // metrics: Taffy sizes are border-box, hence `border-box`.
+    push("box-sizing", "border-box".into());
+    push(
+        "position",
+        match style.position {
+            renderer::Position::Absolute => "absolute",
+            renderer::Position::Relative => "relative",
+        }
+        .into(),
+    );
 
     let l = renderer::layout::<B>(id).unwrap_or_default();
     let px = |v: f32| format!("{}px", fmt_num(v));
@@ -387,19 +398,14 @@ fn attrs_array(pairs: Vec<(String, String)>) -> Vec<String> {
 
 /// One element node, including children to `depth` (`depth == 0` omits the
 /// `children` array but still reports `childNodeCount`).
-pub fn node_json<B: LayoutBackend>(
-    idmap: &mut IdMap,
-    id: NodeId,
-    depth: i32,
-    attrs: AttrFn,
-) -> Value {
-    let cdp = idmap.cdp_id(id);
+pub fn node_json<B: LayoutBackend>(id: NodeId, depth: i32, attrs: AttrFn) -> Value {
+    let cdp = idmap::cdp_id(id);
     let kids = renderer::children::<B>(id);
     let name = node_name::<B>(id);
     let mut node = json!({
         "nodeId": cdp,
         "backendNodeId": cdp,
-        "parentId": renderer::parent::<B>(id).map(|p| idmap.cdp_id(p)),
+        "parentId": renderer::parent::<B>(id).map(idmap::cdp_id),
         "nodeType": 1,
         "nodeName": name.to_uppercase(),
         "localName": name,
@@ -410,7 +416,7 @@ pub fn node_json<B: LayoutBackend>(
     if depth != 0 {
         let children: Vec<Value> = kids
             .iter()
-            .map(|c| node_json::<B>(idmap, *c, depth - 1, attrs))
+            .map(|c| node_json::<B>(*c, depth - 1, attrs))
             .collect();
         node["children"] = json!(children);
     }
@@ -420,10 +426,10 @@ pub fn node_json<B: LayoutBackend>(
 /// The synthetic `#document` node and its single root-container child.
 /// Roots (and their descendants) are expanded to `depth` (a negative
 /// value means the entire subtree, matching CDP's convention).
-pub fn document_json<B: LayoutBackend>(idmap: &mut IdMap, attrs: AttrFn, depth: i32) -> Value {
+pub fn document_json<B: LayoutBackend>(attrs: AttrFn, depth: i32) -> Value {
     let roots = renderer::roots::<B>();
     let children: Vec<Value> =
-        roots.iter().map(|r| node_json::<B>(idmap, *r, depth, attrs)).collect();
+        roots.iter().map(|r| node_json::<B>(*r, depth, attrs)).collect();
     let root_el = json!({
         "nodeId": ROOT_ID,
         "backendNodeId": ROOT_ID,
@@ -451,19 +457,19 @@ pub fn document_json<B: LayoutBackend>(idmap: &mut IdMap, attrs: AttrFn, depth: 
 
 /// Children of a CDP node (handles the two synthetic ids), each as a
 /// depth-1 element node — for `DOM.requestChildNodes` → `setChildNodes`.
-pub fn child_nodes_json<B: LayoutBackend>(idmap: &mut IdMap, cdp: i64, attrs: AttrFn) -> Vec<Value> {
+pub fn child_nodes_json<B: LayoutBackend>(cdp: i64, attrs: AttrFn) -> Vec<Value> {
     if cdp == DOCUMENT_ID {
-        return vec![document_json::<B>(idmap, attrs, 1)["children"][0].clone()];
+        return vec![document_json::<B>(attrs, 1)["children"][0].clone()];
     }
     let kids: Vec<NodeId> = if cdp == ROOT_ID {
         renderer::roots::<B>()
     } else {
-        match idmap.taffy(cdp) {
+        match idmap::taffy(cdp) {
             Some(node) => renderer::children::<B>(node),
             None => return Vec::new(),
         }
     };
-    kids.iter().map(|c| node_json::<B>(idmap, *c, 1, attrs)).collect()
+    kids.iter().map(|c| node_json::<B>(*c, 1, attrs)).collect()
 }
 
 // ---------------------------------------------------------------------

@@ -83,9 +83,35 @@ passed to `serve_connection` (replacing the bare `schedule` arg):
   the highlight overlay.
 - `DOM.getDocument` now honours the `depth` param (default −1 = full
   tree) so the Elements tree populates in one round trip.
-- *Not yet:* inspect-from-app mode (pick an element by hovering the real
-  window — `Overlay.setInspectMode` + reverse hit-test). The
-  Elements-panel→app direction is what's implemented.
+- *Not yet:* inspect-from-app mode (see follow-up 2).
+
+**Follow-up 2 — inspect-from-app, computed box diagram, idmap/event
+refactor.**
+- **Inspect-from-app mode.** `Overlay.setInspectMode` toggles a GTK
+  pointer watcher (capture-phase `EventControllerMotion` + `GestureClick`
+  on the window). While active, motion hit-tests the Taffy tree (deepest
+  node whose `compute_bounds` contains the cursor), highlights it, and
+  emits `Overlay.nodeHighlightRequested`; a click emits
+  `Overlay.inspectNodeRequested` and claims the event so the real control
+  doesn't fire. New `Hooks::set_inspect_mode` + free fns
+  `notify_node_hovered` / `notify_node_picked`.
+- **Backend-pushed events.** The server now fans out unsolicited events:
+  `events.rs` holds a thread-local registry of per-session unbounded
+  senders; `run_session` `split()`s the WebSocket and `select!`s incoming
+  frames against the outgoing event channel. (Enabled `futures` features
+  `std` + `async-await`.)
+- **Global idmap.** The CDP↔taffy id map moved from per-session to a
+  thread-local in `idmap.rs` (free fns `cdp_id`/`taffy`) so the inspect
+  path can translate a taffy id into the same CDP id the frontend holds.
+  Dropped the `idmap` arg threaded through the `mapping` fns.
+- **Computed box diagram.** `CSS.getComputedStyleForNode` now also emits
+  `box-sizing: border-box` (Taffy is border-box) and `position`, so the
+  Computed pane's box-model diagram renders.
+- **Not a bug — "min-width doesn't relayout".** Verified min-width *does*
+  reflow when it changes the used size (a row button went 46→150px). On a
+  cross-axis-stretched child (a label in a column) a min-width below the
+  stretched width is a no-op — correct flexbox behavior, not a scheduling
+  problem.
 
 See `gtk_implementation_log.md` for the GTK-specific note. TODO when
 porting to cocoa/iOS: supply a dispatch-source-backed `AsyncRead/AsyncWrite`

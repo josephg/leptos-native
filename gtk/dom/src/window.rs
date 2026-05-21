@@ -7,15 +7,15 @@
 //! calling [`OpenedWindow::show`].
 
 use crate::layout::{self, FlexDirection};
-use crate::node::{install_taffy_layout_for_container, Node};
+use crate::node::{install_taffy_layout_for_container, GtkNode};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
-/// `GtkApplicationWindow` itself and the content-root [`Node`] (its
+/// `GtkApplicationWindow` itself and the content-root [`GtkNode`] (its
 /// child). Nodes live in the ambient per-thread store.
 pub struct OpenedWindow {
     pub gtk_window: gtk4::ApplicationWindow,
-    pub content_root: Node,
+    pub content_root: GtkNode,
 }
 
 /// Open a `GtkApplicationWindow` with the given title and content
@@ -37,7 +37,7 @@ pub fn open_window(
         .default_height(size.1)
         .build();
 
-    let content_root = Node::create_vstack();
+    let content_root = GtkNode::create_vstack();
     layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.
@@ -70,7 +70,7 @@ pub fn open_window(
         #[cfg(feature = "debug-overlay")]
         crate::debug_overlay::add_to(&overlay, &gtk_window, root_id);
         #[cfg(feature = "devtools")]
-        crate::highlight::add_to(&overlay, root_id);
+        crate::highlight::add_to(&overlay, &gtk_window, root_id);
         gtk_window.set_child(Some(&overlay));
     }
     #[cfg(not(any(feature = "debug-overlay", feature = "devtools")))]

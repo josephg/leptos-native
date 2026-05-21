@@ -9,7 +9,7 @@
 //! setting, hydration tree walking) panic with `unimplemented!()` if
 //! actually called.
 
-use crate::node::Node;
+use crate::node::GtkNode;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -82,80 +82,80 @@ impl Renderer {
         text
     }
 
-    pub fn create_text_node(text: &str) -> Node {
-        Node::create_text(text)
+    pub fn create_text_node(text: &str) -> GtkNode {
+        GtkNode::create_text(text)
     }
 
-    pub fn create_placeholder() -> Node {
-        Node::create_placeholder()
+    pub fn create_placeholder() -> GtkNode {
+        GtkNode::create_placeholder()
     }
 
-    pub fn set_text(node: &Node, text: &str) {
+    pub fn set_text(node: &GtkNode, text: &str) {
         node.set_text(text);
     }
 
     pub fn insert_node(
-        parent: &Node,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        parent: &GtkNode,
+        new_child: &GtkNode,
+        anchor: Option<&GtkNode>,
     ) {
         parent.insert_node(new_child, anchor);
     }
 
     pub fn try_insert_node(
-        parent: &Node,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        parent: &GtkNode,
+        new_child: &GtkNode,
+        anchor: Option<&GtkNode>,
     ) -> bool {
         parent.try_insert_node(new_child, anchor)
     }
 
-    pub fn remove_node(parent: &Node, child: &Node) -> Option<Node> {
+    pub fn remove_node(parent: &GtkNode, child: &GtkNode) -> Option<GtkNode> {
         parent.remove_child(child)
     }
 
-    pub fn remove(node: &Node) {
+    pub fn remove(node: &GtkNode) {
         crate::layout::drop_node(node);
     }
 
-    pub fn get_parent(_node: &Node) -> Option<Node> {
+    pub fn get_parent(_node: &GtkNode) -> Option<GtkNode> {
         unimplemented!(
             "gtk_dom::Renderer::get_parent — hydration is not supported \
              on the native target"
         );
     }
 
-    pub fn first_child(_node: &Node) -> Option<Node> {
+    pub fn first_child(_node: &GtkNode) -> Option<GtkNode> {
         unimplemented!(
             "gtk_dom::Renderer::first_child — hydration is not supported \
              on the native target"
         );
     }
 
-    pub fn next_sibling(_node: &Node) -> Option<Node> {
+    pub fn next_sibling(_node: &GtkNode) -> Option<GtkNode> {
         unimplemented!(
             "gtk_dom::Renderer::next_sibling — hydration is not supported \
              on the native target"
         );
     }
 
-    pub fn log_node(node: &Node) {
+    pub fn log_node(node: &GtkNode) {
         eprintln!("[gtk_dom] {node:?}");
     }
 
-    pub fn clear_children(parent: &Node) {
+    pub fn clear_children(parent: &GtkNode) {
         parent.clear_children();
     }
 
     // ---- DOM-only / web-only stubs --------------------------------
 
-    pub fn class_list(_el: &Node) -> ClassList {
+    pub fn class_list(_el: &GtkNode) -> ClassList {
         ClassList
     }
     pub fn add_class(_list: &ClassList, _name: &str) {}
     pub fn remove_class(_list: &ClassList, _name: &str) {}
 
-    pub fn style(_el: &Node) -> CssStyleDeclaration {
+    pub fn style(_el: &GtkNode) -> CssStyleDeclaration {
         CssStyleDeclaration
     }
     pub fn set_css_property(
@@ -166,7 +166,7 @@ impl Renderer {
     }
     pub fn remove_css_property(_style: &CssStyleDeclaration, _name: &str) {}
 
-    pub fn set_inner_html(_el: &Node, _html: &str) {}
+    pub fn set_inner_html(_el: &GtkNode, _html: &str) {}
 
     pub fn get_template<V: 'static>() -> TemplateElement {
         unimplemented!(
@@ -175,7 +175,7 @@ impl Renderer {
         );
     }
 
-    pub fn clone_template(_tpl: &TemplateElement) -> Node {
+    pub fn clone_template(_tpl: &TemplateElement) -> GtkNode {
         unimplemented!(
             "gtk_dom::Renderer::clone_template — <template> cloning is a \
              web-only optimization"
@@ -191,8 +191,8 @@ impl Renderer {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<Node> for Node {
-    fn cast_from(source: Node) -> Option<Node> {
+impl CastFrom<GtkNode> for GtkNode {
+    fn cast_from(source: GtkNode) -> Option<GtkNode> {
         Some(source)
     }
 }

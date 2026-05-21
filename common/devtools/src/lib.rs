@@ -21,12 +21,14 @@
 //! executor, where `schedule` triggers the port's relayout for a node
 //! (so live style edits reflow).
 
+mod events;
 mod idmap;
 mod mapping;
 mod server;
 mod session;
 
 use renderer::NodeId;
+use serde_json::json;
 use std::rc::Rc;
 
 pub use server::serve_connection;
@@ -47,4 +49,27 @@ pub struct Hooks {
     /// Displayable attributes for a node (e.g. a button's `title`), shown
     /// in the Elements tree. Reads the platform view, so it's port-specific.
     pub node_attributes: Rc<dyn Fn(NodeId) -> Vec<(String, String)>>,
+    /// Enter/leave "inspect from app" mode: while on, the port watches its
+    /// pointer and calls [`notify_node_hovered`] / [`notify_node_picked`].
+    pub set_inspect_mode: Rc<dyn Fn(bool)>,
+}
+
+/// Inspect-mode: the user is hovering `node` in the running UI. Tells the
+/// frontend to reveal/outline it in the Elements tree.
+pub fn notify_node_hovered(node: NodeId) {
+    let id = idmap::cdp_id(node);
+    events::broadcast(
+        json!({ "method": "Overlay.nodeHighlightRequested", "params": { "nodeId": id } })
+            .to_string(),
+    );
+}
+
+/// Inspect-mode: the user clicked `node` in the running UI. Tells the
+/// frontend to select it (and the frontend then leaves inspect mode).
+pub fn notify_node_picked(node: NodeId) {
+    let id = idmap::cdp_id(node);
+    events::broadcast(
+        json!({ "method": "Overlay.inspectNodeRequested", "params": { "backendNodeId": id } })
+            .to_string(),
+    );
 }

@@ -233,14 +233,14 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
     fn unmount(&mut self) {}
     fn mount(
         &mut self,
-        _parent: &gtk_dom::Node,
-        _marker: Option<&gtk_dom::Node>,
+        _parent: &gtk_dom::GtkNode,
+        _marker: Option<&gtk_dom::GtkNode>,
     ) {
     }
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<gtk_dom::Node> {
+    fn elements(&self) -> Vec<gtk_dom::GtkNode> {
         Vec::new()
     }
 }

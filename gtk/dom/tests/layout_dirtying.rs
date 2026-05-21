@@ -5,26 +5,28 @@
 
 mod common;
 
-use gtk_dom::{layout, layout::compute_layout, Node};
+use gtk_dom::layout::GtkBackend;
+use gtk_dom::{layout::compute_layout, GtkNode};
+use renderer::LayoutBackend;
 
-fn dirty_for(el: &Node) -> bool {
-    layout::dirty(el.as_node().id())
+fn dirty_for(el: &GtkNode) -> bool {
+    GtkBackend::dirty(el.as_node().id())
 }
 
 /// After `compute_layout`, the root's dirty bit is cleared.
 fn baseline_compute_clears_dirty() {
-    let root = Node::create_vstack();
+    let root = GtkNode::create_vstack();
 
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&root), "root still dirty after compute");
 }
 
 fn attach_child_marks_parent_dirty() {
-    let root = Node::create_vstack();
+    let root = GtkNode::create_vstack();
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&root));
 
-    let child = Node::create_button().0;
+    let child = GtkNode::create_button().0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
 
     assert!(
@@ -34,8 +36,8 @@ fn attach_child_marks_parent_dirty() {
 }
 
 fn detach_child_marks_parent_dirty() {
-    let root = Node::create_vstack();
-    let child = Node::create_button().0;
+    let root = GtkNode::create_vstack();
+    let child = GtkNode::create_button().0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&root));
@@ -49,8 +51,8 @@ fn detach_child_marks_parent_dirty() {
 }
 
 fn set_text_marks_node_dirty() {
-    let root = Node::create_vstack();
-    let child = Node::create_label().0;
+    let root = GtkNode::create_vstack();
+    let child = GtkNode::create_label().0;
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&child));
@@ -64,7 +66,7 @@ fn set_text_marks_node_dirty() {
 }
 
 fn set_style_width_marks_node_dirty() {
-    let root = Node::create_vstack();
+    let root = GtkNode::create_vstack();
     compute_layout(root.as_node(), (200.0, 200.0));
     assert!(!dirty_for(&root));
 
@@ -81,13 +83,13 @@ fn set_style_width_marks_node_dirty() {
 // a duplicate parent->child edge in the Taffy tree.
 // ---------------------------------------------------------------------
 
-fn child_count(parent: &Node) -> usize {
-    layout::children(parent.as_node().id()).len()
+fn child_count(parent: &GtkNode) -> usize {
+    GtkBackend::children(parent.as_node().id()).len()
 }
 
 fn attach_child_is_idempotent() {
-    let root = Node::create_vstack();
-    let child = Node::create_button().0;
+    let root = GtkNode::create_vstack();
+    let child = GtkNode::create_button().0;
 
     gtk_dom::layout::attach_child(root.as_node(), child.as_node());
     assert_eq!(child_count(&root), 1);
@@ -100,9 +102,9 @@ fn attach_child_is_idempotent() {
 }
 
 fn insert_child_at_is_idempotent() {
-    let root = Node::create_vstack();
-    let a = Node::create_button().0;
-    let b = Node::create_button().0;
+    let root = GtkNode::create_vstack();
+    let a = GtkNode::create_button().0;
+    let b = GtkNode::create_button().0;
 
     gtk_dom::layout::insert_child_at(root.as_node(), a.as_node(), 0);
     gtk_dom::layout::insert_child_at(root.as_node(), b.as_node(), 1);
@@ -120,18 +122,18 @@ fn insert_child_at_is_idempotent() {
     let a_id = a.as_node().id();
     let b_id = b.as_node().id();
     assert_eq!(
-        layout::children(root.as_node().id()),
+        GtkBackend::children(root.as_node().id()),
         [b_id, a_id],
         "child order wrong after reorder"
     );
 }
 
 fn reorder_cascade_does_not_duplicate_edges() {
-    let root = Node::create_vstack();
+    let root = GtkNode::create_vstack();
 
-    let a = Node::create_button().0;
-    let b = Node::create_button().0;
-    let c = Node::create_button().0;
+    let a = GtkNode::create_button().0;
+    let b = GtkNode::create_button().0;
+    let c = GtkNode::create_button().0;
     gtk_dom::layout::attach_child(root.as_node(), a.as_node());
     gtk_dom::layout::attach_child(root.as_node(), b.as_node());
     gtk_dom::layout::attach_child(root.as_node(), c.as_node());

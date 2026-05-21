@@ -1,12 +1,13 @@
 //! Per-connection CDP command dispatcher.
 //!
-//! Holds the connection's [`IdMap`] and the port [`Hooks`], and turns one
-//! incoming JSON-RPC message into the outgoing response (and any events)
-//! to write back. Generic over the port's [`LayoutBackend`]; every tree
-//! access runs synchronously on the main thread, since the whole server
-//! future is driven by the port's main-loop executor.
+//! Turns one incoming JSON-RPC message into the outgoing response (and
+//! any events) to write back. Node-id mapping is global (see
+//! [`crate::idmap`]); the session only carries the port [`Hooks`].
+//! Generic over the port's [`LayoutBackend`]; every tree access runs
+//! synchronously on the main thread, since the whole server future is
+//! driven by the port's main-loop executor.
 
-use crate::idmap::IdMap;
+use crate::idmap;
 use crate::mapping;
 use crate::Hooks;
 use renderer::{LayoutBackend, NodeId};
@@ -25,7 +26,6 @@ struct Command {
 }
 
 pub struct Session<B: LayoutBackend> {
-    idmap: IdMap,
     hooks: Hooks,
     _pd: PhantomData<B>,
 }
@@ -33,7 +33,6 @@ pub struct Session<B: LayoutBackend> {
 impl<B: LayoutBackend> Session<B> {
     pub fn new(hooks: Hooks) -> Self {
         Session {
-            idmap: IdMap::new(),
             hooks,
             _pd: PhantomData,
         }
@@ -75,8 +74,7 @@ impl<B: LayoutBackend> Session<B> {
     }
 
     fn node_id(&self, params: &Value) -> Option<NodeId> {
-        let cdp = params.get("nodeId").and_then(Value::as_i64)?;
-        self.idmap.taffy(cdp)
+        idmap::taffy(params.get("nodeId").and_then(Value::as_i64)?)
     }
 
     fn handle(
@@ -85,21 +83,18 @@ impl<B: LayoutBackend> Session<B> {
         params: &Value,
         events: &mut Vec<Value>,
     ) -> Result<Value, String> {
-        // Borrowed once; `&mut self.idmap` + `&self.hooks.*` are disjoint
-        // field borrows, so build helpers take them explicitly.
+        let attrs = self.hooks.node_attributes.as_ref();
         match method {
             // --- DOM ----------------------------------------------------
             "DOM.getDocument" => {
                 // CDP convention: negative depth = whole tree. We default
                 // to that so the Elements tree populates in one round trip.
                 let depth = params.get("depth").and_then(Value::as_i64).unwrap_or(-1) as i32;
-                let attrs = self.hooks.node_attributes.as_ref();
-                Ok(json!({ "root": mapping::document_json::<B>(&mut self.idmap, attrs, depth) }))
+                Ok(json!({ "root": mapping::document_json::<B>(attrs, depth) }))
             }
             "DOM.requestChildNodes" => {
                 if let Some(cdp) = params.get("nodeId").and_then(Value::as_i64) {
-                    let attrs = self.hooks.node_attributes.as_ref();
-                    let nodes = mapping::child_nodes_json::<B>(&mut self.idmap, cdp, attrs);
+                    let nodes = mapping::child_nodes_json::<B>(cdp, attrs);
                     events.push(json!({
                         "method": "DOM.setChildNodes",
                         "params": { "parentId": cdp, "nodes": nodes },
@@ -114,8 +109,7 @@ impl<B: LayoutBackend> Session<B> {
             }
             "DOM.describeNode" => {
                 let id = self.node_id(params).ok_or("unknown node")?;
-                let attrs = self.hooks.node_attributes.as_ref();
-                Ok(json!({ "node": mapping::node_json::<B>(&mut self.idmap, id, 0, attrs) }))
+                Ok(json!({ "node": mapping::node_json::<B>(id, 0, attrs) }))
             }
             "DOM.pushNodesByBackendIdsToFrontend" => {
                 let ids = params
@@ -136,12 +130,12 @@ impl<B: LayoutBackend> Session<B> {
             }
             "CSS.getInlineStylesForNode" => {
                 let id = self.node_id(params).ok_or("unknown node")?;
-                Ok(json!({ "inlineStyle": mapping::css_style_json::<B>(&mut self.idmap, id) }))
+                Ok(json!({ "inlineStyle": mapping::css_style_json::<B>(id) }))
             }
             "CSS.getMatchedStylesForNode" => {
                 let id = self.node_id(params).ok_or("unknown node")?;
                 Ok(json!({
-                    "inlineStyle": mapping::css_style_json::<B>(&mut self.idmap, id),
+                    "inlineStyle": mapping::css_style_json::<B>(id),
                     "matchedCSSRules": [],
                     "pseudoElements": [],
                     "inherited": [],
@@ -159,26 +153,38 @@ impl<B: LayoutBackend> Session<B> {
                     let sheet = edit.get("styleSheetId").and_then(Value::as_str).unwrap_or("");
                     let text = edit.get("text").and_then(Value::as_str).unwrap_or("");
                     if let Some(cdp) = mapping::sheet_node(sheet) {
-                        if let Some(id) = self.idmap.taffy(cdp) {
+                        if let Some(id) = idmap::taffy(cdp) {
                             mapping::apply_css_text::<B>(
                                 id,
                                 text,
                                 self.hooks.schedule_relayout.as_ref(),
                             );
-                            styles.push(mapping::css_style_json::<B>(&mut self.idmap, id));
+                            styles.push(mapping::css_style_json::<B>(id));
                         }
                     }
                 }
                 Ok(json!({ "styles": styles }))
             }
 
-            // --- Overlay (highlight) ------------------------------------
+            // --- Overlay -------------------------------------------------
             "Overlay.highlightNode" => {
                 (self.hooks.set_highlight)(self.node_id(params));
                 Ok(json!({}))
             }
             "Overlay.hideHighlight" | "Overlay.highlightRect" => {
                 (self.hooks.set_highlight)(None);
+                Ok(json!({}))
+            }
+            // Inspect-from-app: the frontend enables "pick an element"
+            // mode; the port watches its pointer and reports back via
+            // `crate::notify_node_*` events.
+            "Overlay.setInspectMode" => {
+                let on = params
+                    .get("mode")
+                    .and_then(Value::as_str)
+                    .map(|m| m != "none")
+                    .unwrap_or(false);
+                (self.hooks.set_inspect_mode)(on);
                 Ok(json!({}))
             }
 

@@ -18,7 +18,7 @@
 //!   key and flips the global `VISIBLE` flag, then asks every
 //!   registered overlay to redraw via `queue_draw`.
 
-use crate::layout::{self, NodeId};
+use crate::layout::{GtkBackend, NodeId};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -26,6 +26,7 @@ use std::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
 };
+use renderer::scene::LayoutBackend;
 
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 
@@ -123,15 +124,15 @@ fn fill_rect(snap: &gtk4::Snapshot, rect: gtk4::graphene::Rect, color: [f32; 4])
 /// layout pass. True when either the node's own `align_self` is
 /// `Baseline`, or its flex parent's `align_items` is `Baseline`.
 fn baseline_in_use(node_id: NodeId) -> bool {
-    let style = match layout::style(node_id) {
+    let style = match GtkBackend::style(node_id) {
         Some(s) => s,
         None => return false,
     };
     if style.align_self == Some(renderer::AlignItems::Baseline) {
         return true;
     }
-    let Some(parent_id) = layout::parent(node_id) else { return false };
-    let parent_style = match layout::style(parent_id) {
+    let Some(parent_id) = GtkBackend::parent(node_id) else { return false };
+    let parent_style = match GtkBackend::style(parent_id) {
         Some(s) => s,
         None => return false,
     };
@@ -144,10 +145,10 @@ fn walk(
     target: &gtk4::Widget,
     is_root: bool,
 ) {
-    let Some(view) = layout::view(node_id) else { return };
-    let kids: Vec<NodeId> = layout::children(node_id);
+    let Some(view) = GtkBackend::view(node_id) else { return };
+    let kids: Vec<NodeId> = GtkBackend::children(node_id);
     let bounds = view.compute_bounds(target);
-    let layout_box = layout::layout(node_id).unwrap_or_default();
+    let layout_box = GtkBackend::layout(node_id).unwrap_or_default();
 
     if !is_root {
         if let Some(rect) = bounds {
@@ -192,7 +193,7 @@ fn walk(
     if kids.len() >= 2 {
         let frames: Vec<gtk4::graphene::Rect> = kids
             .iter()
-            .filter_map(|id| layout::view(*id).and_then(|w| w.compute_bounds(target)))
+            .filter_map(|id| GtkBackend::view(*id).and_then(|w| w.compute_bounds(target)))
             .collect();
         for pair in frames.windows(2) {
             let a = pair[0];

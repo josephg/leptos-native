@@ -10,15 +10,15 @@
 //! pass; nested instances just look up their direct children's
 //! pre-computed frames and call `child.allocate(...)`.
 
-use crate::layout::{AvailableSpace, Dimension, NodeId, Size};
+use crate::layout::{AvailableSpace, Dimension, GtkBackend, NodeId, Size};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::RefCell;
-
-type B = crate::layout::GtkBackend;
+use renderer::scene::LayoutBackend;
 
 mod imp {
+    use crate::layout::GtkBackend;
     use super::*;
 
     pub struct TaffyLayout {
@@ -60,7 +60,7 @@ mod imp {
             // Best-effort: probe natural size by running the pass
             // against `MaxContent`. Only on the root.
             if *self.is_root.borrow() {
-                renderer::run_layout_pass::<B>(
+                GtkBackend::run_layout_pass(
                     node_id,
                     Size {
                         width: AvailableSpace::MaxContent,
@@ -69,7 +69,7 @@ mod imp {
                 );
             }
 
-            if let Some(layout) = renderer::layout::<B>(node_id) {
+            if let Some(layout) = GtkBackend::layout(node_id) {
                 let nat = match orientation {
                     gtk4::Orientation::Horizontal => layout.size.width as i32,
                     _ => layout.size.height as i32,
@@ -91,13 +91,13 @@ mod imp {
             if *self.is_root.borrow() {
                 // Force the root to fill the available space exactly
                 // and run the layout pass.
-                let mut style = renderer::style::<B>(node_id).unwrap_or_default();
+                let mut style = GtkBackend::style(node_id).unwrap_or_default();
                 style.size = Size {
                     width: Dimension::length(width as f32),
                     height: Dimension::length(height as f32),
                 };
-                renderer::set_style::<B>(node_id, style);
-                renderer::run_layout_pass::<B>(
+                GtkBackend::set_style(node_id, style);
+                GtkBackend::run_layout_pass(
                     node_id,
                     Size {
                         width: AvailableSpace::Definite(width as f32),
@@ -134,11 +134,11 @@ impl TaffyLayout {
 /// re-enter this LayoutManager for nested containers).
 fn allocate_children(parent_id: NodeId, parent_widget: &gtk4::Widget) {
     let plan: Vec<(gtk4::Widget, renderer::Layout)> =
-        renderer::children::<B>(parent_id)
+        GtkBackend::children(parent_id)
             .into_iter()
             .filter_map(|cid| {
-                let layout = renderer::layout::<B>(cid)?;
-                let widget = renderer::view::<B>(cid)?;
+                let layout = GtkBackend::layout(cid)?;
+                let widget = GtkBackend::view(cid)?;
                 Some((widget, layout))
             })
             .collect();

@@ -153,27 +153,43 @@ where
     }
 }
 
-async fn run_session<Ws, B>(mut ws: Ws, hooks: Hooks)
+async fn run_session<Ws, B>(ws: Ws, hooks: Hooks)
 where
     Ws: futures::Stream<Item = Frame> + futures::Sink<Frame> + Unpin,
     B: LayoutBackend,
 {
+    use futures::FutureExt;
+
     let mut session = Session::<B>::new(hooks);
-    while let Some(frame) = ws.next().await {
-        match frame.opcode() {
-            OpCode::Text | OpCode::Binary => {
-                let payload = frame.payload().clone();
-                let Ok(text) = std::str::from_utf8(&payload) else {
-                    continue;
-                };
-                for reply in session.dispatch(text) {
-                    if ws.send(Frame::text(reply)).await.is_err() {
-                        return;
+    // Split so we can read incoming frames and write backend-pushed
+    // events (inspect-mode) concurrently without borrow conflicts.
+    let (mut tx, mut rx) = ws.split();
+    let mut outgoing = crate::events::register();
+
+    loop {
+        futures::select! {
+            frame = rx.next().fuse() => {
+                let Some(frame) = frame else { return };
+                match frame.opcode() {
+                    OpCode::Text | OpCode::Binary => {
+                        let payload = frame.payload().clone();
+                        let Ok(text) = std::str::from_utf8(&payload) else { continue };
+                        for reply in session.dispatch(text) {
+                            if tx.send(Frame::text(reply)).await.is_err() {
+                                return;
+                            }
+                        }
                     }
+                    OpCode::Close => return,
+                    _ => {} // ping/pong handled by yawc
                 }
             }
-            OpCode::Close => return,
-            _ => {} // ping/pong handled by yawc
+            event = outgoing.next().fuse() => {
+                let Some(event) = event else { continue };
+                if tx.send(Frame::text(event)).await.is_err() {
+                    return;
+                }
+            }
         }
     }
 }

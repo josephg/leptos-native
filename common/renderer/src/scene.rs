@@ -107,6 +107,176 @@ pub trait LayoutBackend: 'static + Sized {
     /// store. The store is a main-thread-lifetime singleton; ports back
     /// it with a `thread_local!`.
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R;
+
+
+    // *** Utility methods. These methods are implemented in the trait to make them available for
+    // downstream consumers. It is not expected that implementers of LayoutBackend override these
+    // methods.
+
+    fn new_leaf(
+        style: Style,
+        view: Self::View,
+        meta: Self::NodeMeta,
+        handlers: Self::Handlers,
+    ) -> NodeId {
+        Self::with_tree(|s| s.new_leaf(style, view, meta, handlers))
+    }
+
+    // ---------------------------------------------------------------------
+    // Generic free-function API — the surface ports & node accessors call.
+    // Each wraps `B::with_tree`. Names mirror the inherent methods.
+    // ---------------------------------------------------------------------
+
+    /// Remove a node and its structural subtree. Removed entries are dropped
+    /// AFTER the store borrow releases, so port `Handlers`/view `Drop` impls
+    /// can safely re-enter the store. Idempotent.
+    fn remove(id: NodeId) {
+        let mut removed = Vec::new();
+        Self::with_tree(|s| s.remove_collect(id, &mut removed));
+        drop(removed);
+    }
+
+    fn add_child(parent: NodeId, child: NodeId) {
+        Self::with_tree(|s| s.add_child(parent, child))
+    }
+
+    fn insert_child_at_index(parent: NodeId, idx: usize, child: NodeId) {
+        Self::with_tree(|s| s.insert_child_at_index(parent, idx, child))
+    }
+
+    fn remove_child(parent: NodeId, child: NodeId) {
+        Self::with_tree(|s| s.remove_child(parent, child))
+    }
+
+    fn mark_dirty(id: NodeId) {
+        Self::with_tree(|s| s.mark_dirty(id))
+    }
+
+    fn set_style(id: NodeId, style: Style) {
+        Self::with_tree(|s| s.set_style(id, style))
+    }
+
+    fn style(id: NodeId) -> Option<Style> {
+        Self::with_tree(|s| s.style(id))
+    }
+
+    fn set_meta(id: NodeId, meta: Self::NodeMeta) {
+        Self::with_tree(|s| s.set_meta(id, meta))
+    }
+
+    fn meta(id: NodeId) -> Option<Self::NodeMeta> {
+        Self::with_tree(|s| s.meta(id))
+    }
+
+    fn set_debug_tag_name(id: NodeId, name: &'static str) {
+        Self::with_tree(|s| s.set_debug_tag_name(id, name))
+    }
+
+    fn debug_tag_name(id: NodeId) -> &'static str {
+        Self::with_tree(|s| s.debug_tag_name(id))
+    }
+
+    /// Every live node id (unspecified order). For debug tooling.
+    fn all_node_ids() -> Vec<NodeId> {
+        Self::with_tree(|s| s.all_node_ids())
+    }
+
+    /// Subtree roots — live nodes with no parent. For debug tooling.
+    fn roots() -> Vec<NodeId> {
+        Self::with_tree(|s| s.roots())
+    }
+
+    fn view(id: NodeId) -> Option<Self::View> {
+        Self::with_tree(|s| s.view(id))
+    }
+
+    fn parent(id: NodeId) -> Option<NodeId> {
+        Self::with_tree(|s| s.parent(id))
+    }
+
+    fn children(id: NodeId) -> Vec<NodeId> {
+        Self::with_tree(|s| s.children(id))
+    }
+
+    fn layout(id: NodeId) -> Option<Layout> {
+        Self::with_tree(|s| s.layout(id))
+    }
+
+    fn set_final_layout(id: NodeId, l: Layout) {
+        Self::with_tree(|s| s.set_final_layout(id, l))
+    }
+
+    fn dirty(id: NodeId) -> bool {
+        Self::with_tree(|s| s.dirty(id))
+    }
+
+    fn get_node_context(id: NodeId) -> Option<NodeContext<Self>> {
+        Self::with_tree(|s| s.get_node_context(id))
+    }
+
+    fn node_count() -> usize {
+        Self::with_tree(|s| s.node_count())
+    }
+
+    /// `true` if `id` is currently present in the store.
+    fn contains(id: NodeId) -> bool {
+        Self::with_tree(|s| s.nodes.contains_key(key(id)))
+    }
+
+    fn with_handlers_mut<B: LayoutBackend, R>(
+        id: NodeId,
+        f: impl FnOnce(&mut Self::Handlers) -> R,
+    ) -> Option<R> {
+        Self::with_tree(|s| s.with_handlers_mut(id, f))
+    }
+
+    /// The topmost ancestor of `id` (its subtree root) — walk `parent`
+    /// until there is none. Safe against freed intermediates: a missing
+    /// node has no parent, so the walk stops. Returns `id` itself if it's
+    /// already a root or absent.
+    fn root_of(id: NodeId) -> NodeId {
+        Self::with_tree(|s| {
+            let mut cur = id;
+            while let Some(p) = s.parent(cur) {
+                cur = p;
+            }
+            cur
+        })
+    }
+
+    /// Enqueue `root` for recompute on the next relayout pass (deduped).
+    fn queue_relayout(root: NodeId) {
+        Self::with_tree(|s| {
+            if !s.pending_relayout.contains(&root) {
+                s.pending_relayout.push(root);
+            }
+        })
+    }
+
+    /// Drain the set of roots queued for recompute.
+    fn take_pending_relayout() -> Vec<NodeId> {
+        Self::with_tree(|s| std::mem::take(&mut s.pending_relayout))
+    }
+
+    fn relayout_queued() -> bool {
+        Self::with_tree(|s| s.relayout_queued.get())
+    }
+
+    fn set_relayout_queued(v: bool) {
+        Self::with_tree(|s| s.relayout_queued.set(v))
+    }
+
+    fn run_layout_pass(id: NodeId, available: Size<AvailableSpace>) {
+        Self::with_tree(|s| s.run_layout_pass(id, available))
+    }
+
+    /// Pre-order `(id, layout, view)` snapshot for the subtree rooted at
+    /// `id`; safe to apply frames after this returns (the store borrow is
+    /// already released).
+    fn collect_subtree(id: NodeId) -> Vec<(NodeId, Layout, Self::View)> {
+        Self::with_tree(|s| s.collect_subtree(id))
+    }
+
 }
 
 // ---------------------------------------------------------------------
@@ -462,170 +632,6 @@ impl<B: LayoutBackend> LayoutState<B> {
             }
         }
     }
-}
-
-// ---------------------------------------------------------------------
-// Generic free-function API — the surface ports & node accessors call.
-// Each wraps `B::with_tree`. Names mirror the inherent methods.
-// ---------------------------------------------------------------------
-
-pub fn new_leaf<B: LayoutBackend>(
-    style: Style,
-    view: B::View,
-    meta: B::NodeMeta,
-    handlers: B::Handlers,
-) -> NodeId {
-    B::with_tree(|s| s.new_leaf(style, view, meta, handlers))
-}
-
-/// Remove a node and its structural subtree. Removed entries are dropped
-/// AFTER the store borrow releases, so port `Handlers`/view `Drop` impls
-/// can safely re-enter the store. Idempotent.
-pub fn remove<B: LayoutBackend>(id: NodeId) {
-    let mut removed = Vec::new();
-    B::with_tree(|s| s.remove_collect(id, &mut removed));
-    drop(removed);
-}
-
-pub fn add_child<B: LayoutBackend>(parent: NodeId, child: NodeId) {
-    B::with_tree(|s| s.add_child(parent, child))
-}
-
-pub fn insert_child_at_index<B: LayoutBackend>(parent: NodeId, idx: usize, child: NodeId) {
-    B::with_tree(|s| s.insert_child_at_index(parent, idx, child))
-}
-
-pub fn remove_child<B: LayoutBackend>(parent: NodeId, child: NodeId) {
-    B::with_tree(|s| s.remove_child(parent, child))
-}
-
-pub fn mark_dirty<B: LayoutBackend>(id: NodeId) {
-    B::with_tree(|s| s.mark_dirty(id))
-}
-
-pub fn set_style<B: LayoutBackend>(id: NodeId, style: Style) {
-    B::with_tree(|s| s.set_style(id, style))
-}
-
-pub fn style<B: LayoutBackend>(id: NodeId) -> Option<Style> {
-    B::with_tree(|s| s.style(id))
-}
-
-pub fn set_meta<B: LayoutBackend>(id: NodeId, meta: B::NodeMeta) {
-    B::with_tree(|s| s.set_meta(id, meta))
-}
-
-pub fn meta<B: LayoutBackend>(id: NodeId) -> Option<B::NodeMeta> {
-    B::with_tree(|s| s.meta(id))
-}
-
-pub fn set_debug_tag_name<B: LayoutBackend>(id: NodeId, name: &'static str) {
-    B::with_tree(|s| s.set_debug_tag_name(id, name))
-}
-
-pub fn debug_tag_name<B: LayoutBackend>(id: NodeId) -> &'static str {
-    B::with_tree(|s| s.debug_tag_name(id))
-}
-
-/// Every live node id (unspecified order). For debug tooling.
-pub fn all_node_ids<B: LayoutBackend>() -> Vec<NodeId> {
-    B::with_tree(|s| s.all_node_ids())
-}
-
-/// Subtree roots — live nodes with no parent. For debug tooling.
-pub fn roots<B: LayoutBackend>() -> Vec<NodeId> {
-    B::with_tree(|s| s.roots())
-}
-
-pub fn view<B: LayoutBackend>(id: NodeId) -> Option<B::View> {
-    B::with_tree(|s| s.view(id))
-}
-
-pub fn parent<B: LayoutBackend>(id: NodeId) -> Option<NodeId> {
-    B::with_tree(|s| s.parent(id))
-}
-
-pub fn children<B: LayoutBackend>(id: NodeId) -> Vec<NodeId> {
-    B::with_tree(|s| s.children(id))
-}
-
-pub fn layout<B: LayoutBackend>(id: NodeId) -> Option<Layout> {
-    B::with_tree(|s| s.layout(id))
-}
-
-pub fn set_final_layout<B: LayoutBackend>(id: NodeId, l: Layout) {
-    B::with_tree(|s| s.set_final_layout(id, l))
-}
-
-pub fn dirty<B: LayoutBackend>(id: NodeId) -> bool {
-    B::with_tree(|s| s.dirty(id))
-}
-
-pub fn get_node_context<B: LayoutBackend>(id: NodeId) -> Option<NodeContext<B>> {
-    B::with_tree(|s| s.get_node_context(id))
-}
-
-pub fn node_count<B: LayoutBackend>() -> usize {
-    B::with_tree(|s| s.node_count())
-}
-
-/// `true` if `id` is currently present in the store.
-pub fn contains<B: LayoutBackend>(id: NodeId) -> bool {
-    B::with_tree(|s| s.nodes.contains_key(key(id)))
-}
-
-pub fn with_handlers_mut<B: LayoutBackend, R>(
-    id: NodeId,
-    f: impl FnOnce(&mut B::Handlers) -> R,
-) -> Option<R> {
-    B::with_tree(|s| s.with_handlers_mut(id, f))
-}
-
-/// The topmost ancestor of `id` (its subtree root) — walk `parent`
-/// until there is none. Safe against freed intermediates: a missing
-/// node has no parent, so the walk stops. Returns `id` itself if it's
-/// already a root or absent.
-pub fn root_of<B: LayoutBackend>(id: NodeId) -> NodeId {
-    B::with_tree(|s| {
-        let mut cur = id;
-        while let Some(p) = s.parent(cur) {
-            cur = p;
-        }
-        cur
-    })
-}
-
-/// Enqueue `root` for recompute on the next relayout pass (deduped).
-pub fn queue_relayout<B: LayoutBackend>(root: NodeId) {
-    B::with_tree(|s| {
-        if !s.pending_relayout.contains(&root) {
-            s.pending_relayout.push(root);
-        }
-    })
-}
-
-/// Drain the set of roots queued for recompute.
-pub fn take_pending_relayout<B: LayoutBackend>() -> Vec<NodeId> {
-    B::with_tree(|s| std::mem::take(&mut s.pending_relayout))
-}
-
-pub fn relayout_queued<B: LayoutBackend>() -> bool {
-    B::with_tree(|s| s.relayout_queued.get())
-}
-
-pub fn set_relayout_queued<B: LayoutBackend>(v: bool) {
-    B::with_tree(|s| s.relayout_queued.set(v))
-}
-
-pub fn run_layout_pass<B: LayoutBackend>(id: NodeId, available: Size<AvailableSpace>) {
-    B::with_tree(|s| s.run_layout_pass(id, available))
-}
-
-/// Pre-order `(id, layout, view)` snapshot for the subtree rooted at
-/// `id`; safe to apply frames after this returns (the store borrow is
-/// already released).
-pub fn collect_subtree<B: LayoutBackend>(id: NodeId) -> Vec<(NodeId, Layout, B::View)> {
-    B::with_tree(|s| s.collect_subtree(id))
 }
 
 // ---------------------------------------------------------------------

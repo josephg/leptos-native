@@ -5,7 +5,7 @@ use crate::Dom;
 use gtk4::prelude::*;
 use gtk_dom::{
     window::{open_window, OpenedWindow},
-    Node as GtkElement,
+    GtkNode as GtkElement,
 };
 use renderer::view::{Mountable, Render};
 
@@ -122,7 +122,7 @@ impl Mountable<Dom> for WindowState {
     fn mount(
         &mut self,
         _parent: &GtkElement,
-        _marker: Option<&gtk_dom::Node>,
+        _marker: Option<&gtk_dom::GtkNode>,
     ) {
         // Window is its own root; nothing to mount.
     }

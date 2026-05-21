@@ -1,4 +1,4 @@
-//! `Node` — a `Copy` handle (just a `NodeId`) into the ambient
+//! `GtkNode` — a `Copy` handle (just a `NodeId`) into the ambient
 //! thread-local node store.
 //!
 //! There is no `Rc`, no `SendWrapper`, no refcount: a `Node` is a bare
@@ -8,18 +8,17 @@
 //! the store by id; a stale id resolves to `None`/no-op via the
 //! generational key.
 //!
-//! Lifecycle is explicit: [`Node::teardown`] removes the node and its
+//! Lifecycle is explicit: [`GtkNode::teardown`] removes the node and its
 //! structural subtree from the store. Mirrors the cocoa port — see
 //! `cocoa/dom/src/node.rs` for the longer rationale.
+//!
+//! GtkNode is a newtype wrapper around NodeId to add GTK-specific methods.
 
-use crate::layout::{NodeId, Style};
+use crate::layout::{GtkBackend, NodeId, Style};
 use crate::taffy_layout::TaffyLayout;
 use gtk4::glib;
 use gtk4::prelude::*;
-use std::fmt;
-
-/// Per-port backend alias.
-type B = crate::layout::GtkBackend;
+use renderer::LayoutBackend;
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`.
@@ -27,46 +26,26 @@ type B = crate::layout::GtkBackend;
 /// All per-node state (the `gtk::Widget`, Taffy style) lives in
 /// `LayoutState<GtkBackend>`; accessors read through the store keyed
 /// by `id`.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Node {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct GtkNode {
     pub(crate) id: NodeId,
 }
 
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Node").field("id", &self.id).finish()
-    }
-}
-
-impl AsRef<Node> for Node {
-    fn as_ref(&self) -> &Node {
-        self
-    }
-}
-
-impl Node {
+impl GtkNode {
     /// Typed registration primitive: hand in a concrete gtk widget,
     /// get back a `Node`.
-    pub fn from_view<W>(widget: W, default_style: Style) -> Self
+    pub fn new_from_widget<W>(widget: W, default_style: Style) -> Self
     where
         W: IsA<gtk4::Widget>,
     {
         let widget: gtk4::Widget = widget.upcast();
-        let id = renderer::new_leaf::<B>(default_style, widget, (), ());
-        Node { id }
-    }
-
-    /// Legacy alias for [`Self::from_view`].
-    pub fn create_in_tree<W>(widget: W, default_style: Style) -> Self
-    where
-        W: IsA<gtk4::Widget>,
-    {
-        Self::from_view(widget, default_style)
+        let id = GtkBackend::new_leaf(default_style, widget, (), ());
+        GtkNode { id }
     }
 
     /// Wrap an existing store id as a `Node`.
     pub fn from_id(id: NodeId) -> Self {
-        Node { id }
+        GtkNode { id }
     }
 
     /// The node's `NodeId`.
@@ -77,19 +56,19 @@ impl Node {
     /// Record the element kind for debug tooling (devtools inspector).
     /// Cheap and harmless in release; set once at construction.
     pub fn with_tag(self, tag: &'static str) -> Self {
-        renderer::set_debug_tag_name::<B>(self.id, tag);
+        GtkBackend::set_debug_tag_name(self.id, tag);
         self
     }
 
     /// The underlying `gtk::Widget` (owned clone — cheap gobject
     /// refcount bump). Main-thread only. Panics if the node is gone.
     pub fn widget(self) -> gtk4::Widget {
-        renderer::view::<B>(self.id).expect("Node id must exist in the store")
+        GtkBackend::view(self.id).expect("Node id must exist in the store")
     }
 
     /// `Some(widget)` if the node is still in the store.
     pub fn try_widget(self) -> Option<gtk4::Widget> {
-        renderer::view::<B>(self.id)
+        GtkBackend::view(self.id)
     }
 
     /// Get a fresh `gtk4::Widget` clone — same as [`Self::widget`].
@@ -100,20 +79,20 @@ impl Node {
     // ---- Accessor surface ------------------------------------------
 
     pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = renderer::style::<B>(self.id).unwrap_or_default();
+        let style = GtkBackend::style(self.id).unwrap_or_default();
         f(&style)
     }
 
     pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = renderer::style::<B>(self.id).unwrap_or_default();
+        let mut style = GtkBackend::style(self.id).unwrap_or_default();
         let r = f(&mut style);
-        renderer::set_style::<B>(self.id, style);
+        GtkBackend::set_style(self.id, style);
         r
     }
 
     /// Pointer-equality check. Each node owns exactly one widget, so id
     /// equality is equivalent to underlying-gobject equality.
-    pub fn ptr_eq(self, other: &Node) -> bool {
+    pub fn ptr_eq(self, other: &GtkNode) -> bool {
         self.id == other.id
     }
 
@@ -125,26 +104,26 @@ impl Node {
                 detach_child_widget(&parent, &w);
             }
         }
-        renderer::remove::<B>(self.id);
+        GtkBackend::remove(self.id);
     }
 
     /// Identity. Kept so `el.as_node()` call sites compile.
-    pub fn as_node(&self) -> &Node {
+    pub fn as_node(&self) -> &GtkNode {
         self
     }
 
     /// Identity. See [`Self::as_node`].
-    pub fn into_node(self) -> Node {
+    pub fn into_node(self) -> GtkNode {
         self
     }
 
     /// Generic flexbox container (gtk::Box-backed).
     pub fn create_container() -> Self {
-        Node::from_view(container_widget(), Style::default()).with_tag("container")
+        GtkNode::new_from_widget(container_widget(), Style::default()).with_tag("container")
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
-    pub fn insert_node(self, child: &crate::Node, marker: Option<&crate::Node>) {
+    pub fn insert_node(self, child: &crate::GtkNode, marker: Option<&crate::GtkNode>) {
         let _ = self.try_insert_node(child, marker);
     }
 
@@ -152,8 +131,8 @@ impl Node {
     /// parent isn't a supported container, or `marker` isn't its child.
     pub fn try_insert_node(
         self,
-        child: &crate::Node,
-        marker: Option<&crate::Node>,
+        child: &crate::GtkNode,
+        marker: Option<&crate::GtkNode>,
     ) -> bool {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
@@ -222,7 +201,7 @@ impl Node {
     }
 
     /// Remove `child` from this element's child list.
-    pub fn remove_child(self, child: &crate::Node) -> Option<crate::Node> {
+    pub fn remove_child(self, child: &crate::GtkNode) -> Option<crate::GtkNode> {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -483,13 +462,11 @@ impl Node {
             false
         }
     }
-}
 
-// ---------------------------------------------------------------------
-// Node: text-label & placeholder constructors
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // text-label & placeholder constructors
+    // ---------------------------------------------------------------------
 
-impl Node {
     /// Build a text-label Node — a `gtk::Label` configured for
     /// left-aligned word-wrap.
     pub fn create_text(content: &str) -> Self {
@@ -499,7 +476,7 @@ impl Node {
         label.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         let mut style = Style::default();
         style.flex_shrink = 0.0;
-        Node::from_view(label, style).with_tag("#text")
+        GtkNode::new_from_widget(label, style).with_tag("#text")
     }
 
     /// Update the displayed string on a text-label Node.
@@ -522,7 +499,7 @@ impl Node {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Node::from_view(widget, style).with_tag("placeholder")
+        GtkNode::new_from_widget(widget, style).with_tag("placeholder")
     }
 }
 
@@ -567,7 +544,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 fn attach_under(
     parent: &gtk4::Widget,
     child: &gtk4::Widget,
-    marker: Option<&crate::Node>,
+    marker: Option<&crate::GtkNode>,
 ) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {
@@ -607,7 +584,7 @@ fn child_index_in_parent(
 /// the ambient store. Idempotent.
 pub fn install_taffy_layout_for_container(
     widget: &gtk4::Widget,
-    node_id: crate::layout::NodeId,
+    node_id: NodeId,
     is_root: bool,
 ) {
     if widget
@@ -631,40 +608,3 @@ fn _unused() {
     let _ = glib::value::Value::from(0i32);
 }
 
-// ---------------------------------------------------------------------
-// Weak handles — now trivial: a Node is already a non-owning Copy id.
-// ---------------------------------------------------------------------
-
-/// Non-owning reference to a `Node` — the same `Copy` id; `upgrade`
-/// checks presence in the store.
-#[derive(Clone, Copy, Debug)]
-pub struct WeakNode {
-    id: NodeId,
-}
-
-impl Node {
-    pub fn downgrade(self) -> WeakNode {
-        WeakNode { id: self.id }
-    }
-
-    pub fn weak(self) -> WeakNode {
-        self.downgrade()
-    }
-}
-
-impl WeakNode {
-    pub fn upgrade(self) -> Option<Node> {
-        if renderer::contains::<B>(self.id) {
-            Some(Node { id: self.id })
-        } else {
-            None
-        }
-    }
-
-    pub fn is_alive(self) -> bool {
-        renderer::contains::<B>(self.id)
-    }
-}
-
-/// Backwards-compat alias for [`WeakNode`].
-pub type WeakElement = WeakNode;

@@ -5,10 +5,10 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Node};
+use gtk_dom::{gtk::prelude::*, GtkNode};
 
 fn text_create_basic() {
-    let t = Node::create_text("hello");
+    let t = GtkNode::create_text("hello");
 
     let __w = t
         .as_node()
@@ -19,7 +19,7 @@ fn text_create_basic() {
 }
 
 fn text_create_empty() {
-    let t = Node::create_text("");
+    let t = GtkNode::create_text("");
     let __w = t
         .as_node()
         .widget();
@@ -29,7 +29,7 @@ fn text_create_empty() {
 }
 
 fn text_create_multiline_preserves_newlines() {
-    let t = Node::create_text("line one\nline two\nline three");
+    let t = GtkNode::create_text("line one\nline two\nline three");
     let __w = t
         .as_node()
         .widget();
@@ -39,7 +39,7 @@ fn text_create_multiline_preserves_newlines() {
 }
 
 fn text_set_text_updates_value() {
-    let t = Node::create_text("before");
+    let t = GtkNode::create_text("before");
     t.set_text("after");
     let __w = t
         .as_node()
@@ -50,7 +50,7 @@ fn text_set_text_updates_value() {
 }
 
 fn placeholder_create_is_invisible() {
-    let p = Node::create_placeholder();
+    let p = GtkNode::create_placeholder();
 
     let widget = p.as_node().widget();
     // Placeholders shouldn't take any layout space — gtk's
@@ -63,7 +63,7 @@ fn placeholder_backed_by_label_so_children_error() {
     // for placeholders so that a `placeholder.append(child)` attempt
     // would fail at the GTK type level rather than silently mounting
     // an invisible child.
-    let p = Node::create_placeholder();
+    let p = GtkNode::create_placeholder();
     assert!(
         p.as_node().widget().is::<gtk_dom::gtk::Label>(),
         "Placeholder should be a gtk::Label so it can't accept children"

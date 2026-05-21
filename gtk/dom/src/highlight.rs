@@ -20,6 +20,8 @@ thread_local! {
     static HIGHLIGHT: Cell<Option<NodeId>> = const { Cell::new(None) };
     static OVERLAYS: RefCell<Vec<glib::WeakRef<HighlightOverlayWidget>>> =
         const { RefCell::new(Vec::new()) };
+    /// True while the frontend's "inspect element" mode is active.
+    static INSPECT: Cell<bool> = const { Cell::new(false) };
 }
 
 // Chrome-ish translucent region colors: [r, g, b, a] in 0..=1.
@@ -147,10 +149,84 @@ fn draw_node(node: NodeId, snap: &gtk4::Snapshot, target: &gtk4::Widget) {
     );
 }
 
-/// Add a highlight overlay child to an existing `gtk::Overlay` and
-/// register it for redraws.
-pub fn add_to(overlay: &gtk4::Overlay, root_id: NodeId) {
+/// Add a highlight overlay child to an existing `gtk::Overlay`, register
+/// it for redraws, and install the inspect-mode pointer controllers on
+/// `window`.
+pub fn add_to(overlay: &gtk4::Overlay, window: &gtk4::ApplicationWindow, root_id: NodeId) {
     let widget = HighlightOverlayWidget::new(root_id);
     overlay.add_overlay(&widget);
     OVERLAYS.with(|o| o.borrow_mut().push(widget.downgrade()));
+    install_inspect_controllers(window, root_id);
+}
+
+// ---------------------------------------------------------------------
+// Inspect-from-app mode
+// ---------------------------------------------------------------------
+
+/// Enter/leave inspect mode (driven by `Overlay.setInspectMode`). Leaving
+/// clears any highlight.
+pub fn set_inspect_mode(on: bool) {
+    INSPECT.with(|i| i.set(on));
+    if !on {
+        set_highlight(None);
+    }
+}
+
+/// Deepest node in `root_id`'s subtree whose on-screen bounds contain
+/// `(x, y)` (coords relative to `target`). DFS: later/deeper containing
+/// nodes overwrite, so the topmost leaf under the cursor wins.
+fn hit_test(root_id: NodeId, x: f32, y: f32, target: &gtk4::Widget) -> Option<NodeId> {
+    fn rec(id: NodeId, x: f32, y: f32, target: &gtk4::Widget, best: &mut Option<NodeId>) {
+        if let Some(view) = layout::view(id) {
+            if let Some(b) = view.compute_bounds(target) {
+                if x >= b.x() && x <= b.x() + b.width() && y >= b.y() && y <= b.y() + b.height() {
+                    *best = Some(id);
+                }
+            }
+        }
+        for c in layout::children(id) {
+            rec(c, x, y, target, best);
+        }
+    }
+    let mut best = None;
+    rec(root_id, x, y, target, &mut best);
+    best
+}
+
+/// Install a capture-phase motion + click controller pair on `window`.
+/// They no-op unless inspect mode is active; when it is, motion highlights
+/// the node under the cursor and reports it to the frontend, and a click
+/// picks it (and leaves inspect mode), claiming the event so the real
+/// control underneath doesn't also fire.
+fn install_inspect_controllers(window: &gtk4::ApplicationWindow, root_id: NodeId) {
+    let motion = gtk4::EventControllerMotion::new();
+    motion.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    let win = window.clone();
+    motion.connect_motion(move |_, x, y| {
+        if !INSPECT.with(|i| i.get()) {
+            return;
+        }
+        let target: gtk4::Widget = win.clone().upcast();
+        if let Some(node) = hit_test(root_id, x as f32, y as f32, &target) {
+            set_highlight(Some(node));
+            leptos_devtools::notify_node_hovered(node);
+        }
+    });
+    window.add_controller(motion);
+
+    let click = gtk4::GestureClick::new();
+    click.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    let win = window.clone();
+    click.connect_pressed(move |gesture, _n, x, y| {
+        if !INSPECT.with(|i| i.get()) {
+            return;
+        }
+        let target: gtk4::Widget = win.clone().upcast();
+        if let Some(node) = hit_test(root_id, x as f32, y as f32, &target) {
+            leptos_devtools::notify_node_picked(node);
+        }
+        set_inspect_mode(false);
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+    });
+    window.add_controller(click);
 }

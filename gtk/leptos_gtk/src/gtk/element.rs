@@ -18,7 +18,7 @@ use gtk_dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    Node as GtkElement,
+    GtkNode as GtkElement,
 };
 use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
@@ -73,7 +73,7 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
     fn mount(
         &mut self,
         parent: &GtkElement,
-        marker: Option<&gtk_dom::Node>,
+        marker: Option<&gtk_dom::GtkNode>,
     ) {
         // Insert self.el under parent. If parent has a Taffy tree
         // handle, this also registers self.el (and recursively, on

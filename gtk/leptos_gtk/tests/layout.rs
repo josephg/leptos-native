@@ -15,6 +15,8 @@ use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use reactive_graph::owner::Owner;
 use renderer::attrs::WithLayout;
 use renderer::view::{Mountable, Render};
+use gtk_dom::layout::GtkBackend;
+use renderer::LayoutBackend;
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
     let _ = gtk_dom::spawner::init();
@@ -29,7 +31,7 @@ fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
     V: Render<leptos_gtk::Dom>,
     V::State: Mountable<leptos_gtk::Dom>,
-    F: FnOnce(&gtk_dom::Node),
+    F: FnOnce(&gtk_dom::GtkNode),
 {
     let app = gtk_dom::app::init_app("org.test.leptos_gtk.layout");
     let opened = gtk_dom::window::open_window(
@@ -50,7 +52,7 @@ where
 /// Walk the Taffy tree under `root` and collect the layouts of all
 /// leaf widgets that match `pred`.
 fn find_leaf_widgets<P>(
-    root: &gtk_dom::Node,
+    root: &gtk_dom::GtkNode,
     mut pred: P,
 ) -> Vec<layout::Layout>
 where
@@ -59,7 +61,7 @@ where
     let mut out = Vec::new();
     walk(root.as_node().id(), &mut |id, w| {
         if pred(w) {
-            if let Some(layout) = layout::layout(id) {
+            if let Some(layout) = GtkBackend::layout(id) {
                 out.push(layout);
             }
         }
@@ -71,8 +73,8 @@ fn walk<F>(id: layout::NodeId, f: &mut F)
 where
     F: FnMut(layout::NodeId, &gtk_dom::gtk::Widget),
 {
-    let widget = layout::view(id);
-    let children = layout::children(id);
+    let widget = GtkBackend::view(id);
+    let children = GtkBackend::children(id);
     if let Some(w) = widget {
         f(id, &w);
     }
@@ -149,11 +151,11 @@ fn vstack_label_plus_hstack_has_full_height() {
             );
         with_mounted_view(view, (320.0, 200.0), |root| {
             // First child of the content_root is the outer vstack.
-            let kids = layout::children(root.as_node().id());
+            let kids = GtkBackend::children(root.as_node().id());
             assert!(!kids.is_empty(), "content_root has no children");
             let outer_id = kids[0];
             let outer_layout =
-                layout::layout(outer_id).expect("outer layout missing");
+                GtkBackend::layout(outer_id).expect("outer layout missing");
             assert!(
                 outer_layout.size.height >= 60.0,
                 "vstack height {} suspiciously small",

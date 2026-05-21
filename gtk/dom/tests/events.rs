@@ -8,7 +8,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, Node};
+use gtk_dom::{gtk::prelude::*, GtkNode};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -17,7 +17,7 @@ use std::rc::Rc;
 // ---------------------------------------------------------------------
 
 fn on_click_fires_on_button() {
-    let el = Node::create_button().0;
+    let el = GtkNode::create_button().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_click(move || c.set(c.get() + 1));
@@ -33,7 +33,7 @@ fn on_click_fires_on_button() {
 }
 
 fn on_click_on_label_is_no_op() {
-    let el = Node::create_label().0;
+    let el = GtkNode::create_label().0;
     el.on_click(|| panic!("must not fire"));
     // No way to "fire a click" on a label; the assertion is that
     // installing didn't panic and won't fire. Just verify by
@@ -41,7 +41,7 @@ fn on_click_on_label_is_no_op() {
 }
 
 fn on_click_on_checkbox_fires_on_toggle() {
-    let el = Node::create_checkbox().0;
+    let el = GtkNode::create_checkbox().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_click(move || c.set(c.get() + 1));
@@ -63,7 +63,7 @@ fn on_click_on_checkbox_fires_on_toggle() {
 // ---------------------------------------------------------------------
 
 fn on_action_fires_on_slider() {
-    let el = Node::create_slider().0;
+    let el = GtkNode::create_slider().0;
     let count = Rc::new(Cell::new(0));
     let c = count.clone();
     el.on_action(move || c.set(c.get() + 1));
@@ -76,7 +76,7 @@ fn on_action_fires_on_slider() {
 }
 
 fn on_action_fires_on_dropdown() {
-    let el = Node::create_pop_up_button().0;
+    let el = GtkNode::create_pop_up_button().0;
     el.set_popup_items(&["A".to_string(), "B".to_string(), "C".to_string()]);
 
     let count = Rc::new(Cell::new(0));
@@ -89,7 +89,7 @@ fn on_action_fires_on_dropdown() {
 }
 
 fn on_action_on_view_is_no_op() {
-    let el = Node::create_stack();
+    let el = GtkNode::create_stack();
     el.on_action(|| panic!("must not fire"));
 }
 
@@ -98,7 +98,7 @@ fn on_action_on_view_is_no_op() {
 // ---------------------------------------------------------------------
 
 fn on_text_change_fires_on_text_field() {
-    let el = Node::create_text_field().0;
+    let el = GtkNode::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_change(move |v| c.set(v));
@@ -113,14 +113,14 @@ fn on_text_change_fires_on_text_field() {
 }
 
 fn on_text_change_on_button_is_no_op() {
-    let el = Node::create_button().0;
+    let el = GtkNode::create_button().0;
     el.on_text_change(|_| panic!("must not fire"));
 }
 
 fn multiple_on_text_change_fan_out() {
     // Each `on_text_change` install adds another connect_changed
     // signal connection — they all fire.
-    let el = Node::create_text_field().0;
+    let el = GtkNode::create_text_field().0;
     let calls = Rc::new(Cell::new(0));
     {
         let c = calls.clone();
@@ -145,7 +145,7 @@ fn multiple_on_text_change_fan_out() {
 // ---------------------------------------------------------------------
 
 fn on_text_end_editing_fires_on_activate() {
-    let el = Node::create_text_field().0;
+    let el = GtkNode::create_text_field().0;
     let captured = Rc::new(Cell::new(String::new()));
     let c = captured.clone();
     el.on_text_end_editing(move |v| c.set(v));
@@ -161,7 +161,7 @@ fn on_text_end_editing_fires_on_activate() {
 }
 
 fn on_change_and_on_input_coexist() {
-    let el = Node::create_text_field().0;
+    let el = GtkNode::create_text_field().0;
     let inputs = Rc::new(Cell::new(0));
     let changes = Rc::new(Cell::new(0));
 
@@ -195,7 +195,7 @@ fn on_change_and_on_input_coexist() {
 // ---------------------------------------------------------------------
 
 fn slider_double_value_round_trips() {
-    let el = Node::create_slider().0;
+    let el = GtkNode::create_slider().0;
     el.set_slider_min(0.0);
     el.set_slider_max(100.0);
     el.set_double_value(42.5);
@@ -203,7 +203,7 @@ fn slider_double_value_round_trips() {
 }
 
 fn popup_items_and_selection() {
-    let el = Node::create_pop_up_button().0;
+    let el = GtkNode::create_pop_up_button().0;
     let items: Vec<String> =
         ["Alpha", "Beta", "Gamma"].into_iter().map(String::from).collect();
     el.set_popup_items(&items);
@@ -212,7 +212,7 @@ fn popup_items_and_selection() {
 }
 
 fn checkbox_checked_round_trips() {
-    let el = Node::create_checkbox().0;
+    let el = GtkNode::create_checkbox().0;
     assert!(!el.checked());
     el.set_checked(true);
     assert!(el.checked());

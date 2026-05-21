@@ -84,6 +84,7 @@ pub fn start(port: u16) {
                             schedule_relayout: Rc::new(schedule_relayout_for),
                             set_highlight: Rc::new(crate::highlight::set_highlight),
                             node_attributes: Rc::new(node_attributes),
+                            set_inspect_mode: Rc::new(crate::highlight::set_inspect_mode),
                         };
                         any_spawner::Executor::spawn_local(
                             leptos_devtools::serve_connection::<_, GtkBackend>(

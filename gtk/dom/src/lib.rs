@@ -47,9 +47,7 @@ pub mod window;
 pub use color::Color;
 pub use main_thread::on_main;
 
-pub use node::{
-    Node, WeakElement, WeakNode,
-};
+pub use node::GtkNode;
 pub use renderer::{
     ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,
 };
