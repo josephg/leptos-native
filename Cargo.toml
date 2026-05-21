@@ -13,7 +13,6 @@ members = [
 
   # native ports
   "cocoa/dom",
-  "gtk/dom",
   "uikit/dom",
 
   # cocoa examples
@@ -90,7 +89,6 @@ default-members = [
   "apple_shared",
   "cocoa/leptos_cocoa",
   "cocoa/dom",
-  "gtk/dom",
   "gtk/leptos_gtk",
 
   "cocoa/examples/async_derived",
