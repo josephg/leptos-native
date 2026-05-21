@@ -10,7 +10,7 @@
 use crate::spec::SignalId;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
-use reactive_graph::traits::{GetUntracked, Set};
+use reactive_graph::traits::GetUntracked;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

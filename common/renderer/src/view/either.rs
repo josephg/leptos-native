@@ -15,7 +15,7 @@ impl<R: Renderer, S: Mountable<R>> Mountable<R> for EitherState<S> {
     fn unmount(&mut self) {
         self.inner.unmount();
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         self.inner.mount(parent, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
@@ -74,7 +74,7 @@ where
             Either::Right(b) => b.unmount(),
         }
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         match self {
             Either::Left(a) => a.mount(parent, marker),
             Either::Right(b) => b.mount(parent, marker),
@@ -135,7 +135,7 @@ macro_rules! impl_either_of {
             fn unmount(&mut self) {
                 match self { $( $name::$var(v) => v.unmount(), )+ }
             }
-            fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+            fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
                 match self { $( $name::$var(v) => v.mount(parent, marker), )+ }
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {

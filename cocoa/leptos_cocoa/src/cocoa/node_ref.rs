@@ -3,9 +3,9 @@
 //! reactive attributes / events: focus a text field, scroll a
 //! container, query the underlying NSView for sizing.
 //!
-//! Mirrors the upstream `leptos_native::NodeRef<HtmlInputElement>` API
+//! Mirrors the upstream `leptos_native::NodeRef<HtmlInputCocoaNode>` API
 //! shape but is monomorphic — there's only one element type on
-//! macOS (`cocoa_dom::Element`), so no `<E>` parameter is
+//! macOS (`cocoa_dom::CocoaNode`), so no `<E>` parameter is
 //! needed.
 //!
 //! # Usage
@@ -23,7 +23,6 @@
 //! }
 //! ```
 
-use cocoa_dom::Element;
 use reactive_graph::{
     effect::Effect,
     signal::RwSignal,
@@ -31,19 +30,20 @@ use reactive_graph::{
 };
 use send_wrapper::SendWrapper;
 use std::cell::Cell;
+use crate::dom::CocoaNode;
 
-/// A reactive reference to a built `cocoa_dom::Element`.
+/// A reactive reference to a built `cocoa_dom::CocoaNode`.
 ///
 /// Construct via [`NodeRef::new`], pass to a builder via
 /// `node_ref=…`, then read via [`get`](Self::get) /
 /// [`get_untracked`](Self::get_untracked) / [`on_load`](Self::on_load).
 ///
-/// The wrapped signal is `RwSignal<Option<SendWrapper<Element>>>`.
+/// The wrapped signal is `RwSignal<Option<SendWrapper<CocoaNode>>>`.
 /// The `SendWrapper` keeps the type `Send` (required by
 /// reactive_graph's storage) while runtime-enforcing main-thread
 /// access.
 #[derive(Debug)]
-pub struct NodeRef(RwSignal<Option<SendWrapper<Element>>>);
+pub struct NodeRef(RwSignal<Option<SendWrapper<CocoaNode>>>);
 
 impl NodeRef {
     /// Create a new, unfilled NodeRef. Filled when the builder
@@ -55,19 +55,19 @@ impl NodeRef {
 
     /// Reactive read — subscribes the current Effect to this
     /// ref. Returns the element if it's been mounted, else None.
-    pub fn get(&self) -> Option<Element> {
+    pub fn get(&self) -> Option<CocoaNode> {
         self.0.get().map(|w| w.take())
     }
 
     /// Non-reactive read.
-    pub fn get_untracked(&self) -> Option<Element> {
+    pub fn get_untracked(&self) -> Option<CocoaNode> {
         self.0.get_untracked().map(|w| w.take())
     }
 
     /// Run `f` once when the ref has been filled (i.e. when the
     /// element it points to has been built and mounted). Useful
     /// for "focus this field on first show" patterns.
-    pub fn on_load<F: FnOnce(Element) + 'static>(self, f: F) {
+    pub fn on_load<F: FnOnce(CocoaNode) + 'static>(self, f: F) {
         let f = Cell::new(Some(f));
         Effect::new(move |_| {
             if let Some(el) = self.get() {
@@ -79,8 +79,8 @@ impl NodeRef {
     }
 
     /// Internal: fill the ref. Called by builders' `Render::build`
-    /// after constructing their underlying Element.
-    pub fn load(&self, el: &Element) {
+    /// after constructing their underlying CocoaNode.
+    pub fn load(&self, el: &CocoaNode) {
         self.0.set(Some(SendWrapper::new(el.clone())));
     }
 }

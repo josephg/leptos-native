@@ -1,35 +1,24 @@
 //! Element builder types: `view()`, `button()`, `label()`, etc.
 //!
 //! Each builder returns a struct that implements [`Render`] from
-//! tachys' view core. Building emits a [`cocoa_dom::Element`] (or
+//! tachys' view core. Building emits a [`CocoaNode`] (or
 //! similar leaf), wires attributes (with reactive effects for
 //! signal-driven values), recursively builds children, and mounts
 //! them.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
+use crate::dom::{event, layout::*, CocoaNode, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
+use crate::Dom;
+use reactive_graph::effect::RenderEffect;
 use renderer::attrs::{
     DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
     WithUniversal,
 };
 use renderer::view::{Mountable, Render};
-use crate::Dom;
-use cocoa_dom::{
-    layout::{
-        set_align_content, set_align_items, set_column_gap, set_flex_direction,
-        set_flex_wrap, set_gap, set_grid_auto_columns, set_grid_auto_flow,
-        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
-        set_justify_content, set_justify_items, set_row_gap, AlignContent,
-        AlignItems, FlexDirection, FlexWrap, GridAutoFlow,
-        GridTemplateComponent, JustifyContent, JustifyItems,
-        TrackSizingFunction,
-    },
-    Color, Element as CocoaElement,
-};
-use reactive_graph::effect::RenderEffect;
 
 /// Cocoa's text-attr struct alias — `TextAttrs` with cocoa's `Color`
 /// and `NSTextAlignment`.
-pub type CocoaText = TextAttrs<Color, cocoa_dom::TextAlignment>;
+pub type CocoaText = TextAttrs<Color, TextAlignment>;
 
 /// Port-local accessor trait for [`CocoaText`]. Mirrors the shape of
 /// renderer-common's `WithLayout` / `WithUniversal`: each builder
@@ -50,7 +39,7 @@ pub trait WithText: Sized {
         self
     }
     /// Text alignment within the control's frame.
-    fn alignment<V: IntoMaybeReactive<cocoa_dom::TextAlignment>>(
+    fn alignment<V: IntoMaybeReactive<TextAlignment>>(
         mut self,
         a: V,
     ) -> Self {
@@ -104,14 +93,14 @@ pub trait WithDecoration: Sized {
 }
 
 // `apply_universal` and `apply_layout` live in `renderer`. The
-// `UniversalElement` / `LayoutElement` impls for `CocoaElement` live
+// `UniversalElement` / `LayoutElement` impls for `CocoaNode` live
 // in `cocoa_dom` (orphan rule).
 use renderer::{apply_decoration, apply_universal};
 
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
 /// skips `text_color` (uses `attributedTitle` if styling is needed).
-fn apply_text(el: &CocoaElement, attrs: CocoaText) -> Vec<RenderEffect<()>> {
+fn apply_text(el: &CocoaNode, attrs: CocoaText) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(c) = attrs.text_color {
         let el_for = el.clone();
@@ -155,7 +144,7 @@ use renderer::apply_layout;
 /// The macro consolidates the 3-or-4-line apply-cascade tail of
 /// every `Render::build` into one call.
 fn apply_common(
-    el: &CocoaElement,
+    el: &CocoaNode,
     decoration: CocoaDecoration,
     universal: UniversalAttrs,
     text: Option<CocoaText>,
@@ -182,7 +171,7 @@ macro_rules! wire_attr {
         if let Some(__v) = $opt {
             let __e = $el.clone();
             let __setter = $setter;
-            if let Some(__eff) = install(__v, move |__val| __setter(&__e, __val))
+            if let Some(__eff) = install(__v, move |__val| __setter(__e, __val))
             {
                 $effects.push(__eff);
             }
@@ -196,13 +185,13 @@ macro_rules! wire_attr {
 
 /// State retained for an element instance between build and rebuild.
 ///
-/// Holds the underlying `cocoa_dom::Element`, any active reactive
+/// Holds the underlying `CocoaNode`, any active reactive
 /// effects (so they survive as long as the element is mounted), and
 /// the children's State.
 pub struct ElementState<ChildState> {
     /// Pub for test inspection — consider using `Mountable::elements()`
     /// in production code paths instead.
-    pub el: CocoaElement,
+    pub el: CocoaNode,
     /// Effects driving reactive attributes. Dropped on unmount;
     /// dropping unsubscribes from the reactive graph.
     pub(crate) _effects: Vec<RenderEffect<()>>,
@@ -234,26 +223,26 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
 
     fn mount(
         &mut self,
-        parent: &CocoaElement,
-        marker: Option<&cocoa_dom::CocoaNode>,
+        parent: CocoaNode,
+        marker: Option<CocoaNode>,
     ) {
         // Step 1: insert self.el under parent. If parent has a Taffy
         // tree handle (i.e. is descended from a Window's content_root),
         // this also registers self.el in that tree.
-        parent.insert_node(&self.el, marker);
+        parent.insert_node(self.el, marker);
         // Step 2: cascade — mount children under self.el. This is what
         // propagates the tree to descendants. We deliberately don't
         // mount children during build (which would try to attach them
         // before self.el is in any tree). The tree-aware
         // `insert_node` here registers each child as it goes.
-        self.children.mount(&self.el, None);
+        self.children.mount(self.el, None);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
-        crate::renderer_cocoa::insert_before_node(&self.el, child)
+        crate::renderer_cocoa::insert_before_node(self.el, child)
     }
 
-    fn elements(&self) -> Vec<CocoaElement> {
+    fn elements(&self) -> Vec<CocoaNode> {
         vec![self.el.clone()]
     }
 }
@@ -497,7 +486,7 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = CocoaElement::create_container();
+        let el = CocoaNode::create_container();
         let mut effects = Vec::new();
 
         // Default direction = Column when caller didn't specify (the
@@ -515,16 +504,16 @@ where
         #[cfg(feature = "animation")]
         wire_attr!(
             effects, el, self.scale,
-            |n: &cocoa_dom::CocoaNode, s: f64| cocoa_dom::layout::set_scale(*n, s, s)
+            |n: CocoaNode, s: f64| set_scale(n, s, s)
         );
         #[cfg(feature = "animation")]
         wire_attr!(
             effects, el, self.translation_y,
-            |n: &cocoa_dom::CocoaNode, ty: f64| cocoa_dom::layout::set_translation(*n, 0.0, ty)
+            |n: CocoaNode, ty: f64| set_translation(n, 0.0, ty)
         );
         // bind:mouse_hover=signal — one-way hover state writer.
         if let Some(mut setter) = self.pending_bind_mouse_hover {
-            cocoa_dom::event::on_hover(
+            event::on_hover(
                 el,
                 move |entered| setter(entered),
             );
@@ -740,28 +729,27 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let el = CocoaElement::create_grid();
+        let el = CocoaNode::create_grid();
         let mut effects = Vec::new();
 
         // Static template-track lists go straight onto the node (no
         // reactive wrapper — animating the track shape is a v2 thing).
         if let Some(c) = self.columns {
-            set_grid_template_columns(&el, c);
+            set_grid_template_columns(el, c);
         }
         if let Some(r) = self.rows {
-            set_grid_template_rows(&el, r);
+            set_grid_template_rows(el, r);
         }
         if let Some(c) = self.auto_columns {
-            set_grid_auto_columns(&el, c);
+            set_grid_auto_columns(el, c);
         }
         if let Some(r) = self.auto_rows {
-            set_grid_auto_rows(&el, r);
+            set_grid_auto_rows(el, r);
         }
 
         if let Some(v) = self.auto_flow {
-            let e = el.clone();
             if let Some(eff) =
-                install(v, move |f| set_grid_auto_flow(&e, f))
+                install(v, move |f| set_grid_auto_flow(el, f))
             {
                 effects.push(eff);
             }
@@ -769,53 +757,46 @@ where
 
         // Apply shorthand `gap` first so per-axis overrides win.
         if let Some(v) = self.gap {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_gap(&e, g)) {
+            if let Some(eff) = install(v, move |g| set_gap(el, g)) {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.column_gap {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_column_gap(&e, g))
+            if let Some(eff) = install(v, move |g| set_column_gap(el, g))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.row_gap {
-            let e = el.clone();
-            if let Some(eff) = install(v, move |g| set_row_gap(&e, g)) {
+            if let Some(eff) = install(v, move |g| set_row_gap(el, g)) {
                 effects.push(eff);
             }
         }
 
         if let Some(v) = self.justify_items {
-            let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_items(&e, j))
+                install(v, move |j| set_justify_items(el, j))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.align_items {
-            let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_items(&e, a))
+                install(v, move |a| set_align_items(el, a))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.justify_content {
-            let e = el.clone();
             if let Some(eff) =
-                install(v, move |j| set_justify_content(&e, j))
+                install(v, move |j| set_justify_content(el, j))
             {
                 effects.push(eff);
             }
         }
         if let Some(v) = self.align_content {
-            let e = el.clone();
             if let Some(eff) =
-                install(v, move |a| set_align_content(&e, a))
+                install(v, move |a| set_align_content(el, a))
             {
                 effects.push(eff);
             }
@@ -844,7 +825,7 @@ pub struct Button {
     enabled: Option<MaybeReactive<bool>>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     // Text styling — Button uses font_size + alignment only (no
@@ -913,7 +894,7 @@ impl Button {
     }
 
     /// `node_ref=…` from the macro. The ref gets filled with this
-    /// builder's underlying `cocoa_dom::Element` after
+    /// builder's underlying `CocoaNode` after
     /// `Render::build` runs.
     pub fn node_ref(mut self, r: crate::cocoa::NodeRef) -> Self {
         self.node_ref = Some(r);
@@ -922,11 +903,11 @@ impl Button {
 
     /// `use:directive=param` from the macro. Stores the directive
     /// call; runs at `Render::build` time with the constructed
-    /// `cocoa_dom::Element` and the supplied `param`.
+    /// `CocoaNode` and the supplied `param`.
     ///
     /// Directives are escape-hatches for imperative manipulation
     /// of the underlying NSView — exactly the upstream
-    /// `IntoDirective` shape, with `cocoa_dom::Element` as the
+    /// `IntoDirective` shape, with `CocoaNode` as the
     /// element type. See `examples/.../directives_macos` for
     /// usage.
     ///
@@ -935,7 +916,7 @@ impl Button {
     /// fact that our `AddAnyAttr` stub drops attributes.
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1072,7 +1053,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_button();
+        let (el, _) = CocoaNode::create_button();
         let mut effects = Vec::new();
 
         // Wire the title — install handles both static and reactive.
@@ -1083,10 +1064,10 @@ where
             effects.push(eff);
         }
 
-        wire_attr!(effects, el, self.enabled, |n: &CocoaElement, b: bool| n.set_enabled(b));
+        wire_attr!(effects, el, self.enabled, |n: CocoaNode, b: bool| n.set_enabled(b));
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
 
         if let Some(b) = self.bordered {
@@ -1111,20 +1092,20 @@ where
             // explicit reactive `bordered=...` themselves.
             el.set_button_bordered(false);
         }
-        wire_attr!(effects, el, self.key_equivalent, |n: &CocoaElement, k: String| n.set_key_equivalent(&k));
-        wire_attr!(effects, el, self.text_color, |n: &CocoaElement, c: cocoa_dom::Color| n.set_button_title_color(c));
-        wire_attr!(effects, el, self.bold, |n: &CocoaElement, b: bool| n.set_bold(b));
+        wire_attr!(effects, el, self.key_equivalent, |n: CocoaNode, k: String| n.set_key_equivalent(&k));
+        wire_attr!(effects, el, self.text_color, |n: CocoaNode, c: Color| n.set_button_title_color(c));
+        wire_attr!(effects, el, self.bold, |n: CocoaNode, b: bool| n.set_bold(b));
         // SF symbol AFTER title is wired, so `set_button_sf_symbol`
         // can read `button.title().length()` to pick the right
         // `imagePosition`.
-        wire_attr!(effects, el, self.sf_symbol, |n: &CocoaElement, s: String| n.set_button_sf_symbol(&s));
+        wire_attr!(effects, el, self.sf_symbol, |n: CocoaNode, s: String| n.set_button_sf_symbol(&s));
         effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
 
         if let Some(r) = self.node_ref {
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
         // Run the typed-attribute pipeline. For the empty-tuple
         // default this is `().build(&el)` — a no-op.
@@ -1154,7 +1135,7 @@ pub struct Checkbox {
     pending_bind_checked: Option<crate::cocoa::bind::BoundChecked>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -1239,7 +1220,7 @@ impl Checkbox {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1276,7 +1257,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_checkbox();
+        let (el, _) = CocoaNode::create_checkbox();
         let mut effects = Vec::new();
 
         // Title: drive via the standard install pipeline.
@@ -1307,7 +1288,7 @@ where
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
 
         effects.extend(apply_common(&el, self.decoration, self.universal, Some(self.text), self.layout));
@@ -1316,7 +1297,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -1341,7 +1322,7 @@ pub struct Slider {
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -1429,7 +1410,7 @@ impl Slider {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1489,7 +1470,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_slider();
+        let (el, _) = CocoaNode::create_slider();
         let mut effects = Vec::new();
 
         // min/max set FIRST so initial setDoubleValue clamps correctly.
@@ -1530,7 +1511,7 @@ where
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
 
         if let Some(v) = self.vertical {
@@ -1563,7 +1544,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -1587,7 +1568,7 @@ pub struct PopUpButton {
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -1665,7 +1646,7 @@ impl PopUpButton {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1708,7 +1689,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_pop_up_button();
+        let (el, _) = CocoaNode::create_pop_up_button();
         let mut effects = Vec::new();
 
         // pulls_down BEFORE items: NSPopUpButton's mode controls
@@ -1751,7 +1732,7 @@ where
         }
 
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
 
         effects.extend(apply_common(&el, self.decoration, self.universal, None, self.layout));
@@ -1760,7 +1741,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -1791,14 +1772,14 @@ pub struct Label {
     try_text: Option<LabelTryTextFn>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
     text: CocoaText,
     selectable: Option<MaybeReactive<bool>>,
     bold: Option<MaybeReactive<bool>>,
-    line_break: Option<MaybeReactive<cocoa_dom::LineBreak>>,
+    line_break: Option<MaybeReactive<LineBreak>>,
 }
 
 pub fn label() -> Label {
@@ -1872,7 +1853,7 @@ impl Label {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -1921,7 +1902,7 @@ impl Label {
     /// middle), or clip. See [`cocoa_dom::LineBreak`].
     pub fn line_break<V>(mut self, m: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::LineBreak>,
+        V: IntoMaybeReactive<LineBreak>,
     {
         self.line_break = Some(m.into_maybe_reactive());
         self
@@ -1937,16 +1918,16 @@ impl Label {
     {
         match b.into_maybe_reactive() {
             MaybeReactive::Static(true) => {
-                self.line_break(cocoa_dom::LineBreak::WORD_WRAP)
+                self.line_break(LineBreak::WORD_WRAP)
             }
             MaybeReactive::Static(false) => {
-                self.line_break(cocoa_dom::LineBreak::TRUNCATE_TAIL)
+                self.line_break(LineBreak::TRUNCATE_TAIL)
             }
             MaybeReactive::Reactive(f) => self.line_break(move || {
                 if f() {
-                    cocoa_dom::LineBreak::WORD_WRAP
+                    LineBreak::WORD_WRAP
                 } else {
-                    cocoa_dom::LineBreak::TRUNCATE_TAIL
+                    LineBreak::TRUNCATE_TAIL
                 }
             }),
         }
@@ -1970,7 +1951,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_label();
+        let (el, _) = CocoaNode::create_label();
         let mut effects = Vec::new();
 
         let el_for_text = el.clone();
@@ -1991,7 +1972,7 @@ where
                 RefCell<Option<crate::cocoa::error_guard::ErrorGuard>>,
             > = Rc::new(RefCell::new(None));
             let active = active_error.clone();
-            let eff = reactive_graph::effect::RenderEffect::new(
+            let eff = RenderEffect::new(
                 move |_prev: Option<()>| {
                     // Clear any prior error registered on a previous
                     // run before throwing the new one.
@@ -2028,7 +2009,7 @@ where
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
-                other => other.apply_to(&el),
+                other => other.apply_to(el),
             }
         }
 
@@ -2061,7 +2042,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -2094,7 +2075,7 @@ pub struct TextField {
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -2241,7 +2222,7 @@ impl TextField {
     /// `DirectiveAttribute::directive`).
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2339,9 +2320,9 @@ where
 
     fn build(self) -> Self::State {
         let el = if self.secure {
-            CocoaElement::create_secure_text_field().0
+            CocoaNode::create_secure_text_field().0
         } else {
-            CocoaElement::create_text_field().0
+            CocoaNode::create_text_field().0
         };
         let mut effects = Vec::new();
 
@@ -2384,7 +2365,7 @@ where
         // These coexist with bind:value because the underlying
         // delegate fans out across all installed callbacks.
         for h in self.handlers {
-            h.apply_to(&el);
+            h.apply_to(el);
         }
 
         if let Some(b) = self.bordered {
@@ -2419,7 +2400,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -2437,23 +2418,23 @@ where
 // ---------------------------------------------------------------------
 
 pub struct DatePicker {
-    value: MaybeReactive<cocoa_dom::Date>,
+    value: MaybeReactive<Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
-    style: Option<MaybeReactive<cocoa_dom::DatePickerStyle>>,
-    min_date: Option<MaybeReactive<cocoa_dom::Date>>,
-    max_date: Option<MaybeReactive<cocoa_dom::Date>>,
+    style: Option<MaybeReactive<DatePickerStyle>>,
+    min_date: Option<MaybeReactive<Date>>,
+    max_date: Option<MaybeReactive<Date>>,
 }
 
 pub fn date_picker() -> DatePicker {
     DatePicker {
-        value: MaybeReactive::Static(cocoa_dom::Date::now()),
+        value: MaybeReactive::Static(Date::now()),
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
@@ -2471,7 +2452,7 @@ pub fn date_picker() -> DatePicker {
 impl DatePicker {
     pub fn value<V>(mut self, v: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::Date>,
+        V: IntoMaybeReactive<Date>,
     {
         self.value = v.into_maybe_reactive();
         self
@@ -2509,7 +2490,7 @@ impl DatePicker {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2543,7 +2524,7 @@ impl DatePicker {
     /// `TextualAndStepper` (default), or `ClockAndCalendar`.
     pub fn style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::DatePickerStyle>,
+        V: IntoMaybeReactive<DatePickerStyle>,
     {
         self.style = Some(s.into_maybe_reactive());
         self
@@ -2553,7 +2534,7 @@ impl DatePicker {
     /// `Element::set_date_picker_min(None)` if you need that.
     pub fn min_date<V>(mut self, d: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::Date>,
+        V: IntoMaybeReactive<Date>,
     {
         self.min_date = Some(d.into_maybe_reactive());
         self
@@ -2561,7 +2542,7 @@ impl DatePicker {
     /// Latest selectable date.
     pub fn max_date<V>(mut self, d: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::Date>,
+        V: IntoMaybeReactive<Date>,
     {
         self.max_date = Some(d.into_maybe_reactive());
         self
@@ -2575,7 +2556,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_date_picker();
+        let (el, _) = CocoaNode::create_date_picker();
         let mut effects = Vec::new();
 
         let el_for_val = el.clone();
@@ -2607,7 +2588,7 @@ where
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
-                other => other.apply_to(&el),
+                other => other.apply_to(el),
             }
         }
 
@@ -2641,7 +2622,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -2667,7 +2648,7 @@ pub struct Stepper {
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -2746,7 +2727,7 @@ impl Stepper {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2779,7 +2760,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_stepper();
+        let (el, _) = CocoaNode::create_stepper();
         let mut effects = Vec::new();
 
         // Bounds + increment first so the initial setDoubleValue
@@ -2832,7 +2813,7 @@ where
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
-                other => other.apply_to(&el),
+                other => other.apply_to(el),
             }
         }
 
@@ -2842,7 +2823,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -2867,7 +2848,7 @@ pub struct ProgressIndicator {
     max_value: MaybeReactive<f64>,
     indeterminate: MaybeReactive<bool>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -2916,7 +2897,7 @@ impl ProgressIndicator {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -2957,7 +2938,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_progress_indicator();
+        let (el, _) = CocoaNode::create_progress_indicator();
         let mut effects = Vec::new();
 
         // Order matters: max before value so the value clamps
@@ -2998,7 +2979,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -3017,12 +2998,12 @@ where
 // ---------------------------------------------------------------------
 
 pub struct ColorWell {
-    value: MaybeReactive<cocoa_dom::Color>,
+    value: MaybeReactive<Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -3030,7 +3011,7 @@ pub struct ColorWell {
 
 pub fn color_well() -> ColorWell {
     ColorWell {
-        value: MaybeReactive::Static(cocoa_dom::Color::WHITE),
+        value: MaybeReactive::Static(Color::WHITE),
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
@@ -3045,7 +3026,7 @@ pub fn color_well() -> ColorWell {
 impl ColorWell {
     pub fn value<V>(mut self, v: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::Color>,
+        V: IntoMaybeReactive<Color>,
     {
         self.value = v.into_maybe_reactive();
         self
@@ -3083,7 +3064,7 @@ impl ColorWell {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3122,7 +3103,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_color_well();
+        let (el, _) = CocoaNode::create_color_well();
         let mut effects = Vec::new();
 
         let el_for_val = el.clone();
@@ -3155,7 +3136,7 @@ where
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
-                other => other.apply_to(&el),
+                other => other.apply_to(el),
             }
         }
 
@@ -3165,7 +3146,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -3189,11 +3170,11 @@ pub struct SegmentedControl {
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
     handlers: Vec<crate::event_macos::PendingHandler>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
-    segment_style: Option<MaybeReactive<cocoa_dom::SegmentStyle>>,
+    segment_style: Option<MaybeReactive<SegmentStyle>>,
 }
 
 pub fn segmented_control() -> SegmentedControl {
@@ -3262,7 +3243,7 @@ impl SegmentedControl {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3296,7 +3277,7 @@ impl SegmentedControl {
     /// `cocoa_dom::SegmentStyle`.
     pub fn segment_style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::SegmentStyle>,
+        V: IntoMaybeReactive<SegmentStyle>,
     {
         self.segment_style = Some(s.into_maybe_reactive());
         self
@@ -3310,7 +3291,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_segmented_control();
+        let (el, _) = CocoaNode::create_segmented_control();
         let mut effects = Vec::new();
 
         el.set_segmented_items(&self.items);
@@ -3347,7 +3328,7 @@ where
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
                 }
-                other => other.apply_to(&el),
+                other => other.apply_to(el),
             }
         }
 
@@ -3365,7 +3346,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -3395,7 +3376,7 @@ pub struct ScrollView<Children> {
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
-    axis: cocoa_dom::layout::ScrollAxis,
+    axis: ScrollAxis,
     autohides_scrollers: Option<MaybeReactive<bool>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
@@ -3407,7 +3388,7 @@ pub fn scroll_view() -> ScrollView<()> {
         universal: UniversalAttrs::default(),
         layout: LayoutAttrs::default(),
         decoration: CocoaDecoration::default(),
-        axis: cocoa_dom::layout::ScrollAxis::Vertical,
+        axis: ScrollAxis::Vertical,
         autohides_scrollers: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
@@ -3424,7 +3405,7 @@ impl<Ch> ScrollView<Ch> {
     ///
     /// Not reactive — the wrapper's style is picked at registration
     /// time and not swapped later.
-    pub fn axis(mut self, axis: cocoa_dom::layout::ScrollAxis) -> Self {
+    pub fn axis(mut self, axis: ScrollAxis) -> Self {
         self.axis = axis;
         self
     }
@@ -3493,7 +3474,7 @@ where
     type State = ElementState<Ch::State>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_scroll_view();
+        let (el, _) = CocoaNode::create_scroll_view();
         let mut effects = Vec::new();
 
         // Apply axis FIRST — it sets the documentView wrapper's
@@ -3554,7 +3535,7 @@ pub struct ImageView {
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<Color>>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -3646,7 +3627,7 @@ impl ImageView {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3674,7 +3655,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_image_view();
+        let (el, _) = CocoaNode::create_image_view();
         let mut effects = Vec::new();
 
         // `source` first so `sf_symbol` can replace it last-write-wins
@@ -3718,7 +3699,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -3745,7 +3726,7 @@ pub struct TextView {
     /// `install_text_view_value_bind`.
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
     node_ref: Option<crate::cocoa::NodeRef>,
-    directives: Vec<Box<dyn FnOnce(&CocoaElement) + Send + 'static>>,
+    directives: Vec<Box<dyn FnOnce(CocoaNode) + Send + 'static>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
     decoration: CocoaDecoration,
@@ -3800,7 +3781,7 @@ impl TextView {
 
     pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
     where
-        D: crate::directive::IntoDirective<cocoa_dom::Element, T, P> + Send + 'static,
+        D: crate::directive::IntoDirective<CocoaNode, T, P> + Send + 'static,
         P: Send + 'static,
         T: 'static,
     {
@@ -3831,7 +3812,7 @@ where
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
-        let (el, _) = CocoaElement::create_text_view();
+        let (el, _) = CocoaNode::create_text_view();
         let mut effects = Vec::new();
 
         // value=… one-way drive. Routes through StringAttr::Value
@@ -3872,7 +3853,7 @@ where
             r.load(&el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, &el);
+        crate::cocoa::directives::run_all(self.directives, el);
 
 
         ElementState {
@@ -3893,7 +3874,7 @@ where
 // `<MyComponent on:click=...>`) onto the existing `directives: Vec<...>`
 // post-build hook, which gets drained in `Render::build` after the
 // underlying NSView is constructed. Same install timing as a `use:`
-// directive — the attr's `apply_to` is called with `&CocoaElement` and
+// directive — the attr's `apply_to` is called with `&CocoaNode` and
 // (for OnAttribute) routes to e.g. `el.on_click(cb)`, which silently
 // no-ops on non-NSButton element kinds.
 //
@@ -3911,7 +3892,7 @@ macro_rules! impl_add_any_attr_for_leaf {
                 where
                     __A: renderer::view::ApplyAttr<crate::Dom>,
                 {
-                    self.directives.push(Box::new(move |el: &CocoaElement| {
+                    self.directives.push(Box::new(move |el: CocoaNode| {
                         attr.apply_to(el);
                     }));
                     self
@@ -3938,11 +3919,11 @@ impl_add_any_attr_for_leaf!(
 // Future: NSClickGestureRecognizer integration so `<vstack on:click=…>`
 // becomes meaningful, then route through that.
 
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
+impl<Children> renderer::view::AddAnyAttr<Dom> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: renderer::view::ApplyAttr<Dom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/             stack_view). Containers have no NSControl target/action              slot — click and other UIControl events have no install              path. Attach to a child button/label/text_field instead."
@@ -3950,11 +3931,11 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Stack<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
+impl<Children> renderer::view::AddAnyAttr<Dom> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: renderer::view::ApplyAttr<Dom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
@@ -3962,11 +3943,11 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+impl<Children> renderer::view::AddAnyAttr<Dom> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: renderer::view::ApplyAttr<Dom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView              isn't an NSControl — click handlers have no install path.              Attach to inner content instead."

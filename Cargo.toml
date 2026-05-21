@@ -11,10 +11,9 @@ members = [
 
   "apple_shared",
   "cocoa/leptos_cocoa",
-  "cocoa/dom",
 
-  "uikit/leptos_uikit",
-  "uikit/dom",
+#  "uikit/leptos_uikit",
+#  "uikit/dom",
 
   # cocoa examples
   "cocoa/examples/*",
@@ -22,7 +21,7 @@ members = [
   # Cocoa correctness/leak fuzzer (binary).
   "cocoa/fuzzer",
 
-  "uikit/examples/*",
+#  "uikit/examples/*",
 #  "gtk/examples/*",
 
 #  # Network-dependent async examples — listed in `members` so they
@@ -47,7 +46,6 @@ default-members = [
   "common/leptos_native",
   "apple_shared",
   "cocoa/leptos_cocoa",
-  "cocoa/dom",
   "gtk/leptos_gtk",
 
   "cocoa/examples/async_derived",

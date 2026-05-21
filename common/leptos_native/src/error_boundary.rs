@@ -109,7 +109,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         if let Some(fallback) = &mut self.fallback {
             fallback.mount(parent, marker);
         } else {

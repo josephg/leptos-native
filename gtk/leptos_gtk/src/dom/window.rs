@@ -38,7 +38,7 @@ pub fn open_window(
         .build();
 
     let content_root = GtkNode::create_vstack();
-    layout::set_flex_direction(content_root.as_node(), FlexDirection::Column);
+    layout::set_flex_direction(content_root, FlexDirection::Column);
     // Fill the window: 100% size resolves against the
     // `AvailableSpace::Definite` Taffy receives at compute time.
     // (See cocoa's window.rs for the rationale — the framework
@@ -46,8 +46,8 @@ pub fn open_window(
     // of relying on compute_layout to overwrite user-set sizes.)
     {
         use renderer::attrs::Dim;
-        renderer::setters::set_size_width(content_root.as_node(), Dim::Pct(1.0));
-        renderer::setters::set_size_height(content_root.as_node(), Dim::Pct(1.0));
+        renderer::setters::set_size_width(content_root, Dim::Pct(1.0));
+        renderer::setters::set_size_height(content_root, Dim::Pct(1.0));
     }
 
     // Install our TaffyLayout as the content root's layout manager

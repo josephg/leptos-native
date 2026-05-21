@@ -53,13 +53,13 @@ pub trait Mountable<R: Renderer> {
 
     /// Mounts this view under `parent`. If `marker` is `Some`, inserts
     /// before the marker; otherwise appends.
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>);
 
     /// Same as `mount`, but returns `false` if it could not mount.
     fn try_mount(
         &mut self,
-        parent: &R::Node,
-        marker: Option<&R::Node>,
+        parent: R::Node,
+        marker: Option<R::Node>,
     ) -> bool {
         self.mount(parent, marker);
         true
@@ -73,9 +73,9 @@ pub trait Mountable<R: Renderer> {
     /// has no real presence in the UI.
     fn insert_before_this_or_marker(
         &self,
-        parent: &R::Node,
+        parent: R::Node,
         child: &mut dyn Mountable<R>,
-        marker: Option<&R::Node>,
+        marker: Option<R::Node>,
     ) {
         if !self.insert_before_this(child) {
             child.mount(parent, marker);

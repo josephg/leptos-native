@@ -25,7 +25,7 @@ use leptos_gtk::dom::{layout, GtkNode};
 use renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
 fn style_of(el: &GtkNode) -> renderer::Style {
-    el.as_node().with_style(|s| s.clone())
+    el.with_style(|s| s.clone())
 }
 
 fn padding_static_lands_in_padding_field() {

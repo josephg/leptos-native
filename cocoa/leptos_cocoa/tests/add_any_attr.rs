@@ -7,9 +7,10 @@
 
 mod common;
 
+use leptos_cocoa::dom::spawner;
 use leptos_cocoa::{
     cocoa::element::button,
-    event_macos::{on, click},
+    event_macos::{click, on},
     Dom,
 };
 use objc2_app_kit::NSControl;
@@ -20,7 +21,7 @@ use std::sync::{Arc, Mutex};
 /// must wire the handler so synthetic action firing invokes it.
 fn add_any_attr_routes_on_click_to_button() {
     let _mtm = common::test_mtm();
-    let _ = cocoa_dom::spawner::init();
+    let _ = spawner::init().unwrap();
     let owner = reactive_graph::owner::Owner::new();
     owner.with(|| {
         let fired = Arc::new(Mutex::new(0));

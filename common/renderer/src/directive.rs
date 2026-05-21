@@ -45,23 +45,23 @@ where
 pub fn pack<E, D, T, P>(
     handler: D,
     param: P,
-) -> Box<dyn FnOnce(&E) + Send + 'static>
+) -> Box<dyn FnOnce(E) + Send + 'static>
 where
-    E: Clone + Send + 'static,
+    E: Copy + Send + 'static,
     D: IntoDirective<E, T, P> + Send + 'static,
     P: Send + 'static,
     T: ?Sized + 'static,
 {
-    Box::new(move |el: &E| {
-        handler.run(el.clone(), param);
+    Box::new(move |el: E| {
+        handler.run(el, param);
     })
 }
 
 /// Drain a builder's directives Vec, calling each closure with `&el`.
 pub fn run_all<E>(
-    directives: Vec<Box<dyn FnOnce(&E) + Send + 'static>>,
-    el: &E,
-) {
+    directives: Vec<Box<dyn FnOnce(E) + Send + 'static>>,
+    el: E,
+) where E: Copy {
     for d in directives {
         d(el);
     }

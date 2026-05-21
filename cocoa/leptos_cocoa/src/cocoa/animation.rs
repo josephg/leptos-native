@@ -5,7 +5,7 @@
 //! `cocoa_dom::animation` for the full doc and the list of which
 //! setters participate.
 
-pub use cocoa_dom::animation::{
+pub use crate::dom::animation::{
     current_animation, with_animation, Animation, Curve,
 };
 

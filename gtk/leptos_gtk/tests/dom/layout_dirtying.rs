@@ -11,24 +11,24 @@ use leptos_gtk::dom::layout::{self, GtkBackend};
 use renderer::LayoutBackend;
 
 fn dirty_for(el: &GtkNode) -> bool {
-    GtkBackend::dirty(el.as_node().id())
+    GtkBackend::dirty(el.id())
 }
 
 /// After `compute_layout`, the root's dirty bit is cleared.
 fn baseline_compute_clears_dirty() {
     let root = GtkNode::create_vstack();
 
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root), "root still dirty after compute");
 }
 
 fn attach_child_marks_parent_dirty() {
     let root = GtkNode::create_vstack();
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
 
     let child = GtkNode::create_button().0;
-    layout::attach_child(root.as_node(), child.as_node());
+    layout::attach_child(root, child);
 
     assert!(
         dirty_for(&root),
@@ -39,11 +39,11 @@ fn attach_child_marks_parent_dirty() {
 fn detach_child_marks_parent_dirty() {
     let root = GtkNode::create_vstack();
     let child = GtkNode::create_button().0;
-    layout::attach_child(root.as_node(), child.as_node());
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::attach_child(root, child);
+    layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
 
-    layout::detach_child(root.as_node(), child.as_node());
+    layout::detach_child(root, child);
 
     assert!(
         dirty_for(&root),
@@ -54,8 +54,8 @@ fn detach_child_marks_parent_dirty() {
 fn set_text_marks_node_dirty() {
     let root = GtkNode::create_vstack();
     let child = GtkNode::create_label().0;
-    layout::attach_child(root.as_node(), child.as_node());
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::attach_child(root, child);
+    layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&child));
 
     child.set_value("now I have content");
@@ -68,10 +68,10 @@ fn set_text_marks_node_dirty() {
 
 fn set_style_width_marks_node_dirty() {
     let root = GtkNode::create_vstack();
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::compute_layout(root, (200.0, 200.0));
     assert!(!dirty_for(&root));
 
-    layout::set_width(root.as_node(), 150.0);
+    layout::set_width(root, 150.0);
 
     assert!(
         dirty_for(&root),
@@ -85,16 +85,16 @@ fn set_style_width_marks_node_dirty() {
 // ---------------------------------------------------------------------
 
 fn child_count(parent: &GtkNode) -> usize {
-    GtkBackend::children(parent.as_node().id()).len()
+    GtkBackend::children(parent.id()).len()
 }
 
 fn attach_child_is_idempotent() {
     let root = GtkNode::create_vstack();
     let child = GtkNode::create_button().0;
 
-    layout::attach_child(root.as_node(), child.as_node());
+    layout::attach_child(root, child);
     assert_eq!(child_count(&root), 1);
-    layout::attach_child(root.as_node(), child.as_node());
+    layout::attach_child(root, child);
     assert_eq!(
         child_count(&root),
         1,
@@ -107,12 +107,12 @@ fn insert_child_at_is_idempotent() {
     let a = GtkNode::create_button().0;
     let b = GtkNode::create_button().0;
 
-    layout::insert_child_at(root.as_node(), a.as_node(), 0);
-    layout::insert_child_at(root.as_node(), b.as_node(), 1);
+    layout::insert_child_at(root, a, 0);
+    layout::insert_child_at(root, b, 1);
     assert_eq!(child_count(&root), 2);
 
     // Re-insert `a` at position 1 — should reorder, not duplicate.
-    layout::insert_child_at(root.as_node(), a.as_node(), 1);
+    layout::insert_child_at(root, a, 1);
     assert_eq!(
         child_count(&root),
         2,
@@ -120,10 +120,10 @@ fn insert_child_at_is_idempotent() {
     );
 
     // Order should be [b, a] now.
-    let a_id = a.as_node().id();
-    let b_id = b.as_node().id();
+    let a_id = a.id();
+    let b_id = b.id();
     assert_eq!(
-        GtkBackend::children(root.as_node().id()),
+        GtkBackend::children(root.id()),
         [b_id, a_id],
         "child order wrong after reorder"
     );
@@ -135,14 +135,14 @@ fn reorder_cascade_does_not_duplicate_edges() {
     let a = GtkNode::create_button().0;
     let b = GtkNode::create_button().0;
     let c = GtkNode::create_button().0;
-    layout::attach_child(root.as_node(), a.as_node());
-    layout::attach_child(root.as_node(), b.as_node());
-    layout::attach_child(root.as_node(), c.as_node());
+    layout::attach_child(root, a);
+    layout::attach_child(root, b);
+    layout::attach_child(root, c);
     assert_eq!(child_count(&root), 3);
 
-    layout::insert_child_at(root.as_node(), a.as_node(), 2);
-    layout::attach_child(root.as_node(), b.as_node());
-    layout::attach_child(root.as_node(), c.as_node());
+    layout::insert_child_at(root, a, 2);
+    layout::attach_child(root, b);
+    layout::attach_child(root, c);
 
     assert_eq!(
         child_count(&root),

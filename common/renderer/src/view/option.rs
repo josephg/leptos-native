@@ -56,7 +56,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         if let Some(inner) = &mut self.inner {
             inner.mount(parent, marker);
         }
@@ -85,7 +85,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         if let Some(inner) = self {
             inner.mount(parent, marker);
         }

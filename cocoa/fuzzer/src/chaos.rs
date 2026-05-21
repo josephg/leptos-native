@@ -3,8 +3,8 @@
 //! given seed.
 
 use crate::signals::SignalStore;
-use rand::{seq::SliceRandom, Rng};
-use rand_chacha::ChaCha8Rng;
+use rand::prelude::*;
+use rand::rngs::ChaCha8Rng;
 use reactive_graph::traits::Set;
 
 pub struct Chaos<'a> {
@@ -45,7 +45,7 @@ impl<'a> Chaos<'a> {
             return;
         }
         for iter in 0..self.iterations {
-            let pick = self.rng.gen_range(0..total);
+            let pick = self.rng.random_range(0..total);
             if pick < strings.len() {
                 let id = *strings.choose(self.rng).unwrap();
                 if let Some(sig) = store.get_string(id) {
@@ -54,7 +54,7 @@ impl<'a> Chaos<'a> {
             } else if pick < strings.len() + bools.len() {
                 let id = *bools.choose(self.rng).unwrap();
                 if let Some(sig) = store.get_bool(id) {
-                    sig.set(self.rng.gen_bool(0.5));
+                    sig.set(self.rng.random_bool(0.5));
                 }
             } else {
                 let id = *floats.choose(self.rng).unwrap();
@@ -75,7 +75,7 @@ impl<'a> Chaos<'a> {
             "back", "yes", "no", "X", "tap", "value", "field",
             "label", "click",
         ];
-        let n = self.rng.gen_range(1..=3);
+        let n = self.rng.random_range(1..=3);
         let mut s = String::new();
         for i in 0..n {
             if i > 0 {

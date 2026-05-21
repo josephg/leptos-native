@@ -111,7 +111,7 @@ impl<R: Renderer> Mountable<R> for AnyViewState<R> {
         self.inner.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         self.inner.mount(parent, marker);
     }
 

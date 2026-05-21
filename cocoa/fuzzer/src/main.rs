@@ -8,14 +8,10 @@
 //! ```
 
 use clap::Parser;
-use cocoa_dom::{
-    app::init_app,
-    event::{
-        handler_store_size_for_test, text_field_store_size_for_test,
-        text_view_store_size_for_test,
-    },
-    layout, window::open_window, MainThreadMarker,
-};
+use leptos_native::dom::{app::init_app, event::{
+    handler_store_size_for_test, text_field_store_size_for_test,
+    text_view_store_size_for_test,
+}, layout, spawner, window, window::open_window, MainThreadMarker};
 use cocoa_fuzzer::{
     chaos::Chaos,
     compare::compare_trees,
@@ -25,9 +21,11 @@ use cocoa_fuzzer::{
     signals::SignalStore,
 };
 use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
+use rand::rngs::ChaCha8Rng;
 use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use reactive_graph::owner::Owner;
+use leptos_native::dom::layout::CocoaBackend;
+use renderer::LayoutBackend;
 use renderer::view::{Mountable, Render};
 
 #[derive(Parser, Debug)]
@@ -157,11 +155,9 @@ fn catch_ns<R>(
     use std::panic::AssertUnwindSafe;
     let mut slot: Option<R> = None;
     let slot_ref = &mut slot;
-    let res = unsafe {
-        objc2::exception::catch(AssertUnwindSafe(|| {
-            *slot_ref = Some(f());
-        }))
-    };
+    let res = objc2::exception::catch(AssertUnwindSafe(|| {
+        *slot_ref = Some(f());
+    }));
     match res {
         Ok(()) => Ok(slot.expect("catch_ns: f returned without panic")),
         Err(exc) => {
@@ -208,7 +204,7 @@ fn store_sizes() -> StoreSizes {
 /// windows. A clean run returns to its pre-seed baseline after
 /// teardown.
 fn node_count() -> usize {
-    renderer::node_count::<cocoa_dom::layout::CocoaBackend>()
+    CocoaBackend::node_count()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -223,7 +219,7 @@ struct FullSizes {
 
 fn main() {
     let args = Args::parse();
-    let _ = cocoa_dom::spawner::init();
+    let _ = spawner::init().unwrap();
     let mtm = MainThreadMarker::new()
         .expect("cocoa_fuzzer must run on the main thread");
     // The fuzzer doesn't enter the run loop; keep the app +
@@ -316,7 +312,7 @@ fn run_one(
         let view_a = build(&spec, &reactive_store);
         let mut state_a = catch_ns("build-A", || view_a.build())?;
         catch_ns("mount-A", || {
-            state_a.mount(&win_a.content_root, None);
+            state_a.mount(win_a.content_root, None);
         })?;
 
         // Optional: open N extra reactive windows with their own
@@ -331,7 +327,7 @@ fn run_one(
             // top-down field order, and we need state to unmount
             // before the window closes.
             state: Box<dyn renderer::view::Mountable<leptos_native::Dom>>,
-            window: cocoa_dom::window::OpenedWindow,
+            window: window::OpenedWindow,
             #[allow(dead_code)]
             store: SignalStore,
         }
@@ -362,11 +358,11 @@ fn run_one(
             let mut st: Box<dyn renderer::view::Mountable<leptos_native::Dom>> =
                 Box::new(catch_ns("build-extra", || view.build())?);
             catch_ns("mount-extra", || {
-                st.mount(&win.content_root, None);
+                st.mount(win.content_root, None);
             })?;
             catch_ns("compute_layout-extra", || {
                 layout::compute_layout(
-                    win.content_root.as_node(),
+                    win.content_root,
                     LAYOUT_AVAIL,
                 );
             })?;
@@ -379,7 +375,7 @@ fn run_one(
         pump_run_loop(0.05);
 
         catch_ns("compute_layout-A-1", || {
-            layout::compute_layout(win_a.content_root.as_node(), LAYOUT_AVAIL);
+            layout::compute_layout(win_a.content_root, LAYOUT_AVAIL);
         })?;
         pump_run_loop(0.05);
 
@@ -491,7 +487,7 @@ fn run_one(
             }
         }
 
-        layout::compute_layout(win_a.content_root.as_node(), LAYOUT_AVAIL);
+        layout::compute_layout(win_a.content_root, LAYOUT_AVAIL);
         pump_run_loop(0.05);
 
         // Phase 3: snapshot, then build a parallel static tree.
@@ -519,11 +515,11 @@ fn run_one(
         let view_b = build(&spec, &static_store);
         let mut state_b = catch_ns("build-B", || view_b.build())?;
         catch_ns("mount-B", || {
-            state_b.mount(&win_b.content_root, None);
+            state_b.mount(win_b.content_root, None);
         })?;
 
         catch_ns("compute_layout-B-1", || {
-            layout::compute_layout(win_b.content_root.as_node(), LAYOUT_AVAIL);
+            layout::compute_layout(win_b.content_root, LAYOUT_AVAIL);
         })?;
         pump_run_loop(0.05);
 
@@ -534,8 +530,8 @@ fn run_one(
         // both trees fully settled.
         for _ in 0..8 {
             pump_run_loop(0.02);
-            layout::compute_layout(win_a.content_root.as_node(), LAYOUT_AVAIL);
-            layout::compute_layout(win_b.content_root.as_node(), LAYOUT_AVAIL);
+            layout::compute_layout(win_a.content_root, LAYOUT_AVAIL);
+            layout::compute_layout(win_b.content_root, LAYOUT_AVAIL);
         }
 
         let signal_count = reactive_store.total_count();
@@ -559,7 +555,7 @@ fn run_one(
             let i = idx as u32;
             catch_ns("unmount-extra", || ex.state.unmount())?;
             catch_ns("teardown-extra", || {
-                ex.window.content_root.as_node().teardown()
+                ex.window.content_root.teardown()
             })?;
             catch_ns("close-extra", || ex.window.close())?;
             // Drop `state` and `store` explicitly to detach them
@@ -571,8 +567,8 @@ fn run_one(
 
         catch_ns("unmount-A", || state_a.unmount())?;
         catch_ns("unmount-B", || state_b.unmount())?;
-        catch_ns("teardown-A", || win_a.content_root.as_node().teardown())?;
-        catch_ns("teardown-B", || win_b.content_root.as_node().teardown())?;
+        catch_ns("teardown-A", || win_a.content_root.teardown())?;
+        catch_ns("teardown-B", || win_b.content_root.teardown())?;
         catch_ns("close-A", || win_a.close())?;
         catch_ns("close-B", || win_b.close())?;
         for _ in 0..10 {

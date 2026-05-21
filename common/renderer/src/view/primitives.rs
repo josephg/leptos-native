@@ -24,7 +24,7 @@ macro_rules! impl_render_primitive {
 
                 fn rebuild(self, state: &mut Self::State) {
                     if self != state.last {
-                        R::set_text(&state.text, &self.to_string());
+                        R::set_text(state.text, &self.to_string());
                         state.last = self;
                     }
                 }
@@ -40,16 +40,16 @@ impl_render_primitive!(
 
 impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
     fn unmount(&mut self) {
-        R::remove(&self.text);
+        R::remove(self.text);
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.text, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.text, marker);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.text) {
-            child.mount(&parent, Some(&self.text));
+        if let Some(parent) = R::get_parent(self.text) {
+            child.mount(parent, Some(self.text));
             true
         } else {
             false

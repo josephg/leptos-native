@@ -1,4 +1,4 @@
-//! `window()` builder — GTK ApplicationWindow as a tachys [`Render`]
+//! `window()` builder — GTK ApplicationWindow as a [`Render`]
 //! type. Mirrors `leptos_cocoa::cocoa::window`.
 
 use crate::Dom;
@@ -79,7 +79,7 @@ where
         // root. The mount cascade propagates the tree to every
         // descendant.
         let mut children = self.children.build();
-        children.mount(&opened.content_root, None);
+        children.mount(opened.content_root, None);
 
         // Show. GTK runs measure/allocate on the next frame, which
         // dispatches through our TaffyLayout.
@@ -118,8 +118,8 @@ impl Mountable<Dom> for WindowState {
 
     fn mount(
         &mut self,
-        _parent: &GtkElement,
-        _marker: Option<&GtkNode>,
+        _parent: GtkElement,
+        _marker: Option<GtkNode>,
     ) {
         // Window is its own root; nothing to mount.
     }

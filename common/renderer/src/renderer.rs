@@ -21,7 +21,7 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     /// just different default styles + concrete view classes set at
     /// construction time. Stale ids resolve to no-ops via the
     /// generational store key.
-    type Node: Mountable<Self> + Clone + 'static;
+    type Node: Mountable<Self> + Clone + Copy + 'static;
 
     /// Interns a string slice, if that's available on this platform and
     /// useful as an optimization.
@@ -36,50 +36,50 @@ pub trait Renderer: Send + Sized + Debug + 'static {
     fn create_placeholder() -> Self::Node;
 
     /// Sets the text content of a text node.
-    fn set_text(node: &Self::Node, text: &str);
+    fn set_text(node: Self::Node, text: &str);
     
     /// Inserts `new_child` into `parent` before `marker`. If `marker` is
     /// `None`, appends to the end.
     fn insert_node(
-        parent: &Self::Node,
-        new_child: &Self::Node,
-        marker: Option<&Self::Node>,
+        parent: Self::Node,
+        new_child: Self::Node,
+        marker: Option<Self::Node>,
     );
 
     /// Removes `child` from `parent` and returns it.
     fn remove_node(
-        parent: &Self::Node,
-        child: &Self::Node,
+        parent: Self::Node,
+        child: Self::Node,
     ) -> Option<Self::Node>;
 
     /// Removes all children from `parent`.
-    fn clear_children(parent: &Self::Node);
+    fn clear_children(parent: Self::Node);
 
     /// Removes a node from its parent.
-    fn remove(node: &Self::Node);
+    fn remove(node: Self::Node);
 
     /// Gets the parent of a node, if any.
-    fn get_parent(node: &Self::Node) -> Option<Self::Node>;
+    fn get_parent(node: Self::Node) -> Option<Self::Node>;
 
     /// Returns the first child of a node, if any.
-    fn first_child(node: &Self::Node) -> Option<Self::Node>;
+    fn first_child(node: Self::Node) -> Option<Self::Node>;
 
     /// Returns the next sibling of a node, if any.
-    fn next_sibling(node: &Self::Node) -> Option<Self::Node>;
+    fn next_sibling(node: Self::Node) -> Option<Self::Node>;
 
     /// Logs a node in a platform-appropriate way (used for debugging).
-    fn log_node(node: &Self::Node);
+    fn log_node(node: Self::Node);
 
     /// Mounts `new_child` into the parent of `before`, immediately before
     /// `before`. Returns `false` if `before` has no parent (in which case
     /// the caller is responsible for finding a different mount point).
     #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: &Self::Node) -> bool
+    fn try_mount_before<M>(new_child: &mut M, before: Self::Node) -> bool
     where
         M: Mountable<Self>,
     {
         if let Some(parent) = Self::get_parent(before) {
-            new_child.mount(&parent, Some(before));
+            new_child.mount(parent, Some(before));
             true
         } else {
             false

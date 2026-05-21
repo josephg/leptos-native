@@ -41,7 +41,7 @@ impl<R: Renderer> Render<R> for () {
 /// would break intrinsic-size measurement on the parent control.
 impl<R: Renderer> Mountable<R> for () {
     fn unmount(&mut self) {}
-    fn mount(&mut self, _parent: &R::Node, _marker: Option<&R::Node>) {}
+    fn mount(&mut self, _parent: R::Node, _marker: Option<R::Node>) {}
     fn insert_before_this(&self, _child: &mut dyn Mountable<R>) -> bool {
         false
     }
@@ -52,15 +52,15 @@ impl<R: Renderer> Mountable<R> for () {
 
 impl<R: Renderer> Mountable<R> for UnitState<R> {
     fn unmount(&mut self) {
-        R::remove(&self.placeholder);
+        R::remove(self.placeholder);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.placeholder, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.placeholder, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.placeholder)
+        if let Some(parent) = R::get_parent(self.placeholder)
         {
-            child.mount(&parent, Some(&self.placeholder));
+            child.mount(parent, Some(self.placeholder));
             true
         } else {
             false
@@ -95,7 +95,7 @@ macro_rules! impl_render_tuple {
             fn unmount(&mut self) {
                 $( self.$idx.unmount(); )+
             }
-            fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+            fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
                 $( self.$idx.mount(parent, marker); )+
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {

@@ -19,7 +19,7 @@ impl<'a, R: Renderer> Render<R> for &'a str {
 
     fn rebuild(self, state: &mut Self::State) {
         if self != state.str {
-            R::set_text(&state.node, self);
+            R::set_text(state.node, self);
             state.str = self;
         }
     }
@@ -27,15 +27,15 @@ impl<'a, R: Renderer> Render<R> for &'a str {
 
 impl<R: Renderer> Mountable<R> for StrState<'_, R> {
     fn unmount(&mut self) {
-        R::remove(&self.node);
+        R::remove(self.node);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.node, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.node, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.node)
+        if let Some(parent) = R::get_parent(self.node)
         {
-            child.mount(&parent, Some(&self.node));
+            child.mount(parent, Some(self.node));
             true
         } else {
             false
@@ -58,7 +58,7 @@ impl<R: Renderer> Render<R> for String {
     }
     fn rebuild(self, state: &mut Self::State) {
         if self != state.str {
-            R::set_text(&state.node, &self);
+            R::set_text(state.node, &self);
             state.str = self;
         }
     }
@@ -66,15 +66,15 @@ impl<R: Renderer> Render<R> for String {
 
 impl<R: Renderer> Mountable<R> for StringState<R> {
     fn unmount(&mut self) {
-        R::remove(&self.node);
+        R::remove(self.node);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.node, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.node, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.node)
+        if let Some(parent) = R::get_parent(self.node)
         {
-            child.mount(&parent, Some(&self.node));
+            child.mount(parent, Some(self.node));
             true
         } else {
             false
@@ -97,7 +97,7 @@ impl<'a, R: Renderer> Render<R> for Cow<'a, str> {
     }
     fn rebuild(self, state: &mut Self::State) {
         if self != state.str {
-            R::set_text(&state.node, &self);
+            R::set_text(state.node, &self);
             state.str = self;
         }
     }
@@ -105,15 +105,15 @@ impl<'a, R: Renderer> Render<R> for Cow<'a, str> {
 
 impl<R: Renderer> Mountable<R> for CowStrState<'_, R> {
     fn unmount(&mut self) {
-        R::remove(&self.node);
+        R::remove(self.node);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.node, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.node, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.node)
+        if let Some(parent) = R::get_parent(self.node)
         {
-            child.mount(&parent, Some(&self.node));
+            child.mount(parent, Some(self.node));
             true
         } else {
             false
@@ -136,7 +136,7 @@ impl<R: Renderer> Render<R> for Rc<str> {
     }
     fn rebuild(self, state: &mut Self::State) {
         if !Rc::ptr_eq(&self, &state.str) {
-            R::set_text(&state.node, &self);
+            R::set_text(state.node, &self);
             state.str = self;
         }
     }
@@ -144,15 +144,15 @@ impl<R: Renderer> Render<R> for Rc<str> {
 
 impl<R: Renderer> Mountable<R> for RcStrState<R> {
     fn unmount(&mut self) {
-        R::remove(&self.node);
+        R::remove(self.node);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.node, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.node, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.node)
+        if let Some(parent) = R::get_parent(self.node)
         {
-            child.mount(&parent, Some(&self.node));
+            child.mount(parent, Some(self.node));
             true
         } else {
             false
@@ -175,7 +175,7 @@ impl<R: Renderer> Render<R> for Arc<str> {
     }
     fn rebuild(self, state: &mut Self::State) {
         if !Arc::ptr_eq(&self, &state.str) {
-            R::set_text(&state.node, &self);
+            R::set_text(state.node, &self);
             state.str = self;
         }
     }
@@ -183,15 +183,15 @@ impl<R: Renderer> Render<R> for Arc<str> {
 
 impl<R: Renderer> Mountable<R> for ArcStrState<R> {
     fn unmount(&mut self) {
-        R::remove(&self.node);
+        R::remove(self.node);
     }
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
-        R::insert_node(parent, &self.node, marker);
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+        R::insert_node(parent, self.node, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(&self.node)
+        if let Some(parent) = R::get_parent(self.node)
         {
-            child.mount(&parent, Some(&self.node));
+            child.mount(parent, Some(self.node));
             true
         } else {
             false

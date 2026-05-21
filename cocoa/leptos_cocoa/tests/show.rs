@@ -12,17 +12,17 @@
 
 mod common;
 
-use leptos_native::children::ToChildren;
-use leptos_native::control_flow::Show;
 use leptos_cocoa::cocoa::element::label;
+use leptos_cocoa::dom::window::open_window;
 use leptos_cocoa::Dom;
+use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{Get, Set};
 use renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(f);
 }
@@ -33,8 +33,6 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 /// mounted because Either::rebuild ignored the
 /// `insert_before_this` return.
 fn show_without_fallback_mounts_on_flip_false_to_true() {
-    use cocoa_dom::window::open_window;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened =
@@ -56,7 +54,7 @@ fn show_without_fallback_mounts_on_flip_false_to_true() {
         );
 
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
         common::pump_run_loop(0.05);
 
         // Initial: when=false → empty. Parent should have the

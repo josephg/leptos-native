@@ -17,7 +17,7 @@ use reactive_graph::owner::Owner;
 use renderer::view::{AddAnyAttr, Render};
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init();
     let owner = Owner::new();
     owner.with(f);
 }

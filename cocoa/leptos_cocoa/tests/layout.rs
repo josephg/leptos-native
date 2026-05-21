@@ -12,6 +12,7 @@
 mod common;
 
 use leptos_cocoa::cocoa::element::{button, hstack, label, vstack};
+use leptos_cocoa::dom::{layout, spawner, window, CocoaNode};
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
@@ -21,7 +22,7 @@ use renderer::view::{Mountable, Render};
 /// Spin up a fresh reactive owner + the spawner the cocoa effect
 /// machinery needs for build/mount.
 fn with_reactive_scope<F: FnOnce()>(body: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(body);
 }
@@ -34,15 +35,15 @@ fn with_mounted_view<V, F>(view: V, size: (f64, f64), f: F)
 where
     V: Render<leptos_cocoa::Dom>,
     V::State: Mountable<leptos_cocoa::Dom>,
-    F: FnOnce(&cocoa_dom::Element),
+    F: FnOnce(&CocoaNode),
 {
     let mtm = common::test_mtm();
-    let opened = cocoa_dom::window::open_window("test", size, mtm);
+    let opened = window::open_window("test", size, mtm);
     let mut state = view.build();
-    state.mount(&opened.content_root, None);
+    state.mount(opened.content_root, None);
     let content_size = opened.content_root.ns_view().frame().size;
-    cocoa_dom::layout::compute_layout(
-        opened.content_root.as_node(),
+    layout::compute_layout(
+        opened.content_root,
         content_size,
     );
     f(&opened.content_root);

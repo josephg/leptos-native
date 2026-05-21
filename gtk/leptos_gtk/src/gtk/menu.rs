@@ -233,8 +233,8 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
     fn unmount(&mut self) {}
     fn mount(
         &mut self,
-        _parent: &GtkNode,
-        _marker: Option<&GtkNode>,
+        _parent: GtkNode,
+        _marker: Option<GtkNode>,
     ) {
     }
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {

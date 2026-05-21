@@ -18,7 +18,7 @@ use renderer::LayoutBackend;
 fn freshly_created_node_is_in_store() {
     let el = GtkNode::create_button().0;
     assert!(
-        GtkBackend::style(el.as_node().id()).is_some(),
+        GtkBackend::style(el.id()).is_some(),
         "store entry exists for a freshly-created node"
     );
 }
@@ -26,44 +26,30 @@ fn freshly_created_node_is_in_store() {
 // 2. Style accessors route through the store.
 fn style_mutation_lands_in_store() {
     let el = GtkNode::create_stack();
-    el.as_node().with_style_mut(|s| s.flex_grow = 7.0);
-    assert_eq!(GtkBackend::style(el.as_node().id()).unwrap().flex_grow, 7.0);
+    el.with_style_mut(|s| s.flex_grow = 7.0);
+    assert_eq!(GtkBackend::style(el.id()).unwrap().flex_grow, 7.0);
 }
 
 // 3. Explicit teardown removes the entry.
 fn teardown_removes_store_entry() {
     let el = GtkNode::create_button().0;
-    let id = el.as_node().id();
+    let id = el.id();
     assert!(GtkBackend::style(id).is_some());
-    el.as_node().teardown();
+    el.teardown();
     assert!(GtkBackend::style(id).is_none(), "teardown removes the entry");
-}
-
-// 4. A Node copy is a non-owning weak handle.
-fn copying_node_id_does_not_affect_lifetime() {
-    let el = GtkNode::create_button().0;
-    let id = el.as_node().id();
-    let copy = *el.as_node();
-    let _ = copy;
-    assert!(
-        GtkBackend::style(id).is_some(),
-        "a dropped Node copy must not remove the entry"
-    );
-    el.as_node().teardown();
-    assert!(GtkBackend::style(id).is_none());
 }
 
 // 5. teardown cascades to structural children.
 fn teardown_cascades_to_children() {
     let root = GtkNode::create_vstack();
     let child = GtkNode::create_button().0;
-    layout::attach_child(root.as_node(), child.as_node());
-    let root_id = root.as_node().id();
-    let child_id = child.as_node().id();
+    layout::attach_child(root, child);
+    let root_id = root.id();
+    let child_id = child.id();
     assert!(GtkBackend::style(root_id).is_some());
     assert!(GtkBackend::style(child_id).is_some());
 
-    root.as_node().teardown();
+    root.teardown();
     assert!(GtkBackend::style(root_id).is_none(), "root removed");
     assert!(
         GtkBackend::style(child_id).is_none(),
@@ -75,24 +61,24 @@ fn teardown_cascades_to_children() {
 fn detach_does_not_free() {
     let root = GtkNode::create_vstack();
     let child = GtkNode::create_button().0;
-    layout::attach_child(root.as_node(), child.as_node());
-    let child_id = child.as_node().id();
+    layout::attach_child(root, child);
+    let child_id = child.id();
 
-    layout::detach_child(root.as_node(), child.as_node());
+    layout::detach_child(root, child);
     assert!(
         GtkBackend::style(child_id).is_some(),
         "detach leaves the node Unattached but present"
     );
     assert_eq!(GtkBackend::parent(child_id), None);
 
-    child.as_node().teardown();
+    child.teardown();
     assert!(GtkBackend::style(child_id).is_none());
 }
 
 // 7. Stale ids are safe no-ops.
 fn stale_id_accessors_are_safe() {
     let el = GtkNode::create_button().0;
-    let id = el.as_node().id();
+    let id = el.id();
     GtkBackend::remove(id);
     assert!(GtkBackend::style(id).is_none());
     assert!(GtkBackend::children(id).is_empty());
@@ -104,8 +90,8 @@ fn stale_id_accessors_are_safe() {
 fn widget_pointer_stable() {
     use gtk4::prelude::*;
     let el = GtkNode::create_button().0;
-    let p1 = el.as_node().widget().as_ptr();
-    let p2 = el.as_node().widget().as_ptr();
+    let p1 = el.widget().as_ptr();
+    let p2 = el.widget().as_ptr();
     assert_eq!(p1, p2, "widget() pointer must be stable");
 }
 
@@ -122,14 +108,14 @@ fn subtree_teardown_returns_to_baseline() {
     let b1 = GtkNode::create_button().0;
     let b2 = GtkNode::create_button().0;
     let label = GtkNode::create_label().0;
-    layout::attach_child(row.as_node(), b1.as_node());
-    layout::attach_child(row.as_node(), b2.as_node());
-    layout::attach_child(root.as_node(), label.as_node());
-    layout::attach_child(root.as_node(), row.as_node());
+    layout::attach_child(row, b1);
+    layout::attach_child(row, b2);
+    layout::attach_child(root, label);
+    layout::attach_child(root, row);
 
     assert!(GtkBackend::node_count() > baseline, "mounting grows the store");
 
-    root.as_node().teardown();
+    root.teardown();
     assert_eq!(
         GtkBackend::node_count(),
         baseline,
@@ -142,7 +128,7 @@ fn unattached_node_teardown_returns_to_baseline() {
     let baseline = GtkBackend::node_count();
     let el = GtkNode::create_button().0;
     assert_eq!(GtkBackend::node_count(), baseline + 1);
-    el.as_node().teardown();
+    el.teardown();
     assert_eq!(
         GtkBackend::node_count(),
         baseline,
@@ -155,7 +141,6 @@ fn main() {
         ("freshly_created_node_is_in_store", freshly_created_node_is_in_store),
         ("style_mutation_lands_in_store", style_mutation_lands_in_store),
         ("teardown_removes_store_entry", teardown_removes_store_entry),
-        ("copying_node_id_does_not_affect_lifetime", copying_node_id_does_not_affect_lifetime),
         ("teardown_cascades_to_children", teardown_cascades_to_children),
         ("detach_does_not_free", detach_does_not_free),
         ("stale_id_accessors_are_safe", stale_id_accessors_are_safe),

@@ -10,7 +10,7 @@
 
 mod common;
 
-use cocoa_dom::split_window::{
+use leptos_cocoa::dom::split_window::{
     open_split_window, OpenedSplitWindow, PaneBehavior, PaneSpec,
 };
 use leptos_cocoa::cocoa::element::label;
@@ -24,7 +24,7 @@ use reactive_graph::traits::{Get, Set};
 use renderer::view::Render;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(f);
 }
@@ -204,7 +204,7 @@ fn pane_root_receives_mounted_subviews() {
         let view = label().text("hello");
         let mut state = view.build();
         use renderer::view::Mountable;
-        state.mount(&pane.root, None);
+        state.mount(pane.root, None);
 
         let after = pane.root.ns_view().subviews().len();
         assert_eq!(after, before + 1, "label should attach as one subview");

@@ -52,8 +52,8 @@ use std::{cell::RefCell, future::Future, rc::Rc};
 fn splice_in_place<R, S>(
     placeholder: &mut R::Node,
     state: &mut S,
-    parent: Option<&R::Node>,
-    marker: Option<&R::Node>,
+    parent: Option<R::Node>,
+    marker: Option<R::Node>,
 ) where
     R: Renderer,
     S: Mountable<R>,
@@ -157,8 +157,8 @@ where
                     splice_in_place::<R, _>(
                         placeholder,
                         &mut state,
-                        parent.as_ref(),
-                        marker.as_ref(),
+                        parent.clone(),
+                        marker.clone(),
                     );
                     *guard = SuspendInner::Ready { state };
                 }
@@ -208,13 +208,13 @@ where
         }
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         let mut guard = self.inner.borrow_mut();
         match &mut *guard {
             SuspendInner::Pending { placeholder, parent: p, marker: m } => {
                 placeholder.mount(parent, marker);
                 *p = Some(parent.clone());
-                *m = marker.cloned();
+                *m = marker;
             }
             SuspendInner::Ready { state } => {
                 state.mount(parent, marker);

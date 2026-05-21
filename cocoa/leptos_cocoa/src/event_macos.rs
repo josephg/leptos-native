@@ -19,6 +19,8 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
+use crate::dom::{CocoaNode, KeyEvent};
+
 /// Marker type for the click event (NSButton target/action).
 pub struct ClickEvent;
 pub const click: ClickEvent = ClickEvent;
@@ -62,7 +64,7 @@ pub const blur: BlurEvent = BlurEvent;
 /// Marker type for keydown — fires on recognized "command keys"
 /// in a text field's editor (Enter, Escape, Tab, arrows). AppKit
 /// routes these through `control:textView:doCommandBySelector:`;
-/// see [`cocoa_dom::KeyEvent`] for the supported key set. AppKit
+/// see [`KeyEvent`] for the supported key set. AppKit
 /// doesn't separate keydown from keyup at this layer; both fire
 /// on the same notification.
 pub struct KeyDownEvent;
@@ -164,20 +166,20 @@ impl EventDescriptor for BlurEvent {
 }
 
 impl EventDescriptor for KeyDownEvent {
-    type EventType = cocoa_dom::KeyEvent;
+    type EventType = KeyEvent;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
-        F: FnMut(cocoa_dom::KeyEvent) + Send + 'static,
+        F: FnMut(KeyEvent) + Send + 'static,
     {
         PendingHandler::KeyDown(Box::new(handler))
     }
 }
 
 impl EventDescriptor for KeyUpEvent {
-    type EventType = cocoa_dom::KeyEvent;
+    type EventType = KeyEvent;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
-        F: FnMut(cocoa_dom::KeyEvent) + Send + 'static,
+        F: FnMut(KeyEvent) + Send + 'static,
     {
         PendingHandler::KeyUp(Box::new(handler))
     }
@@ -238,8 +240,8 @@ pub enum PendingHandler {
     Commit(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
-    KeyDown(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
-    KeyUp(Box<dyn FnMut(cocoa_dom::KeyEvent) + Send + 'static>),
+    KeyDown(Box<dyn FnMut(KeyEvent) + Send + 'static>),
+    KeyUp(Box<dyn FnMut(KeyEvent) + Send + 'static>),
     /// Menu-item activation — routed by `MenuItem::build` to
     /// `cocoa_dom::menu::MenuItem::set_action`, *not* by
     /// [`PendingHandler::apply_to`] (which targets NSView-backed
@@ -253,7 +255,7 @@ impl PendingHandler {
     /// Install this handler against `el`. No-ops if the underlying
     /// AppKit view doesn't support the event (the cocoa_dom hooks
     /// downcast and silently drop on mismatch).
-    pub fn apply_to(self, el: &cocoa_dom::Element) {
+    pub fn apply_to(self, el: CocoaNode) {
         match self {
             PendingHandler::Click(cb) => el.on_click(cb),
             // Change is the universal "value changed" event:
@@ -314,7 +316,7 @@ impl OnAttribute {
     /// Apply this attribute to a built cocoa Element (used by
     /// elements whose builder has already constructed the underlying
     /// view).
-    pub fn apply(mut self, el: &cocoa_dom::Element) {
+    pub fn apply(mut self, el: CocoaNode) {
         if let Some(h) = self.handler.take() {
             h.apply_to(el);
         }
@@ -333,7 +335,7 @@ impl OnAttribute {
 // are SSR-coupled and gone in this fork.
 
 impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
-    fn apply_to(self, el: &cocoa_dom::Element) {
+    fn apply_to(self, el: CocoaNode) {
         OnAttribute::apply(self, el)
     }
 }

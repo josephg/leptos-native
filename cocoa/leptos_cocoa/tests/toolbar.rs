@@ -8,14 +8,15 @@
 
 mod common;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use cocoa_dom::window::open_window;
 use leptos_cocoa::cocoa::toolbar::{
     toolbar, toolbar_flexible_space, toolbar_item, toolbar_search_item,
     ToolbarMountable,
 };
+use leptos_cocoa::dom::window::open_window;
+use leptos_cocoa::dom::{event, toolbar, Icon};
 use leptos_cocoa::Dom;
 use reactive_graph::{
     owner::Owner,
@@ -25,10 +26,12 @@ use reactive_graph::{
 use renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(body);
 }
+use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
+
 
 // ---------------------------------------------------------------------
 // 1. <toolbar> attaches to its containing NSWindow
@@ -46,17 +49,17 @@ fn toolbar_attaches_to_window() {
                 toolbar_item()
                     .identifier("a")
                     .label("Alpha")
-                    .icon(cocoa_dom::Icon::sf_symbol("plus")),
+                    .icon(Icon::sf_symbol("plus")),
             )
             .child(
                 toolbar_item()
                     .identifier("b")
                     .label("Bravo")
-                    .icon(cocoa_dom::Icon::sf_symbol("minus")),
+                    .icon(Icon::sf_symbol("minus")),
             );
 
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         // `nswindow.toolbar()` returning Some is the main assertion
         // — it proves the attach path ran end-to-end. Verifying
@@ -200,7 +203,7 @@ fn flexible_space_renders_between_items() {
         assert_eq!(build.ordered[0], "a");
         assert_eq!(
             build.ordered[1],
-            cocoa_dom::toolbar::flexible_space_identifier(),
+            toolbar::flexible_space_identifier(),
             "middle slot is AppKit's flexible-space identifier"
         );
         assert_eq!(build.ordered[2], "b");
@@ -218,7 +221,6 @@ fn flexible_space_renders_between_items() {
 // ---------------------------------------------------------------------
 
 fn drop_releases_action_target() {
-    use cocoa_dom::event;
     let _mtm = common::test_mtm();
     let before = event::handler_store_size_for_test();
     with_reactive_scope(|| {
@@ -273,7 +275,7 @@ fn toolbar_attaches_through_split_pane() {
                             toolbar_item()
                                 .identifier("first")
                                 .label("First")
-                                .icon(cocoa_dom::Icon::sf_symbol("plus")),
+                                .icon(Icon::sf_symbol("plus")),
                         ),
                 ),
             ),
@@ -303,9 +305,6 @@ fn toolbar_attaches_through_split_pane() {
 // ---------------------------------------------------------------------
 
 fn toolbar_handle_insert_and_remove() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("handle-test", (640.0, 480.0), mtm);
@@ -315,7 +314,7 @@ fn toolbar_handle_insert_and_remove() {
             .handle(handle)
             .child(toolbar_item().identifier("first").label("First"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         // Insert a second item at index 1 (after "first").
         let inserted = handle.insert_item(
@@ -360,9 +359,6 @@ fn toolbar_handle_insert_and_remove() {
 // a single insert at a time, and the no-op / removal paths.
 
 fn toolbar_set_items_adds_one_item() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-add-one", (640.0, 480.0), mtm);
@@ -372,7 +368,7 @@ fn toolbar_set_items_adds_one_item() {
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         // [a] → [a, b]. Retained-in-order check passes ('a' alone
         // stays first); loop1 removes nothing; loop2 inserts 'b'
@@ -399,9 +395,6 @@ fn toolbar_set_items_adds_one_item() {
 // ---------------------------------------------------------------------
 
 fn toolbar_set_items_noop_on_unchanged() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-noop", (640.0, 480.0), mtm);
@@ -412,7 +405,7 @@ fn toolbar_set_items_noop_on_unchanged() {
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
 
@@ -441,9 +434,6 @@ fn toolbar_set_items_noop_on_unchanged() {
 // ---------------------------------------------------------------------
 
 fn toolbar_set_items_removes_absent_identifier() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-remove", (640.0, 480.0), mtm);
@@ -454,7 +444,7 @@ fn toolbar_set_items_removes_absent_identifier() {
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
 
@@ -477,9 +467,6 @@ fn toolbar_set_items_removes_absent_identifier() {
 // ---------------------------------------------------------------------
 
 fn toolbar_set_items_handles_reorder() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-reorder", (640.0, 480.0), mtm);
@@ -491,7 +478,7 @@ fn toolbar_set_items_handles_reorder() {
             .child(toolbar_item().identifier("b").label("B"))
             .child(toolbar_item().identifier("c").label("C"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b", "c"]);
 
@@ -527,9 +514,6 @@ fn toolbar_set_items_handles_reorder() {
 // ---------------------------------------------------------------------
 
 fn toolbar_set_items_inserts_between_retained() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("set-items-middle", (640.0, 480.0), mtm);
@@ -540,7 +524,7 @@ fn toolbar_set_items_inserts_between_retained() {
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("c").label("C"));
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "c"]);
 
@@ -571,9 +555,6 @@ fn toolbar_set_items_inserts_between_retained() {
 // always independent.
 
 fn two_toolbars_can_share_item_identifiers() {
-    use cocoa_dom::window::open_window;
-    use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         // First toolbar: defaults, cascade [a, b].
@@ -582,7 +563,7 @@ fn two_toolbars_can_share_item_identifiers() {
             .child(toolbar_item().identifier("a").label("A1"))
             .child(toolbar_item().identifier("b").label("B1"));
         let mut state1 = <_ as Render<Dom>>::build(view1);
-        state1.mount(&opened1.content_root, None);
+        state1.mount(opened1.content_root, None);
 
         // Second toolbar: defaults, cascade [a, b] — same item ids.
         let opened2 = open_window("share-ids-2", (640.0, 480.0), mtm);
@@ -592,7 +573,7 @@ fn two_toolbars_can_share_item_identifiers() {
             .child(toolbar_item().identifier("a").label("A2"))
             .child(toolbar_item().identifier("b").label("B2"));
         let mut state2 = <_ as Render<Dom>>::build(view2);
-        state2.mount(&opened2.content_root, None);
+        state2.mount(opened2.content_root, None);
 
         // Dynamically add 'c' to the second toolbar — this insert
         // is what tripped the abort under the old shared default
@@ -664,7 +645,7 @@ fn search_item_bind_value_round_trips() {
 // ---------------------------------------------------------------------
 
 fn icon_sf_symbol_sets_image() {
-    use cocoa_dom::Icon;
+    use Icon;
     use leptos_cocoa::cocoa::toolbar::ToolbarBuild;
 
     let _mtm = common::test_mtm();
@@ -689,7 +670,7 @@ fn icon_sf_symbol_sets_image() {
 // ---------------------------------------------------------------------
 
 fn icon_empty_image_path_clears() {
-    use cocoa_dom::Icon;
+    use Icon;
     use leptos_cocoa::cocoa::toolbar::ToolbarBuild;
 
     let _mtm = common::test_mtm();
@@ -721,7 +702,7 @@ fn icon_empty_image_path_clears() {
 // ---------------------------------------------------------------------
 
 fn icon_variant_transitions_replace_atomically() {
-    use cocoa_dom::Icon;
+    use Icon;
     use leptos_cocoa::cocoa::toolbar::ToolbarBuild;
 
     let _mtm = common::test_mtm();

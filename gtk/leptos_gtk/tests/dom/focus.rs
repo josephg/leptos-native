@@ -32,7 +32,7 @@ fn focus_mounted_text_field_succeeds() {
     let win = window::open_window(&app, "focus-test", (320, 200));
 
     let field = GtkNode::create_text_field().0;
-    win.content_root.insert_node(field.as_node(), None);
+    win.content_root.insert_node(field, None);
 
     // grab_focus returns true when GTK accepts the focus request.
     // For an unmapped window this can still return true if the
@@ -46,7 +46,7 @@ fn blur_clears_focus() {
     let win = window::open_window(&app, "blur-test", (320, 200));
 
     let field = GtkNode::create_text_field().0;
-    win.content_root.insert_node(field.as_node(), None);
+    win.content_root.insert_node(field, None);
 
     let _ = field.focus();
     let _ = field.blur();
@@ -58,7 +58,7 @@ fn focus_on_button_works() {
     let win = window::open_window(&app, "button-focus", (320, 200));
 
     let button = GtkNode::create_button().0;
-    win.content_root.insert_node(button.as_node(), None);
+    win.content_root.insert_node(button, None);
 
     let _ = button.focus();
     win.close();

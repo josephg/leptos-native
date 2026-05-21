@@ -14,7 +14,7 @@
 
 mod common;
 
-use cocoa_dom::event::{
+use leptos_cocoa::dom::event::{
     handler_store_size_for_test, text_field_store_size_for_test,
     text_view_store_size_for_test,
 };
@@ -37,7 +37,7 @@ use renderer::view::{AddAnyAttr, Mountable, Render};
 /// tasks (e.g. `bind:value`'s spawned closure) complete and drop
 /// their captured Elements before we snapshot.
 fn with_scope<R>(f: impl FnOnce() -> R) -> R {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     objc2::rc::autoreleasepool(|_| {
         let owner = Owner::new();
         let result = owner.with(f);

@@ -22,7 +22,7 @@
 //! is mounted.
 
 pub use renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeReactive};
-use cocoa_dom::{
+use crate::dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
     toolbar::{ToolbarDisplayMode, WindowToolbarStyle},
     Color, Date, DatePickerStyle, Icon, LineBreak, SegmentStyle, TextAlignment,

@@ -147,8 +147,8 @@ where
         let cmds = diff(hashed_items, &new_hashed_items);
 
         apply_diff::<R, T, V, VF>(
-            parent.as_ref(),
-            marker,
+            *parent,
+            *marker,
             cmds,
             rendered_items,
             &self.view_fn,
@@ -173,13 +173,13 @@ where
         self.parent = None;
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         self.parent = Some(parent.clone());
         self.marker.mount(parent, marker);
         for state in self.rendered_items.iter_mut().flatten() {
             // Insert each row before the trailing marker (so subsequent
             // adds keep the marker at the end of the rendered range).
-            state.mount(parent, Some(&self.marker));
+            state.mount(parent, Some(self.marker));
         }
     }
 
@@ -332,8 +332,8 @@ fn group_adjacent_moves(moved: Vec<DiffOpMove>) -> Vec<DiffOpMove> {
 }
 
 fn apply_diff<R, T, V, VF>(
-    parent: Option<&R::Node>,
-    marker: &R::Node,
+    parent: Option<R::Node>,
+    marker: R::Node,
     diff: Diff,
     children: &mut Vec<Option<V::State>>,
     view_fn: &VF,

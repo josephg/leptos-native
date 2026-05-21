@@ -50,31 +50,31 @@ impl RendererTrait for Dom {
         GtkRenderer::create_placeholder()
     }
 
-    fn set_text(node: &GtkNode, text: &str) {
+    fn set_text(node: GtkNode, text: &str) {
         GtkRenderer::set_text(node, text);
     }
 
     fn insert_node(
-        parent: &GtkNode,
-        new_child: &GtkNode,
-        anchor: Option<&GtkNode>,
+        parent: GtkNode,
+        new_child: GtkNode,
+        anchor: Option<GtkNode>,
     ) {
         GtkRenderer::insert_node(parent, new_child, anchor);
     }
 
-    fn remove_node(parent: &GtkNode, child: &GtkNode) -> Option<GtkNode> {
+    fn remove_node(parent: GtkNode, child: GtkNode) -> Option<GtkNode> {
         GtkRenderer::remove_node(parent, child)
     }
 
-    fn clear_children(parent: &GtkNode) {
+    fn clear_children(parent: GtkNode) {
         GtkRenderer::clear_children(parent);
     }
 
-    fn remove(node: &GtkNode) {
+    fn remove(node: GtkNode) {
         GtkRenderer::remove(node);
     }
 
-    fn get_parent(node: &GtkNode) -> Option<GtkNode> {
+    fn get_parent(node: GtkNode) -> Option<GtkNode> {
         // The default `try_mount_before` impl on the trait calls
         // get_parent. gtk_dom's get_parent panics with a hydration
         // message; here we return None so try_mount_before falls back
@@ -83,17 +83,17 @@ impl RendererTrait for Dom {
         None
     }
 
-    fn first_child(node: &GtkNode) -> Option<GtkNode> {
+    fn first_child(node: GtkNode) -> Option<GtkNode> {
         let _ = node;
         None
     }
 
-    fn next_sibling(node: &GtkNode) -> Option<GtkNode> {
+    fn next_sibling(node: GtkNode) -> Option<GtkNode> {
         let _ = node;
         None
     }
 
-    fn log_node(node: &GtkNode) {
+    fn log_node(node: GtkNode) {
         GtkRenderer::log_node(node);
     }
 
@@ -102,14 +102,14 @@ impl RendererTrait for Dom {
     /// LayoutHandle so the new child registers in the same Taffy
     /// tree.
     #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: &GtkNode) -> bool
+    fn try_mount_before<M>(new_child: &mut M, before: GtkNode) -> bool
     where
         M: Mountable<Self>,
     {
         let Some(parent) = parent_of(before) else {
             return false;
         };
-        new_child.mount(&parent, Some(before));
+        new_child.mount(parent, Some(before));
         true
     }
 }
@@ -118,20 +118,20 @@ impl Dom {
     /// Mount `new_child` immediately before `before`. Panics if
     /// `before` has no parent (mirror of `try_mount_before`).
     #[track_caller]
-    pub fn mount_before<M>(new_child: &mut M, before: &GtkNode)
+    pub fn mount_before<M>(new_child: &mut M, before: GtkNode)
     where
         M: Mountable<Dom>,
     {
         let parent = parent_of(before)
             .expect("Dom::mount_before — node has no parent");
-        new_child.mount(&parent, Some(before));
+        new_child.mount(parent, Some(before));
     }
 }
 
 /// The parent `Node` of `before` in the store, or `None` if it's a
 /// root. The parent is a real node — no widget-wrapper synthesis is
 /// needed under the thread-local store.
-fn parent_of(before: &GtkNode) -> Option<GtkNode> {
+fn parent_of(before: GtkNode) -> Option<GtkNode> {
     crate::dom::layout::GtkBackend::parent(before.id())
         .map(GtkNode::from_id)
 }
@@ -145,16 +145,16 @@ impl Mountable<Dom> for GtkNode {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: &GtkNode, marker: Option<&GtkNode>) {
-        <Dom as RendererTrait>::insert_node(parent, self, marker);
+    fn mount(&mut self, parent: GtkNode, marker: Option<GtkNode>) {
+        <Dom as RendererTrait>::insert_node(parent, *self, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: &GtkNode,
-        marker: Option<&GtkNode>,
+        parent: GtkNode,
+        marker: Option<GtkNode>,
     ) -> bool {
-        GtkRenderer::try_insert_node(parent, self, marker)
+        GtkRenderer::try_insert_node(parent, *self, marker)
     }
 
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {

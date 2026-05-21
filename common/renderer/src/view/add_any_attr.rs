@@ -48,7 +48,7 @@ pub trait ApplyAttr<R: Renderer>: Send + 'static {
     /// during `Render::build` on the leaf builder, after the
     /// underlying NSView/UIView has been constructed and the
     /// builder's normal handlers installed.
-    fn apply_to(self, el: &R::Node);
+    fn apply_to(self, el: R::Node);
 }
 
 // ---------------------------------------------------------------------
@@ -61,7 +61,7 @@ pub trait ApplyAttr<R: Renderer>: Send + 'static {
 // ---------------------------------------------------------------------
 
 impl<R: Renderer> ApplyAttr<R> for () {
-    fn apply_to(self, _el: &R::Node) {}
+    fn apply_to(self, _el: R::Node) {}
 }
 
 macro_rules! impl_apply_attr_tuple {
@@ -70,7 +70,7 @@ macro_rules! impl_apply_attr_tuple {
         where
             $($T: ApplyAttr<R>,)+
         {
-            fn apply_to(self, el: &R::Node) {
+            fn apply_to(self, el: R::Node) {
                 $( self.$idx.apply_to(el); )+
             }
         }

@@ -12,10 +12,11 @@ mod common;
 use leptos_cocoa::prelude::*;
 use leptos_cocoa::cocoa::element::{button, label, vstack};
 use reactive_graph::owner::Owner;
+use leptos_cocoa::dom::spawner;
 use renderer::view::Render;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(f);
 }

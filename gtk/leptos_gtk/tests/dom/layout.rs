@@ -16,13 +16,13 @@ use renderer::scene::LayoutBackend;
 /// Read the Taffy-computed layout for `el` and assert position +
 /// size against the expected values.
 fn frame_eq(
-    el: &GtkNode,
+    el: GtkNode,
     x: f32,
     y: f32,
     w: f32,
     h: f32,
 ) {
-    let l = GtkBackend::layout(el.as_node().id()).expect("no layout computed");
+    let l = GtkBackend::layout(el.id()).expect("no layout computed");
     let tol = 0.5;
     assert!(
         (l.location.x - x).abs() < tol
@@ -42,8 +42,8 @@ fn frame_eq(
 
 fn root_fills_available_space() {
     let root = GtkNode::create_stack();
-    layout::compute_layout(root.as_node(), (400.0, 300.0));
-    frame_eq(&root, 0.0, 0.0, 400.0, 300.0);
+    layout::compute_layout(root, (400.0, 300.0));
+    frame_eq(root, 0.0, 0.0, 400.0, 300.0);
 }
 
 // ---------------------------------------------------------------------
@@ -52,22 +52,22 @@ fn root_fills_available_space() {
 
 fn row_two_children_side_by_side() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    layout::set_width(a.as_node(), 100.0);
-    layout::set_height(a.as_node(), 50.0);
-    layout::set_width(b.as_node(), 200.0);
-    layout::set_height(b.as_node(), 60.0);
+    layout::set_width(a, 100.0);
+    layout::set_height(a, 50.0);
+    layout::set_width(b, 200.0);
+    layout::set_height(b, 60.0);
 
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
 
-    layout::compute_layout(root.as_node(), (500.0, 400.0));
+    layout::compute_layout(root, (500.0, 400.0));
 
-    frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
-    frame_eq(&b, 100.0, 0.0, 200.0, 60.0);
+    frame_eq(a, 0.0, 0.0, 100.0, 50.0);
+    frame_eq(b, 100.0, 0.0, 200.0, 60.0);
 }
 
 // ---------------------------------------------------------------------
@@ -76,22 +76,22 @@ fn row_two_children_side_by_side() {
 
 fn column_two_children_stacked() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
+    layout::set_flex_direction(root, layout::FlexDirection::Column);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    layout::set_height(a.as_node(), 80.0);
-    layout::set_height(b.as_node(), 120.0);
+    layout::set_height(a, 80.0);
+    layout::set_height(b, 120.0);
 
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
 
-    layout::compute_layout(root.as_node(), (300.0, 500.0));
+    layout::compute_layout(root, (300.0, 500.0));
 
     // Column + default `align_items: Stretch` makes children fill
     // the cross-axis (width = 300).
-    frame_eq(&a, 0.0, 0.0, 300.0, 80.0);
-    frame_eq(&b, 0.0, 80.0, 300.0, 120.0);
+    frame_eq(a, 0.0, 0.0, 300.0, 80.0);
+    frame_eq(b, 0.0, 80.0, 300.0, 120.0);
 }
 
 // ---------------------------------------------------------------------
@@ -100,16 +100,16 @@ fn column_two_children_stacked() {
 
 fn padding_inset_applies_to_children() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::set_padding(root.as_node(), 16.0);
+    layout::set_flex_direction(root, layout::FlexDirection::Column);
+    layout::set_padding(root, 16.0);
 
     let child = GtkNode::create_stack();
-    layout::set_height(child.as_node(), 50.0);
-    root.insert_node(child.as_node(), None);
+    layout::set_height(child, 50.0);
+    root.insert_node(child, None);
 
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::compute_layout(root, (200.0, 200.0));
 
-    frame_eq(&child, 16.0, 16.0, 168.0, 50.0);
+    frame_eq(child, 16.0, 16.0, 168.0, 50.0);
 }
 
 // ---------------------------------------------------------------------
@@ -118,20 +118,20 @@ fn padding_inset_applies_to_children() {
 
 fn gap_separates_children() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::set_gap(root.as_node(), 12.0);
+    layout::set_flex_direction(root, layout::FlexDirection::Column);
+    layout::set_gap(root, 12.0);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    layout::set_height(a.as_node(), 30.0);
-    layout::set_height(b.as_node(), 40.0);
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
+    layout::set_height(a, 30.0);
+    layout::set_height(b, 40.0);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
 
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
+    layout::compute_layout(root, (200.0, 200.0));
 
-    frame_eq(&a, 0.0, 0.0, 200.0, 30.0);
-    frame_eq(&b, 0.0, 42.0, 200.0, 40.0);
+    frame_eq(a, 0.0, 0.0, 200.0, 30.0);
+    frame_eq(b, 0.0, 42.0, 200.0, 40.0);
 }
 
 // ---------------------------------------------------------------------
@@ -140,75 +140,75 @@ fn gap_separates_children() {
 
 fn flex_grow_distributes_leftover() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    layout::set_flex_grow(a.as_node(), 1.0);
-    layout::set_flex_grow(b.as_node(), 1.0);
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
+    layout::set_flex_grow(a, 1.0);
+    layout::set_flex_grow(b, 1.0);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
 
-    layout::compute_layout(root.as_node(), (400.0, 100.0));
+    layout::compute_layout(root, (400.0, 100.0));
 
-    frame_eq(&a, 0.0, 0.0, 200.0, 100.0);
-    frame_eq(&b, 200.0, 0.0, 200.0, 100.0);
+    frame_eq(a, 0.0, 0.0, 200.0, 100.0);
+    frame_eq(b, 200.0, 0.0, 200.0, 100.0);
 }
 
 fn flex_grow_unequal_distributes_proportionally() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    layout::set_flex_grow(a.as_node(), 1.0);
-    layout::set_flex_grow(b.as_node(), 3.0);
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
+    layout::set_flex_grow(a, 1.0);
+    layout::set_flex_grow(b, 3.0);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
 
-    layout::compute_layout(root.as_node(), (400.0, 100.0));
+    layout::compute_layout(root, (400.0, 100.0));
 
-    frame_eq(&a, 0.0, 0.0, 100.0, 100.0);
-    frame_eq(&b, 100.0, 0.0, 300.0, 100.0);
+    frame_eq(a, 0.0, 0.0, 100.0, 100.0);
+    frame_eq(b, 100.0, 0.0, 300.0, 100.0);
 }
 
 fn justify_content_space_between() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
     layout::set_justify_content(
-        root.as_node(),
+        root,
         layout::JustifyContent::SpaceBetween,
     );
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
     let c = GtkNode::create_stack();
-    for el in [&a, &b, &c] {
-        layout::set_width(el.as_node(), 60.0);
-        layout::set_height(el.as_node(), 40.0);
-        root.insert_node(el.as_node(), None);
+    for el in [a, b, c] {
+        layout::set_width(el, 60.0);
+        layout::set_height(el, 40.0);
+        root.insert_node(el, None);
     }
 
-    layout::compute_layout(root.as_node(), (600.0, 100.0));
+    layout::compute_layout(root, (600.0, 100.0));
 
-    frame_eq(&a, 0.0, 0.0, 60.0, 40.0);
-    frame_eq(&b, 270.0, 0.0, 60.0, 40.0);
-    frame_eq(&c, 540.0, 0.0, 60.0, 40.0);
+    frame_eq(a, 0.0, 0.0, 60.0, 40.0);
+    frame_eq(b, 270.0, 0.0, 60.0, 40.0);
+    frame_eq(c, 540.0, 0.0, 60.0, 40.0);
 }
 
 fn align_items_center_centres_cross_axis() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
-    layout::set_align_items(root.as_node(), layout::AlignItems::Center);
+    layout::set_flex_direction(root, layout::FlexDirection::Column);
+    layout::set_align_items(root, layout::AlignItems::Center);
 
     let child = GtkNode::create_stack();
-    layout::set_width(child.as_node(), 100.0);
-    layout::set_height(child.as_node(), 30.0);
-    root.insert_node(child.as_node(), None);
+    layout::set_width(child, 100.0);
+    layout::set_height(child, 30.0);
+    root.insert_node(child, None);
 
-    layout::compute_layout(root.as_node(), (400.0, 200.0));
+    layout::compute_layout(root, (400.0, 200.0));
 
-    frame_eq(&child, 150.0, 0.0, 100.0, 30.0);
+    frame_eq(child, 150.0, 0.0, 100.0, 30.0);
 }
 
 // ---------------------------------------------------------------------
@@ -217,30 +217,30 @@ fn align_items_center_centres_cross_axis() {
 
 fn nested_containers_inner_fits_within_outer() {
     let outer = GtkNode::create_stack();
-    layout::set_flex_direction(outer.as_node(), layout::FlexDirection::Column);
-    layout::set_padding(outer.as_node(), 10.0);
+    layout::set_flex_direction(outer, layout::FlexDirection::Column);
+    layout::set_padding(outer, 10.0);
 
     let inner = GtkNode::create_stack();
-    layout::set_flex_direction(inner.as_node(), layout::FlexDirection::Row);
-    layout::set_padding(inner.as_node(), 4.0);
-    layout::set_height(inner.as_node(), 80.0);
-    outer.insert_node(inner.as_node(), None);
+    layout::set_flex_direction(inner, layout::FlexDirection::Row);
+    layout::set_padding(inner, 4.0);
+    layout::set_height(inner, 80.0);
+    outer.insert_node(inner, None);
 
     let leaf_a = GtkNode::create_stack();
     let leaf_b = GtkNode::create_stack();
-    layout::set_width(leaf_a.as_node(), 30.0);
-    layout::set_width(leaf_b.as_node(), 30.0);
-    inner.insert_node(leaf_a.as_node(), None);
-    inner.insert_node(leaf_b.as_node(), None);
+    layout::set_width(leaf_a, 30.0);
+    layout::set_width(leaf_b, 30.0);
+    inner.insert_node(leaf_a, None);
+    inner.insert_node(leaf_b, None);
 
-    layout::compute_layout(outer.as_node(), (200.0, 300.0));
+    layout::compute_layout(outer, (200.0, 300.0));
 
-    frame_eq(&outer, 0.0, 0.0, 200.0, 300.0);
-    frame_eq(&inner, 10.0, 10.0, 180.0, 80.0);
+    frame_eq(outer, 0.0, 0.0, 200.0, 300.0);
+    frame_eq(inner, 10.0, 10.0, 180.0, 80.0);
     // Leafs: positioned in inner-local Taffy coordinates after
     // inner's padding(4).
-    frame_eq(&leaf_a, 4.0, 4.0, 30.0, 72.0);
-    frame_eq(&leaf_b, 34.0, 4.0, 30.0, 72.0);
+    frame_eq(leaf_a, 4.0, 4.0, 30.0, 72.0);
+    frame_eq(leaf_b, 34.0, 4.0, 30.0, 72.0);
 }
 
 // ---------------------------------------------------------------------
@@ -249,64 +249,64 @@ fn nested_containers_inner_fits_within_outer() {
 
 fn zero_children_no_panic() {
     let root = GtkNode::create_stack();
-    layout::compute_layout(root.as_node(), (100.0, 100.0));
-    frame_eq(&root, 0.0, 0.0, 100.0, 100.0);
+    layout::compute_layout(root, (100.0, 100.0));
+    frame_eq(root, 0.0, 0.0, 100.0, 100.0);
 }
 
 fn removing_child_collapses_remaining_layout() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Column);
+    layout::set_flex_direction(root, layout::FlexDirection::Column);
 
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
     let c = GtkNode::create_stack();
-    layout::set_height(a.as_node(), 50.0);
-    layout::set_height(b.as_node(), 50.0);
-    layout::set_height(c.as_node(), 50.0);
-    root.insert_node(a.as_node(), None);
-    root.insert_node(b.as_node(), None);
-    root.insert_node(c.as_node(), None);
+    layout::set_height(a, 50.0);
+    layout::set_height(b, 50.0);
+    layout::set_height(c, 50.0);
+    root.insert_node(a, None);
+    root.insert_node(b, None);
+    root.insert_node(c, None);
 
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
-    frame_eq(&a, 0.0, 0.0, 200.0, 50.0);
-    frame_eq(&b, 0.0, 50.0, 200.0, 50.0);
-    frame_eq(&c, 0.0, 100.0, 200.0, 50.0);
+    layout::compute_layout(root, (200.0, 200.0));
+    frame_eq(a, 0.0, 0.0, 200.0, 50.0);
+    frame_eq(b, 0.0, 50.0, 200.0, 50.0);
+    frame_eq(c, 0.0, 100.0, 200.0, 50.0);
 
-    root.remove_child(b.as_node());
-    layout::compute_layout(root.as_node(), (200.0, 200.0));
-    frame_eq(&a, 0.0, 0.0, 200.0, 50.0);
-    frame_eq(&c, 0.0, 50.0, 200.0, 50.0);
+    root.remove_child(b);
+    layout::compute_layout(root, (200.0, 200.0));
+    frame_eq(a, 0.0, 0.0, 200.0, 50.0);
+    frame_eq(c, 0.0, 50.0, 200.0, 50.0);
 }
 
 fn nested_vstack_collapses_after_removal() {
     let outer = GtkNode::create_stack();
-    layout::set_flex_direction(outer.as_node(), layout::FlexDirection::Column);
+    layout::set_flex_direction(outer, layout::FlexDirection::Column);
 
     let inner = GtkNode::create_stack();
-    layout::set_flex_direction(inner.as_node(), layout::FlexDirection::Column);
+    layout::set_flex_direction(inner, layout::FlexDirection::Column);
     let footer = GtkNode::create_stack();
-    layout::set_height(footer.as_node(), 30.0);
+    layout::set_height(footer, 30.0);
 
-    outer.insert_node(inner.as_node(), None);
-    outer.insert_node(footer.as_node(), None);
+    outer.insert_node(inner, None);
+    outer.insert_node(footer, None);
 
     let row_a = GtkNode::create_stack();
     let row_b = GtkNode::create_stack();
     let row_c = GtkNode::create_stack();
-    layout::set_height(row_a.as_node(), 40.0);
-    layout::set_height(row_b.as_node(), 40.0);
-    layout::set_height(row_c.as_node(), 40.0);
+    layout::set_height(row_a, 40.0);
+    layout::set_height(row_b, 40.0);
+    layout::set_height(row_c, 40.0);
 
-    inner.insert_node(row_a.as_node(), None);
-    inner.insert_node(row_b.as_node(), None);
-    inner.insert_node(row_c.as_node(), None);
+    inner.insert_node(row_a, None);
+    inner.insert_node(row_b, None);
+    inner.insert_node(row_c, None);
 
-    layout::compute_layout(outer.as_node(), (300.0, 400.0));
-    frame_eq(&footer, 0.0, 120.0, 300.0, 30.0);
+    layout::compute_layout(outer, (300.0, 400.0));
+    frame_eq(footer, 0.0, 120.0, 300.0, 30.0);
 
-    inner.remove_child(row_b.as_node());
-    layout::compute_layout(outer.as_node(), (300.0, 400.0));
-    frame_eq(&footer, 0.0, 80.0, 300.0, 30.0);
+    inner.remove_child(row_b);
+    layout::compute_layout(outer, (300.0, 400.0));
+    frame_eq(footer, 0.0, 80.0, 300.0, 30.0);
 }
 
 /// REGRESSION: when a label's text changes from "0" to "-1" the
@@ -318,14 +318,14 @@ fn nested_vstack_collapses_after_removal() {
 fn label_text_change_reflowed_on_relayout() {
     use gtk4::prelude::*;
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
 
     let label = GtkNode::create_label().0;
     label.set_value("0");
-    root.insert_node(label.as_node(), None);
+    root.insert_node(label, None);
 
-    layout::compute_layout(root.as_node(), (300.0, 50.0));
-    let label_id = label.as_node().id();
+    layout::compute_layout(root, (300.0, 50.0));
+    let label_id = label.id();
     let w_zero = GtkBackend::layout(label_id).expect("layout computed").size.width;
     let raw_zero = label
         .widget()
@@ -339,7 +339,7 @@ fn label_text_change_reflowed_on_relayout() {
         .downcast_ref::<gtk4::Label>()
         .map(|l| l.measure(gtk4::Orientation::Horizontal, -1).1)
         .unwrap_or(-1);
-    layout::compute_layout(root.as_node(), (300.0, 50.0));
+    layout::compute_layout(root, (300.0, 50.0));
     let w_minus_one = GtkBackend::layout(label_id).expect("layout computed").size.width;
 
     assert!(
@@ -352,12 +352,12 @@ fn label_text_change_reflowed_on_relayout() {
 
 fn zero_size_available_no_panic() {
     let root = GtkNode::create_stack();
-    layout::set_flex_direction(root.as_node(), layout::FlexDirection::Row);
+    layout::set_flex_direction(root, layout::FlexDirection::Row);
     let child = GtkNode::create_stack();
-    layout::set_width(child.as_node(), 50.0);
-    root.insert_node(child.as_node(), None);
+    layout::set_width(child, 50.0);
+    root.insert_node(child, None);
 
-    layout::compute_layout(root.as_node(), (0.0, 0.0));
+    layout::compute_layout(root, (0.0, 0.0));
     // No assertion on child frame — Taffy may produce 0×0. Just
     // verify we didn't panic.
 }

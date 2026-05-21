@@ -20,7 +20,7 @@
 
 mod common;
 
-use cocoa_dom::event::handler_store_size_for_test;
+use leptos_cocoa::dom::event::handler_store_size_for_test;
 use leptos_native::prelude::*;
 use leptos_cocoa::cocoa::element::{button, hstack, label};
 use leptos_cocoa::event_macos::{click, on};
@@ -29,9 +29,10 @@ use reactive_graph::owner::Owner;
 use renderer::view::{AddAnyAttr, Mountable, Render};
 use std::cell::RefCell;
 use std::rc::Rc;
+use leptos_cocoa::dom::window::open_window;
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(body);
 }
@@ -92,8 +93,6 @@ impl MainThreadGate {
 // produce, leaving order [a, c, b]).
 
 fn suspend_splices_at_placeholder_position() {
-    use cocoa_dom::window::open_window;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened = open_window("suspend-position", (640.0, 480.0), mtm);
@@ -109,7 +108,7 @@ fn suspend_splices_at_placeholder_position() {
             .child(label().child("c"));
 
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
 
         // Pump once to let initial mount settle. The Suspend
         // future is still pending (gate not released), so the
@@ -188,8 +187,6 @@ fn suspend_splices_at_placeholder_position() {
 // store size grows by one and never recovers.
 
 fn suspend_orphan_cleanup_unmounts_built_view() {
-    use cocoa_dom::window::open_window;
-
     let mtm = common::test_mtm();
     with_reactive_scope(|| {
         let opened =
@@ -205,7 +202,7 @@ fn suspend_orphan_cleanup_unmounts_built_view() {
         });
 
         let mut state = <_ as Render<Dom>>::build(view);
-        state.mount(&opened.content_root, None);
+        state.mount(opened.content_root, None);
         common::pump_run_loop(0.05);
 
         // Drop the state BEFORE the future resolves.

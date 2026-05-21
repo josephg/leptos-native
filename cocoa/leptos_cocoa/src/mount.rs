@@ -45,7 +45,7 @@
 //! returns) or continues with the AppKit subsystem in an
 //! initialised-but-not-running state.
 
-use cocoa_dom::{
+use crate::dom::{
     app::{init_app, run_loop, AppDelegate},
     MainThreadMarker,
 };

@@ -131,21 +131,16 @@ use crate::event_macos::{
     ActionEvent, EventDescriptor, InputEvent, PendingHandler, SupportsEvent,
 };
 use crate::Dom;
-use cocoa_dom::{
-    toolbar::{
-        self as dom_toolbar, flexible_space_identifier, print_identifier,
-        sidebar_tracking_separator_identifier, space_identifier,
-        toggle_sidebar_identifier, ToolbarItemRegistration,
-    },
-    Element as CocoaElement, MainThreadMarker, CocoaNode as CocoaNode,
-};
+use crate::dom::{toolbar::{
+    self as dom_toolbar, *
+}, CocoaNode, Icon, MainThreadMarker};
 
 // Re-export the dom-side enums from this module so user-facing
 // code (and the prelude) reaches them via
 // `leptos_cocoa::cocoa::toolbar` instead of `cocoa_dom::toolbar`.
 // The dom path is the implementation crate; users shouldn't have
 // to know it exists.
-pub use cocoa_dom::toolbar::{ToolbarDisplayMode, WindowToolbarStyle};
+pub use crate::dom::toolbar::{ToolbarDisplayMode, WindowToolbarStyle};
 
 // ---------------------------------------------------------------------
 // Auto-generated identifiers
@@ -475,7 +470,7 @@ where
             // re-fire the toolbar visibility animation on every
             // signal emission (including redundant ones).
             if let Some(eff) = install(vis, move |b| {
-                cocoa_dom::toolbar::set_toolbar_visible(&ns, b);
+                set_toolbar_visible(&ns, b);
             }) {
                 effects.push(eff);
             }
@@ -517,10 +512,16 @@ impl<C> AddAnyAttr<Dom> for Toolbar<C> {
 }
 
 impl<CS: 'static> Mountable<Dom> for ToolbarState<CS> {
+    fn unmount(&mut self) {
+        // Drop releases the action handlers via Toolbar::Drop.
+        // Nothing more to do; the window keeps its toolbar
+        // reference until it's destroyed.
+    }
+
     fn mount(
         &mut self,
-        parent: &CocoaElement,
-        _marker: Option<&CocoaNode>,
+        parent: CocoaNode,
+        _marker: Option<CocoaNode>,
     ) {
         // Walk up from the parent's NSView to find the containing
         // NSWindow, then attach the toolbar to it. The parent will
@@ -538,17 +539,11 @@ impl<CS: 'static> Mountable<Dom> for ToolbarState<CS> {
         self.toolbar.attach_to_window(&window);
     }
 
-    fn unmount(&mut self) {
-        // Drop releases the action handlers via Toolbar::Drop.
-        // Nothing more to do; the window keeps its toolbar
-        // reference until it's destroyed.
-    }
-
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
 
-    fn elements(&self) -> Vec<CocoaElement> {
+    fn elements(&self) -> Vec<CocoaNode> {
         Vec::new()
     }
 }
@@ -565,8 +560,8 @@ pub struct ToolbarItem {
     pub(crate) palette_label: Option<MaybeReactive<String>>,
     pub(crate) tool_tip: Option<MaybeReactive<String>>,
     /// Icon shown alongside the label. SF Symbol or file path —
-    /// see [`cocoa_dom::Icon`]. Reactive.
-    pub(crate) icon: Option<MaybeReactive<cocoa_dom::Icon>>,
+    /// see [`Icon`]. Reactive.
+    pub(crate) icon: Option<MaybeReactive<Icon>>,
     pub(crate) enabled: Option<MaybeReactive<bool>>,
     pub(crate) bordered: Option<MaybeReactive<bool>>,
     pub(crate) navigational: Option<MaybeReactive<bool>>,
@@ -580,7 +575,7 @@ pub struct ToolbarItem {
     pub(crate) view_factory: Option<
         Box<
             dyn FnOnce(MainThreadMarker)
-                    -> (CocoaElement, Box<dyn Any>)
+                    -> (CocoaNode, Box<dyn Any>)
                 + Send
                 + 'static,
         >,
@@ -632,13 +627,13 @@ impl ToolbarItem {
         self
     }
 
-    /// Icon shown alongside the label. Pass an [`cocoa_dom::Icon`]
+    /// Icon shown alongside the label. Pass an [`Icon`]
     /// directly (`Icon::sf_symbol("plus.circle")` or
     /// `Icon::image("/path/to/file.png")`), or a reactive closure
     /// returning one. SF Symbols are sized via the shared
     /// 16pt-regular configuration so the item renders at
     /// NSToolbarItem's expected dimensions.
-    pub fn icon<V: IntoMaybeReactive<cocoa_dom::Icon>>(mut self, v: V) -> Self {
+    pub fn icon<V: IntoMaybeReactive<Icon>>(mut self, v: V) -> Self {
         self.icon = Some(v.into_maybe_reactive());
         self
     }
@@ -649,13 +644,13 @@ impl ToolbarItem {
     pub fn sf_symbol<V: IntoMaybeReactive<String>>(mut self, name: V) -> Self {
         use renderer::attrs::MaybeReactive;
         let mr: MaybeReactive<String> = name.into_maybe_reactive();
-        let icon_mr: MaybeReactive<cocoa_dom::Icon> = match mr {
+        let icon_mr: MaybeReactive<Icon> = match mr {
             MaybeReactive::Static(s) => {
-                MaybeReactive::Static(cocoa_dom::Icon::sf_symbol(s))
+                MaybeReactive::Static(Icon::sf_symbol(s))
             }
             MaybeReactive::Reactive(f) => {
                 MaybeReactive::Reactive(Box::new(move || {
-                    cocoa_dom::Icon::sf_symbol(f())
+                    Icon::sf_symbol(f())
                 }))
             }
         };
@@ -1431,7 +1426,7 @@ pub struct ToolbarHandle(
 pub(crate) struct ToolbarHandleInner {
     pub(crate) ns_toolbar: objc2::rc::Retained<objc2_app_kit::NSToolbar>,
     pub(crate) delegate:
-        objc2::rc::Retained<cocoa_dom::toolbar::ToolbarDelegate>,
+        objc2::rc::Retained<ToolbarDelegate>,
     pub(crate) mtm: MainThreadMarker,
     /// Identifier → effects driving that dynamically-inserted
     /// item's reactive attrs. Shared across all clones of this

@@ -30,10 +30,7 @@ use crate::event_macos::{
     ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
 };
 use crate::Dom;
-use cocoa_dom::{
-    menu::{self as dom_menu, MenuBar as DomMenuBar},
-    Element as CocoaElement, MainThreadMarker, CocoaNode as CocoaNode,
-};
+use crate::dom::{menu::{self as dom_menu, MenuBar as DomMenuBar}, CocoaNode, Icon, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSMenuItem};
 use objc2_foundation::NSString;
@@ -214,8 +211,8 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
     }
     fn mount(
         &mut self,
-        _parent: &CocoaElement,
-        _marker: Option<&CocoaNode>,
+        _parent: CocoaNode,
+        _marker: Option<CocoaNode>,
     ) {
         // The menu bar is its own root; nothing to attach under
         // a view-tree parent.
@@ -223,7 +220,7 @@ impl<CS: 'static> Mountable<Dom> for MenuBarState<CS> {
     fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<CocoaElement> {
+    fn elements(&self) -> Vec<CocoaNode> {
         Vec::new()
     }
 }
@@ -352,7 +349,7 @@ pub struct MenuItem {
     pub(crate) shortcut_modifiers: Option<Modifiers>,
     /// Icon shown in the menu-item icon column. SF Symbol or
     /// file path — see [`cocoa_dom::Icon`]. Reactive.
-    pub(crate) icon: Option<MaybeReactive<cocoa_dom::Icon>>,
+    pub(crate) icon: Option<MaybeReactive<Icon>>,
     /// Single `on:action` slot. `None` is valid (informational
     /// item). Second `.on(event::action, …)` call panics — see the
     /// `on()` method.
@@ -407,7 +404,7 @@ impl MenuItem {
     /// returning one.
     pub fn icon<V>(mut self, v: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::Icon>,
+        V: IntoMaybeReactive<Icon>,
     {
         self.icon = Some(v.into_maybe_reactive());
         self

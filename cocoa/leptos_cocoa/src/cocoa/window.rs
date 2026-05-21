@@ -21,11 +21,7 @@
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 use crate::Dom;
-use cocoa_dom::{
-    layout,
-    window::{open_window, OpenedWindow},
-    Element as CocoaElement, MainThreadMarker,
-};
+use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaNode, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
@@ -44,7 +40,7 @@ pub struct Window<Children> {
     on_close: Option<Box<dyn FnMut() + Send + 'static>>,
     handle: Option<WindowHandle>,
     toolbar_style:
-        Option<MaybeReactive<cocoa_dom::toolbar::WindowToolbarStyle>>,
+        Option<MaybeReactive<crate::dom::toolbar::WindowToolbarStyle>>,
     children: Children,
 }
 
@@ -216,7 +212,7 @@ impl<Ch> Window<Ch> {
     /// Without a toolbar, AppKit ignores the style.
     pub fn toolbar_style<V>(mut self, style: V) -> Self
     where
-        V: IntoMaybeReactive<cocoa_dom::toolbar::WindowToolbarStyle>,
+        V: IntoMaybeReactive<toolbar::WindowToolbarStyle>,
     {
         self.toolbar_style = Some(style.into_maybe_reactive());
         self
@@ -394,7 +390,7 @@ where
             let nswindow = opened.nswindow.clone();
             if let Some(eff) = install(
                 ts_attr,
-                move |s: cocoa_dom::toolbar::WindowToolbarStyle| {
+                move |s: toolbar::WindowToolbarStyle| {
                     nswindow.setToolbarStyle(s.to_appkit());
                 },
             ) {
@@ -408,7 +404,7 @@ where
         // window/scene the Window itself was constructed under,
         // which is irrelevant here.
         let mut children = self.children.build();
-        children.mount(&opened.content_root, None);
+        children.mount(opened.content_root, None);
 
         // Initial layout against the contentView's current size.
         let content_size = opened.content_root.ns_view().frame().size;
@@ -456,8 +452,8 @@ impl Mountable<Dom> for WindowState {
 
     fn mount(
         &mut self,
-        _parent: &CocoaElement,
-        _marker: Option<&cocoa_dom::CocoaNode>,
+        _parent: CocoaNode,
+        _marker: Option<CocoaNode>,
     ) {
         // Window is its own root; nothing to mount under another
         // Element. The NSWindow was opened in `build()`.
@@ -467,7 +463,7 @@ impl Mountable<Dom> for WindowState {
         false
     }
 
-    fn elements(&self) -> Vec<CocoaElement> {
+    fn elements(&self) -> Vec<CocoaNode> {
         // A Window doesn't contribute any elements to its parent's
         // children list — it lives at the OS level.
         Vec::new()

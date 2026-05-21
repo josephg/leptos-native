@@ -57,11 +57,11 @@ fn box_model_reflects_padding_and_position() {
         top: LengthPercentage::length(10.0),
         bottom: LengthPercentage::length(10.0),
     };
-    let parent = renderer::new_leaf::<TestB>(parent_style, (), (), ());
-    let child = renderer::new_leaf::<TestB>(fixed(50.0, 30.0), (), (), ());
-    renderer::add_child::<TestB>(parent, child);
+    let parent = TestB::new_leaf(parent_style, (), (), ());
+    let child = TestB::new_leaf(fixed(50.0, 30.0), (), (), ());
+    TestB::add_child(parent, child);
 
-    renderer::run_layout_pass::<TestB>(
+    TestB::run_layout_pass(
         parent,
         Size {
             width: AvailableSpace::Definite(200.0),
@@ -87,16 +87,16 @@ fn box_model_reflects_padding_and_position() {
 
 #[test]
 fn css_edit_round_trips_into_style() {
-    let node = renderer::new_leaf::<TestB>(fixed(50.0, 30.0), (), (), ());
+    let node = TestB::new_leaf(fixed(50.0, 30.0), (), (), ());
 
     // Sanity: the emitted declarations describe the starting style.
-    let decls = leptos_devtools::css_decls(&renderer::style::<TestB>(node).unwrap());
+    let decls = leptos_devtools::css_decls(&TestB::style(node).unwrap());
     assert!(decls.contains(&("width".into(), "50px".into())));
 
     // Apply an edit the way CSS.setStyleTexts would.
     leptos_devtools::apply_css_text::<TestB>(node, "width: 80px; padding: 4px;", &|_| {});
 
-    let after = leptos_devtools::css_decls(&renderer::style::<TestB>(node).unwrap());
+    let after = leptos_devtools::css_decls(&TestB::style(node).unwrap());
     assert!(after.contains(&("width".into(), "80px".into())));
     assert!(after.contains(&("padding-left".into(), "4px".into())));
     assert!(after.contains(&("padding-top".into(), "4px".into())));

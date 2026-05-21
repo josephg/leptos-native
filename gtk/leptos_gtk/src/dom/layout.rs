@@ -188,26 +188,22 @@ pub fn schedule_relayout_for(id: NodeId) {
 // ---------------------------------------------------------------------
 
 impl renderer::LayoutNodeOps for GtkNode {
-    fn update_style<F: FnOnce(&mut Style)>(&self, f: F) {
-        update_style(*self, f);
+    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
+        update_style(self, f);
     }
-    fn schedule_relayout(&self) {
-        schedule_relayout(*self);
+    fn schedule_relayout(self) {
+        schedule_relayout(self);
     }
-    fn with_style<R, F: FnOnce(&Style) -> R>(&self, f: F) -> R {
-        GtkNode::with_style(*self, f)
+    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
+        GtkNode::with_style(self, f)
     }
 }
 
 impl renderer::LayoutElement for GtkNode {
-    type Node = GtkNode;
-    fn as_node(&self) -> &Self::Node {
-        self
+    fn set_view_hidden(self, hidden: bool) {
+        GtkNode::set_hidden(self, hidden);
     }
-    fn set_view_hidden(&self, hidden: bool) {
-        GtkNode::set_hidden(*self, hidden);
-    }
-    fn set_clip(&self, clip: bool) {
+    fn set_clip(self, clip: bool) {
         use gtk4::prelude::WidgetExt;
         self.widget().set_overflow(if clip {
             gtk4::Overflow::Hidden

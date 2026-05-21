@@ -12,30 +12,12 @@ use leptos_gtk::gtk4::prelude::*;
 // Identity / round-trip
 // ---------------------------------------------------------------------
 
-fn ptr_eq_true_for_clones() {
-    let el = GtkNode::create_stack();
-    let a = el.as_node().clone();
-    let b = el.as_node().clone();
-    assert!(a.ptr_eq(&b), "clones should pointer-eq");
-}
-
 fn ptr_eq_false_for_distinct() {
     let a = GtkNode::create_stack();
     let b = GtkNode::create_stack();
-    assert!(
-        !a.as_node().ptr_eq(b.as_node()),
-        "distinct Elements should not pointer-eq"
-    );
-}
-
-fn into_node_round_trip() {
-    let el = GtkNode::create_button().0;
-    let original_ptr = el.widget().as_ptr();
-    let n = el.into_node();
-    let after_ptr = n.widget().as_ptr();
-    assert_eq!(
-        original_ptr, after_ptr,
-        "into_node should preserve widget identity (Node = Element)"
+    assert_ne!(
+        a, b,
+        "distinct Elements should not be equal"
     );
 }
 
@@ -75,8 +57,8 @@ fn insert_node_appends_when_marker_none() {
     let a = GtkNode::create_button().0;
     let b = GtkNode::create_button().0;
 
-    parent.insert_node(a.as_node(), None);
-    parent.insert_node(b.as_node(), None);
+    parent.insert_node(a, None);
+    parent.insert_node(b, None);
 
     assert_eq!(child_count(&parent.widget()), 2);
     let first = child_at(&parent.widget(), 0).unwrap();
@@ -92,10 +74,10 @@ fn insert_node_before_marker_places_correctly() {
     let c = GtkNode::create_button().0;
 
     // Initial order: a, c
-    parent.insert_node(a.as_node(), None);
-    parent.insert_node(c.as_node(), None);
+    parent.insert_node(a, None);
+    parent.insert_node(c, None);
     // Insert b before c
-    parent.insert_node(b.as_node(), Some(c.as_node()));
+    parent.insert_node(b, Some(c));
 
     assert_eq!(child_count(&parent.widget()), 3);
     assert_eq!(
@@ -119,10 +101,10 @@ fn insert_node_moves_existing_child() {
     let parent_b = GtkNode::create_stack();
     let child = GtkNode::create_button().0;
 
-    parent_a.insert_node(child.as_node(), None);
+    parent_a.insert_node(child, None);
     assert_eq!(child_count(&parent_a.widget()), 1);
 
-    parent_b.insert_node(child.as_node(), None);
+    parent_b.insert_node(child, None);
     assert_eq!(child_count(&parent_a.widget()), 0);
     assert_eq!(child_count(&parent_b.widget()), 1);
 }
@@ -134,9 +116,9 @@ fn insert_node_moves_existing_child() {
 fn remove_child_returns_some_for_actual_child() {
     let parent = GtkNode::create_stack();
     let child = GtkNode::create_button().0;
-    parent.insert_node(child.as_node(), None);
+    parent.insert_node(child, None);
 
-    let removed = parent.remove_child(child.as_node());
+    let removed = parent.remove_child(child);
     assert!(removed.is_some());
     assert_eq!(child_count(&parent.widget()), 0);
 }
@@ -145,9 +127,9 @@ fn remove_child_returns_none_for_non_child() {
     let parent = GtkNode::create_stack();
     let actual = GtkNode::create_button().0;
     let stranger = GtkNode::create_button().0;
-    parent.insert_node(actual.as_node(), None);
+    parent.insert_node(actual, None);
 
-    let removed = parent.remove_child(stranger.as_node());
+    let removed = parent.remove_child(stranger);
     assert!(removed.is_none(), "non-child remove returns None");
 
     assert_eq!(child_count(&parent.widget()), 1);
@@ -160,7 +142,7 @@ fn remove_child_returns_none_for_non_child() {
 fn clear_children_removes_all() {
     let parent = GtkNode::create_stack();
     for _ in 0..5 {
-        parent.insert_node(GtkNode::create_button().0.as_node(), None);
+        parent.insert_node(GtkNode::create_button().0, None);
     }
     assert_eq!(child_count(&parent.widget()), 5);
 
@@ -178,9 +160,7 @@ fn clear_children_on_empty_is_no_op() {
 fn main() {
     common::run_tests(&[
         // Identity / round-trip
-        ("ptr_eq_true_for_clones", ptr_eq_true_for_clones),
         ("ptr_eq_false_for_distinct", ptr_eq_false_for_distinct),
-        ("into_node_round_trip", into_node_round_trip),
         // insert_node
         (
             "insert_node_appends_when_marker_none",

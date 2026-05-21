@@ -14,12 +14,12 @@
 
 mod common;
 
-use cocoa_dom::Element;
+use leptos_cocoa::dom::CocoaNode;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = cocoa_dom::spawner::init();
+    let _ = leptos_cocoa::dom::spawner::init().unwrap();
     let owner = Owner::new();
     owner.with(f);
 }
@@ -28,14 +28,12 @@ fn with_reactive_scope<F: FnOnce()>(f: F) {
 /// Without diffing, AppKit would fire `controlTextDidChange:` on the
 /// second write; with diffing, it shouldn't. We can't intercept
 /// AppKit's notification machinery directly, but we can verify the
-/// `Element::set_attribute` path is a no-op by counting Taffy
+/// `CocoaNode::set_attribute` path is a no-op by counting Taffy
 /// `mark_dirty` calls. This test runs through the public Element
 /// API only.
 fn set_attribute_with_same_value_does_not_re_set() {
-    let _mtm = common::test_mtm();
-    let mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let text_field = Element::create_text_field().0;
+        let text_field = CocoaNode::create_text_field().0;
 
         // First set — establishes baseline.
         text_field.set_value("hello");
@@ -51,7 +49,7 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
         // Second set with the *same* value — must be a no-op at the
         // Element level. This protects bind-cycle protection in
-        // `Element::set_attribute` / `set_string_value`.
+        // `CocoaNode::set_attribute` / `set_string_value`.
         text_field.set_value("hello");
 
         // And the underlying NSTextField's stringValue still reads
@@ -70,10 +68,10 @@ fn set_attribute_with_same_value_does_not_re_set() {
 
 /// Same as above for bool attributes (e.g. `checked` on a checkbox).
 fn set_bool_attribute_with_same_value_idempotent() {
-    let _mtm = common::test_mtm();
-    let mtm = common::test_mtm();
+    // let _mtm = common::test_mtm();
+    // let mtm = common::test_mtm();
     with_reactive_scope(|| {
-        let checkbox = Element::create_checkbox().0;
+        let checkbox = CocoaNode::create_checkbox().0;
 
         checkbox.set_checked(true);
         let cb_view = checkbox.ns_view();

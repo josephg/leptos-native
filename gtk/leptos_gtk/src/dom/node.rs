@@ -109,7 +109,7 @@ impl GtkNode {
 
     /// Pointer-equality check. Each node owns exactly one widget, so id
     /// equality is equivalent to underlying-gobject equality.
-    pub fn ptr_eq(self, other: &GtkNode) -> bool {
+    pub fn ptr_eq(self, other: GtkNode) -> bool {
         self.id == other.id
     }
 
@@ -124,23 +124,13 @@ impl GtkNode {
         GtkBackend::remove(self.id);
     }
 
-    /// Identity. Kept so `el.as_node()` call sites compile.
-    pub fn as_node(&self) -> &GtkNode {
-        self
-    }
-
-    /// Identity. See [`Self::as_node`].
-    pub fn into_node(self) -> GtkNode {
-        self
-    }
-
     /// Generic flexbox container (gtk::Box-backed).
     pub fn create_container() -> Self {
         GtkNode::new_from_widget(container_widget(), Style::default()).with_tag("container")
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
-    pub fn insert_node(self, child: &GtkNode, marker: Option<&GtkNode>) {
+    pub fn insert_node(self, child: GtkNode, marker: Option<GtkNode>) {
         let _ = self.try_insert_node(child, marker);
     }
 
@@ -148,8 +138,8 @@ impl GtkNode {
     /// parent isn't a supported container, or `marker` isn't its child.
     pub fn try_insert_node(
         self,
-        child: &GtkNode,
-        marker: Option<&GtkNode>,
+        child: GtkNode,
+        marker: Option<GtkNode>,
     ) -> bool {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
@@ -210,15 +200,15 @@ impl GtkNode {
         // Mirror into Taffy at the right index.
         let idx = child_index_in_parent(parent, child_widget);
         if let Some(idx) = idx {
-            layout::insert_child_at(self, *child, idx);
+            layout::insert_child_at(self, child, idx);
         } else {
-            layout::attach_child(self, *child);
+            layout::attach_child(self, child);
         }
         true
     }
 
     /// Remove `child` from this element's child list.
-    pub fn remove_child(self, child: &GtkNode) -> Option<GtkNode> {
+    pub fn remove_child(self, child: GtkNode) -> Option<GtkNode> {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -228,8 +218,8 @@ impl GtkNode {
             return None;
         }
         detach_child_widget(parent, child_widget);
-        layout::detach_child(self, *child);
-        Some(*child)
+        layout::detach_child(self, child);
+        Some(child)
     }
 
     /// Remove every child.
@@ -569,7 +559,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 fn attach_under(
     parent: &gtk4::Widget,
     child: &gtk4::Widget,
-    marker: Option<&GtkNode>,
+    marker: Option<GtkNode>,
 ) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {

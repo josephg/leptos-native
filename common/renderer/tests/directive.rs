@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 /// Stand-in for `cocoa_dom::Element` / `ios_dom::Element`. Cheap to
 /// clone, gives observable identity for assertions.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct FakeElement(usize);
 
 #[test]
@@ -46,7 +46,7 @@ fn pack_boxes_zero_param_directive_into_fnonce_ref_element() {
     let boxed = pack::<FakeElement, _, _, _>(handler, ());
 
     let el = FakeElement(11);
-    boxed(&el);
+    boxed(el);
     assert_eq!(*captured.lock().unwrap(), Some(FakeElement(11)));
 }
 
@@ -61,7 +61,7 @@ fn pack_boxes_one_param_directive() {
     let boxed = pack::<FakeElement, _, _, _>(handler, "hi".to_string());
 
     let el = FakeElement(5);
-    boxed(&el);
+    boxed(el);
     assert_eq!(
         *captured.lock().unwrap(),
         Some((FakeElement(5), "hi".to_string()))
@@ -80,7 +80,7 @@ fn run_all_drains_in_order() {
     };
 
     let directives = vec![mk(1), mk(2), mk(3)];
-    run_all(directives, &FakeElement(0));
+    run_all(directives, FakeElement(0));
 
     assert_eq!(*order.lock().unwrap(), vec![1, 2, 3]);
 }
@@ -105,6 +105,6 @@ fn pack_handler_consumes_param_by_move() {
         *captured_clone.lock().unwrap() = Some(p.0);
     };
     let boxed = pack::<FakeElement, _, _, _>(handler, NotClone(99));
-    boxed(&FakeElement(0));
+    boxed(FakeElement(0));
     assert_eq!(*captured.lock().unwrap(), Some(99));
 }

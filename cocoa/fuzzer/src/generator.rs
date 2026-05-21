@@ -8,8 +8,8 @@
 //! reproducible failures.
 
 use crate::spec::{Attr, ContainerKind, Node, SignalId};
-use rand::{seq::SliceRandom, Rng};
-use rand_chacha::ChaCha8Rng;
+use rand::prelude::*;
+use rand::rngs::ChaCha8Rng;
 
 pub struct Generator<'a> {
     rng: &'a mut ChaCha8Rng,
@@ -74,7 +74,7 @@ impl<'a> Generator<'a> {
     }
 
     fn maybe_reactive<T>(&mut self, value: T) -> Attr<T> {
-        if self.rng.gen_bool(self.reactive_fraction) {
+        if self.rng.random_bool(self.reactive_fraction) {
             Attr::Reactive {
                 id: self.fresh_id(),
                 initial: value,
@@ -85,7 +85,7 @@ impl<'a> Generator<'a> {
     }
 
     fn maybe_present_reactive<T>(&mut self, value: T) -> Option<Attr<T>> {
-        if self.rng.gen_bool(0.5) {
+        if self.rng.random_bool(0.5) {
             Some(self.maybe_reactive(value))
         } else {
             None
@@ -102,7 +102,7 @@ impl<'a> Generator<'a> {
             "back", "yes", "no", "hi", "hello", "click", "load",
             "go", "stop", "reset", "submit", "edit", "view",
         ];
-        let n = self.rng.gen_range(1..=3);
+        let n = self.rng.random_range(1..=3);
         let mut s = String::new();
         for i in 0..n {
             if i > 0 {
@@ -113,8 +113,8 @@ impl<'a> Generator<'a> {
         s
     }
 
-    fn gen_bool(&mut self) -> bool {
-        self.rng.gen_bool(0.5)
+    fn random_bool(&mut self) -> bool {
+        self.rng.random_bool(0.5)
     }
 
     fn gen_padding(&mut self) -> f32 {
@@ -154,7 +154,7 @@ impl<'a> Generator<'a> {
         } else {
             self.max_children
         };
-        let n = self.rng.gen_range(1..=max_kids);
+        let n = self.rng.random_range(1..=max_kids);
 
         let children = (0..n)
             .map(|_| self.gen_node(depth + 1))
@@ -173,28 +173,28 @@ impl<'a> Generator<'a> {
         // surface. Each field is built from temporaries so the
         // borrow checker is happy about the `&mut self` chain in
         // `maybe_*` helpers.
-        let kind: u8 = self.rng.gen_range(0..13);
+        let kind: u8 = self.rng.random_range(0..13);
         match kind {
             0 => {
                 let t = self.gen_string();
                 let title = self.maybe_reactive(t);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
-                let h = self.gen_bool();
+                let h = self.random_bool();
                 let hidden = self.maybe_present_reactive(h);
                 Node::Button { title, enabled, hidden }
             }
             1 => {
                 let t = self.gen_string();
                 let text = self.maybe_reactive(t);
-                let h = self.gen_bool();
+                let h = self.random_bool();
                 let hidden = self.maybe_present_reactive(h);
                 Node::Label { text, hidden }
             }
             2 => {
                 let t = self.gen_string();
                 let title = self.maybe_reactive(t);
-                let c = self.gen_bool();
+                let c = self.random_bool();
                 let checked = self.maybe_present_reactive(c);
                 Node::Checkbox { title, checked }
             }
@@ -206,7 +206,7 @@ impl<'a> Generator<'a> {
                 let value = self.maybe_reactive(v);
                 let p = self.gen_string();
                 let placeholder = self.maybe_present_reactive(p);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
                 Node::TextField {
                     value,
@@ -218,7 +218,7 @@ impl<'a> Generator<'a> {
             5 => {
                 let v = self.gen_string();
                 let value = self.maybe_reactive(v);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
                 Node::TextView { value, enabled }
             }
@@ -226,16 +226,16 @@ impl<'a> Generator<'a> {
                 // slider — value in [0,1].
                 let v = self.gen_unit_f64();
                 let value = self.maybe_reactive_f64(v);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
-                let vertical = self.rng.gen_bool(0.2);
+                let vertical = self.rng.random_bool(0.2);
                 Node::Slider { value, enabled, vertical }
             }
             7 => {
                 // stepper — value in [0, 100].
-                let v = (self.rng.gen_range(0..=100)) as f64;
+                let v = (self.rng.random_range(0..=100)) as f64;
                 let value = self.maybe_reactive_f64(v);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
                 Node::Stepper { value, enabled }
             }
@@ -243,8 +243,8 @@ impl<'a> Generator<'a> {
                 // progress_indicator
                 let v = self.gen_unit_f64();
                 let value = self.maybe_reactive_f64(v);
-                let indeterminate = if self.rng.gen_bool(0.3) {
-                    let b = self.gen_bool();
+                let indeterminate = if self.rng.random_bool(0.3) {
+                    let b = self.random_bool();
                     Some(self.maybe_reactive(b))
                 } else {
                     None
@@ -253,12 +253,12 @@ impl<'a> Generator<'a> {
             }
             9 | 10 => {
                 // pop_up_button (9) / segmented_control (10)
-                let n_items = self.rng.gen_range(2..=5);
+                let n_items = self.rng.random_range(2..=5);
                 let items: Vec<String> =
                     (0..n_items).map(|_| self.gen_string()).collect();
-                let initial = self.rng.gen_range(0..n_items);
+                let initial = self.rng.random_range(0..n_items);
                 let selection = self.maybe_reactive_index(initial);
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
                 if kind == 9 {
                     Node::PopUpButton { items, selection, enabled }
@@ -267,9 +267,9 @@ impl<'a> Generator<'a> {
                 }
             }
             11 => {
-                let e = self.gen_bool();
+                let e = self.random_bool();
                 let enabled = self.maybe_present_reactive(e);
-                if self.rng.gen_bool(0.5) {
+                if self.rng.random_bool(0.5) {
                     Node::DatePicker { enabled }
                 } else {
                     Node::ColorWell { enabled }
@@ -297,7 +297,7 @@ impl<'a> Generator<'a> {
     }
 
     fn maybe_reactive_f64(&mut self, value: f64) -> Attr<f64> {
-        if self.rng.gen_bool(self.reactive_fraction) {
+        if self.rng.random_bool(self.reactive_fraction) {
             Attr::Reactive {
                 id: self.fresh_id(),
                 initial: value,
@@ -308,7 +308,7 @@ impl<'a> Generator<'a> {
     }
 
     fn maybe_reactive_index(&mut self, value: usize) -> Attr<usize> {
-        if self.rng.gen_bool(self.reactive_fraction) {
+        if self.rng.random_bool(self.reactive_fraction) {
             Attr::Reactive {
                 id: self.fresh_id(),
                 initial: value,
@@ -323,9 +323,9 @@ impl<'a> Generator<'a> {
         // driven by a bool signal. Allowed everywhere except at
         // max depth (Show holds at least one nested branch).
         if depth + 1 < self.max_depth
-            && self.rng.gen_bool(self.show_probability)
+            && self.rng.random_bool(self.show_probability)
         {
-            let init = self.gen_bool();
+            let init = self.random_bool();
             let when = self.maybe_reactive(init);
             // Force `when` to be reactive — a Show with a static
             // condition is useless (the chaos loop can't toggle
@@ -338,7 +338,7 @@ impl<'a> Generator<'a> {
                 },
             };
             let on = Box::new(self.gen_node(depth + 1));
-            let off = if self.rng.gen_bool(0.5) {
+            let off = if self.rng.random_bool(0.5) {
                 Some(Box::new(self.gen_node(depth + 1)))
             } else {
                 None
@@ -349,11 +349,11 @@ impl<'a> Generator<'a> {
         // bulk-rebuild container. Like Show, requires room for at
         // least one nested generated leaf below.
         if depth + 1 < self.max_depth
-            && self.rng.gen_bool(self.dynamic_list_probability)
+            && self.rng.random_bool(self.dynamic_list_probability)
         {
-            let max = self.rng.gen_range(1..=4);
+            let max = self.rng.random_range(1..=4);
             // Force `count` reactive so chaos can drive it.
-            let initial = self.rng.gen_range(0..=max);
+            let initial = self.rng.random_range(0..=max);
             let count = Attr::Reactive {
                 id: self.fresh_id(),
                 initial,
@@ -367,18 +367,18 @@ impl<'a> Generator<'a> {
         // Sometimes emit a grid (only if there's depth budget for
         // the cell children).
         if depth + 1 < self.max_depth
-            && self.rng.gen_bool(self.grid_probability)
+            && self.rng.random_bool(self.grid_probability)
         {
-            let columns = self.rng.gen_range(1..=4);
-            let rows = self.rng.gen_range(1..=4);
+            let columns = self.rng.random_range(1..=4);
+            let rows = self.rng.random_range(1..=4);
             // Number of placed children — at least 1, up to
             // columns*rows*2 (with intentional collisions allowed).
             let n_kids =
-                self.rng.gen_range(1..=(columns * rows * 2).min(8));
+                self.rng.random_range(1..=(columns * rows * 2).min(8));
             let mut kids = Vec::with_capacity(n_kids);
             for _ in 0..n_kids {
-                let col = self.rng.gen_range(1..=columns);
-                let row = self.rng.gen_range(1..=rows);
+                let col = self.rng.random_range(1..=columns);
+                let row = self.rng.random_range(1..=rows);
                 kids.push((col, row, self.gen_node(depth + 1)));
             }
             return Node::Grid {
@@ -387,7 +387,7 @@ impl<'a> Generator<'a> {
                 children: kids,
             };
         }
-        if self.rng.gen_bool(0.4) {
+        if self.rng.random_bool(0.4) {
             self.gen_container(depth)
         } else {
             self.gen_leaf()
@@ -397,7 +397,6 @@ impl<'a> Generator<'a> {
 
 /// Convenience: seed → freshly-generated `Node`.
 pub fn generate_from_seed(seed: u64) -> Node {
-    use rand::SeedableRng;
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let mut g = Generator::new(&mut rng);
     g.generate()

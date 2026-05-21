@@ -29,7 +29,7 @@ where
             let mut new_states: Vec<T::State> =
                 self.into_iter().map(|v| v.build()).collect();
             for item in new_states.iter_mut() {
-                R::try_mount_before(item, &*marker);
+                R::try_mount_before(item, *marker);
             }
             *old = new_states;
         } else if self.is_empty() {
@@ -49,7 +49,7 @@ where
                     }
                     (Some(new), None) => {
                         let mut new_state = new.build();
-                        R::try_mount_before(&mut new_state, &*marker);
+                        R::try_mount_before(&mut new_state, *marker);
                         adds.push(new_state);
                     }
                     (None, Some(old_state)) => {
@@ -64,7 +64,7 @@ where
             // pairings — push all of them as adds)
             for new in new_iter {
                 let mut new_state = new.build();
-                R::try_mount_before(&mut new_state, &*marker);
+                R::try_mount_before(&mut new_state, *marker);
                 adds.push(new_state);
             }
             for old_state in old_iter {
@@ -101,7 +101,7 @@ where
         self.marker.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         for state in self.states.iter_mut() {
             state.mount(parent, marker);
         }

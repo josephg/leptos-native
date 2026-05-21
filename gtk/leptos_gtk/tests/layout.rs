@@ -40,9 +40,9 @@ where
         (size.0 as i32, size.1 as i32),
     );
     let mut state = view.build();
-    state.mount(&opened.content_root, None);
+    state.mount(opened.content_root, None);
 
-    layout::compute_layout(opened.content_root.as_node(), size);
+    layout::compute_layout(opened.content_root, size);
     f(&opened.content_root);
 
     drop(state);
@@ -59,7 +59,7 @@ where
     P: FnMut(&gtk4::Widget) -> bool,
 {
     let mut out = Vec::new();
-    walk(root.as_node().id(), &mut |id, w| {
+    walk(root.id(), &mut |id, w| {
         if pred(w) {
             if let Some(layout) = GtkBackend::layout(id) {
                 out.push(layout);
@@ -149,7 +149,7 @@ fn vstack_label_plus_hstack_has_full_height() {
             );
         with_mounted_view(view, (320.0, 200.0), |root| {
             // First child of the content_root is the outer vstack.
-            let kids = GtkBackend::children(root.as_node().id());
+            let kids = GtkBackend::children(root.id());
             assert!(!kids.is_empty(), "content_root has no children");
             let outer_id = kids[0];
             let outer_layout =

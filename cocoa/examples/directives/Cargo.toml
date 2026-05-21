@@ -6,4 +6,3 @@ publish = false
 
 [dependencies]
 leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
-cocoa_dom = { path = "../../dom" }

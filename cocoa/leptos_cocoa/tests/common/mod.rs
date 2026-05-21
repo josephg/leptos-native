@@ -15,7 +15,7 @@
 #![cfg(target_os = "macos")]
 #![allow(dead_code)] // helpers used by some test files but not all
 
-use cocoa_dom::MainThreadMarker;
+use leptos_cocoa::dom::MainThreadMarker;
 use objc2::{msg_send, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSView};
 use objc2_foundation::{NSNotification, NSString};
@@ -30,12 +30,12 @@ use objc2_foundation::{NSNotification, NSString};
 /// Bounded iteration count so a runaway test eventually unblocks.
 pub fn pump_runloop_once() {
     use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
-    let rl = unsafe { NSRunLoop::mainRunLoop() };
+    let rl = NSRunLoop::mainRunLoop();
     // 50ms is enough to drain queued dispatch tasks in practice;
     // we loop a few times so a chain of effects (each scheduling
     // the next) all settle.
     for _ in 0..8 {
-        let limit = unsafe { NSDate::dateWithTimeIntervalSinceNow(0.005) };
+        let limit = NSDate::dateWithTimeIntervalSinceNow(0.005);
         unsafe { rl.runMode_beforeDate(NSDefaultRunLoopMode, &limit) };
     }
 }

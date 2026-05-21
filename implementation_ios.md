@@ -6,6 +6,45 @@ top.
 
 ---
 
+## 2026-05-21 — "Everything teleports to the top-left" fix (port mirror)
+
+After the render-tree refactor, every iOS example rendered all views
+stacked at the origin (top-left), overlapping. Root cause was the
+relayout scheduler resolving each touched node to its subtree root
+*eagerly* at enqueue time:
+
+```rust
+fn queue_relayout_for(id: NodeId) {
+    let root = IosBackend::root_of(id);   // BUG: resolved too early
+    IosBackend::queue_relayout(root);
+    ...
+}
+```
+
+Reactive attr effects (and the mount cascade) fire during
+`Render::build`, before the node is attached under `content_root`,
+so `root_of` captured an intermediate node as its own root. The
+deferred pass then recomputed that intermediate as a root and planted
+it at Taffy origin `(0,0)`. Cocoa hit and fixed exactly this; the
+2026-05-20 entry below wrongly claimed iOS had "no captured-root
+relayout scheduler" — it did, and it had the same bug.
+
+Fix mirrors cocoa: enqueue the *touched node id*, resolve `root_of`
+(with dedup + `contains` check) at drain time, when the tree is fully
+attached. While here, also rolled out the cocoa parity for
+placeholder-anchored control-flow mounting that iOS had stubbed out:
+`Dom::get_parent` now returns the real parent and `Node` /
+`ElementState`'s `insert_before_this` route through a shared
+`insert_before_node` helper (previously `None` / `false`).
+
+Files: `uikit/dom/src/layout.rs` (`queue_relayout_for` /
+`ensure_relayout_pass_scheduled`), `uikit/leptos_uikit/src/
+renderer_ios.rs` (`get_parent`, `insert_before_node`,
+`Node::insert_before_this`), `uikit/leptos_uikit/src/ios/element.rs`
+(`ElementState::insert_before_this`).
+
+---
+
 ## 2026-05-20 — Post-`NodeId`-refactor polish (port mirror)
 
 Cross-cutting follow-ups logged in `implementation_log.md`. iOS-side:

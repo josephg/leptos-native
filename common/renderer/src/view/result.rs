@@ -106,7 +106,7 @@ where
         self.state.unmount();
     }
 
-    fn mount(&mut self, parent: &R::Node, marker: Option<&R::Node>) {
+    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
         self.state.mount(parent, marker);
     }
 

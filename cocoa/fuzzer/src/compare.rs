@@ -210,10 +210,10 @@ fn compare_node(a: &NSView, b: &NSView, path: &str) -> Result<(), String> {
         any_a.downcast_ref::<NSDatePicker>(),
         any_b.downcast_ref::<NSDatePicker>(),
     ) {
-        let ad = unsafe { da.dateValue() };
-        let bd = unsafe { db.dateValue() };
-        let at = unsafe { ad.timeIntervalSinceReferenceDate() };
-        let bt = unsafe { bd.timeIntervalSinceReferenceDate() };
+        let ad = da.dateValue();
+        let bd = db.dateValue();
+        let at = ad.timeIntervalSinceReferenceDate();
+        let bt = bd.timeIntervalSinceReferenceDate();
         if (at - bt).abs() > 1.0 {
             return Err(format!(
                 "{path}: NSDatePicker dateValue mismatch \

@@ -28,8 +28,8 @@ use objc2_app_kit::{
     NSStepper, NSTextField, NSView,
 };
 use objc2_foundation::{NSNotification, NSString};
-use rand::{seq::SliceRandom, Rng};
-use rand_chacha::ChaCha8Rng;
+use rand::prelude::*;
+use rand::rngs::ChaCha8Rng;
 
 /// Walk `root` and trigger one interaction per interactable
 /// descendant. Returns counts for diagnostics.
@@ -129,7 +129,7 @@ fn walk(view: &NSView, rng: &mut ChaCha8Rng, stats: &mut Stats) {
 
 fn type_into(field: &NSTextField, rng: &mut ChaCha8Rng) {
     let dict = ["typed", "abc", "xy", "input", "test", "hello"];
-    let n = rng.gen_range(1..=2);
+    let n = rng.random_range(1..=2);
     let mut s = String::new();
     for i in 0..n {
         if i > 0 {

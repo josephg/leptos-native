@@ -19,13 +19,14 @@ use crate::signals::SignalStore;
 use crate::spec::{Attr, ContainerKind, Node};
 use leptos_native::cocoa::bind::BindAttribute;
 use leptos_native::cocoa::element::{
-    button, checkbox, color_well, date_picker, grid, hstack, image_view,
+    button, checkbox, color_well, date_picker, hstack, image_view,
     label, pop_up_button, progress_indicator, scroll_view,
     secure_text_field, segmented_control, slider, stack, stepper,
-    text_field, text_view, vstack, Button, Checkbox, ColorWell, DatePicker,
-    Grid, ImageView, Label, PopUpButton, ProgressIndicator, ScrollView,
+    text_field, text_view, vstack, Button, Checkbox, ColorWell, DatePicker
+    , ImageView, Label, PopUpButton, ProgressIndicator, ScrollView,
     SegmentedControl, Slider, Stack, Stepper, TextField, TextView,
 };
+use leptos_native::dom::Date;
 use leptos_native::Dom;
 use reactive_graph::traits::Get;
 // `hidden` / `padding` come from the renderer's shared layout-attr
@@ -285,7 +286,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<Dom> {
             // default is `Date::now()` which drifts by seconds
             // between the two builds and the comparison reads
             // NSDatePicker.stringValue).
-            let fixed = cocoa_dom::Date::from_unix_secs(1_700_000_000.0);
+            let fixed = Date::from_unix_secs(1_700_000_000.0);
             let mut dp: DatePicker = date_picker().value(fixed);
             if let Some(e) = enabled {
                 dp = set_bool_attr!(dp, enabled, store, e);

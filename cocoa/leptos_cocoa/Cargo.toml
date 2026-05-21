@@ -22,20 +22,93 @@ send_wrapper = { workspace = true, default-features = true }
 throw_error = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa_dom = { path = "../dom", version = "0.1.0" }
 objc2 = "0.6"
-objc2-foundation = "0.3"
-objc2-app-kit = "0.3"
 any_spawner = { workspace = true }
+block2 = { version = "0.6", optional = true } # Used by debug-overlay.
+dispatch2 = "0.3"
+futures = { workspace = true, default-features = true }
+taffy = { workspace = true }
+objc2-foundation = { version = "0.3", features = [
+  "NSGeometry",
+  "NSString",
+  "NSObjCRuntime",
+  "NSThread",
+  "NSTimer",
+  "NSDate",
+  "NSUserDefaults",
+  "NSCalendar",
+  "NSLocale",
+  "NSTimeZone",
+] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer"] }
+objc2-core-graphics = { version = "0.3", optional = true }
+objc2-core-foundation = "0.3"
+objc2-app-kit = { version = "0.3", features = [
+  "NSLayoutConstraint",
+  "objc2-core-foundation",
+  "NSApplication",
+  "NSWindow",
+  "NSView",
+  "NSResponder",
+  "NSButton",
+  "NSControl",
+  "NSFont",
+  "NSText",
+  "NSTextField",
+  "NSTextView",
+  "NSSecureTextField",
+  "NSScrollView",
+  "NSSlider",
+  "NSPopUpButton",
+  "NSCell",
+  "NSParagraphStyle",
+  "NSColor",
+  "NSGraphics",
+  "NSEvent",
+  "NSRunningApplication",
+  "NSStackView",
+  "NSImage",
+  "NSImageView",
+  "NSSegmentedControl",
+  "NSColorWell",
+  "NSDatePicker",
+  "NSDatePickerCell",
+  "NSStepper",
+  "NSStepperCell",
+  "NSProgressIndicator",
+  "NSEvent",
+  "NSMenu",
+  "NSMenuItem",
+  "NSTrackingArea",
+] }
+
 
 [features]
 default = []
 # Strokes a 1px outline around every Taffy-tracked node, toggled with
-# the `~` key. Forwards to `cocoa_dom`.
-debug-overlay = ["cocoa_dom/debug-overlay"]
-# CoreAnimation Phase 1: `with_animation(...)` + animated
-# decoration / opacity setters. Forwards to `cocoa_dom`.
-animation = ["cocoa_dom/animation"]
+# the `~` key.
+debug-overlay = [
+  "objc2-app-kit/NSBezierPath",
+  "objc2-app-kit/block2",
+  "dep:block2",
+]
+# CoreAnimation integration: enables `cocoa_dom::animation` plus
+# implicit animation of layer-backed property changes
+# (background_color, corner_radius, border, alpha) when invoked
+# inside `with_animation(...)`. Pulls in the CAAnimation /
+# CATransaction / CASpringAnimation / CAMediaTimingFunction
+# subsystems of objc2-quartz-core. Off by default — opting in adds
+# linkage to the full QuartzCore animation surface; without it the
+# port behaves exactly as before (every property change snaps).
+animation = [
+  "objc2-quartz-core/CAAnimation",
+  "objc2-quartz-core/CATransaction",
+  "objc2-quartz-core/CAMediaTiming",
+  "objc2-quartz-core/CAMediaTimingFunction",
+  "objc2-quartz-core/CATransform3D",
+  "objc2-foundation/NSValue",
+  "dep:objc2-core-graphics",
+]
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
@@ -99,3 +172,114 @@ harness = false
 name = "show"
 path = "tests/show.rs"
 harness = false
+
+
+
+# Dom tests
+[[test]]
+name = "dom_element_creation"
+path = "tests/dom/element_creation.rs"
+harness = false
+
+[[test]]
+name = "dom_events"
+path = "tests/dom/events.rs"
+harness = false
+
+[[test]]
+name = "dom_text_and_placeholder"
+path = "tests/dom/text_and_placeholder.rs"
+harness = false
+
+[[test]]
+name = "dom_tree_mutation"
+path = "tests/dom/tree_mutation.rs"
+harness = false
+
+[[test]]
+name = "dom_node_lifecycle"
+path = "tests/dom/node_lifecycle.rs"
+harness = false
+
+[[test]]
+name = "dom_layout"
+path = "tests/dom/layout.rs"
+harness = false
+
+[[test]]
+name = "dom_grid_layout"
+path = "tests/dom/grid_layout.rs"
+harness = false
+
+[[test]]
+name = "dom_apply_attrs"
+path = "tests/dom/apply_attrs.rs"
+harness = false
+
+[[test]]
+name = "dom_app_menu"
+path = "tests/dom/app_menu.rs"
+harness = false
+
+[[test]]
+name = "dom_menu"
+path = "tests/dom/menu.rs"
+harness = false
+
+[[test]]
+name = "dom_icon"
+path = "tests/dom/icon.rs"
+harness = false
+
+
+[[test]]
+name = "dom_interval"
+path = "tests/dom/interval.rs"
+harness = false
+
+[[test]]
+name = "dom_storage"
+path = "tests/dom/storage.rs"
+harness = false
+
+[[test]]
+name = "dom_focus"
+path = "tests/dom/focus.rs"
+harness = false
+
+[[test]]
+name = "dom_thread_safety"
+path = "tests/dom/thread_safety.rs"
+harness = false
+
+[[test]]
+name = "dom_layout_dirtying"
+path = "tests/dom/layout_dirtying.rs"
+harness = false
+
+[[test]]
+name = "dom_debug_overlay"
+path = "tests/dom/debug_overlay.rs"
+harness = false
+required-features = ["debug-overlay"]
+
+[[test]]
+name = "dom_async_bridge"
+path = "tests/dom/async_bridge.rs"
+harness = false
+
+[[test]]
+name = "dom_image_bytes"
+path = "tests/dom/image_bytes.rs"
+harness = false
+
+[[test]]
+name = "dom_signal_mt"
+path = "tests/dom/signal_mt.rs"
+harness = false
+
+[[test]]
+name = "dom_animation"
+path = "tests/dom/animation.rs"
+harness = false
+required-features = ["animation"]

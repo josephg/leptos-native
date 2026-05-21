@@ -46,13 +46,13 @@
 
 use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::Dom;
-use cocoa_dom::split_window::{OpenedSplitWindow, PaneSpec};
+use crate::dom::split_window::*;
 use reactive_graph::effect::RenderEffect;
 use renderer::view::{Mountable, Render};
 
 // Re-export the cocoa-side enum so user code says
 // `PaneBehavior::Inspector` without a separate import.
-pub use cocoa_dom::split_window::{CollapseBehavior, PaneBehavior};
+pub use crate::dom::split_window::{CollapseBehavior, PaneBehavior};
 
 // ---------------------------------------------------------------------
 // SplitPane builder
@@ -288,7 +288,7 @@ pub struct PaneMountState<Ch: Render<Dom>> {
 /// `pane` and wire its `collapsed` signal. Used by all the
 /// per-arity `Panes` impls so the body is written once.
 fn mount_one_pane<Ch>(
-    pane: &cocoa_dom::split_window::Pane,
+    pane: &Pane,
     sp: SplitPane<Ch>,
 ) -> PaneMountState<Ch>
 where
@@ -301,7 +301,7 @@ where
     // The returned State must be retained for the pane's lifetime
     // — dropping it would unmount and detach NSViews.
     let mut child_state = children.build();
-    child_state.mount(&pane.root, None);
+    child_state.mount(pane.root, None);
 
     // Reactive collapse: install fires on every signal tick. The
     // closure animates the pane open/closed via the AppKit
@@ -461,7 +461,6 @@ impl<P: 'static> IntoSplitView<P> for leptos_native::View<SplitView<P>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cocoa_dom::split_window::{PaneBehavior, PaneSpec};
 
     // ---- PaneSpec defaults --------------------------------------
 
@@ -711,12 +710,12 @@ where
         self,
         title: &str,
         size: (f64, f64),
-        mtm: cocoa_dom::MainThreadMarker,
+        mtm: crate::dom::MainThreadMarker,
     ) -> (OpenedSplitWindow, P::State) {
         let mut specs = Vec::new();
         self.panes.collect_specs(&mut specs);
 
-        let opened = cocoa_dom::split_window::open_split_window(
+        let opened = open_split_window(
             title,
             size,
             self.vertical,

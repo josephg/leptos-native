@@ -20,6 +20,8 @@ pub mod renderer_cocoa;
 
 pub use renderer_cocoa::Dom;
 
+pub mod dom;
+
 /// Cocoa-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
 /// Used by type-erased prop types (`ChildrenFn`, slot children
 /// that vary per call-site, `<Show fallback>` branches with
@@ -244,15 +246,15 @@ pub mod prelude {
     // `Element` is the imperative handle for directives and NodeRef
     // (`use:directive=fn` calls `fn(el: Element)`; `NodeRef::get()` →
     // `Option<Element>`).
-    pub use cocoa_dom::{
+    pub use crate::dom::{
         local_storage, set_interval, set_interval_with_handle, Color, Date,
-        DatePickerStyle, Element, Icon, IntervalError, IntervalHandle,
+        DatePickerStyle, Icon, IntervalError, IntervalHandle,
         KeyEvent, LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
     };
-    pub use cocoa_dom::layout::ScrollAxis;
+    pub use crate::dom::layout::ScrollAxis;
     pub use crate::cocoa::element::IntrinsicWidth;
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.
-    pub use cocoa_dom::app::{quit, set_quit_on_last_window_close};
+    pub use crate::dom::app::{quit, set_quit_on_last_window_close};
     pub use crate::Dom;
 }
