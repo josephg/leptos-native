@@ -12,7 +12,6 @@
 //! On the native code path they should be unreachable; tracked in
 //! `implementation_log.md`.
 
-use crate::dom::layout;
 use crate::dom::node::CocoaElem;
 use objc2::rc::Retained;
 use objc2_app_kit::NSEvent;
@@ -89,68 +88,68 @@ impl fmt::Debug for Event {
     }
 }
 
-/// The renderer surface.
-///
-/// Aliased as `Dom` from inside tachys so that the rest of the codebase
-/// (which calls `Rndr::create_element` and friends as `Dom::method`)
-/// compiles without churn.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Renderer;
-
-impl Renderer {
-    pub fn intern(text: &str) -> &str {
-        // Web's wasm-bindgen string interning has no native equivalent.
-        text
-    }
-
-    pub fn create_text_node(text: &str) -> CocoaElem {
-        CocoaElem::create_text(text)
-    }
-
-    pub fn create_placeholder() -> CocoaElem {
-        CocoaElem::create_placeholder()
-    }
-
-    pub fn set_text(node: CocoaElem, text: &str) {
-        node.set_text(text);
-    }
-
-    pub fn insert_node(
-        parent: CocoaElem,
-        new_child: CocoaElem,
-        anchor: Option<CocoaElem>,
-    ) {
-        parent.insert_node(new_child, anchor);
-    }
-
-    pub fn try_insert_node(
-        parent: CocoaElem,
-        new_child: CocoaElem,
-        anchor: Option<CocoaElem>,
-    ) -> bool {
-        parent.insert_node(new_child, anchor);
-        true
-    }
-
-    pub fn remove_node(parent: CocoaElem, child: CocoaElem) -> Option<CocoaElem> {
-        parent.remove_child(child)
-    }
-
-    pub fn remove(node: CocoaElem) {
-        // `drop_node` detaches the NSView and removes the node (and its
-        // structural subtree) from the store, so the node count returns
-        // to baseline. Caught by `cocoa_fuzzer`'s post-seed check.
-        layout::drop_node(node);
-    }
-
-    pub fn log_node(node: CocoaElem) {
-        eprintln!("[cocoa_dom] {node:?}");
-    }
-
-    pub fn clear_children(parent: CocoaElem) {
-        parent.clear_children();
-    }
-}
+// /// The renderer surface.
+// ///
+// /// Aliased as `Dom` from inside tachys so that the rest of the codebase
+// /// (which calls `Rndr::create_element` and friends as `Dom::method`)
+// /// compiles without churn.
+// #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+// pub struct Renderer;
+//
+// impl Renderer {
+//     pub fn intern(text: &str) -> &str {
+//         // Web's wasm-bindgen string interning has no native equivalent.
+//         text
+//     }
+//
+//     pub fn create_text_node(text: &str) -> CocoaElem {
+//         CocoaElem::create_text(text)
+//     }
+//
+//     pub fn create_placeholder() -> CocoaElem {
+//         CocoaElem::create_placeholder()
+//     }
+//
+//     pub fn set_text(node: CocoaElem, text: &str) {
+//         node.set_text(text);
+//     }
+//
+//     pub fn insert_node(
+//         parent: CocoaElem,
+//         new_child: CocoaElem,
+//         anchor: Option<CocoaElem>,
+//     ) {
+//         parent.insert_node(new_child, anchor);
+//     }
+//
+//     pub fn try_insert_node(
+//         parent: CocoaElem,
+//         new_child: CocoaElem,
+//         anchor: Option<CocoaElem>,
+//     ) -> bool {
+//         parent.insert_node(new_child, anchor);
+//         true
+//     }
+//
+//     pub fn remove_node(parent: CocoaElem, child: CocoaElem) -> Option<CocoaElem> {
+//         parent.remove_child(child)
+//     }
+//
+//     pub fn remove(node: CocoaElem) {
+//         // `drop_node` detaches the NSView and removes the node (and its
+//         // structural subtree) from the store, so the node count returns
+//         // to baseline. Caught by `cocoa_fuzzer`'s post-seed check.
+//         layout::drop_node(node);
+//     }
+//
+//     pub fn log_node(node: CocoaElem) {
+//         eprintln!("[cocoa_dom] {node:?}");
+//     }
+//
+//     pub fn clear_children(parent: CocoaElem) {
+//         parent.clear_children();
+//     }
+// }
 
 // ---------------------------------------------------------------------
 // CastFrom impls — used by leptos_cocoa::Dom and the renderer-agnostic

@@ -11,7 +11,6 @@
 #![allow(missing_docs)]
 
 use crate::dom::layout::CocoaBackend;
-use crate::dom::Renderer as CocoaRenderer;
 use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
 
 // Re-export the concrete tree types under the names tachys/leptos/
@@ -23,7 +22,7 @@ use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
 pub use crate::dom::{
     ClassList, CocoaElem, CssStyleDeclaration, Event, TemplateElement,
 };
-
+use crate::dom::layout;
 
 pub type Text = CocoaElem;
 pub type Placeholder = CocoaElem;
@@ -40,20 +39,16 @@ impl Renderer for CocoaDom {
     type Backend = CocoaBackend;
     type Node = CocoaElem;
 
-    fn intern(text: &str) -> &str {
-        CocoaRenderer::intern(text)
-    }
-
     fn create_text_node(text: &str) -> CocoaElem {
-        CocoaRenderer::create_text_node(text)
+        CocoaElem::create_text(text)
     }
 
     fn create_placeholder() -> CocoaElem {
-        CocoaRenderer::create_placeholder()
+        CocoaElem::create_placeholder()
     }
 
     fn set_text(node: CocoaElem, text: &str) {
-        CocoaRenderer::set_text(node, text);
+        node.set_text(text);
     }
 
     fn insert_node(
@@ -61,19 +56,19 @@ impl Renderer for CocoaDom {
         new_child: CocoaElem,
         anchor: Option<CocoaElem>,
     ) {
-        CocoaRenderer::insert_node(parent, new_child, anchor);
+        parent.insert_node(new_child, anchor);
     }
 
     fn remove_node(parent: CocoaElem, child: CocoaElem) -> Option<CocoaElem> {
-        CocoaRenderer::remove_node(parent, child)
+        parent.remove_child(child)
     }
 
     fn clear_children(parent: CocoaElem) {
-        CocoaRenderer::clear_children(parent);
+        parent.clear_children();
     }
 
     fn remove(node: CocoaElem) {
-        CocoaRenderer::remove(node);
+        layout::drop_node(node);
     }
 
     fn get_parent(node: CocoaElem) -> Option<CocoaElem> {
@@ -85,23 +80,7 @@ impl Renderer for CocoaDom {
     }
 
     fn log_node(node: CocoaElem) {
-        CocoaRenderer::log_node(node);
-    }
-
-    /// Override the trait's default — on cocoa we need to synthesise a
-    /// parent Element wrapper around `before`'s superview, with the
-    /// right LayoutHandle so the new child registers in the same Taffy
-    /// tree.
-    #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: CocoaElem) -> bool
-    where
-        M: Mountable<Self>,
-    {
-        let Some(parent) = parent_of(before) else {
-            return false;
-        };
-        new_child.mount(parent, Some(before));
-        true
+        eprintln!("[cocoa_dom] {node:?}");
     }
 }
 
@@ -166,7 +145,9 @@ impl Mountable<CocoaDom> for CocoaElem {
         parent: CocoaElem,
         marker: Option<CocoaElem>,
     ) -> bool {
-        CocoaRenderer::try_insert_node(parent, *self, marker)
+        // TODO: This should be actually fallable.
+        parent.insert_node(*self, marker);
+        true
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<CocoaDom>) -> bool {

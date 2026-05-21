@@ -59,7 +59,7 @@ pub use interval::{
 pub use key_event::KeyEvent;
 pub use node::CocoaElem;
 pub use storage::{local_storage, Storage, StorageError};
-pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
+pub use renderer::{ClassList, CssStyleDeclaration, Event, TemplateElement};
 
 // Re-export the most common objc2 / objc2_app_kit types so
 // downstream crates don't have to take a direct objc2 dependency
