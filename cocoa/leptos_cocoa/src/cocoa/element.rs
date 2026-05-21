@@ -235,7 +235,7 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
     fn mount(
         &mut self,
         parent: &CocoaElement,
-        marker: Option<&cocoa_dom::Node>,
+        marker: Option<&cocoa_dom::CocoaNode>,
     ) {
         // Step 1: insert self.el under parent. If parent has a Taffy
         // tree handle (i.e. is descended from a Window's content_root),
@@ -515,12 +515,12 @@ where
         #[cfg(feature = "animation")]
         wire_attr!(
             effects, el, self.scale,
-            |n: &cocoa_dom::Node, s: f64| cocoa_dom::layout::set_scale(*n, s, s)
+            |n: &cocoa_dom::CocoaNode, s: f64| cocoa_dom::layout::set_scale(*n, s, s)
         );
         #[cfg(feature = "animation")]
         wire_attr!(
             effects, el, self.translation_y,
-            |n: &cocoa_dom::Node, ty: f64| cocoa_dom::layout::set_translation(*n, 0.0, ty)
+            |n: &cocoa_dom::CocoaNode, ty: f64| cocoa_dom::layout::set_translation(*n, 0.0, ty)
         );
         // bind:mouse_hover=signal — one-way hover state writer.
         if let Some(mut setter) = self.pending_bind_mouse_hover {

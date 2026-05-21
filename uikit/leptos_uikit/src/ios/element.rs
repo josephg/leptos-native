@@ -200,8 +200,8 @@ impl<ChildState: Mountable<Dom>> Mountable<Dom>
         self.children.mount(&self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        crate::renderer_ios::insert_before_node(&self.el, child)
     }
 
     fn elements(&self) -> Vec<IosElement> {

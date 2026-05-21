@@ -6,7 +6,7 @@
 
 use crate::{
     layout,
-    node::{Element, Node},
+    node::{Element, CocoaNode},
 };
 use objc2::{
     define_class, msg_send,
@@ -32,7 +32,7 @@ type CleanupClosure = Box<dyn FnOnce()>;
 /// the resize handler can read its frame) plus an optional cleanup
 /// closure that fires once on `windowWillClose:`.
 pub struct WindowDelegateState {
-    pub root: Node,
+    pub root: CocoaNode,
     pub on_close: RefCell<Option<CleanupClosure>>,
 }
 
@@ -76,7 +76,7 @@ impl WindowDelegate {
     /// Create a delegate bound to `root`. The delegate retains a
     /// clone of the Node (cheap — shared NSView retain + Rc bump);
     /// register it on an NSWindow via `setDelegate(...)`.
-    pub fn new(root: Node, mtm: MainThreadMarker) -> Retained<Self> {
+    pub fn new(root: CocoaNode, mtm: MainThreadMarker) -> Retained<Self> {
         let alloc = Self::alloc(mtm).set_ivars(WindowDelegateState {
             root,
             on_close: RefCell::new(None),

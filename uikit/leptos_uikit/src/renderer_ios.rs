@@ -68,12 +68,16 @@ impl RendererTrait for Dom {
         IosRenderer::remove(node);
     }
 
-    // get_parent / first_child / next_sibling: cocoa returns None to
-    // dodge ios_dom's "hydration not supported" panics; same here.
-    fn get_parent(_node: &Node) -> Option<Node> {
-        None
+    fn get_parent(node: &Node) -> Option<Node> {
+        // The parent is a real node in the store; look it up by id.
+        // Used by `UnitState::insert_before_this` (the mount anchor
+        // for `<Switch>` and other placeholder-based control-flow).
+        IosBackend::parent(node.id())
+            .map(Node::from_id)
     }
 
+    // first_child / next_sibling stay None: ios_dom has no hydration
+    // walk, and nothing in the port relies on sibling traversal.
     fn first_child(_node: &Node) -> Option<Node> {
         None
     }
@@ -127,6 +131,21 @@ fn parent_of(before: &Node) -> Option<Node> {
 // Mountable<Dom> impls
 // ---------------------------------------------------------------------
 
+/// Body for [`Mountable::insert_before_this`]: mount `child` before
+/// `before` in `before`'s parent. Returns `false` if `before` has no
+/// parent (detached or a scene root), so callers fall back to another
+/// anchor.
+pub(crate) fn insert_before_node(
+    before: &Node,
+    child: &mut dyn Mountable<Dom>,
+) -> bool {
+    let Some(parent) = parent_of(before) else {
+        return false;
+    };
+    child.mount(&parent, Some(before));
+    true
+}
+
 impl Mountable<Dom> for Node {
     fn unmount(&mut self) {
         self.teardown();
@@ -144,8 +163,8 @@ impl Mountable<Dom> for Node {
         IosRenderer::try_insert_node(parent, self, marker)
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<Dom>) -> bool {
-        false
+    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+        insert_before_node(self, child)
     }
 
     fn elements(&self) -> Vec<Element> {

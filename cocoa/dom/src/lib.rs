@@ -2,7 +2,7 @@
 //! port — `leptos_cocoa` builds on top of this. User code talks to
 //! `leptos_cocoa::prelude::*` rather than to this crate directly.
 //!
-//! Provides [`Node`] and [`Element`] types that mirror the shape of
+//! Provides [`CocoaNode`] and [`Element`] types that mirror the shape of
 //! their `web_sys` equivalents but are backed directly by `NSView`
 //! (and subclasses like `NSButton`, `NSTextField`). The renderer's
 //! "text node" and "placeholder" varieties are just Element
@@ -59,7 +59,7 @@ pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
 pub use key_event::KeyEvent;
-pub use node::{Element, Node, WeakElement, WeakNode};
+pub use node::{Element, CocoaNode, WeakElement, WeakNode};
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::{ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement};
 

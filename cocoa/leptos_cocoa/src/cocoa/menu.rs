@@ -32,7 +32,7 @@ use crate::event_macos::{
 use crate::Dom;
 use cocoa_dom::{
     menu::{self as dom_menu, MenuBar as DomMenuBar},
-    Element as CocoaElement, MainThreadMarker, Node as CocoaNode,
+    Element as CocoaElement, MainThreadMarker, CocoaNode as CocoaNode,
 };
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSMenuItem};

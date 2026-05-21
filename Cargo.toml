@@ -6,13 +6,14 @@ members = [
   "common/devtools",
   "common/leptos_macro",
   "common/leptos_native",
+
+  "gtk/leptos_gtk",
+
   "apple_shared",
   "cocoa/leptos_cocoa",
-  "gtk/leptos_gtk",
-  "uikit/leptos_uikit",
-
-  # native ports
   "cocoa/dom",
+
+  "uikit/leptos_uikit",
   "uikit/dom",
 
   # cocoa examples
@@ -21,6 +22,7 @@ members = [
   # Cocoa correctness/leak fuzzer (binary).
   "cocoa/fuzzer",
 
+  "uikit/examples/*",
 #  "gtk/examples/*",
 
 #  # Network-dependent async examples — listed in `members` so they
@@ -87,7 +89,6 @@ default-members = [
 ]
 exclude = [
   "benchmarks",
-  "projects",
   "uikit/xcuitests",
   # iOS examples live in their own workspace at uikit/examples/.
   # See uikit/examples/Cargo.toml. They build only for iOS

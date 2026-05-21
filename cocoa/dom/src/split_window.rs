@@ -51,7 +51,7 @@
 
 use crate::{
     layout,
-    node::{Element, Node},
+    node::{Element, CocoaNode},
 };
 use objc2::{
     define_class, msg_send,
@@ -220,7 +220,7 @@ impl Default for PaneSpec {
 /// fields are crate-private: callers go through the wrapping
 /// [`Pane`] handle returned by [`open_split_window`].
 pub struct PaneState {
-    pub(crate) root: Node,
+    pub(crate) root: CocoaNode,
 }
 
 define_class!(
@@ -277,7 +277,7 @@ define_class!(
 );
 
 impl PaneViewController {
-    fn new(root: Node, mtm: MainThreadMarker) -> Retained<Self> {
+    fn new(root: CocoaNode, mtm: MainThreadMarker) -> Retained<Self> {
         let alloc = Self::alloc(mtm).set_ivars(PaneState { root });
         unsafe { msg_send![super(alloc), init] }
     }

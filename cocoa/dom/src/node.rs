@@ -9,7 +9,7 @@
 //! stale id (after the node was freed) resolves to `None`/no-op via the
 //! generational key — weak-reference behavior for free.
 //!
-//! Lifecycle is explicit: [`Node::teardown`] removes the node and its
+//! Lifecycle is explicit: [`CocoaNode::teardown`] removes the node and its
 //! whole structural subtree from the store. There is no drop-driven
 //! removal (a `Node` is `Copy`, so it has no `Drop`).
 
@@ -35,23 +35,23 @@ use crate::layout::CocoaBackend;
 /// (`with_style`, `with_meta`, `with_handlers_mut`, `ns_view`) read
 /// through the store keyed by `id`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Node {
+pub struct CocoaNode {
     pub(crate) id: NodeId,
 }
 
-impl fmt::Debug for Node {
+impl fmt::Debug for CocoaNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node").field("id", &self.id).finish()
     }
 }
 
-impl AsRef<Node> for Node {
-    fn as_ref(&self) -> &Node {
+impl AsRef<CocoaNode> for CocoaNode {
+    fn as_ref(&self) -> &CocoaNode {
         self
     }
 }
 
-impl Node {
+impl CocoaNode {
     /// Allocate a fresh entry in the store and return a `Node` for it.
     /// The typed registration primitive: hand in a concrete NSView
     /// subclass, get back a `Node`.
@@ -73,14 +73,14 @@ impl Node {
         // Wire the handlers' view back-ref so teardown can nil
         // setTarget/setDelegate while the view is still alive.
         CocoaBackend::with_handlers_mut(id, |h| h.attach_view(view));
-        Node { id }
+        CocoaNode { id }
     }
 
     /// Wrap an existing store id as a `Node`. Used where some other
     /// code already registered the entry (e.g. the relayout scheduler
     /// reconstructing a root handle).
     pub fn from_id(id: NodeId) -> Self {
-        Node { id }
+        CocoaNode { id }
     }
 
     /// The node's `NodeId`.
@@ -138,7 +138,7 @@ impl Node {
     }
 
     /// Pointer-equality check (same underlying NSView object).
-    pub fn ptr_eq(self, other: &Node) -> bool {
+    pub fn ptr_eq(self, other: &CocoaNode) -> bool {
         match (self.try_ns_view(), other.try_ns_view()) {
             (Some(a), Some(b)) => {
                 let pa: *const NSView = &*a;
@@ -200,12 +200,12 @@ impl Node {
     }
 
     /// Identity. Kept so pre-existing `el.as_node()` call sites compile.
-    pub fn as_node(&self) -> &Node {
+    pub fn as_node(&self) -> &CocoaNode {
         self
     }
 
     /// Identity. See [`Self::as_node`].
-    pub fn into_node(self) -> Node {
+    pub fn into_node(self) -> CocoaNode {
         self
     }
 
@@ -221,7 +221,7 @@ impl Node {
         let view: Retained<NSView> = unsafe {
             Retained::cast_unchecked(FlippedView::new(mtm))
         };
-        Node::from_view(view, Style::default(), CocoaMeta::default())
+        CocoaNode::from_view(view, Style::default(), CocoaMeta::default())
     }
 
     /// The NSView that *actually* parents this node's children. For
@@ -243,7 +243,7 @@ impl Node {
 
     /// Insert `child` before `marker` in this element's child list.
     /// If `marker` is `None`, append.
-    pub fn insert_node(self, child: &Node, marker: Option<&Node>) {
+    pub fn insert_node(self, child: &CocoaNode, marker: Option<&CocoaNode>) {
         let parent_retained = self.subview_parent();
         let parent: &NSView = &parent_retained;
         let child_view = child.ns_view();
@@ -279,7 +279,7 @@ impl Node {
 
     /// Remove `child` from this element. Returns the node back if it was
     /// actually our child, otherwise `None`.
-    pub fn remove_child(self, child: &Node) -> Option<Node> {
+    pub fn remove_child(self, child: &CocoaNode) -> Option<CocoaNode> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const NSView = &*parent_retained;
         let child_view = child.ns_view();
@@ -1240,7 +1240,7 @@ impl Node {
 // Node: text-label & placeholder constructors
 // ---------------------------------------------------------------------
 
-impl Node {
+impl CocoaNode {
     /// Build a text-label Node — a non-editable, non-bordered
     /// NSTextField (AppKit's "label" configuration).
     pub fn create_text(content: &str) -> Self {
@@ -1259,7 +1259,7 @@ impl Node {
         let mut style = crate::layout::Style::default();
         style.flex_shrink = 0.0;
 
-        Node::from_view(view, style, CocoaMeta::default())
+        CocoaNode::from_view(view, style, CocoaMeta::default())
     }
 
     /// Update the displayed string on a text-label Node.
@@ -1290,7 +1290,7 @@ impl Node {
         style.size.width = crate::layout::Dimension::length(0.0);
         style.size.height = crate::layout::Dimension::length(0.0);
 
-        Node::from_view(view, style, CocoaMeta::default())
+        CocoaNode::from_view(view, style, CocoaMeta::default())
     }
 }
 
@@ -1355,14 +1355,14 @@ pub struct WeakNode {
     id: NodeId,
 }
 
-impl Node {
+impl CocoaNode {
     /// Get a weak handle. (A `Node` is already non-owning; this exists
     /// for source-compat with the old `Rc`-based API.)
     pub fn downgrade(self) -> WeakNode {
         WeakNode { id: self.id }
     }
 
-    /// Convenience alias for [`Node::downgrade`].
+    /// Convenience alias for [`CocoaNode::downgrade`].
     pub fn weak(self) -> WeakNode {
         self.downgrade()
     }
@@ -1370,9 +1370,9 @@ impl Node {
 
 impl WeakNode {
     /// Recover a `Node` if the entry is still in the store.
-    pub fn upgrade(self) -> Option<Node> {
+    pub fn upgrade(self) -> Option<CocoaNode> {
         if CocoaBackend::contains(self.id) {
-            Some(Node { id: self.id })
+            Some(CocoaNode { id: self.id })
         } else {
             None
         }
@@ -1389,5 +1389,5 @@ impl WeakNode {
 // migration. They are plain `Node` now (no separate Element type).
 // Remove these and rename call sites `Element` -> `Node` as a final
 // cleanup pass.
-pub type Element = Node;
+pub type Element = CocoaNode;
 pub type WeakElement = WeakNode;

@@ -457,7 +457,7 @@ impl Mountable<Dom> for WindowState {
     fn mount(
         &mut self,
         _parent: &CocoaElement,
-        _marker: Option<&cocoa_dom::Node>,
+        _marker: Option<&cocoa_dom::CocoaNode>,
     ) {
         // Window is its own root; nothing to mount under another
         // Element. The NSWindow was opened in `build()`.

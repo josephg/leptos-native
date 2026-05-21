@@ -749,7 +749,7 @@ pub fn search_toolbar_item(
     identifier: &str,
     mtm: MainThreadMarker,
 ) -> SearchToolbarItem {
-    use crate::node::Node;
+    use crate::node::CocoaNode;
 
     let id_ns = NSString::from_str(identifier);
     let id_ref: &NSToolbarItemIdentifier = unsafe {
@@ -777,7 +777,7 @@ pub fn search_toolbar_item(
     // event-handler plumbing applies. NSToolbar owns layout, so this
     // node stays Unattached in the store (it never joins a layout
     // root); it persists until the toolbar item is torn down.
-    let node = Node::from_view(
+    let node = CocoaNode::from_view(
         search_field,
         taffy::Style::default(),
         crate::layout::CocoaMeta::default(),

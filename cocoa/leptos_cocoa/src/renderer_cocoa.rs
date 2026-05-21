@@ -20,7 +20,7 @@ use renderer::{renderer::Renderer as RendererTrait, view::Mountable, LayoutBacke
 // distinguishing a "text node" or "placeholder" from a regular
 // Element is the NSView subclass + default style applied at creation.
 pub use cocoa_dom::{
-    ClassList, CssStyleDeclaration, Element, Event, Node, TemplateElement,
+    ClassList, CssStyleDeclaration, Element, Event, CocoaNode, TemplateElement,
 };
 use cocoa_dom::layout::CocoaBackend;
 
@@ -37,7 +37,7 @@ pub struct Dom;
 
 impl RendererTrait for Dom {
     type Backend = cocoa_dom::layout::CocoaBackend;
-    type Node = Node;
+    type Node = CocoaNode;
 
     fn intern(text: &str) -> &str {
         CocoaRenderer::intern(text)
@@ -57,13 +57,13 @@ impl RendererTrait for Dom {
 
     fn insert_node(
         parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        new_child: &CocoaNode,
+        anchor: Option<&CocoaNode>,
     ) {
         CocoaRenderer::insert_node(parent, new_child, anchor);
     }
 
-    fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    fn remove_node(parent: &Element, child: &CocoaNode) -> Option<CocoaNode> {
         CocoaRenderer::remove_node(parent, child)
     }
 
@@ -71,29 +71,29 @@ impl RendererTrait for Dom {
         CocoaRenderer::clear_children(parent);
     }
 
-    fn remove(node: &Node) {
+    fn remove(node: &CocoaNode) {
         CocoaRenderer::remove(node);
     }
 
-    fn get_parent(node: &Node) -> Option<Node> {
+    fn get_parent(node: &CocoaNode) -> Option<CocoaNode> {
         // The parent is a real node in the store; look it up by id.
         // Used by `UnitState::insert_before_this` (the mount anchor
         // for `<Switch>` and other placeholder-based control-flow).
         CocoaBackend::parent(node.id())
-            .map(Node::from_id)
+            .map(CocoaNode::from_id)
     }
 
-    fn first_child(node: &Node) -> Option<Node> {
+    fn first_child(node: &CocoaNode) -> Option<CocoaNode> {
         let _ = node;
         None
     }
 
-    fn next_sibling(node: &Node) -> Option<Node> {
+    fn next_sibling(node: &CocoaNode) -> Option<CocoaNode> {
         let _ = node;
         None
     }
 
-    fn log_node(node: &Node) {
+    fn log_node(node: &CocoaNode) {
         CocoaRenderer::log_node(node);
     }
 
@@ -102,7 +102,7 @@ impl RendererTrait for Dom {
     /// right LayoutHandle so the new child registers in the same Taffy
     /// tree.
     #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: &Node) -> bool
+    fn try_mount_before<M>(new_child: &mut M, before: &CocoaNode) -> bool
     where
         M: Mountable<Self>,
     {
@@ -118,7 +118,7 @@ impl Dom {
     /// Mount `new_child` immediately before `before`. Panics if `before`
     /// has no parent (mirror of `try_mount_before`).
     #[track_caller]
-    pub fn mount_before<M>(new_child: &mut M, before: &Node)
+    pub fn mount_before<M>(new_child: &mut M, before: &CocoaNode)
     where
         M: Mountable<Dom>,
     {
@@ -131,9 +131,9 @@ impl Dom {
 /// The parent `Node` of `before` in the store, or `None` if `before`
 /// is a root (or detached). The parent is a real node; no NSView
 /// wrapper synthesis is needed under the thread-local store.
-pub(crate) fn parent_of(before: &Node) -> Option<Node> {
+pub(crate) fn parent_of(before: &CocoaNode) -> Option<CocoaNode> {
     CocoaBackend::parent(before.id())
-        .map(Node::from_id)
+        .map(CocoaNode::from_id)
 }
 
 // ---------------------------------------------------------------------
@@ -151,7 +151,7 @@ pub(crate) fn parent_of(before: &Node) -> Option<Node> {
 /// the window's root content view). Callers fall back to mounting at
 /// a different anchor in that case.
 pub(crate) fn insert_before_node(
-    before: &Node,
+    before: &CocoaNode,
     child: &mut dyn Mountable<Dom>,
 ) -> bool {
     let Some(parent) = parent_of(before) else {
@@ -161,19 +161,19 @@ pub(crate) fn insert_before_node(
     true
 }
 
-impl Mountable<Dom> for Node {
+impl Mountable<Dom> for CocoaNode {
     fn unmount(&mut self) {
         self.teardown();
     }
 
-    fn mount(&mut self, parent: &Element, marker: Option<&Node>) {
+    fn mount(&mut self, parent: &Element, marker: Option<&CocoaNode>) {
         <Dom as RendererTrait>::insert_node(parent, self, marker);
     }
 
     fn try_mount(
         &mut self,
         parent: &Element,
-        marker: Option<&Node>,
+        marker: Option<&CocoaNode>,
     ) -> bool {
         CocoaRenderer::try_insert_node(parent, self, marker)
     }

@@ -137,7 +137,7 @@ use cocoa_dom::{
         sidebar_tracking_separator_identifier, space_identifier,
         toggle_sidebar_identifier, ToolbarItemRegistration,
     },
-    Element as CocoaElement, MainThreadMarker, Node as CocoaNode,
+    Element as CocoaElement, MainThreadMarker, CocoaNode as CocoaNode,
 };
 
 // Re-export the dom-side enums from this module so user-facing

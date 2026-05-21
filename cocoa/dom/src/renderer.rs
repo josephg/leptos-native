@@ -12,7 +12,7 @@
 //! On the native code path they should be unreachable; tracked in
 //! `implementation_log.md`.
 
-use crate::node::{Element, Node};
+use crate::node::{Element, CocoaNode};
 use objc2_app_kit::NSEvent;
 use objc2::rc::Retained;
 use send_wrapper::SendWrapper;
@@ -115,108 +115,38 @@ impl Renderer {
 
     pub fn insert_node(
         parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        new_child: &CocoaNode,
+        anchor: Option<&CocoaNode>,
     ) {
         parent.insert_node(new_child, anchor);
     }
 
     pub fn try_insert_node(
         parent: &Element,
-        new_child: &Node,
-        anchor: Option<&Node>,
+        new_child: &CocoaNode,
+        anchor: Option<&CocoaNode>,
     ) -> bool {
         parent.insert_node(new_child, anchor);
         true
     }
 
-    pub fn remove_node(parent: &Element, child: &Node) -> Option<Node> {
+    pub fn remove_node(parent: &Element, child: &CocoaNode) -> Option<CocoaNode> {
         parent.remove_child(child)
     }
 
-    pub fn remove(node: &Node) {
+    pub fn remove(node: &CocoaNode) {
         // `drop_node` detaches the NSView and removes the node (and its
         // structural subtree) from the store, so the node count returns
         // to baseline. Caught by `cocoa_fuzzer`'s post-seed check.
         crate::layout::drop_node(*node);
     }
 
-    /// Hydration-only API. Should be unreachable on native — see
-    /// implementation_log.md (2026-05-03 entry).
-    pub fn get_parent(_node: &Node) -> Option<Node> {
-        unimplemented!(
-            "cocoa_dom::Renderer::get_parent — hydration is not supported \
-             on the native target"
-        );
-    }
-
-    /// Hydration-only API. Should be unreachable on native — see
-    /// implementation_log.md (2026-05-03 entry).
-    pub fn first_child(_node: &Node) -> Option<Node> {
-        unimplemented!(
-            "cocoa_dom::Renderer::first_child — hydration is not \
-             supported on the native target"
-        );
-    }
-
-    /// Hydration-only API. Should be unreachable on native — see
-    /// implementation_log.md (2026-05-03 entry).
-    pub fn next_sibling(_node: &Node) -> Option<Node> {
-        unimplemented!(
-            "cocoa_dom::Renderer::next_sibling — hydration is not \
-             supported on the native target"
-        );
-    }
-
-    pub fn log_node(node: &Node) {
+    pub fn log_node(node: &CocoaNode) {
         eprintln!("[cocoa_dom] {node:?}");
     }
 
     pub fn clear_children(parent: &Element) {
         parent.clear_children();
-    }
-
-    // ---- DOM-only / web-only stubs --------------------------------
-
-    pub fn class_list(_el: &Element) -> ClassList {
-        ClassList
-    }
-    pub fn add_class(_list: &ClassList, _name: &str) {}
-    pub fn remove_class(_list: &ClassList, _name: &str) {}
-
-    pub fn style(_el: &Element) -> CssStyleDeclaration {
-        CssStyleDeclaration
-    }
-    pub fn set_css_property(
-        _style: &CssStyleDeclaration,
-        _name: &str,
-        _value: &str,
-    ) {
-    }
-    pub fn remove_css_property(
-        _style: &CssStyleDeclaration,
-        _name: &str,
-    ) {
-    }
-
-    pub fn set_inner_html(_el: &Element, _html: &str) {
-        // No HTML on native; this is a no-op rather than a panic so
-        // that any indirect callers from the (currently disabled) html
-        // module degrade gracefully if reintroduced later.
-    }
-
-    pub fn get_template<V: 'static>() -> TemplateElement {
-        unimplemented!(
-            "cocoa_dom::Renderer::get_template — <template> cloning is \
-             a web-only optimization (see implementation_log.md)"
-        );
-    }
-
-    pub fn clone_template(_tpl: &TemplateElement) -> Element {
-        unimplemented!(
-            "cocoa_dom::Renderer::clone_template — <template> cloning is \
-             a web-only optimization (see implementation_log.md)"
-        );
     }
 }
 
@@ -229,8 +159,8 @@ impl Renderer {
 
 use renderer::renderer::CastFrom;
 
-impl CastFrom<Node> for Node {
-    fn cast_from(source: Node) -> Option<Node> {
+impl CastFrom<CocoaNode> for CocoaNode {
+    fn cast_from(source: CocoaNode) -> Option<CocoaNode> {
         Some(source)
     }
 }

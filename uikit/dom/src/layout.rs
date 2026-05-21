@@ -126,8 +126,8 @@ pub fn drop_node(node: impl std::borrow::Borrow<Node>) {
 
 // ---------------------------------------------------------------------
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
-// Each mutation walks up to its subtree root and enqueues only that
-// root; the deferred pass recomputes just the enqueued roots.
+// Each mutation enqueues the touched node; the deferred pass resolves
+// each to its current subtree root and recomputes just those roots.
 // ---------------------------------------------------------------------
 
 pub fn schedule_relayout(node: Node) {
@@ -135,9 +135,20 @@ pub fn schedule_relayout(node: Node) {
     queue_relayout_for(node.id());
 }
 
+/// Enqueue `id` for relayout on the next main-loop tick.
+///
+/// We enqueue the *touched node*, NOT its current subtree root. The
+/// root is resolved (via `root_of`) when the pass drains — see
+/// [`ensure_relayout_pass_scheduled`]. Resolving early is a bug:
+/// reactive attr effects fire during `Render::build`, before the
+/// node is mounted under `content_root`, so `root_of` would capture
+/// an intermediate node as its own root. The deferred pass would
+/// then recompute that intermediate as a root and plant it at Taffy
+/// origin `(0,0)` — the "everything teleports to the top-left"
+/// regression. Deferring `root_of` to drain time means the node is
+/// attached by then and resolves to the real scene root.
 fn queue_relayout_for(id: NodeId) {
-    let root = IosBackend::root_of(id);
-    IosBackend::queue_relayout(root);
+    IosBackend::queue_relayout(id);
     ensure_relayout_pass_scheduled();
 }
 
@@ -149,7 +160,21 @@ fn ensure_relayout_pass_scheduled() {
 
     DispatchQueue::main().exec_async(move || {
         IosBackend::set_relayout_queued(false);
-        for root_id in IosBackend::take_pending_relayout() {
+        // Resolve each touched node to its CURRENT subtree root (it's
+        // attached by now, even if it wasn't when enqueued), dedup,
+        // and recompute each unique root once. A node freed before now
+        // isn't in the store and is skipped.
+        let mut roots: Vec<NodeId> = Vec::new();
+        for id in IosBackend::take_pending_relayout() {
+            if !IosBackend::contains(id) {
+                continue;
+            }
+            let root = IosBackend::root_of(id);
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+        for root_id in roots {
             let Some(view) = IosBackend::view(root_id) else {
                 continue;
             };
