@@ -23,8 +23,6 @@
 //! `Node` nominally `Send + 'static`, with a runtime panic if
 //! accessed off-main.
 
-#![cfg(feature = "gtk")]
-
 pub mod app;
 pub mod color;
 #[cfg(feature = "debug-overlay")]
@@ -51,8 +49,3 @@ pub use node::GtkNode;
 pub use renderer::{
     ClassList, CssStyleDeclaration, Event, Renderer, TemplateElement,
 };
-
-// Re-export the GTK crates downstream consumers will need so they
-// don't have to take their own direct dependency on them.
-pub use gtk4 as gtk;
-pub use {gio, glib};

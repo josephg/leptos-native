@@ -5,7 +5,8 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, GtkNode};
+use leptos_gtk::dom::GtkNode;
+use leptos_gtk::gtk4::prelude::*;
 
 // ---------------------------------------------------------------------
 // Identity / round-trip
@@ -42,7 +43,7 @@ fn into_node_round_trip() {
 // Helpers — count children of a gtk::Box / Widget
 // ---------------------------------------------------------------------
 
-fn child_count(widget: &gtk_dom::gtk::Widget) -> usize {
+fn child_count(widget: &gtk4::Widget) -> usize {
     let mut cur = widget.first_child();
     let mut n = 0usize;
     while let Some(w) = cur {
@@ -52,7 +53,7 @@ fn child_count(widget: &gtk_dom::gtk::Widget) -> usize {
     n
 }
 
-fn child_at(widget: &gtk_dom::gtk::Widget, idx: usize) -> Option<gtk_dom::gtk::Widget> {
+fn child_at(widget: &gtk4::Widget, idx: usize) -> Option<gtk4::Widget> {
     let mut cur = widget.first_child();
     let mut i = 0usize;
     while let Some(w) = cur {

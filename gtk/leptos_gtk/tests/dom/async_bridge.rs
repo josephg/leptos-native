@@ -13,11 +13,11 @@
 
 mod common;
 
-use gtk_dom::on_main;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use leptos_gtk::dom::on_main;
 
 /// Pump the default `MainContext` non-blockingly for up to
 /// `timeout_secs`, returning early as soon as the predicate is

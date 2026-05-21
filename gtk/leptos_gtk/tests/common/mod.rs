@@ -4,6 +4,8 @@
 #![cfg(feature = "gtk")]
 #![allow(dead_code)]
 
+use leptos_gtk::dom::app;
+
 pub fn ensure_gtk_init() {
     use std::sync::Once;
     static INIT: Once = Once::new();
@@ -38,7 +40,7 @@ pub fn init_app_registered(application_id: &str) -> gtk4::Application {
     // The suffix element must start with a letter — GApplication
     // rejects id segments that begin with a digit.
     let id = format!("{application_id}.t{}", N.fetch_add(1, Ordering::Relaxed));
-    let app = gtk_dom::app::init_app(&id);
+    let app = app::init_app(&id);
     let _ = app.register(None::<&gtk4::gio::Cancellable>);
     app
 }

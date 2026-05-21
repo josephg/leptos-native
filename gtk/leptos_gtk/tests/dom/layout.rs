@@ -10,9 +10,8 @@
 
 mod common;
 
-use gtk_dom::{layout, GtkNode};
+use leptos_gtk::dom::{layout, GtkNode, layout::GtkBackend};
 use renderer::scene::LayoutBackend;
-use gtk_dom::layout::GtkBackend;
 
 /// Read the Taffy-computed layout for `el` and assert position +
 /// size against the expected values.

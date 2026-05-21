@@ -5,7 +5,7 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, GtkNode};
+use leptos_gtk::{gtk4::prelude::*, dom::GtkNode};
 
 fn text_create_basic() {
     let t = GtkNode::create_text("hello");
@@ -13,7 +13,7 @@ fn text_create_basic() {
     let __w = t
         .as_node()
         .widget();
-    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
+    let l = __w.downcast_ref::<gtk4::Label>()
         .expect("text-label should be backed by gtk::Label");
     assert_eq!(l.label().as_str(), "hello");
 }
@@ -23,7 +23,7 @@ fn text_create_empty() {
     let __w = t
         .as_node()
         .widget();
-    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
+    let l = __w.downcast_ref::<gtk4::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "");
 }
@@ -33,7 +33,7 @@ fn text_create_multiline_preserves_newlines() {
     let __w = t
         .as_node()
         .widget();
-    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
+    let l = __w.downcast_ref::<gtk4::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "line one\nline two\nline three");
 }
@@ -44,7 +44,7 @@ fn text_set_text_updates_value() {
     let __w = t
         .as_node()
         .widget();
-    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
+    let l = __w.downcast_ref::<gtk4::Label>()
         .unwrap();
     assert_eq!(l.label().as_str(), "after");
 }
@@ -65,7 +65,7 @@ fn placeholder_backed_by_label_so_children_error() {
     // an invisible child.
     let p = GtkNode::create_placeholder();
     assert!(
-        p.as_node().widget().is::<gtk_dom::gtk::Label>(),
+        p.as_node().widget().is::<gtk4::Label>(),
         "Placeholder should be a gtk::Label so it can't accept children"
     );
 }

@@ -6,43 +6,44 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, GtkNode};
+use leptos_gtk::dom::GtkNode;
+use leptos_gtk::gtk4::prelude::*;
 
 fn view_is_a_box() {
     // `<view>` is a generic flexbox container, backed by gtk::Box
     // (with our TaffyLayout swapped in once mounted).
     let el = GtkNode::create_stack();
-    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+    assert!(el.widget().is::<gtk4::Box>());
 }
 
 fn vstack_is_a_box() {
     let el = GtkNode::create_vstack();
-    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+    assert!(el.widget().is::<gtk4::Box>());
 }
 
 fn hstack_is_a_box() {
     let el = GtkNode::create_hstack();
-    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+    assert!(el.widget().is::<gtk4::Box>());
 }
 
 fn stack_is_a_box() {
     let el = GtkNode::create_stack();
-    assert!(el.widget().is::<gtk_dom::gtk::Box>());
+    assert!(el.widget().is::<gtk4::Box>());
 }
 
 fn button_is_gtk_button() {
     let el = GtkNode::create_button().0;
-    assert!(el.widget().is::<gtk_dom::gtk::Button>());
+    assert!(el.widget().is::<gtk4::Button>());
 }
 
 fn checkbox_is_gtk_check_button() {
     let el = GtkNode::create_checkbox().0;
-    assert!(el.widget().is::<gtk_dom::gtk::CheckButton>());
+    assert!(el.widget().is::<gtk4::CheckButton>());
 }
 
 fn label_is_gtk_label() {
     let el = GtkNode::create_label().0;
-    assert!(el.widget().is::<gtk_dom::gtk::Label>());
+    assert!(el.widget().is::<gtk4::Label>());
 }
 
 fn label_wraps_by_default() {
@@ -52,30 +53,30 @@ fn label_wraps_by_default() {
     let el = GtkNode::create_label().0;
     let __w = el
         .widget();
-    let l = __w.downcast_ref::<gtk_dom::gtk::Label>()
+    let l = __w.downcast_ref::<gtk4::Label>()
         .unwrap();
     assert!(l.wraps(), "label should wrap by default");
 }
 
 fn text_field_is_gtk_entry() {
     let el = GtkNode::create_text_field().0;
-    assert!(el.widget().is::<gtk_dom::gtk::Entry>());
+    assert!(el.widget().is::<gtk4::Entry>());
     assert!(
-        !el.widget().is::<gtk_dom::gtk::PasswordEntry>(),
+        !el.widget().is::<gtk4::PasswordEntry>(),
         "plain text_field shouldn't be a password entry"
     );
 }
 
 fn secure_text_field_is_password_entry() {
     let el = GtkNode::create_secure_text_field().0;
-    assert!(el.widget().is::<gtk_dom::gtk::PasswordEntry>());
+    assert!(el.widget().is::<gtk4::PasswordEntry>());
 }
 
 fn slider_is_gtk_scale() {
     let el = GtkNode::create_slider().0;
     let v = el.widget();
-    assert!(v.is::<gtk_dom::gtk::Scale>());
-    let s = v.downcast_ref::<gtk_dom::gtk::Scale>().unwrap();
+    assert!(v.is::<gtk4::Scale>());
+    let s = v.downcast_ref::<gtk4::Scale>().unwrap();
     // We disable the value display since cocoa sliders don't show one
     // either — keep cross-platform parity.
     assert!(!s.draws_value());
@@ -83,7 +84,7 @@ fn slider_is_gtk_scale() {
 
 fn pop_up_button_is_drop_down() {
     let el = GtkNode::create_pop_up_button().0;
-    assert!(el.widget().is::<gtk_dom::gtk::DropDown>());
+    assert!(el.widget().is::<gtk4::DropDown>());
 }
 
 fn main() {

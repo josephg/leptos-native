@@ -9,7 +9,7 @@
 //! setting, hydration tree walking) panic with `unimplemented!()` if
 //! actually called.
 
-use crate::node::GtkNode;
+use crate::dom::node::GtkNode;
 use send_wrapper::SendWrapper;
 use std::fmt;
 
@@ -115,7 +115,7 @@ impl Renderer {
     }
 
     pub fn remove(node: &GtkNode) {
-        crate::layout::drop_node(node);
+        layout::drop_node(node);
     }
 
     pub fn get_parent(_node: &GtkNode) -> Option<GtkNode> {
@@ -190,6 +190,7 @@ impl Renderer {
 // ---------------------------------------------------------------------
 
 use renderer::renderer::CastFrom;
+use crate::dom::layout;
 
 impl CastFrom<GtkNode> for GtkNode {
     fn cast_from(source: GtkNode) -> Option<GtkNode> {

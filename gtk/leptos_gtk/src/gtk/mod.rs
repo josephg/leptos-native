@@ -22,12 +22,12 @@ pub use element::{
     button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
     slider, stack, stack_view, text_field, toggle, vstack,
 };
-pub use gtk_dom::Color;
+pub use crate::dom::Color;
 pub use node_ref::NodeRef;
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums.
-pub use gtk_dom::layout::{
+pub use crate::dom::layout::{
     AlignContent, AlignItems, FlexDirection, GridAutoFlow,
     GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
 };

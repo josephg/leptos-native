@@ -18,7 +18,7 @@
 //!   key and flips the global `VISIBLE` flag, then asks every
 //!   registered overlay to redraw via `queue_draw`.
 
-use crate::layout::{GtkBackend, NodeId};
+use crate::dom::layout::{GtkBackend, NodeId};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -177,7 +177,7 @@ fn walk(
             // natural size.
             if baseline_in_use(node_id) {
                 if let Some(bo) =
-                    <crate::layout::GtkBackend as renderer::LayoutBackend>::first_baseline(&view)
+                    <crate::dom::layout::GtkBackend as renderer::LayoutBackend>::first_baseline(&view)
                 {
                     if bo > 0.0 && bo < rect.height() {
                         let y = rect.y() + bo;

@@ -21,7 +21,7 @@
 
 mod common;
 
-use gtk_dom::{layout, GtkNode};
+use leptos_gtk::dom::{layout, GtkNode};
 use renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
 fn style_of(el: &GtkNode) -> renderer::Style {

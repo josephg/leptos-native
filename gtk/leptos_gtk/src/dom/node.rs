@@ -14,11 +14,12 @@
 //!
 //! GtkNode is a newtype wrapper around NodeId to add GTK-specific methods.
 
-use crate::layout::{GtkBackend, NodeId, Style};
-use crate::taffy_layout::TaffyLayout;
+use crate::dom::layout::{GtkBackend, NodeId, Style};
+use crate::dom::taffy_layout::TaffyLayout;
 use gtk4::glib;
 use gtk4::prelude::*;
 use renderer::LayoutBackend;
+use crate::dom::{event, layout};
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`.
@@ -123,7 +124,7 @@ impl GtkNode {
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
-    pub fn insert_node(self, child: &crate::GtkNode, marker: Option<&crate::GtkNode>) {
+    pub fn insert_node(self, child: &GtkNode, marker: Option<&GtkNode>) {
         let _ = self.try_insert_node(child, marker);
     }
 
@@ -131,8 +132,8 @@ impl GtkNode {
     /// parent isn't a supported container, or `marker` isn't its child.
     pub fn try_insert_node(
         self,
-        child: &crate::GtkNode,
-        marker: Option<&crate::GtkNode>,
+        child: &GtkNode,
+        marker: Option<&GtkNode>,
     ) -> bool {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
@@ -193,15 +194,15 @@ impl GtkNode {
         // Mirror into Taffy at the right index.
         let idx = child_index_in_parent(parent, child_widget);
         if let Some(idx) = idx {
-            crate::layout::insert_child_at(self, *child, idx);
+            layout::insert_child_at(self, *child, idx);
         } else {
-            crate::layout::attach_child(self, *child);
+            layout::attach_child(self, *child);
         }
         true
     }
 
     /// Remove `child` from this element's child list.
-    pub fn remove_child(self, child: &crate::GtkNode) -> Option<crate::GtkNode> {
+    pub fn remove_child(self, child: &GtkNode) -> Option<GtkNode> {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -211,7 +212,7 @@ impl GtkNode {
             return None;
         }
         detach_child_widget(parent, child_widget);
-        crate::layout::detach_child(self, *child);
+        layout::detach_child(self, *child);
         Some(*child)
     }
 
@@ -253,7 +254,7 @@ impl GtkNode {
             }
         }
         if changed {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -278,7 +279,7 @@ impl GtkNode {
             }
         }
         if changed {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -298,7 +299,7 @@ impl GtkNode {
             }
         }
         if changed {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -331,40 +332,40 @@ impl GtkNode {
     // ---- event hooks (delegate to crate::event) ----
 
     pub fn on_click(self, cb: impl FnMut() + 'static) {
-        crate::event::on_click(&self.widget(), cb);
+        event::on_click(&self.widget(), cb);
     }
 
     pub fn on_action(self, cb: impl FnMut() + 'static) {
-        crate::event::on_action(&self.widget(), cb);
+        event::on_action(&self.widget(), cb);
     }
 
     pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
         let widget = self.widget();
         if widget.downcast_ref::<gtk4::Entry>().is_some() {
-            crate::event::on_text_change(&widget, move |_| cb());
+            event::on_text_change(&widget, move |_| cb());
             return;
         }
         if widget.downcast_ref::<gtk4::PasswordEntry>().is_some() {
-            crate::event::on_text_change(&widget, move |_| cb());
+            event::on_text_change(&widget, move |_| cb());
             return;
         }
-        crate::event::on_action(&widget, cb);
+        event::on_action(&widget, cb);
     }
 
     pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_change(&self.widget(), cb);
+        event::on_text_change(&self.widget(), cb);
     }
 
     pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_end_editing(&self.widget(), cb);
+        event::on_text_end_editing(&self.widget(), cb);
     }
 
     pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_focus(&self.widget(), cb);
+        event::on_text_focus(&self.widget(), cb);
     }
 
     pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_blur(&self.widget(), cb);
+        event::on_text_blur(&self.widget(), cb);
     }
 
     // ---- value accessors ----
@@ -484,7 +485,7 @@ impl GtkNode {
         if let Some(label) = self.widget().downcast_ref::<gtk4::Label>() {
             if label.label().as_str() != content {
                 label.set_label(content);
-                crate::layout::schedule_relayout(self);
+                crate::dom::layout::schedule_relayout(self);
             }
         }
     }
@@ -495,9 +496,9 @@ impl GtkNode {
         widget.set_visible(false);
 
         let mut style = Style::default();
-        style.position = crate::layout::Position::Absolute;
-        style.size.width = crate::layout::Dimension::length(0.0);
-        style.size.height = crate::layout::Dimension::length(0.0);
+        style.position = crate::dom::layout::Position::Absolute;
+        style.size.width = crate::dom::layout::Dimension::length(0.0);
+        style.size.height = crate::dom::layout::Dimension::length(0.0);
 
         GtkNode::new_from_widget(widget, style).with_tag("placeholder")
     }
@@ -507,7 +508,7 @@ impl GtkNode {
 // Helpers
 // ---------------------------------------------------------------------
 
-use crate::make_view::container_widget;
+use crate::dom::make_view::container_widget;
 
 /// Detach `child` from `parent`, using the correct GTK4 API for the
 /// parent's child model.
@@ -544,7 +545,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 fn attach_under(
     parent: &gtk4::Widget,
     child: &gtk4::Widget,
-    marker: Option<&crate::GtkNode>,
+    marker: Option<&GtkNode>,
 ) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {

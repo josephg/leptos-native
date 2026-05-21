@@ -1,7 +1,7 @@
 //! `NodeRef` — get a handle to a built element from outside its
 //! `view!{}`. Mirrors `leptos_cocoa::cocoa::node_ref::NodeRef`.
 
-use gtk_dom::GtkNode;
+use crate::dom::GtkNode;
 use reactive_graph::{
     effect::Effect,
     signal::RwSignal,

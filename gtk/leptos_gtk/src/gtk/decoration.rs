@@ -16,7 +16,7 @@
 //! pattern.
 
 use crate::gtk::IntoMaybeReactive;
-use gtk_dom::Color;
+use crate::dom::Color;
 use std::sync::Once;
 
 static WARNED: Once = Once::new();

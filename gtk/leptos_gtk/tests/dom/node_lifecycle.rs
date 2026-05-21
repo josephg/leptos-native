@@ -11,9 +11,8 @@
 
 mod common;
 
-use gtk_dom::{layout, GtkNode};
+use leptos_gtk::dom::{layout, GtkNode, layout::GtkBackend};
 use renderer::LayoutBackend;
-use gtk_dom::layout::GtkBackend;
 
 // 1. Fresh nodes are in the store from creation.
 fn freshly_created_node_is_in_store() {

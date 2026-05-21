@@ -8,7 +8,8 @@
 
 mod common;
 
-use gtk_dom::{gtk::prelude::*, GtkNode};
+use leptos_gtk::dom::GtkNode;
+use leptos_gtk::gtk4::prelude::*;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -24,7 +25,7 @@ fn on_click_fires_on_button() {
 
     let __w = el
         .widget();
-    let b = __w.downcast_ref::<gtk_dom::gtk::Button>()
+    let b = __w.downcast_ref::<gtk4::Button>()
         .unwrap();
     b.emit_clicked();
     b.emit_clicked();
@@ -50,7 +51,7 @@ fn on_click_on_checkbox_fires_on_toggle() {
     // `on_click` routes through that.
     let __w = el
         .widget();
-    let cb = __w.downcast_ref::<gtk_dom::gtk::CheckButton>()
+    let cb = __w.downcast_ref::<gtk4::CheckButton>()
         .unwrap();
     cb.set_active(true);
     cb.set_active(false);
@@ -105,7 +106,7 @@ fn on_text_change_fires_on_text_field() {
 
     let __w = el
         .widget();
-    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+    let entry = __w.downcast_ref::<gtk4::Entry>()
         .unwrap();
     entry.set_text("typed");
 
@@ -133,7 +134,7 @@ fn multiple_on_text_change_fan_out() {
 
     let __w = el
         .widget();
-    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+    let entry = __w.downcast_ref::<gtk4::Entry>()
         .unwrap();
     entry.set_text("hi");
 
@@ -152,7 +153,7 @@ fn on_text_end_editing_fires_on_activate() {
 
     let __w = el
         .widget();
-    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+    let entry = __w.downcast_ref::<gtk4::Entry>()
         .unwrap();
     entry.set_text("done");
     entry.emit_activate();
@@ -176,7 +177,7 @@ fn on_change_and_on_input_coexist() {
 
     let __w = el
         .widget();
-    let entry = __w.downcast_ref::<gtk_dom::gtk::Entry>()
+    let entry = __w.downcast_ref::<gtk4::Entry>()
         .unwrap();
     entry.set_text("x");
     entry.emit_activate();

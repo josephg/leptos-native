@@ -36,7 +36,7 @@
 
 use crate::{gtk::window::window, Dom};
 use gtk4::prelude::*;
-use gtk_dom::app::{init_app, run_loop};
+use crate::dom::app::{init_app, run_loop};
 use reactive_graph::owner::Owner;
 use renderer::view::Render;
 use std::cell::RefCell;

@@ -6,8 +6,8 @@
 //! against this and is responsible for mounting children before
 //! calling [`OpenedWindow::show`].
 
-use crate::layout::{self, FlexDirection};
-use crate::node::{install_taffy_layout_for_container, GtkNode};
+use crate::dom::layout::{self, FlexDirection};
+use crate::dom::node::{install_taffy_layout_for_container, GtkNode};
 use gtk4::prelude::*;
 
 /// Everything the higher layers need to set up a single window: the
@@ -68,7 +68,7 @@ pub fn open_window(
         let overlay = gtk4::Overlay::new();
         overlay.set_child(Some(&content_root.widget()));
         #[cfg(feature = "debug-overlay")]
-        crate::debug_overlay::add_to(&overlay, &gtk_window, root_id);
+        crate::dom::debug_overlay::add_to(&overlay, &gtk_window, root_id);
         #[cfg(feature = "devtools")]
         crate::highlight::add_to(&overlay, &gtk_window, root_id);
         gtk_window.set_child(Some(&overlay));

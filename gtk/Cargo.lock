@@ -860,22 +860,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gtk_dom"
-version = "0.1.0"
-dependencies = [
- "any_spawner",
- "futures",
- "gio",
- "glib 0.21.5",
- "gtk4",
- "leptos_devtools",
- "reactive_graph",
- "renderer",
- "send_wrapper",
- "taffy",
-]
-
-[[package]]
 name = "guardian"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1215,16 +1199,18 @@ version = "0.1.0"
 dependencies = [
  "any_spawner",
  "either_of",
+ "futures",
  "gio",
  "glib 0.21.5",
  "gtk4",
- "gtk_dom",
+ "leptos_devtools",
  "leptos_macro",
  "leptos_native",
  "oco_ref",
  "reactive_graph",
  "renderer",
  "send_wrapper",
+ "taffy",
 ]
 
 [[package]]

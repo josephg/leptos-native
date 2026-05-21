@@ -10,7 +10,7 @@
 //! (`Element::create(tree, "button")` → big `match tag` in
 //! `node.rs`). Same shape as cocoa's `make_view.rs`.
 
-use crate::{
+use crate::dom::{
     layout::{FlexDirection, Style},
     node::GtkNode,
 };
@@ -113,7 +113,7 @@ impl GtkNode {
     pub fn create_grid() -> GtkNode {
         let w = container_widget();
         let mut s = Style::default();
-        s.display = crate::layout::Display::Grid;
+        s.display = crate::dom::layout::Display::Grid;
         GtkNode::new_from_widget(w, s).with_tag("grid")
     }
 }

@@ -10,7 +10,7 @@
 //! pass; nested instances just look up their direct children's
 //! pre-computed frames and call `child.allocate(...)`.
 
-use crate::layout::{AvailableSpace, Dimension, GtkBackend, NodeId, Size};
+use crate::dom::layout::{AvailableSpace, Dimension, GtkBackend, NodeId, Size};
 use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use renderer::scene::LayoutBackend;
 
 mod imp {
-    use crate::layout::GtkBackend;
+    use crate::dom::layout::GtkBackend;
     use super::*;
 
     pub struct TaffyLayout {

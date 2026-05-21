@@ -11,7 +11,7 @@
 
 #![allow(missing_docs)]
 
-use gtk_dom::Renderer as GtkRenderer;
+use crate::dom::Renderer as GtkRenderer;
 use renderer::{
     renderer::Renderer as RendererTrait,
     view::Mountable,
@@ -23,7 +23,7 @@ use renderer::{
 // they're all widget-backed Elements; the only thing distinguishing
 // a "text node" or "placeholder" from a regular Element is the
 // widget subclass + default style applied at creation.
-pub use gtk_dom::{
+pub use crate::dom::{
     ClassList, CssStyleDeclaration, Event, GtkNode, TemplateElement,
 };
 pub type Text = GtkNode;
@@ -35,7 +35,7 @@ use renderer::scene::LayoutBackend;
 pub struct Dom;
 
 impl RendererTrait for Dom {
-    type Backend = gtk_dom::layout::GtkBackend;
+    type Backend = crate::dom::layout::GtkBackend;
     type Node = GtkNode;
 
     fn intern(text: &str) -> &str {
@@ -132,7 +132,7 @@ impl Dom {
 /// root. The parent is a real node — no widget-wrapper synthesis is
 /// needed under the thread-local store.
 fn parent_of(before: &GtkNode) -> Option<GtkNode> {
-    gtk_dom::layout::GtkBackend::parent(before.id())
+    crate::dom::layout::GtkBackend::parent(before.id())
         .map(GtkNode::from_id)
 }
 

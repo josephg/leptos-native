@@ -3,10 +3,7 @@
 
 use crate::Dom;
 use gtk4::prelude::*;
-use gtk_dom::{
-    window::{open_window, OpenedWindow},
-    GtkNode as GtkElement,
-};
+pub use crate::dom::{window::{open_window, OpenedWindow}, GtkNode as GtkElement, GtkNode};
 use renderer::view::{Mountable, Render};
 
 #[allow(missing_docs)]
@@ -122,7 +119,7 @@ impl Mountable<Dom> for WindowState {
     fn mount(
         &mut self,
         _parent: &GtkElement,
-        _marker: Option<&gtk_dom::GtkNode>,
+        _marker: Option<&GtkNode>,
     ) {
         // Window is its own root; nothing to mount.
     }

@@ -15,7 +15,7 @@
 //! on the next frame, and our [`super::taffy_layout::TaffyLayout`]
 //! `LayoutManager` is what runs Taffy from inside that pass.
 
-use crate::node::GtkNode;
+use crate::dom::node::GtkNode;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 
@@ -153,7 +153,7 @@ fn queue_root_resize_for(id: NodeId) {
         widget.queue_resize();
     }
     #[cfg(feature = "debug-overlay")]
-    crate::debug_overlay::mark_overlays_dirty();
+    crate::dom::debug_overlay::mark_overlays_dirty();
 }
 
 // ---------------------------------------------------------------------

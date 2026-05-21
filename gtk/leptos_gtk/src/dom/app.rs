@@ -2,7 +2,7 @@
 //! running the main loop. Per-window machinery lives in
 //! [`crate::window`].
 
-use crate::spawner;
+use crate::dom::spawner;
 use gtk4::prelude::*;
 
 /// Initialise the GTK application object. Sets up the main-thread

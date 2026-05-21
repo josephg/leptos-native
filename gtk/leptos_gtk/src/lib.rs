@@ -20,6 +20,12 @@ pub mod renderer_gtk;
 
 pub use renderer_gtk::Dom;
 
+pub mod dom;
+
+// Reexport these so 3rd party code can use our version of them.
+pub use {gtk4, gio, glib};
+
+
 /// GTK-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
 pub type AnyView = renderer::view::AnyView<Dom>;
 

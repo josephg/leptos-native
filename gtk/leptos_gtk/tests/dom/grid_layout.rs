@@ -10,10 +10,9 @@
 
 mod common;
 
-use gtk_dom::{layout, GtkNode};
+use leptos_gtk::dom::{layout::{self, GtkBackend}, GtkNode};
 use renderer::{auto, fr, length, GridAutoFlow, LayoutBackend};
 use renderer::attrs::GridLine;
-use gtk_dom::layout::GtkBackend;
 
 fn frame_eq(
     el: &GtkNode,
