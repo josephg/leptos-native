@@ -52,33 +52,45 @@ than upstream — the divergence is too sharp for a shared codebase.
 
 ```
 common/
-  reactive_graph/        ← unchanged from upstream (vendored)
-  reactive_stores/       ← unchanged
-  reactive_stores_macro/ ← unchanged
-  renderer/              ← was tachys; stripped + R-genericized
-                            (Render<R>, Mountable<R>, Renderer trait)
+  leptos_native/         ← the core crate: IntoView<R>, Show/For/
+                            ErrorBoundary/Provider, children, mount
+                            machinery. NO RenderHtml, NO SSR.
+    src/renderer/        ← the `renderer` module (was the standalone
+                            `tachys` / `common/renderer` crate; now
+                            inlined here): Render<R>, Mountable<R>,
+                            Renderer trait, the Taffy LayoutTree<B>,
+                            and shared attribute plumbing.
   leptos_macro/          ← view!{}, #[component] proc macros
-  leptos/                ← renderer-agnostic core: IntoView<R>,
-                            Show/For/ErrorBoundary/Provider, children,
-                            etc. NO RenderHtml, NO AnyView, NO SSR.
+  devtools/              ← `leptos_devtools`: CDP devtools server
+
+# reactive_graph / reactive_stores are now plain crates.io deps
+# (0.3.0-alpha / 0.5.0-alpha), no longer vendored under common/.
+
 cocoa/
-  dom/                   ← `cocoa_dom`: DOM-shaped façade over AppKit
-  leptos_cocoa/          ← `leptos_cocoa`: macOS Renderer impl +
-                            tachys-shaped re-export tree + builder
-                            API (button(), vstack(), …)
-  examples/              ← 18 working examples (counter, counters,
+  leptos_cocoa/          ← macOS Renderer impl + tachys-shaped
+                            re-export tree + builder API (button(),
+    src/dom/             ← vstack(), …). The `dom` module (was the
+                            standalone `cocoa_dom` crate) is the
+                            DOM-shaped façade over AppKit.
+  examples/              ← working examples (counter, counters,
                             error_boundary, etc.)
 uikit/
-  dom/                   ← `ios_dom`: same shape over UIKit
-  leptos_uikit/          ← `leptos_uikit`: iOS Renderer impl
-  examples/              ← 10 working iOS examples
+  dom/                   ← `ios_dom`: same façade over UIKit (still a
+                            standalone crate — not yet inlined)
+  leptos_uikit/          ← iOS Renderer impl
+  examples/              ← working iOS examples
   xcuitests/             ← Swift XCTest harness (macOS host;
                             re-targeting to iOS sim still TODO)
 gtk/
-  dom/                   ← `gtk_dom`: GTK4 façade
-  examples/              ← Stage 0–4 examples; tachys-builder layer
-                            in progress
+  leptos_gtk/            ← GTK4 Renderer impl + builder API
+    src/dom/             ← the `dom` module (was `gtk_dom`): GTK4 façade
+  examples/
 ```
+
+The per-port `dom` façades for cocoa and gtk used to be separate
+crates (`cocoa_dom`, `gtk_dom`); they're now the `dom` **module** of
+`leptos_cocoa` / `leptos_gtk`. The iOS façade (`ios_dom`) is still
+its own crate at `uikit/dom/`.
 
 ## Per-platform getting started
 
@@ -89,8 +101,9 @@ gtk/
   layout engine. Each example ships a `run_ios.sh` that bundles a
   `.app`, installs on the booted simulator, and launches.
 - **Linux** — see [`README_gtk.md`](./README_gtk.md). GTK4 via
-  [`gtk4-rs`](https://crates.io/crates/gtk4); GTK does its own
-  layout so no Taffy bridge here.
+  [`gtk4-rs`](https://crates.io/crates/gtk4); uses the same Taffy
+  layout engine as cocoa/iOS, plugged into GTK via a custom
+  `gtk::LayoutManager`.
 
 ## Build & test
 
@@ -119,9 +132,10 @@ cargo test --manifest-path uikit/dom/Cargo.toml \
   end-to-end.
 - ✅ **iOS:** 10/10 examples build for the simulator. Counter etc.
   launch + render correctly via `run_ios.sh`.
-- 🚧 **Linux/GTK:** lower-level direct-`gtk_dom` examples work; the
-  `leptos_gtk` builder layer (analogous to `leptos_cocoa` /
-  `leptos_uikit`) is the next port.
+- 🚧 **Linux/GTK:** the `leptos_gtk` builder layer (analogous to
+  `leptos_cocoa` / `leptos_uikit`) now exists and drives the GTK
+  examples via the shared Taffy layout engine. Still maturing
+  relative to the macOS port.
 - ❌ **Deferred features** (kept off the punch list pending design
   work):
   - `<Slots>` — multi-named-children components.
