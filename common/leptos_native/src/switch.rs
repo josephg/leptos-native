@@ -30,8 +30,8 @@ use crate::{
 };
 use either_of::{Either, EitherOf3, EitherOf4, EitherOf5, EitherOf6, EitherOf7, EitherOf8};
 use leptos_macro::component;
-use renderer::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{AddAnyAttr, ApplyAttr, Render, UnitState},
 };
 

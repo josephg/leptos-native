@@ -12,8 +12,8 @@
 use crate::into_view::IntoView;
 use leptos_macro::component;
 use reactive_graph::owner::Owner;
-use renderer::{
-    reactive_graph::OwnedView, renderer::Renderer, view::keyed,
+use crate::renderer::{
+    reactive_graph::OwnedView, Renderer, view::keyed,
 };
 use std::{hash::Hash, marker::PhantomData};
 

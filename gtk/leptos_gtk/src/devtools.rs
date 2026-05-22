@@ -15,12 +15,12 @@
 use crate::dom::layout::{schedule_relayout_for, GtkBackend};
 use futures::{AsyncRead, AsyncWrite};
 use gtk4::prelude::*;
-use renderer::NodeId;
+use leptos_native::renderer::NodeId;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use crate::dom::highlight;
-use renderer::LayoutBackend;
+use leptos_native::renderer::LayoutBackend;
 
 const DEFAULT_PORT: u16 = 9223;
 

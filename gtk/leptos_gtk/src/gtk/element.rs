@@ -21,11 +21,12 @@ use crate::dom::{
 };
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;
-use renderer::attrs::{
+use leptos_native::renderer;
+use leptos_native::renderer::attrs::{
     LayoutAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
-use renderer::directive;
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::directive;
+use leptos_native::renderer::view::{Mountable, Render};
 
 // `apply_layout` / `apply_universal` live in `renderer`. The
 // `LayoutElement` / `UniversalElement` impls for `GtkNode` are in

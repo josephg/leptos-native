@@ -35,8 +35,8 @@
 //! Adapted from `tachys/src/view/keyed.rs` (Greg Johnston / leptos).
 //! The diff algorithm is unchanged; only the surrounding glue is.
 
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{Mountable, Render},
 };
 use indexmap::IndexSet;

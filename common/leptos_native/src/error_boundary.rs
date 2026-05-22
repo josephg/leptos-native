@@ -22,9 +22,9 @@ use reactive_graph::{
     signal::ArcRwSignal,
     traits::{Get, Update, With},
 };
-use renderer::{
+use crate::renderer::{
     reactive_graph::{OwnedView, RenderEffectState},
-    renderer::Renderer,
+    Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use rustc_hash::FxHashMap;

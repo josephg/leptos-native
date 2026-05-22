@@ -11,7 +11,6 @@ edition.workspace = true
 name = "leptos_cocoa"
 
 [dependencies]
-renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
 leptos_native = { workspace = true }
 leptos_macro = { workspace = true }
@@ -82,6 +81,9 @@ objc2-app-kit = { version = "0.3", features = [
   "NSTrackingArea",
 ] }
 
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+reactive_graph = { workspace = true, features = ["effects"] }
+
 
 [features]
 default = []
@@ -109,9 +111,6 @@ animation = [
   "objc2-foundation/NSValue",
   "dep:objc2-core-graphics",
 ]
-
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-reactive_graph = { workspace = true, features = ["effects"] }
 
 [[test]]
 name = "layout"

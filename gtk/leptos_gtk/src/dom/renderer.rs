@@ -50,7 +50,7 @@ impl fmt::Debug for Event {
 // cocoa_dom CastFrom impls do.
 // ---------------------------------------------------------------------
 
-use renderer::renderer::CastFrom;
+use leptos_native::renderer::CastFrom;
 
 impl CastFrom<GtkElem> for GtkElem {
     fn cast_from(source: GtkElem) -> Option<GtkElem> {

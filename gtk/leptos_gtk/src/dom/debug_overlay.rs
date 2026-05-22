@@ -26,7 +26,8 @@ use std::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
 };
-use renderer::scene::LayoutBackend;
+use leptos_native::renderer;
+use leptos_native::renderer::scene::LayoutBackend;
 
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 

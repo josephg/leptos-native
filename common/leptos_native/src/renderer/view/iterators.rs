@@ -1,8 +1,8 @@
 //! `Render<R>` impls for collections — `Vec<T>` (unkeyed diff) and
 //! fixed-size `[T; N]` arrays. Keyed iteration lives in `keyed.rs`.
 
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{Mountable, Render},
 };
 

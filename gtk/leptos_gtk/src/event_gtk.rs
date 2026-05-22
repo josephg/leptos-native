@@ -209,7 +209,7 @@ impl OnAttribute {
     }
 }
 
-impl renderer::view::ApplyAttr<crate::GtkDom> for OnAttribute {
+impl leptos_native::renderer::view::ApplyAttr<crate::GtkDom> for OnAttribute {
     fn apply_to(self, el: GtkElem) {
         OnAttribute::apply(self, el)
     }

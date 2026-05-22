@@ -15,19 +15,19 @@
 //! evicts and re-inserts the item at the same index. The bookkeeping
 //! lives in [`MenuItemState`] (the parent menu + insertion index).
 
+use crate::dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
+use crate::dom::GtkElem;
 use crate::event_gtk::{
     ActionEvent, EventDescriptor, PendingHandler, SupportsEvent,
 };
 use crate::gtk::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::GtkDom;
 use gtk4::prelude::*;
-use crate::dom::menu::{self as dom_menu, MenuBar as DomMenuBar};
+use leptos_native::renderer::menu::Modifiers;
+use leptos_native::renderer::view::{Mountable, Render};
 use reactive_graph::effect::RenderEffect;
-use renderer::menu::Modifiers;
-use renderer::view::{Mountable, Render};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use crate::dom::GtkElem;
 // ---------------------------------------------------------------------
 // SectionCursor — gio-section-aware grouping for <menu_separator/>
 // ---------------------------------------------------------------------

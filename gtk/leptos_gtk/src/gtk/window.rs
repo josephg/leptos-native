@@ -4,7 +4,7 @@
 use crate::GtkDom;
 use gtk4::prelude::*;
 pub use crate::dom::{window::{open_window, OpenedWindow}, GtkElem as GtkElement, GtkElem};
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{Mountable, Render};
 
 #[allow(missing_docs)]
 pub struct Window<Children> {

@@ -1,5 +1,5 @@
-use renderer::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{AddAnyAttr, ApplyAttr, Render},
 };
 use std::borrow::Cow;

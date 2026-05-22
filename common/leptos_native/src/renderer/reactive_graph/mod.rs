@@ -6,8 +6,8 @@
 mod owned;
 pub use owned::{OwnedView, OwnedViewState};
 
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::effect::RenderEffect;

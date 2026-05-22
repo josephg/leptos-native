@@ -38,9 +38,10 @@ use crate::{gtk::window::window, GtkDom};
 use gtk4::prelude::*;
 use crate::dom::app::{init_app, run_loop};
 use reactive_graph::owner::Owner;
-use renderer::view::Render;
+use leptos_native::renderer::view::Render;
 use std::cell::RefCell;
 use std::rc::Rc;
+use leptos_native::renderer;
 
 /// App-lifetime state built once the GtkApplication activates: the
 /// type-erased root view state and the root reactive [`Owner`].

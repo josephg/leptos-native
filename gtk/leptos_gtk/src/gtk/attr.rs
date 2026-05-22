@@ -19,7 +19,7 @@
 //!
 //! [`RenderEffect`]: reactive_graph::effect::RenderEffect
 
-pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
+pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 use crate::dom::layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent};
 
 /// Conversion trait so attribute setters can take either a bare

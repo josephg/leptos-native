@@ -6,11 +6,11 @@
 
 mod common;
 
-use leptos_gtk::prelude::*;
-use leptos_gtk::gtk::element::{button, label, vstack};
-use reactive_graph::owner::Owner;
-use renderer::view::Render;
 use leptos_gtk::dom::spawner;
+use leptos_gtk::gtk::element::{button, label, vstack};
+use leptos_gtk::prelude::*;
+use leptos_native::renderer::view::Render;
+use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
     let _ = spawner::init();

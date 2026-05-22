@@ -39,8 +39,8 @@
 //! placeholder until that specific future resolves.
 
 use any_spawner::Executor;
-use renderer::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{Mountable, Render},
 };
 use std::{cell::RefCell, future::Future, rc::Rc};

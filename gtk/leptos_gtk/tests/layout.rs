@@ -10,13 +10,13 @@
 
 mod common;
 
-use leptos_gtk::gtk::element::{button, hstack, label, vstack};
-use reactive_graph::owner::Owner;
-use renderer::attrs::WithLayout;
-use renderer::view::{Mountable, Render};
 use leptos_gtk::dom::{layout, layout::GtkBackend, spawner, window, GtkElem};
-use renderer::LayoutBackend;
+use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use leptos_gtk::gtk4::prelude::*;
+use leptos_native::renderer::attrs::WithLayout;
+use leptos_native::renderer::view::{Mountable, Render};
+use leptos_native::renderer::LayoutBackend;
+use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
     let _ = spawner::init();

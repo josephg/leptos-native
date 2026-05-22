@@ -126,10 +126,12 @@ impl<T> IntoAttributeValue for T {
     fn into_attribute_value(self) -> Self { self }
 }
 
+pub mod renderer;
+
 /// Re-exports the core types of the library.
 pub mod prelude {
     pub use reactive_graph::prelude::*;
-    pub use renderer::prelude::*;
+    pub use crate::renderer::prelude::*;
 
     pub use crate::{
         children::*, component::*, control_flow::*, error::*, into_view::*,
@@ -208,8 +210,6 @@ mod provider;
 pub use either_of as either;
 #[doc(inline)]
 pub use reactive_graph as reactive;
-#[doc(inline)]
-pub use renderer;
 #[doc(inline)]
 pub use oco_ref as oco;
 

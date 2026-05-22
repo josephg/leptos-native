@@ -18,14 +18,14 @@
 use crate::dom::node::GtkElem;
 use gtk4::prelude::*;
 use std::cell::RefCell;
-
-pub use renderer::{
+use leptos_native::renderer;
+pub use leptos_native::renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
     FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use renderer::{LayoutBackend, LayoutState};
+use leptos_native::renderer::{LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // GTK backend
@@ -221,7 +221,7 @@ impl renderer::UniversalElement for GtkElem {
     }
 }
 
-pub use renderer::{
+pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
     grid_line_to_placement, set_align_content, set_align_items, set_align_self,
     set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,

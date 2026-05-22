@@ -3,7 +3,7 @@ use either_of::Either;
 use leptos_macro::component;
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]
 use reactive_graph::traits::Get;
-use renderer::renderer::Renderer;
+use crate::renderer::Renderer;
 use std::{marker::PhantomData, sync::Arc};
 
 /// Like `<Show>`, but for `Option`. Shows children when `some` returns `Some`.

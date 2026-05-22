@@ -30,7 +30,6 @@ debug-overlay = []
 devtools = ["dep:futures", "dep:leptos_devtools"]
 
 [dependencies]
-renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
 leptos_native = { workspace = true }
 #leptos_macro = { workspace = true }

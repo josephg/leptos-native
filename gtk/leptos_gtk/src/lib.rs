@@ -29,13 +29,13 @@ pub use {gio, glib, gtk4};
 pub type AnyView = renderer::view::AnyView<GtkDom>;
 
 /// GTK-pinned alias of [`leptos_native::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos_native::children::ChildrenFn<GtkDom>;
+pub type ChildrenFn = children::ChildrenFn<GtkDom>;
 
 /// Bind/attribute keys re-exported under the `leptos_native::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
 /// `::leptos_native::attr::Checked`).
 pub mod attr {
-    pub use renderer::attr_keys::{AttributeKey, Checked, Value};
+    pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, Value};
 }
 
 // ---------------------------------------------------------------------
@@ -60,6 +60,7 @@ pub use leptos_native::typed_builder;
 #[doc(hidden)]
 pub use leptos_native::typed_builder_macro;
 pub use leptos_native::callback;
+use leptos_native::renderer;
 
 /// View-tree machinery + element builders + events under the path
 /// shape the `view!{}` macro emits (`::leptos_native::tachys::html::element::*`,
@@ -71,7 +72,7 @@ pub use leptos_native::callback;
 /// untyped `.attr()` slot, so this fork's macro routes every tag
 /// through `tachys::html::element::*`.
 pub mod tachys {
-    pub use ::renderer::view;
+    pub use ::leptos_native::renderer::view;
 
     /// Re-export of the gtk builders/window/etc., for the
     /// `::leptos_native::tachys::gtk::*` paths some examples reference
@@ -97,7 +98,7 @@ pub mod tachys {
             pub use crate::event_gtk::*;
         }
         pub mod attribute {
-            pub use renderer::attr_keys::{AttributeKey, Checked, Value};
+            pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, Value};
         }
     }
 }
@@ -121,7 +122,7 @@ pub mod prelude {
     // Type-erased view container — see crate-level `AnyView` alias.
     pub use crate::AnyView;
     pub use crate::ChildrenFn;
-    pub use renderer::view::IntoAny;
+    pub use leptos_native::renderer::view::IntoAny;
 
     // Mounting
     pub use crate::mount::{mount, mount_to_window, run};
@@ -150,18 +151,18 @@ pub mod prelude {
         menu, menu_bar, menu_item, menu_separator, Menu, MenuBar, MenuItem,
         MenuSeparator,
     };
-    pub use renderer::menu::Modifiers;
+    pub use leptos_native::renderer::menu::Modifiers;
 
     // Explicit window builder — needed when `run()` (not
     // `mount_to_window`) is used to compose a `<menu_bar>` + window
     // tuple at the top level.
     pub use crate::gtk::window::{window, Window};
 
-    pub use renderer::{
+    pub use leptos_native::renderer::{
         auto, fit_content, fr, length, max_content, min_content, minmax,
         percent, repeat,
     };
-    pub use renderer::attrs::{auto_line, span, GridLine, Overflow};
+    pub use leptos_native::renderer::attrs::{auto_line, span, GridLine, Overflow};
 
     pub use crate::GtkDom;
 }

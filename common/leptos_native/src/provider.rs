@@ -1,7 +1,7 @@
 use crate::{children::TypedChildren, into_view::IntoView};
 use leptos_macro::component;
 use reactive_graph::owner::{provide_context, Owner};
-use renderer::{reactive_graph::OwnedView, renderer::Renderer};
+use crate::renderer::{reactive_graph::OwnedView, Renderer};
 
 /// Uses the context API to [`provide_context`] to its children and
 /// descendants, without overwriting any contexts of the same type in

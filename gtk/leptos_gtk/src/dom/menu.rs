@@ -25,7 +25,7 @@
 //! higher `leptos_gtk::gtk::menu` layer.
 
 use gtk4::prelude::*;
-use renderer::menu::Modifiers;
+use leptos_native::renderer::menu::Modifiers;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------

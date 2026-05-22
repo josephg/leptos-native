@@ -10,8 +10,10 @@ edition.workspace = true
 [lib]
 name = "leptos_uikit"
 
+[features]
+default = []
+
 [dependencies]
-renderer = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects", "serde"] }
 leptos_native = { workspace = true }
 leptos_macro = { workspace = true }
@@ -26,9 +28,6 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-ui-kit = "0.3"
 any_spawner = { workspace = true }
-
-[features]
-default = []
 
 [target.'cfg(target_os = "ios")'.dev-dependencies]
 ios_dom = { path = "../dom", version = "0.1.0" }

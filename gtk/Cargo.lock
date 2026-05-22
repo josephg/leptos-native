@@ -1185,7 +1185,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "renderer",
+ "leptos_native",
  "serde",
  "serde_json",
  "taffy",
@@ -1205,7 +1205,6 @@ dependencies = [
  "leptos_devtools",
  "leptos_native",
  "reactive_graph",
- "renderer",
  "send_wrapper",
 ]
 
@@ -1236,16 +1235,17 @@ dependencies = [
  "any_spawner",
  "either_of",
  "futures",
+ "indexmap",
  "leptos_macro",
  "oco_ref",
  "or_poisoned",
  "paste",
  "reactive_graph",
- "renderer",
  "rustc-hash",
  "rustc_version",
  "send_wrapper",
  "slotmap",
+ "taffy",
  "thiserror",
  "throw_error",
  "typed-builder",
@@ -1731,20 +1731,6 @@ dependencies = [
  "slotmap",
  "thiserror",
  "web-sys",
-]
-
-[[package]]
-name = "renderer"
-version = "0.1.0"
-dependencies = [
- "either_of",
- "indexmap",
- "reactive_graph",
- "rustc-hash",
- "rustc_version",
- "slotmap",
- "taffy",
- "throw_error",
 ]
 
 [[package]]

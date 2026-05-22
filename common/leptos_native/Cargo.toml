@@ -15,7 +15,6 @@ throw_error = { workspace = true }
 any_spawner = { workspace = true, features = ["futures-executor"] }
 leptos_macro = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
-renderer = { workspace = true }
 futures = { workspace = true, default-features = true }
 send_wrapper = { workspace = true, default-features = true }
 paste = { workspace = true, default-features = true }
@@ -26,14 +25,24 @@ typed-builder = { workspace = true, default-features = true }
 typed-builder-macro = { workspace = true, default-features = true }
 thiserror = { workspace = true, default-features = true }
 
+indexmap = { workspace = true, default-features = true }
+# Layout module: Taffy-backed storage tree + style setters.
+# Folded in (instead of being a separate `native_layout` crate)
+# so the `IntoMaybeReactive` trait and the taffy types it impls
+# for live in the same crate (orphan rule).
+taffy = { workspace = true }
+
 [features]
-default = []
+# Previously we could disable reactive_graph
+
+default = ["reactive_graph"]
 nightly = ["leptos_macro/nightly", "reactive_graph/nightly"]
 tracing = [
   "dep:tracing",
   "reactive_graph/tracing",
   "leptos_macro/tracing",
 ]
+reactive_graph = [] # Not sure if anything works if this is disabled. TODO.
 
 [build-dependencies]
 rustc_version = { workspace = true, default-features = true }

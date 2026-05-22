@@ -11,7 +11,7 @@ use leptos_gtk::{
     gtk::element::button,
     GtkDom,
 };
-use renderer::view::{AddAnyAttr, Render};
+use leptos_native::renderer::view::{AddAnyAttr, Render};
 use std::sync::{Arc, Mutex};
 use leptos_gtk::dom::spawner;
 

@@ -12,7 +12,7 @@
 mod common;
 
 use leptos_gtk::dom::{layout, GtkElem, layout::GtkBackend};
-use renderer::LayoutBackend;
+use leptos_native::renderer::LayoutBackend;
 
 // 1. Fresh nodes are in the store from creation.
 fn freshly_created_node_is_in_store() {

@@ -24,8 +24,8 @@
 //! have changed (the whole point of erasure). This is the same
 //! tradeoff upstream Leptos makes.
 
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{Mountable, Render},
 };
 

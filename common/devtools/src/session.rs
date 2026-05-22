@@ -10,7 +10,7 @@
 use crate::idmap;
 use crate::mapping;
 use crate::Hooks;
-use renderer::{LayoutBackend, NodeId};
+use leptos_native::renderer::{LayoutBackend, NodeId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::marker::PhantomData;

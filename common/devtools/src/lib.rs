@@ -27,7 +27,7 @@ mod mapping;
 mod server;
 mod session;
 
-use renderer::NodeId;
+use leptos_native::renderer::NodeId;
 use serde_json::json;
 use std::rc::Rc;
 

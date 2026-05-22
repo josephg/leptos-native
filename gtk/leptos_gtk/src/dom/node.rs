@@ -18,7 +18,7 @@ use crate::dom::layout::{GtkBackend, NodeId, Style};
 use crate::dom::taffy_layout::TaffyLayout;
 use gtk4::glib;
 use gtk4::prelude::*;
-use renderer::LayoutBackend;
+use leptos_native::renderer::LayoutBackend;
 use crate::dom::{event, layout};
 
 /// A handle into the ambient node store — structurally just a

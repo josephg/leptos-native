@@ -14,7 +14,7 @@
 //! and effectively single-connection, so this is sound and simpler than
 //! threading a per-session map everywhere.
 
-use renderer::NodeId;
+use leptos_native::renderer::NodeId;
 use std::cell::RefCell;
 use std::collections::HashMap;
 

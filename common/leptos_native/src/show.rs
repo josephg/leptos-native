@@ -6,7 +6,7 @@ use crate::{
 use either_of::Either;
 use leptos_macro::component;
 use reactive_graph::{computed::ArcMemo, traits::Get};
-use renderer::renderer::Renderer;
+use crate::renderer::Renderer;
 use std::{marker::PhantomData, sync::Arc};
 
 /// Function-shaped fallback for `<Show>`. Wraps a `Fn() -> View<Fb>`

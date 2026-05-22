@@ -5,8 +5,8 @@
 //! rendered as usual. The `State` keeps the throw_error `ErrorId` so
 //! the error can be cleared on re-render or drop.
 
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{Mountable, Render, UnitState},
 };
 use either_of::Either;

@@ -21,7 +21,7 @@ use crate::{
     children::TypedChildrenFn, into_view::IntoView, show::FallbackFn,
 };
 use leptos_macro::component;
-use renderer::renderer::Renderer;
+use crate::renderer::Renderer;
 
 /// Wrap children that contain one or more `Suspend`s. Renders
 /// the children directly today; the `fallback` prop is accepted

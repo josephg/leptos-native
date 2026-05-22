@@ -9,6 +9,7 @@
 use crate::dom::layout::{self, FlexDirection};
 use crate::dom::node::{install_taffy_layout_for_container, GtkElem};
 use gtk4::prelude::*;
+use leptos_native::renderer;
 
 /// Everything the higher layers need to set up a single window: the
 /// `GtkApplicationWindow` itself and the content-root [`GtkElem`] (its
@@ -45,7 +46,7 @@ pub fn open_window(
     // root expresses "I cover the window" via its style, instead
     // of relying on compute_layout to overwrite user-set sizes.)
     {
-        use renderer::attrs::Dim;
+        use leptos_native::renderer::attrs::Dim;
         renderer::setters::set_size_width(content_root, Dim::Pct(1.0));
         renderer::setters::set_size_height(content_root, Dim::Pct(1.0));
     }

@@ -6,7 +6,7 @@ rust-version.workspace = true
 description = "Chrome DevTools Protocol server for inspecting a leptos-native layout tree"
 
 [dependencies]
-renderer = { workspace = true }
+leptos_native = { workspace = true }
 any_spawner = { workspace = true }
 taffy = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await"] }

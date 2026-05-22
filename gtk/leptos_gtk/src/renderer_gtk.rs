@@ -12,8 +12,8 @@
 #![allow(missing_docs)]
 
 use crate::dom::layout;
-use renderer::{
-    renderer::Renderer,
+use leptos_native::renderer::{
+    Renderer,
     view::Mountable,
 };
 
@@ -28,7 +28,7 @@ pub use crate::dom::{
 };
 pub type Text = GtkElem;
 pub type Placeholder = GtkElem;
-use renderer::scene::LayoutBackend;
+use leptos_native::renderer::scene::LayoutBackend;
 
 /// The GTK renderer surface — implements [`renderer::Renderer`].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

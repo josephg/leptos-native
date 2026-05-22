@@ -13,7 +13,7 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, Set},
 };
-use renderer::attr_keys;
+use leptos_native::renderer::attr_keys;
 
 pub trait IntoSignal<T: Send + Sync + 'static>: 'static {
     fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static>;

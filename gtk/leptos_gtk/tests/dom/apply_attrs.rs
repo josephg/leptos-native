@@ -21,8 +21,9 @@
 
 mod common;
 
+use leptos_native::renderer;
 use leptos_gtk::dom::{layout, GtkElem};
-use renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
+use leptos_native::renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
 fn style_of(el: &GtkElem) -> renderer::Style {
     el.with_style(|s| s.clone())

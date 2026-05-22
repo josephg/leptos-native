@@ -10,9 +10,10 @@
 
 mod common;
 
+use leptos_native::renderer;
 use leptos_gtk::dom::{layout::{self, GtkBackend}, GtkElem};
-use renderer::{auto, fr, length, GridAutoFlow, LayoutBackend};
-use renderer::attrs::GridLine;
+use leptos_native::renderer::{auto, fr, length, GridAutoFlow, LayoutBackend};
+use leptos_native::renderer::attrs::GridLine;
 
 fn frame_eq(
     el: &GtkElem,
@@ -217,7 +218,7 @@ fn block_spanning_two_rows_two_columns() {
 }
 
 fn grid_line_to_placement_handles_each_variant() {
-    use renderer::GridPlacement;
+    use leptos_native::renderer::GridPlacement;
 
     assert!(matches!(
         layout::grid_line_to_placement(GridLine::Auto),

@@ -1,7 +1,7 @@
 //! Exercises the CDP mapping against a hand-built layout tree, using a
 //! trivial in-memory [`LayoutBackend`] (no platform views).
 
-use renderer::{
+use leptos_native::renderer::{
     AvailableSpace, Dimension, LayoutBackend, LayoutState, LengthPercentage, Size, Style,
 };
 use std::cell::RefCell;
@@ -51,7 +51,7 @@ fn fixed(w: f32, h: f32) -> Style {
 fn box_model_reflects_padding_and_position() {
     // Parent: 200x100, 10px padding all sides, column flex.
     let mut parent_style = fixed(200.0, 100.0);
-    parent_style.padding = renderer::Rect {
+    parent_style.padding = leptos_native::renderer::Rect {
         left: LengthPercentage::length(10.0),
         right: LengthPercentage::length(10.0),
         top: LengthPercentage::length(10.0),

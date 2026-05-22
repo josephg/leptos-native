@@ -13,12 +13,13 @@
 //! `ChildrenOptContainer<T>` for the macro's optimised path.
 
 use crate::into_view::{IntoView, View};
-use renderer::renderer::Renderer;
+use crate::renderer::Renderer;
 use std::{
     fmt::{self, Debug},
     marker::PhantomData,
     sync::Arc,
 };
+use crate::renderer::view::Render;
 
 /// This trait can be used when constructing a component that takes children
 /// without needing to know exactly what children type the component expects.
@@ -186,7 +187,7 @@ where
 // Type-erased children, built on top of renderer::view::AnyView<R>
 // ---------------------------------------------------------------------
 
-use renderer::view::{AnyView, IntoAny};
+use crate::renderer::view::{AnyView, IntoAny};
 
 /// A `children` prop that erases its concrete view type. Use when
 /// the slot or component needs to accept arbitrary view shapes —
@@ -266,5 +267,3 @@ where
         }
     }
 }
-
-use renderer::view::Render;

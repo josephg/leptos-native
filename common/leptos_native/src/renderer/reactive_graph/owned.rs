@@ -1,5 +1,5 @@
-use crate::{
-    renderer::Renderer,
+use crate::renderer::{
+    Renderer,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::owner::Owner;

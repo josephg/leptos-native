@@ -8,13 +8,13 @@
 //!   Styles pane can both display and edit them.
 
 use crate::idmap::{self, DOCUMENT_ID, ROOT_ID};
-use renderer::{
+use leptos_native::renderer::{
     Dimension, Display, FlexDirection, LayoutBackend, LengthPercentage,
     LengthPercentageAuto, NodeId, Style,
 };
 use serde_json::{json, Value};
 use taffy::CompactLength;
-
+use leptos_native::renderer;
 // ---------------------------------------------------------------------
 // Length formatting / parsing
 // ---------------------------------------------------------------------
