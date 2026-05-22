@@ -81,10 +81,6 @@ objc2-app-kit = { version = "0.3", features = [
   "NSTrackingArea",
 ] }
 
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-reactive_graph = { workspace = true, features = ["effects"] }
-
-
 [features]
 default = []
 # Strokes a 1px outline around every Taffy-tracked node, toggled with
@@ -111,6 +107,7 @@ animation = [
   "objc2-foundation/NSValue",
   "dep:objc2-core-graphics",
 ]
+reactive_graph = []
 
 [[test]]
 name = "layout"

@@ -21,7 +21,7 @@
 //! element's `State`, so it lives exactly as long as the element
 //! is mounted.
 
-pub use renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeReactive};
+pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeReactive};
 use crate::dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
     toolbar::{ToolbarDisplayMode, WindowToolbarStyle},

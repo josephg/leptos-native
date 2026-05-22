@@ -48,7 +48,7 @@ use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::CocoaDom;
 use crate::dom::split_window::*;
 use reactive_graph::effect::RenderEffect;
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{Mountable, Render};
 
 // Re-export the cocoa-side enum so user code says
 // `PaneBehavior::Inspector` without a separate import.

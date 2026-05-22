@@ -7,4 +7,4 @@
 //! on PopUpButton and SegmentedControl; those now route through
 //! `bind:value=` (disambiguated by the signal's `usize` type).
 
-pub use renderer::attr_keys::{AttributeKey, Checked, MouseHover, Value};
+pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, MouseHover, Value};

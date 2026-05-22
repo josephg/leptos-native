@@ -25,12 +25,12 @@ pub mod dom;
 /// Used by type-erased prop types (`ChildrenFn`, slot children
 /// that vary per call-site, `<Show fallback>` branches with
 /// mismatched concrete types).
-pub type AnyView = renderer::view::AnyView<CocoaDom>;
+pub type AnyView = leptos_native::renderer::view::AnyView<CocoaDom>;
 
 /// Cocoa-pinned alias of [`leptos_native::children::ChildrenFn`]. Lets
 /// slot definitions write `children: ChildrenFn` without the
 /// `<Dom>` type parameter.
-pub type ChildrenFn = ::leptos_native::children::ChildrenFn<CocoaDom>;
+pub type ChildrenFn = children::ChildrenFn<CocoaDom>;
 
 /// Bind/attribute keys re-exported under the `leptos_native::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
@@ -78,7 +78,7 @@ pub use leptos_native::callback;
 /// import it from this path (`leptos_native::tachys::html::element::button`,
 /// ...) or from `leptos_native::prelude` if the prelude re-exports it.
 pub mod tachys {
-    pub use ::renderer::view;
+    pub use leptos_native::renderer::view;
 
     pub mod html {
         pub mod element {
@@ -148,7 +148,7 @@ pub mod prelude {
     // ergonomic constructor on any `Render<Dom>` value.
     pub use crate::AnyView;
     pub use crate::ChildrenFn;
-    pub use renderer::view::IntoAny;
+    pub use leptos_native::renderer::view::IntoAny;
 
     // Mounting
     pub use crate::mount::{mount, mount_to_split_window, mount_to_window, run};
@@ -173,7 +173,7 @@ pub mod prelude {
         menu, menu_bar, menu_item, menu_separator, Menu, MenuBar, MenuItem,
         MenuSeparator,
     };
-    pub use renderer::menu::Modifiers;
+    pub use leptos_native::renderer::menu::Modifiers;
 
     // Toolbar builders. `<toolbar>` is a child of `<window>` that
     // attaches an `NSToolbar` to the containing NSWindow at mount
@@ -222,7 +222,7 @@ pub mod prelude {
     // `renderer` so example code can write `[fr(1.0), auto()]`
     // without importing taffy. `span(n)` doubles as a placement
     // helper for child elements (`.grid_column_end(span(2))`).
-    pub use renderer::{
+    pub use leptos_native::renderer::{
         auto, fit_content, fr, length, max_content, min_content, minmax, percent,
         repeat,
     };
@@ -230,7 +230,7 @@ pub mod prelude {
     // Grid placement attrs (added to every element via `WithLayout`).
     // Re-exported so user code can pass `GridLine::Auto` explicitly,
     // or use `span(n)` / integer literals via `Into<GridLine>`.
-    pub use renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine, Overflow};
+    pub use leptos_native::renderer::attrs::{auto_line, AlignSelf, Dim, Edges, GridLine, Overflow};
 
     // Native value types + helpers commonly used by examples (timers,
     // persistent storage, colour, date, key events, text/segment/date

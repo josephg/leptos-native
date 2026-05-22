@@ -123,17 +123,16 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
-
 use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::cocoa::bind::{BindAttribute, BoundValue, IntoSignal};
+use crate::dom::{toolbar::{
+    self as dom_toolbar, *
+}, CocoaElem, Icon, MainThreadMarker};
 use crate::event_macos::{
     ActionEvent, EventDescriptor, InputEvent, PendingHandler, SupportsEvent,
 };
 use crate::CocoaDom;
-use crate::dom::{toolbar::{
-    self as dom_toolbar, *
-}, CocoaElem, Icon, MainThreadMarker};
+use std::collections::HashMap;
 
 // Re-export the dom-side enums from this module so user-facing
 // code (and the prelude) reaches them via
@@ -141,6 +140,10 @@ use crate::dom::{toolbar::{
 // The dom path is the implementation crate; users shouldn't have
 // to know it exists.
 pub use crate::dom::toolbar::{ToolbarDisplayMode, WindowToolbarStyle};
+use leptos_native::renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
+use objc2::DefinedClass;
+use reactive_graph::effect::RenderEffect;
+use std::any::Any;
 
 // ---------------------------------------------------------------------
 // Auto-generated identifiers
@@ -162,10 +165,6 @@ fn auto_identifier() -> String {
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("leptos_cocoa.auto.{n}")
 }
-use std::any::Any;
-use objc2::DefinedClass;
-use reactive_graph::effect::RenderEffect;
-use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 
 // ---------------------------------------------------------------------
 // ToolbarBuild: the in-progress state passed to ToolbarMountable
@@ -642,7 +641,6 @@ impl ToolbarItem {
     /// case. Pass an SF Symbol name string or a reactive closure
     /// returning one.
     pub fn sf_symbol<V: IntoMaybeReactive<String>>(mut self, name: V) -> Self {
-        use renderer::attrs::MaybeReactive;
         let mr: MaybeReactive<String> = name.into_maybe_reactive();
         let icon_mr: MaybeReactive<Icon> = match mr {
             MaybeReactive::Static(s) => {

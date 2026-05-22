@@ -10,10 +10,10 @@
 mod common;
 
 use leptos_cocoa::dom::{layout, CocoaElem};
-use renderer::{auto, fr, length, GridAutoFlow};
+use leptos_native::renderer::attrs::GridLine;
+use leptos_native::renderer::{auto, fr, length, GridAutoFlow, GridPlacement, GridTemplateComponent};
 use objc2_foundation::NSSize;
-use renderer::attrs::GridLine;
-
+use taffy::Display;
 // ---------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------
@@ -35,8 +35,8 @@ fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {
 /// Builds a grid container with the given column / row track lists,
 /// no children attached yet.
 fn make_grid(
-    columns: Vec<renderer::GridTemplateComponent>,
-    rows: Vec<renderer::GridTemplateComponent>,
+    columns: Vec<GridTemplateComponent>,
+    rows: Vec<GridTemplateComponent>,
 ) -> CocoaElem {
     let g = CocoaElem::create_grid();
     layout::set_grid_template_columns(g, columns);
@@ -52,7 +52,7 @@ fn create_grid_sets_display_grid() {
     let _mtm = common::test_mtm();
     let g = CocoaElem::create_grid();
     let style = layout::style(g.id()).expect("registered node has a style");
-    assert_eq!(style.display, renderer::Display::Grid);
+    assert_eq!(style.display, Display::Grid);
 }
 
 // =====================================================================
@@ -261,7 +261,6 @@ fn block_spanning_two_rows_two_columns() {
 // =====================================================================
 
 fn grid_line_to_placement_handles_each_variant() {
-    use renderer::GridPlacement;
     let _mtm = common::test_mtm();
 
     assert!(matches!(

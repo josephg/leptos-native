@@ -19,7 +19,7 @@ use objc2_app_kit::{
     NSEventModifierFlags, NSImage, NSMenu, NSMenuItem,
 };
 use objc2_foundation::NSString;
-use renderer::menu::Modifiers;
+use leptos_native::renderer::menu::Modifiers;
 use crate::dom::{node, Icon};
 // ---------------------------------------------------------------------
 // MenuBar

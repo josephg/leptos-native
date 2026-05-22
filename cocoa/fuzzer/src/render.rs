@@ -17,8 +17,8 @@
 
 use crate::signals::SignalStore;
 use crate::spec::{Attr, ContainerKind, Node};
-use leptos_native::cocoa::bind::BindAttribute;
-use leptos_native::cocoa::element::{
+use leptos_cocoa::cocoa::bind::BindAttribute;
+use leptos_cocoa::cocoa::element::{
     button, checkbox, color_well, date_picker, hstack, image_view,
     label, pop_up_button, progress_indicator, scroll_view,
     secure_text_field, segmented_control, slider, stack, stepper,
@@ -26,13 +26,13 @@ use leptos_native::cocoa::element::{
     , ImageView, Label, PopUpButton, ProgressIndicator, ScrollView,
     SegmentedControl, Slider, Stack, Stepper, TextField, TextView,
 };
-use leptos_native::dom::Date;
-use leptos_native::CocoaDom;
+use leptos_cocoa::dom::Date;
+use leptos_cocoa::{attr, CocoaDom};
 use reactive_graph::traits::Get;
 // `hidden` / `padding` come from the renderer's shared layout-attr
 // trait; `into_any` from the renderer's view erasure trait.
-use renderer::attrs::WithLayout;
-use renderer::view::{AnyView, IntoAny};
+use leptos_native::renderer::attrs::WithLayout;
+use leptos_native::renderer::view::{AnyView, IntoAny};
 
 /// Either-branch helper: pick the static or reactive path and call
 /// the builder method exactly once, with the right concrete type
@@ -84,7 +84,7 @@ macro_rules! set_padding_attr {
             Attr::Reactive { id, initial } => {
                 let sig = $store.ensure_float(*id, *initial);
                 $builder.padding(move || {
-                    renderer::attrs::Edges::all(sig.get())
+                    leptos_native::renderer::attrs::Edges::all(sig.get())
                 })
             }
         }
@@ -161,7 +161,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                     Attr::Static(v) => c.checked(*v),
                     Attr::Reactive { id, initial } => {
                         let sig = store.ensure_bool(*id, *initial);
-                        c.bind(leptos_native::attr::Checked, sig)
+                        c.bind(attr::Checked, sig)
                     }
                 };
             }
@@ -176,7 +176,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                     let sig = store.ensure_string(*id, initial);
                     // bind:value so typing in --xcui mode writes
                     // back to the signal.
-                    t.bind(leptos_native::attr::Value, sig)
+                    t.bind(attr::Value, sig)
                 }
             };
             if let Some(p) = placeholder {
@@ -193,7 +193,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                 Attr::Static(v) => t.value(v.clone()),
                 Attr::Reactive { id, initial } => {
                     let sig = store.ensure_string(*id, initial);
-                    t.bind(leptos_native::attr::Value, sig)
+                    t.bind(attr::Value, sig)
                 }
             };
             if let Some(e) = enabled {
@@ -212,7 +212,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                 Attr::Static(v) => s.value(*v),
                 Attr::Reactive { id, initial } => {
                     let sig = store.ensure_float64(*id, *initial);
-                    s.bind(leptos_native::attr::Value, sig)
+                    s.bind(attr::Value, sig)
                 }
             };
             if let Some(e) = enabled {
@@ -226,7 +226,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                 Attr::Static(v) => s.value(*v),
                 Attr::Reactive { id, initial } => {
                     let sig = store.ensure_float64(*id, *initial);
-                    s.bind(leptos_native::attr::Value, sig)
+                    s.bind(attr::Value, sig)
                 }
             };
             if let Some(e) = enabled {
@@ -257,7 +257,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                 Attr::Static(v) => pp.selection(*v),
                 Attr::Reactive { id, initial } => {
                     let sig = store.ensure_index(*id, *initial);
-                    pp.bind(leptos_native::attr::Value, sig)
+                    pp.bind(attr::Value, sig)
                 }
             };
             if let Some(e) = enabled {
@@ -272,7 +272,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                 Attr::Static(v) => sc.selection(*v),
                 Attr::Reactive { id, initial } => {
                     let sig = store.ensure_index(*id, *initial);
-                    sc.bind(leptos_native::attr::Value, sig)
+                    sc.bind(attr::Value, sig)
                 }
             };
             if let Some(e) = enabled {
@@ -360,7 +360,7 @@ pub fn build(node: &Node, store: &SignalStore) -> AnyView<CocoaDom> {
                         // to populated. (Same bug class the
                         // framework `<Show>` had for its
                         // no-fallback case.)
-                        None => leptos_native::core::control_flow::EmptyBranch
+                        None => leptos_cocoa::core::control_flow::EmptyBranch
                             .into_any(),
                     }
                 }

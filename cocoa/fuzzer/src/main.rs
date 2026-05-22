@@ -8,7 +8,7 @@
 //! ```
 
 use clap::Parser;
-use leptos_native::dom::{app::init_app, event::{
+use leptos_cocoa::dom::{app::init_app, event::{
     handler_store_size_for_test, text_field_store_size_for_test,
     text_view_store_size_for_test,
 }, layout, spawner, window, window::open_window, MainThreadMarker};
@@ -24,9 +24,10 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
 use rand::rngs::ChaCha8Rng;
 use rand::SeedableRng;
 use reactive_graph::owner::Owner;
-use leptos_native::dom::layout::CocoaBackend;
-use renderer::LayoutBackend;
-use renderer::view::{Mountable, Render};
+use leptos_cocoa::CocoaDom;
+use leptos_cocoa::dom::layout::CocoaBackend;
+use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::view::{Mountable, Render};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -326,7 +327,7 @@ fn run_one(
             // Field declaration order matters — Drop runs in
             // top-down field order, and we need state to unmount
             // before the window closes.
-            state: Box<dyn renderer::view::Mountable<leptos_native::CocoaDom>>,
+            state: Box<dyn Mountable<CocoaDom>>,
             window: window::OpenedWindow,
             #[allow(dead_code)]
             store: SignalStore,
@@ -355,7 +356,7 @@ fn run_one(
             })?;
             let extra_store = SignalStore::new();
             let view = build(&extra_spec, &extra_store);
-            let mut st: Box<dyn renderer::view::Mountable<leptos_native::CocoaDom>> =
+            let mut st: Box<dyn Mountable<CocoaDom>> =
                 Box::new(catch_ns("build-extra", || view.build())?);
             catch_ns("mount-extra", || {
                 st.mount(win.content_root, None);

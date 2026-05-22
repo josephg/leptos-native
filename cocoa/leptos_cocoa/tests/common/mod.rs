@@ -34,7 +34,7 @@ pub fn pump_runloop_once() {
     // 50ms is enough to drain queued dispatch tasks in practice;
     // we loop a few times so a chain of effects (each scheduling
     // the next) all settle.
-    for _ in 0..8 {
+    for _ in 0..4 {
         let limit = NSDate::dateWithTimeIntervalSinceNow(0.005);
         unsafe { rl.runMode_beforeDate(NSDefaultRunLoopMode, &limit) };
     }

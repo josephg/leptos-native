@@ -22,6 +22,7 @@ use objc2_foundation::{
     NSNotification, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
 };
 use std::cell::RefCell;
+use leptos_native::renderer::attrs::Dim;
 
 /// Closure invoked when the window is about to close (NSWindow's
 /// `windowWillClose:` notification). Runs at most once — install
@@ -164,17 +165,16 @@ pub fn open_window(
         content_root,
         layout::FlexDirection::Column,
     );
+
     // The content_root must fill its NSView's bounds (= window's
     // content area). Express that as 100% size so Taffy resolves it
     // against the `AvailableSpace::Definite` we pass to
     // `compute_layout`. This is what makes the root cover the whole
     // window without `compute_layout` having to overwrite user-set
     // sizes on every pass.
-    {
-        use renderer::attrs::Dim;
-        renderer::setters::set_size_width(content_root, Dim::Pct(1.0));
-        renderer::setters::set_size_height(content_root, Dim::Pct(1.0));
-    }
+    leptos_native::renderer::setters::set_size_width(content_root, Dim::Pct(1.0));
+    leptos_native::renderer::setters::set_size_height(content_root, Dim::Pct(1.0));
+
     nswindow.setContentView(Some(content_root.ns_view().as_ref()));
 
     #[cfg(feature = "debug-overlay")]

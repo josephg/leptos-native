@@ -13,7 +13,7 @@ use leptos_cocoa::prelude::*;
 use leptos_cocoa::cocoa::element::{button, label, vstack};
 use reactive_graph::owner::Owner;
 use leptos_cocoa::dom::spawner;
-use renderer::view::Render;
+use leptos_native::renderer::view::Render;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
     let _ = spawner::init().unwrap();

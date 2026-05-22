@@ -10,7 +10,8 @@ name = "cocoa_fuzzer"
 path = "src/main.rs"
 
 [dependencies]
-leptos_native = { package = "leptos_cocoa", path = "../leptos_cocoa" }
+leptos_cocoa = { path = "../leptos_cocoa", version = "0.1" }
+leptos_native = { workspace = true }
 reactive_graph = { workspace = true, features = ["effects"] }
 either_of = { workspace = true }
 rand = { version = "0.10.1", features = ["chacha"] }

@@ -23,7 +23,7 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, Set},
 };
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
     let _ = leptos_cocoa::dom::spawner::init().unwrap();

@@ -14,7 +14,7 @@ mod common;
 use leptos_cocoa::cocoa::element::button;
 use leptos_cocoa::event_macos::{click, on};
 use reactive_graph::owner::Owner;
-use renderer::view::{AddAnyAttr, Render};
+use leptos_native::renderer::view::{AddAnyAttr, Render};
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
     let _ = leptos_cocoa::dom::spawner::init();

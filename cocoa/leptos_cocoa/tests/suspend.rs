@@ -26,7 +26,7 @@ use leptos_cocoa::cocoa::element::{button, hstack, label};
 use leptos_cocoa::event_macos::{click, on};
 use leptos_cocoa::CocoaDom;
 use reactive_graph::owner::Owner;
-use renderer::view::{AddAnyAttr, Mountable, Render};
+use leptos_native::renderer::view::{AddAnyAttr, Mountable, Render};
 use std::cell::RefCell;
 use std::rc::Rc;
 use leptos_cocoa::dom::window::open_window;

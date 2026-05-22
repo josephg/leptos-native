@@ -16,8 +16,8 @@ use leptos_cocoa::dom::{layout, spawner, window, CocoaElem};
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
-use renderer::attrs::WithLayout;
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::attrs::WithLayout;
+use leptos_native::renderer::view::{Mountable, Render};
 
 /// Spin up a fresh reactive owner + the spawner the cocoa effect
 /// machinery needs for build/mount.

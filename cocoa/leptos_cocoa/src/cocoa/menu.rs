@@ -35,8 +35,8 @@ use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSMenuItem};
 use objc2_foundation::NSString;
 use reactive_graph::effect::RenderEffect;
-use renderer::menu::Modifiers;
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::menu::Modifiers;
+use leptos_native::renderer::view::{Mountable, Render};
 
 // ---------------------------------------------------------------------
 // MenuParent + MenuMountable

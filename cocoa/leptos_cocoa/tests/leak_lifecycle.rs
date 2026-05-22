@@ -23,7 +23,7 @@ use leptos_cocoa::cocoa::bind::BindAttribute;
 use leptos_cocoa::cocoa::element::{button, hstack, label, text_field, text_view, vstack};
 use leptos_cocoa::event_macos::{click, on};
 use reactive_graph::owner::Owner;
-use renderer::view::{AddAnyAttr, Mountable, Render};
+use leptos_native::renderer::view::{AddAnyAttr, Mountable, Render};
 
 /// Set up a reactive Owner just for the test body, then drop it.
 /// Effects created inside re-subscribe to whatever signals exist
@@ -561,7 +561,7 @@ fn explicit_unmount_clears_text_view_delegate() {
 /// without exercising any flip.
 fn drop_reactive_child_text_view_no_toggle() {
     use leptos_cocoa::CocoaDom;
-    use renderer::view::{AnyView, IntoAny};
+    use leptos_native::renderer::view::{AnyView, IntoAny};
     use leptos_cocoa::cocoa::element::vstack;
     let _mtm = common::test_mtm();
     let before = snapshot();
@@ -653,7 +653,7 @@ fn show_off_text_view_with_oninput_clears_delegate() {
     use either_of::Either;
     use leptos_cocoa::cocoa::element::{label, vstack};
     use leptos_cocoa::event_macos::{input, on};
-    use renderer::view::AddAnyAttr;
+    use leptos_native::renderer::view::AddAnyAttr;
     let _mtm = common::test_mtm();
     let before = snapshot();
     with_scope(|| {

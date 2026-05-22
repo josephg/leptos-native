@@ -21,7 +21,8 @@ use objc2::msg_send;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{Get, Set};
-use renderer::view::Render;
+use leptos_native::prelude::Mountable;
+use leptos_native::renderer::view::Render;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
     let _ = leptos_cocoa::dom::spawner::init().unwrap();
@@ -203,7 +204,6 @@ fn pane_root_receives_mounted_subviews() {
 
         let view = label().text("hello");
         let mut state = view.build();
-        use renderer::view::Mountable;
         state.mount(pane.root, None);
 
         let after = pane.root.ns_view().subviews().len();

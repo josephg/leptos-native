@@ -334,7 +334,7 @@ impl OnAttribute {
 // also had `Attribute` / `NextAttribute` / `ToTemplate` impls — those
 // are SSR-coupled and gone in this fork.
 
-impl renderer::view::ApplyAttr<crate::CocoaDom> for OnAttribute {
+impl leptos_native::renderer::view::ApplyAttr<crate::CocoaDom> for OnAttribute {
     fn apply_to(self, el: CocoaElem) {
         OnAttribute::apply(self, el)
     }

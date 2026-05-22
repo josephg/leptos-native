@@ -19,7 +19,7 @@
 //! just the tachys-side `Render`/`Mountable` glue.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
+use leptos_native::renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 use crate::CocoaDom;
 use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaElem, MainThreadMarker};
 use objc2::rc::Retained;
@@ -31,6 +31,7 @@ use reactive_graph::{
     traits::{GetUntracked, Set},
 };
 use send_wrapper::SendWrapper;
+pub use leptos_native::renderer::window::{WindowPosition, WindowSize};
 
 #[allow(missing_docs)]
 pub struct Window<Children> {
@@ -43,11 +44,6 @@ pub struct Window<Children> {
         Option<MaybeReactive<crate::dom::toolbar::WindowToolbarStyle>>,
     children: Children,
 }
-
-// `WindowSize` / `WindowPosition` types now live in
-// `renderer::window` and are shared across ports. We re-export
-// them and add the per-port reactive-attr plumbing here.
-pub use renderer::window::{WindowPosition, WindowSize};
 
 // Reactive support: bare `WindowSize` is static; closures returning
 // `WindowSize` become Reactive; tuples auto-lift (both i32 and

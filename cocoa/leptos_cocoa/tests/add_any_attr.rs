@@ -14,7 +14,7 @@ use leptos_cocoa::{
     CocoaDom,
 };
 use objc2_app_kit::NSControl;
-use renderer::view::{AddAnyAttr, Render};
+use leptos_native::renderer::view::{AddAnyAttr, Render};
 use std::sync::{Arc, Mutex};
 
 /// REGRESSION: a button.add_any_attr((on(click, handler),)) call

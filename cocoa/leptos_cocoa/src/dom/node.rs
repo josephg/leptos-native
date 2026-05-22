@@ -22,8 +22,9 @@ use objc2_app_kit::{
     NSButton, NSControl, NSTextField, NSView, NSWindowOrderingMode,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use renderer::{LayoutBackend, NodeId};
+use leptos_native::renderer::{LayoutBackend, NodeId};
 use send_wrapper::SendWrapper;
+use taffy::Style;
 use crate::dom::{event, layout, Color, Date, DatePickerStyle, KeyEvent, LineBreak, SegmentStyle, TextAlignment};
 use super::layout::CocoaBackend;
 
@@ -51,7 +52,7 @@ impl CocoaElem {
     /// subclass, get back a `Node`.
     pub fn from_view<V>(
         view: Retained<V>,
-        default_style: renderer::Style,
+        default_style: Style,
         default_meta: CocoaMeta,
     ) -> Self
     where
@@ -155,13 +156,13 @@ impl CocoaElem {
     // ---- Accessor surface ------------------------------------------
 
     /// Borrow the node's [`renderer::Style`] for read.
-    pub fn with_style<R>(self, f: impl FnOnce(&renderer::Style) -> R) -> R {
+    pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
         let style = CocoaBackend::style(self.id).unwrap_or_default();
         f(&style)
     }
 
     /// Mutate the node's [`renderer::Style`] (marks it dirty).
-    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut renderer::Style) -> R) -> R {
+    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
         let mut style = CocoaBackend::style(self.id).unwrap_or_default();
         let r = f(&mut style);
         CocoaBackend::set_style(self.id, style);

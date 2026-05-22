@@ -37,7 +37,7 @@ use objc2_app_kit::{
     NSTextField, NSTextView, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use renderer::LayoutBackend;
+use leptos_native::renderer::LayoutBackend;
 use send_wrapper::SendWrapper;
 
 fn mtm() -> MainThreadMarker {

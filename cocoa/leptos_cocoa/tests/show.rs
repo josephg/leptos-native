@@ -19,7 +19,7 @@ use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
 use reactive_graph::traits::{Get, Set};
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{Mountable, Render};
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
     let _ = leptos_cocoa::dom::spawner::init().unwrap();
@@ -46,8 +46,8 @@ fn show_without_fallback_mounts_on_flip_false_to_true() {
         // explicitly with the same shape ShowEmpty would expose
         // (`Label` is a concrete IntoView).
         type Fb = leptos_cocoa::cocoa::element::Label;
-        let view = leptos_native::control_flow::Show::<_, _, Fb, CocoaDom>(
-            leptos_native::control_flow::ShowProps::<_, _, Fb, CocoaDom>::builder()
+        let view = leptos_native::control_flow::Show::<_, Fb, CocoaDom>(
+            leptos_native::control_flow::ShowProps::<_, Fb, CocoaDom>::builder()
                 .when(move || when.get())
                 .children(ToChildren::to_children(|| label().text("hello")))
                 .build(),

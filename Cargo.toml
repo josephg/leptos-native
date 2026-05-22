@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
   # common (renderer-agnostic)
-  "common/renderer",
   "common/devtools",
   "common/leptos_macro",
   "common/leptos_native",
@@ -41,7 +40,6 @@ members = [
 
 # `cargo test` / `cargo build` (no args) operate on `default-members`.
 default-members = [
-  "common/renderer",
   "common/leptos_macro",
   "common/leptos_native",
   "apple_shared",

@@ -16,22 +16,21 @@ mod common;
 
 use objc2::MainThreadMarker;
 use leptos_cocoa::dom::{app, layout, CocoaElem};
-use renderer::{Dimension, LengthPercentage};
+use leptos_native::renderer::{Dimension, GridPlacement, LengthPercentage};
 use reactive_graph::{
     owner::Owner,
     signal::RwSignal,
     traits::{Get, Set},
 };
-use renderer::attrs::{
-    AlignSelf, Dim, GridLine, LayoutAttrs, MaybeReactive, UniversalAttrs,
-};
+use taffy::Style;
+use leptos_native::renderer::attrs::{AlignSelf, Dim, Edges, GridLine, LayoutAttrs, MaybeReactive, UniversalAttrs};
 
 // ---------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------
 
 
-fn style_of(el: &CocoaElem) -> renderer::Style {
+fn style_of(el: &CocoaElem) -> Style {
     el.with_style(|s| s.clone())
 }
 
@@ -69,7 +68,7 @@ fn padding_static_lands_in_padding_field() {
     let el = CocoaElem::create_container();
 
     let mut attrs = LayoutAttrs::default();
-    attrs.padding = Some(MaybeReactive::Static(renderer::attrs::Edges::all(8.0)));
+    attrs.padding = Some(MaybeReactive::Static(Edges::all(8.0)));
     let effects = layout::apply_layout(el, attrs);
     assert!(effects.is_empty(), "static value must not retain effects");
 
@@ -173,8 +172,8 @@ fn grid_column_start_static_lands_as_line() {
     let _ = layout::apply_layout(el, attrs);
 
     let s = style_of(&el);
-    assert!(matches!(s.grid_column.start, renderer::GridPlacement::Line(_)));
-    assert!(matches!(s.grid_column.end, renderer::GridPlacement::Auto));
+    assert!(matches!(s.grid_column.start, GridPlacement::Line(_)));
+    assert!(matches!(s.grid_column.end, GridPlacement::Auto));
 }
 
 fn grid_row_end_static_span() {
@@ -185,7 +184,7 @@ fn grid_row_end_static_span() {
     attrs.grid_row_end = Some(MaybeReactive::Static(GridLine::Span(3)));
     let _ = layout::apply_layout(el, attrs);
 
-    assert_eq!(style_of(&el).grid_row.end, renderer::GridPlacement::Span(3));
+    assert_eq!(style_of(&el).grid_row.end, GridPlacement::Span(3));
 }
 
 // ---------------------------------------------------------------------
@@ -201,7 +200,7 @@ fn reactive_padding_re_runs_on_signal_change() {
         let pad = RwSignal::new(4.0_f32);
         let mut attrs = LayoutAttrs::default();
         attrs.padding = Some(MaybeReactive::Reactive(Box::new(move || {
-            renderer::attrs::Edges::all(pad.get())
+            Edges::all(pad.get())
         })));
         let effects = layout::apply_layout(el, attrs);
         assert_eq!(effects.len(), 1, "reactive value must retain one effect");

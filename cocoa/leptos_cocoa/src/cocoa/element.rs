@@ -11,11 +11,17 @@ use crate::dom::{event, layout::*, CocoaElem, Color, Date, DatePickerStyle, Line
 use crate::CocoaDom;
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;
-use renderer::attrs::{
+use leptos_native::prelude::AddAnyAttr;
+use leptos_native::renderer::attrs::{
     DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
     WithUniversal,
 };
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{ApplyAttr, Mountable, Render};
+
+// `apply_universal` and `apply_layout` live in `renderer`. The
+// `UniversalElement` / `LayoutElement` impls for `CocoaNode` live
+// in `cocoa_dom` (orphan rule).
+use leptos_native::renderer::{apply_decoration, apply_universal, directive, apply_layout};
 
 /// Cocoa's text-attr struct alias — `TextAttrs` with cocoa's `Color`
 /// and `NSTextAlignment`.
@@ -93,11 +99,6 @@ pub trait WithDecoration: Sized {
     }
 }
 
-// `apply_universal` and `apply_layout` live in `renderer`. The
-// `UniversalElement` / `LayoutElement` impls for `CocoaNode` live
-// in `cocoa_dom` (orphan rule).
-use renderer::{apply_decoration, apply_universal, directive};
-
 /// Apply [`CocoaText`] (text_color, alignment, font_size) to the live
 /// NSView. Each leaf decides whether to invoke this — NSButton
 /// skips `text_color` (uses `attributedTitle` if styling is needed).
@@ -125,8 +126,6 @@ fn apply_text(el: CocoaElem, attrs: CocoaText) -> Vec<RenderEffect<()>> {
     }
     out
 }
-
-use renderer::apply_layout;
 
 /// Apply the four "always there" attribute structs every builder
 /// owns: `decoration`, `universal`, optional `text` (for leaf
@@ -3888,10 +3887,10 @@ where
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl renderer::view::AddAnyAttr<crate::CocoaDom> for $builder {
+            impl leptos_native::renderer::view::AddAnyAttr<crate::CocoaDom> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: renderer::view::ApplyAttr<crate::CocoaDom>,
+                    __A: leptos_native::renderer::view::ApplyAttr<crate::CocoaDom>,
                 {
                     self.directives.push(Box::new(move |el: CocoaElem| {
                         attr.apply_to(el);
@@ -3920,23 +3919,23 @@ impl_add_any_attr_for_leaf!(
 // Future: NSClickGestureRecognizer integration so `<vstack on:click=…>`
 // becomes meaningful, then route through that.
 
-impl<Children> renderer::view::AddAnyAttr<CocoaDom> for Stack<Children> {
+impl<Children> AddAnyAttr<CocoaDom> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaDom>,
     {
         panic!(
-            "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/             stack_view). Containers have no NSControl target/action              slot — click and other UIControl events have no install              path. Attach to a child button/label/text_field instead."
+            "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/stack_view). Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
         )
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<CocoaDom> for Grid<Children> {
+impl<Children> AddAnyAttr<CocoaDom> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaDom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
@@ -3944,14 +3943,14 @@ impl<Children> renderer::view::AddAnyAttr<CocoaDom> for Grid<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<CocoaDom> for ScrollView<Children> {
+impl<Children> AddAnyAttr<CocoaDom> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaDom>,
     {
         panic!(
-            "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView              isn't an NSControl — click handlers have no install path.              Attach to inner content instead."
+            "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView isn't an NSControl — click handlers have no install path. Attach to inner content instead."
         )
     }
 }

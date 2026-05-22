@@ -13,7 +13,7 @@ mod common;
 
 use leptos_cocoa::dom::menu::{menu, menu_bar, menu_item, menu_separator};
 use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn, NSEventModifierFlags};
-use renderer::menu::Modifiers;
+use leptos_native::renderer::menu::Modifiers;
 
 // ---------------------------------------------------------------------
 // MenuBar / Menu construction

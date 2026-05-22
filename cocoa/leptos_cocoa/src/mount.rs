@@ -59,7 +59,7 @@ use crate::{
     },
     CocoaDom,
 };
-use renderer::view::Render;
+use leptos_native::renderer::view::Render;
 
 #[allow(unused_imports)]
 use CocoaDom as _ResolveDom;

@@ -11,7 +11,7 @@
 #![allow(missing_docs)]
 
 use crate::dom::layout::CocoaBackend;
-use renderer::{renderer::Renderer, view::Mountable, LayoutBackend};
+use leptos_native::renderer::{Renderer, view::Mountable, LayoutBackend};
 
 // Re-export the concrete tree types under the names tachys/leptos/
 // the platform expects. `Text` and `Placeholder` are aliases for

@@ -25,14 +25,15 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use send_wrapper::SendWrapper;
 use std::cell::RefCell;
 use std::sync::OnceLock;
+use leptos_native::renderer;
 
-pub use renderer::{
+pub use leptos_native::renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
     FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
     JustifyItems, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size,
     Style, TrackSizingFunction,
 };
-use renderer::{Layout, LayoutBackend, LayoutState};
+use leptos_native::renderer::{Layout, LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // Cocoa backend
@@ -653,7 +654,7 @@ fn set_frame_from_layout(
     #[cfg(feature = "animation")] pending_anim: Option<super::animation::Animation>,
     #[cfg(not(feature = "animation"))] _pending_anim: Option<()>,
 ) {
-    use renderer::Point;
+    use leptos_native::renderer::Point;
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
     if layout_debug_enabled() {
