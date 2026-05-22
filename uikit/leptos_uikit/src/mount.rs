@@ -10,7 +10,7 @@
 //! `UISceneDelegate`, not a window builder.
 
 use crate::Dom;
-use ios_dom::app::{store_view_builder, uiapplication_main};
+use crate::dom::app::{store_view_builder, uiapplication_main};
 use reactive_graph::owner::Owner;
 use leptos_native::renderer::view::{Mountable, Render};
 
@@ -45,7 +45,7 @@ where
         // insets applied; this pass is just to avoid a one-frame
         // flash of unsized content.
         let size = window.frame().size;
-        ios_dom::layout::compute_layout(content_root, size);
+        crate::dom::layout::compute_layout(content_root, size);
     });
 
     uiapplication_main()

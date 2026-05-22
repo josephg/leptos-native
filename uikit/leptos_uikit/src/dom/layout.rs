@@ -10,7 +10,7 @@
 //! GTK-style measure/allocate protocol — UIView frames are
 //! authoritative once set.
 
-use crate::node::UikitElem;
+use crate::dom::node::UikitElem;
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -39,7 +39,7 @@ pub use leptos_native::renderer::{
     set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
     set_row_gap, set_width,
 };
-
+use crate::dom::event::IosNodeHandlers;
 // ---------------------------------------------------------------------
 // iOS backend
 // ---------------------------------------------------------------------
@@ -65,7 +65,7 @@ thread_local! {
 impl LayoutBackend for IosBackend {
     type View = SendWrapper<Retained<UIView>>;
     type NodeMeta = IosMeta;
-    type Handlers = crate::event::IosNodeHandlers;
+    type Handlers = IosNodeHandlers;
 
     fn measure_leaf(
         view: &Self::View,

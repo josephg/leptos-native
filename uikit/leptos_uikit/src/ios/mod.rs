@@ -24,7 +24,7 @@ pub use element::{
 };
 
 // Convenient passthrough of the most common style enums.
-pub use ios_dom::layout::{
+pub use crate::dom::layout::{
     AlignContent, AlignItems, FlexDirection, GridAutoFlow,
     GridTemplateComponent, JustifyContent, JustifyItems, TrackSizingFunction,
 };

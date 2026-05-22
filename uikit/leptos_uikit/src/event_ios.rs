@@ -10,7 +10,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use ios_dom::UikitElem;
+use crate::dom::{KeyEvent, UikitElem};
 use leptos_native::renderer::view::ApplyAttr;
 
 pub struct ClickEvent;
@@ -105,20 +105,20 @@ impl EventDescriptor for BlurEvent {
 }
 
 impl EventDescriptor for KeyDownEvent {
-    type EventType = ios_dom::KeyEvent;
+    type EventType = KeyEvent;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
-        F: FnMut(ios_dom::KeyEvent) + Send + 'static,
+        F: FnMut(KeyEvent) + Send + 'static,
     {
         PendingHandler::KeyDown(Box::new(handler))
     }
 }
 
 impl EventDescriptor for KeyUpEvent {
-    type EventType = ios_dom::KeyEvent;
+    type EventType = KeyEvent;
     fn into_pending<F>(handler: F) -> PendingHandler
     where
-        F: FnMut(ios_dom::KeyEvent) + Send + 'static,
+        F: FnMut(KeyEvent) + Send + 'static,
     {
         PendingHandler::KeyUp(Box::new(handler))
     }
@@ -141,8 +141,8 @@ pub enum PendingHandler {
     Commit(Box<dyn FnMut(String) + Send + 'static>),
     Focus(Box<dyn FnMut() + Send + 'static>),
     Blur(Box<dyn FnMut() + Send + 'static>),
-    KeyDown(Box<dyn FnMut(ios_dom::KeyEvent) + Send + 'static>),
-    KeyUp(Box<dyn FnMut(ios_dom::KeyEvent) + Send + 'static>),
+    KeyDown(Box<dyn FnMut(KeyEvent) + Send + 'static>),
+    KeyUp(Box<dyn FnMut(KeyEvent) + Send + 'static>),
 }
 
 impl PendingHandler {

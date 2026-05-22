@@ -21,7 +21,7 @@
 //! The user's view-building closure is stored in a thread-local
 //! before `UIApplicationMain` is called.
 
-use crate::UikitElem;
+use crate::dom::{layout, UikitElem};
 use objc2::{
     define_class, msg_send,
     rc::{Allocated, Retained},
@@ -106,7 +106,7 @@ define_class!(
             _application: &UIApplication,
             _options: Option<&NSObject>,
         ) -> bool {
-            let _ = crate::spawner::init();
+            let _ = super::spawner::init().unwrap();
             true
         }
 
@@ -229,9 +229,9 @@ define_class!(
             // already implies `flex_direction: Column`.
             let content_root =
                 UikitElem::create_container_with(mtm);
-            crate::layout::set_flex_direction(
+            layout::set_flex_direction(
                 content_root,
-                crate::layout::FlexDirection::Column,
+                layout::FlexDirection::Column,
             );
             // Fill the window via 100% size — Taffy resolves against
             // the `AvailableSpace::Definite` passed to compute_layout.
@@ -356,7 +356,7 @@ define_class!(
             if insets_changed {
                 state.last_insets.set(insets);
                 state.last_keyboard_inset.set(kb_bottom_extra);
-                crate::layout::update_style(content_root, |s| {
+                layout::update_style(content_root, |s| {
                     s.padding = taffy::Rect {
                         top: taffy::LengthPercentage::length(insets.top as f32),
                         bottom: taffy::LengthPercentage::length(
@@ -368,7 +368,7 @@ define_class!(
                 });
             }
 
-            crate::layout::compute_layout(content_root, bounds.size);
+            layout::compute_layout(content_root, bounds.size);
         }
     }
 );

@@ -6,8 +6,8 @@
 
 #![allow(missing_docs)]
 
-use ios_dom::layout::IosBackend;
-use ios_dom::Renderer as IosRenderer;
+use crate::dom::layout::IosBackend;
+use crate::dom::Renderer as IosRenderer;
 use leptos_native::renderer::LayoutBackend;
 use leptos_native::renderer::{
     view::Mountable,
@@ -19,7 +19,7 @@ use leptos_native::renderer::{
 // UIView-backed UikitElems; the only thing distinguishing a "text node"
 // or "placeholder" from a regular UikitElem is the UIView subclass +
 // default style applied at creation.
-pub use ios_dom::{
+pub use crate::dom::{
     Event, UikitElem,
 };
 pub type Text = UikitElem;

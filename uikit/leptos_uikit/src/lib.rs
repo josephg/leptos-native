@@ -16,6 +16,7 @@ pub mod ios;
 pub mod keys;
 pub mod mount;
 pub mod renderer_ios;
+pub mod dom;
 
 /// Aliased path for `leptos_native::mount_ios::run` so existing iOS example
 /// code (`leptos_native::mount_ios::run(...)`) keeps compiling under the
@@ -124,10 +125,9 @@ pub mod prelude {
         AlignSelf, Dim, Overflow, WithLayout, WithUniversal,
     };
 
-    pub use ios_dom::{
+    pub use crate::dom::{
+        self,
         local_storage, set_interval, set_interval_with_handle, Color,
         IntervalError, IntervalHandle, KeyEvent, Storage, StorageError,
     };
-
-    pub use crate::Dom;
 }

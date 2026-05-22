@@ -40,7 +40,8 @@ use std::{
     cell::RefCell,
     sync::atomic::{AtomicUsize, Ordering},
 };
-
+use crate::dom::node::downcast;
+use crate::dom::UikitElem;
 // ---------------------------------------------------------------------
 // Live counts for leak tests.
 // ---------------------------------------------------------------------
@@ -241,12 +242,12 @@ pub fn text_view_store_size_for_test() -> usize {
 /// which UIControlEvents to listen for. The handler always takes
 /// `()`. If you need the control's value, read it inside the closure.
 fn on_control_action_with_events(
-    node: crate::UikitElem,
+    node: UikitElem,
     events: objc2_ui_kit::UIControlEvents,
     cb: impl FnMut() + 'static,
 ) {
     let view = node.ui_view();
-    let Some(control) = crate::node::downcast::<UIControl>(&view) else {
+    let Some(control) = downcast::<UIControl>(&view) else {
         return;
     };
     let mtm = MainThreadMarker::new()
@@ -282,7 +283,7 @@ fn on_control_action_with_events(
 /// single target/action slot, UIControl supports multiple target/
 /// action pairs.
 pub fn on_control_action(
-    node: crate::UikitElem,
+    node: UikitElem,
     cb: impl FnMut() + 'static,
 ) {
     let view = node.ui_view();
@@ -324,7 +325,7 @@ pub fn on_control_action(
 /// `UILabel` and `UIImageView` default to `NO` — a gesture
 /// recognizer attached to either silently never fires unless
 /// user-interaction is explicitly turned on.
-pub fn on_tap_gesture(node: crate::UikitElem, cb: impl FnMut() + 'static) {
+pub fn on_tap_gesture(node: UikitElem, cb: impl FnMut() + 'static) {
     let view = node.ui_view();
     let mtm = MainThreadMarker::new()
         .expect("on_tap_gesture must run on the main thread");
@@ -362,11 +363,11 @@ pub fn on_tap_gesture(node: crate::UikitElem, cb: impl FnMut() + 'static) {
 /// capture — avoids the cycle described in the module docs).
 /// No-op if `node` isn't a UITextField.
 pub fn on_text_field_change(
-    node: crate::UikitElem,
+    node: UikitElem,
     mut cb: impl FnMut(String) + 'static,
 ) {
     let Some(field) =
-        crate::node::downcast::<UITextField>(&node.ui_view())
+        downcast::<UITextField>(&node.ui_view())
     else { return };
     let field_clone: Retained<UITextField> = field.into();
     on_control_action_with_events(
@@ -384,11 +385,11 @@ pub fn on_text_field_change(
 /// Append a commit observer on a UITextField (fires on Return key /
 /// focus loss). Uses `UIControlEventEditingDidEnd`.
 pub fn on_text_field_end_editing(
-    node: crate::UikitElem,
+    node: UikitElem,
     mut cb: impl FnMut(String) + 'static,
 ) {
     let Some(field) =
-        crate::node::downcast::<UITextField>(&node.ui_view())
+        downcast::<UITextField>(&node.ui_view())
     else { return };
     let field_clone: Retained<UITextField> = field.into();
     on_control_action_with_events(
@@ -406,10 +407,10 @@ pub fn on_text_field_end_editing(
 /// Append a focus observer on a UITextField (fires on
 /// `UIControlEventEditingDidBegin`).
 pub fn on_text_field_focus(
-    node: crate::UikitElem,
+    node: UikitElem,
     cb: impl FnMut() + 'static,
 ) {
-    if crate::node::downcast::<UITextField>(&node.ui_view()).is_none() {
+    if downcast::<UITextField>(&node.ui_view()).is_none() {
         return;
     }
     on_control_action_with_events(
@@ -423,10 +424,10 @@ pub fn on_text_field_focus(
 /// `UIControlEventEditingDidEnd` — same as end editing but without
 /// the value payload).
 pub fn on_text_field_blur(
-    node: crate::UikitElem,
+    node: UikitElem,
     cb: impl FnMut() + 'static,
 ) {
-    if crate::node::downcast::<UITextField>(&node.ui_view()).is_none() {
+    if downcast::<UITextField>(&node.ui_view()).is_none() {
         return;
     }
     on_control_action_with_events(
@@ -505,9 +506,9 @@ impl TextViewDelegate {
 /// the node's [`IosNodeHandlers`]. Repeated installs reuse the
 /// existing delegate's `SharedHandlers`.
 fn ensure_text_view_entry(
-    node: crate::UikitElem,
+    node: UikitElem,
 ) -> SharedTextViewHandlers {
-    let tv = crate::node::downcast::<UITextView>(&node.ui_view())
+    let tv = downcast::<UITextView>(&node.ui_view())
         .expect("ensure_text_view_entry: node is not a UITextView");
     let mtm = MainThreadMarker::new()
         .expect("text-view event installs must run on the main thread");
@@ -551,10 +552,10 @@ fn ensure_text_view_entry(
 /// Append a change observer on a UITextView — fires on every
 /// keystroke. No-op if `node` isn't a UITextView.
 pub fn on_text_view_change(
-    node: crate::UikitElem,
+    node: UikitElem,
     cb: impl FnMut(String) + 'static,
 ) {
-    if crate::node::downcast::<UITextView>(&node.ui_view()).is_none() {
+    if downcast::<UITextView>(&node.ui_view()).is_none() {
         return;
     }
     let handlers = ensure_text_view_entry(node);

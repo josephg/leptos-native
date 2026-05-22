@@ -16,7 +16,8 @@
 //!
 //! See the crate-level docs for the threading contract.
 
-use crate::layout::{IosMeta, NodeId, Style};
+use crate::dom::{Color, Date, DatePickerStyle, KeyEvent, TextAlignment};
+use super::layout::{IosMeta, NodeId, Style};
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
     MainThreadOnly, Message,
@@ -25,8 +26,10 @@ use objc2_ui_kit::{UIButton, UIControl, UITextField, UIView};
 use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc};
-use crate::layout::IosBackend;
+use super::layout::IosBackend;
 use leptos_native::renderer::LayoutBackend;
+use crate::dom::event::IosNodeHandlers;
+use crate::dom::{event, layout};
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`.
@@ -56,7 +59,7 @@ impl UikitElem {
             default_style,
             SendWrapper::new(view.clone()),
             default_meta,
-            crate::event::IosNodeHandlers::default(),
+            super::event::IosNodeHandlers::default(),
         );
         // Wire the handlers' view back-ref so teardown can nil
         // setDelegate / removeAllTargets while the view is still alive.
@@ -162,7 +165,7 @@ impl UikitElem {
     /// the node isn't present (handlers install on live nodes).
     pub fn with_handlers_mut<R>(
         self,
-        f: impl FnOnce(&mut crate::event::IosNodeHandlers) -> R,
+        f: impl FnOnce(&mut IosNodeHandlers) -> R,
     ) -> R {
         IosBackend::with_handlers_mut(self.id, f)
             .expect("Node id must exist in the store")
@@ -216,7 +219,7 @@ impl UikitElem {
         match marker {
             None => {
                 parent.addSubview(&child_view);
-                crate::layout::attach_child(self, child);
+                layout::attach_child(self, child);
             }
             Some(marker) => {
                 let marker_view = marker.ui_view();
@@ -231,7 +234,7 @@ impl UikitElem {
                         break;
                     }
                 }
-                crate::layout::insert_child_at(
+                layout::insert_child_at(
                     self,
                     child,
                     child_index,
@@ -256,7 +259,7 @@ impl UikitElem {
             return None;
         }
         child_view.removeFromSuperview();
-        crate::layout::detach_child(self, child);
+        layout::detach_child(self, child);
         Some(child)
     }
 
@@ -295,7 +298,7 @@ impl UikitElem {
             }
         }
         if changed {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -319,7 +322,7 @@ impl UikitElem {
             }
         }
         if changed {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -333,7 +336,7 @@ impl UikitElem {
                 .unwrap_or_default();
             if current != value {
                 field.setPlaceholder(Some(&NSString::from_str(value)));
-                crate::layout::schedule_relayout(self);
+                layout::schedule_relayout(self);
             }
         }
     }
@@ -375,50 +378,50 @@ impl UikitElem {
     pub fn on_click(self, cb: impl FnMut() + 'static) {
         let Some(view) = self.try_ui_view() else { return; };
         if downcast::<UIControl>(&view).is_some() {
-            crate::event::on_control_action(self, cb);
+            event::on_control_action(self, cb);
         } else {
-            crate::event::on_tap_gesture(self, cb);
+            event::on_tap_gesture(self, cb);
         }
     }
 
     pub fn on_action(self, cb: impl FnMut() + 'static) {
-        crate::event::on_control_action(self, cb);
+        event::on_control_action(self, cb);
     }
 
     pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
         if self.try_downcast::<UITextField>().is_some() {
-            crate::event::on_text_field_change(self, move |_| cb());
+            event::on_text_field_change(self, move |_| cb());
             return;
         }
-        crate::event::on_control_action(self, cb);
+        event::on_control_action(self, cb);
     }
 
     pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_change(self, cb);
+        event::on_text_field_change(self, cb);
     }
 
     pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
-        crate::event::on_text_field_end_editing(self, cb);
+        event::on_text_field_end_editing(self, cb);
     }
 
     pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_focus(self, cb);
+        event::on_text_field_focus(self, cb);
     }
 
     pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
-        crate::event::on_text_field_blur(self, cb);
+        event::on_text_field_blur(self, cb);
     }
 
     pub fn on_text_keydown(
         self,
-        _cb: impl FnMut(crate::KeyEvent) + 'static,
+        _cb: impl FnMut(KeyEvent) + 'static,
     ) {
         // Deferred: UIKeyCommand + pressesBegan:
     }
 
     pub fn on_text_keyup(
         self,
-        _cb: impl FnMut(crate::KeyEvent) + 'static,
+        _cb: impl FnMut(KeyEvent) + 'static,
     ) {
     }
 
@@ -551,7 +554,7 @@ impl UikitElem {
                 Some(&ns),
                 objc2_ui_kit::UIControlState::Normal,
             );
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -570,12 +573,12 @@ impl UikitElem {
                     Some(&ns),
                     objc2_ui_kit::UIControlState::Normal,
                 );
-                crate::layout::schedule_relayout(self);
+                layout::schedule_relayout(self);
             }
         }
     }
 
-    pub fn set_color_well_value(self, color: crate::Color) {
+    pub fn set_color_well_value(self, color: Color) {
         use objc2_ui_kit::UIColorWell;
         let Some(cw) = self.try_downcast::<UIColorWell>() else {
             return;
@@ -583,25 +586,25 @@ impl UikitElem {
         cw.setSelectedColor(Some(&color.to_uicolor()));
     }
 
-    pub fn color_well_value(self) -> Option<crate::Color> {
+    pub fn color_well_value(self) -> Option<Color> {
         use objc2_ui_kit::UIColorWell;
         let cw = self.try_downcast::<UIColorWell>()?;
         let c = cw.selectedColor()?;
-        crate::Color::from_uicolor(&c)
+        Color::from_uicolor(&c)
     }
 
     pub fn on_color_change(
         self,
-        mut cb: impl FnMut(crate::Color) + 'static,
+        mut cb: impl FnMut(Color) + 'static,
     ) {
         use objc2_ui_kit::UIColorWell;
         let Some(cw) = self.try_downcast::<UIColorWell>() else {
             return;
         };
         let cw_for_cb: Retained<UIColorWell> = cw.retain();
-        crate::event::on_control_action(self, move || {
+        event::on_control_action(self, move || {
             if let Some(c) = cw_for_cb.selectedColor() {
-                if let Some(color) = crate::Color::from_uicolor(&c) {
+                if let Some(color) = Color::from_uicolor(&c) {
                     cb(color);
                 }
             }
@@ -616,7 +619,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_background_color(self, color: Option<crate::Color>) {
+    pub fn set_background_color(self, color: Option<Color>) {
         let Some(v) = self.try_ui_view() else { return; };
         match color {
             Some(c) => v.setBackgroundColor(Some(&c.to_uicolor())),
@@ -641,7 +644,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_border_color(self, color: Option<crate::Color>) {
+    pub fn set_border_color(self, color: Option<Color>) {
         let Some(__v) = self.try_ui_view() else { return; };
         let layer = __v.layer();
         match color {
@@ -653,7 +656,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_color(self, color: crate::Color) {
+    pub fn set_text_color(self, color: Color) {
         let Some(view) = self.try_ui_view() else { return; };
         let uicolor = color.to_uicolor();
 
@@ -670,7 +673,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_alignment(self, alignment: crate::TextAlignment) {
+    pub fn set_text_alignment(self, alignment: TextAlignment) {
         let Some(view) = self.try_ui_view() else { return; };
 
         if let Some(field) = downcast::<UITextField>(&view) {
@@ -708,7 +711,7 @@ impl UikitElem {
             applied = true;
         }
         if applied {
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
@@ -731,7 +734,7 @@ impl UikitElem {
     pub fn set_slider_tick_marks(self, _count: usize) {}
     pub fn set_slider_snaps_to_ticks(self, _snaps: bool) {}
 
-    pub fn set_date_picker_style(self, style: crate::DatePickerStyle) {
+    pub fn set_date_picker_style(self, style: DatePickerStyle) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -739,7 +742,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_date_picker_min(self, d: Option<crate::Date>) {
+    pub fn set_date_picker_min(self, d: Option<Date>) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -748,7 +751,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_date_picker_max(self, d: Option<crate::Date>) {
+    pub fn set_date_picker_max(self, d: Option<Date>) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -777,17 +780,17 @@ impl UikitElem {
 
     pub fn set_progress_displayed_when_stopped(self, _shown: bool) {}
 
-    pub fn date_picker_value(self) -> crate::Date {
+    pub fn date_picker_value(self) -> Date {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
             let d = dp.date();
-            return crate::Date::from_nsdate(&d);
+            return Date::from_nsdate(&d);
         }
-        crate::Date::now()
+        Date::now()
     }
 
-    pub fn set_date_picker_value(self, d: crate::Date) {
+    pub fn set_date_picker_value(self, d: Date) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -850,7 +853,7 @@ impl UikitElem {
         self,
         cb: impl FnMut(String) + 'static,
     ) {
-        crate::event::on_text_view_change(self, cb);
+        event::on_text_view_change(self, cb);
     }
 
     pub fn set_text_view_editable(self, editable: bool) {
@@ -892,7 +895,7 @@ impl UikitElem {
         let image =
             UIImage::imageWithContentsOfFile(&path_str);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(self);
+        layout::schedule_relayout(self);
     }
 
     pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
@@ -903,13 +906,13 @@ impl UikitElem {
         };
         let Some(bytes) = bytes.filter(|b| !b.is_empty()) else {
             iv.setImage(None);
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
             return;
         };
         let data = NSData::with_bytes(bytes);
         let image = UIImage::imageWithData(&data);
         iv.setImage(image.as_deref());
-        crate::layout::schedule_relayout(self);
+        layout::schedule_relayout(self);
     }
 
     fn sf_symbol_image(name: &str) -> Option<objc2::rc::Retained<objc2_ui_kit::UIImage>> {
@@ -929,16 +932,16 @@ impl UikitElem {
                 image.as_deref(),
                 objc2_ui_kit::UIControlState::Normal,
             );
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
             return;
         }
         if let Some(iv) = downcast::<objc2_ui_kit::UIImageView>(&view) {
             iv.setImage(image.as_deref());
-            crate::layout::schedule_relayout(self);
+            layout::schedule_relayout(self);
         }
     }
 
-    pub fn set_tint(self, color: Option<crate::Color>) {
+    pub fn set_tint(self, color: Option<Color>) {
         let Some(view) = self.try_ui_view() else { return; };
         unsafe {
             if let Some(c) = color {
@@ -970,7 +973,7 @@ impl UikitElem {
         label.setText(Some(&NSString::from_str(content)));
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(label) };
 
-        let mut style = crate::layout::Style::default();
+        let mut style = layout::Style::default();
         style.flex_shrink = 0.0;
 
         UikitElem::from_view(view, style, IosMeta::default())
@@ -983,7 +986,7 @@ impl UikitElem {
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             label.setText(Some(&NSString::from_str(content)));
         }
-        crate::layout::schedule_relayout(self);
+        layout::schedule_relayout(self);
     }
 
     /// Build a placeholder Node — a hidden, zero-sized UIView used
@@ -1006,10 +1009,10 @@ impl UikitElem {
         );
         view.setHidden(true);
 
-        let mut style = crate::layout::Style::default();
-        style.position = crate::layout::Position::Absolute;
-        style.size.width = crate::layout::Dimension::length(0.0);
-        style.size.height = crate::layout::Dimension::length(0.0);
+        let mut style = layout::Style::default();
+        style.position = layout::Position::Absolute;
+        style.size.width = layout::Dimension::length(0.0);
+        style.size.height = layout::Dimension::length(0.0);
 
         UikitElem::from_view(view, style, IosMeta::default())
     }

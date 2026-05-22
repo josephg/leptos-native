@@ -1337,24 +1337,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71dd52191aae121e8611f1e8dc3e324dd0dd1dee1e6dd91d10ee07a3cfb4d9d8"
 
 [[package]]
-name = "ios_dom"
-version = "0.1.0"
-dependencies = [
- "any_spawner",
- "block2",
- "dispatch2",
- "futures",
- "leptos_native",
- "objc2",
- "objc2-foundation",
- "objc2-quartz-core",
- "objc2-ui-kit",
- "reactive_graph",
- "send_wrapper",
- "taffy",
-]
-
-[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1512,17 +1494,21 @@ name = "leptos_uikit"
 version = "0.1.0"
 dependencies = [
  "any_spawner",
+ "block2",
+ "dispatch2",
  "either_of",
- "ios_dom",
+ "futures",
  "leptos_apple_shared",
  "leptos_macro",
  "leptos_native",
  "objc2",
  "objc2-foundation",
+ "objc2-quartz-core",
  "objc2-ui-kit",
  "oco_ref",
  "reactive_graph",
  "send_wrapper",
+ "taffy",
 ]
 
 [[package]]

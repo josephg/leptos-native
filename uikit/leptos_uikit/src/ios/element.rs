@@ -17,23 +17,31 @@ use leptos_native::renderer::attrs::{
     LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
 use leptos_native::renderer::view::{ApplyAttr, Mountable, Render};
-use ios_dom::{
-    layout::{
-        set_align_content, set_align_items, set_aspect_ratio, set_column_gap,
-        set_flex_direction, set_gap, set_grid_auto_columns, set_grid_auto_flow,
-        set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
-        set_inset, set_justify_content, set_justify_items, set_row_gap,
-        AlignContent, AlignItems, FlexDirection, GridAutoFlow,
-        GridTemplateComponent, JustifyContent, JustifyItems, Position,
-        TrackSizingFunction,
-    },
-    UikitElem,
-};
+use crate::dom::{layout::{
+    set_align_content, set_align_items, set_aspect_ratio, set_column_gap,
+    set_flex_direction, set_gap, set_grid_auto_columns, set_grid_auto_flow,
+    set_grid_auto_rows, set_grid_template_columns, set_grid_template_rows,
+    set_inset, set_justify_content, set_justify_items, set_row_gap,
+    AlignContent, AlignItems, FlexDirection, GridAutoFlow,
+    GridTemplateComponent, JustifyContent, JustifyItems, Position,
+    TrackSizingFunction,
+}, Color, Date, DatePickerStyle, UikitElem};
 use reactive_graph::effect::RenderEffect;
+
+// `apply_universal` lives in `renderer::apply_universal`. The
+// `UniversalElement` impl for `UikitElem` uses the trait's default
+// no-op for `set_tool_tip` (UIView has no hover-tooltip concept).
+use crate::dom::layout::apply_universal;
+
+// `apply_layout` lives in `renderer::apply_layout`; the
+// `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
+use crate::dom::layout::apply_layout;
+use leptos_native::node_ref::NodeRef;
+use leptos_native::prelude::AddAnyAttr;
 
 /// iOS's text-attr struct alias — `TextAttrs` with iOS's `Color`
 /// and `NSTextAlignment`.
-pub type IosText = TextAttrs<ios_dom::Color, ios_dom::TextAlignment>;
+pub type IosText = TextAttrs<crate::dom::Color, crate::dom::TextAlignment>;
 
 /// Port-local accessor trait for [`IosText`]. Mirrors the shape of
 /// renderer-common's `WithLayout` / `WithUniversal`: each builder
@@ -49,12 +57,12 @@ pub type IosText = TextAttrs<ios_dom::Color, ios_dom::TextAlignment>;
 pub trait WithText: Sized {
     fn text_attrs_mut(&mut self) -> &mut IosText;
 
-    fn text_color<V: IntoMaybeReactive<ios_dom::Color>>(mut self, c: V) -> Self {
+    fn text_color<V: IntoMaybeReactive<crate::dom::Color>>(mut self, c: V) -> Self {
         self.text_attrs_mut().text_color = Some(c.into_maybe_reactive());
         self
     }
     /// Text alignment within the control's frame.
-    fn alignment<V: IntoMaybeReactive<ios_dom::TextAlignment>>(
+    fn alignment<V: IntoMaybeReactive<crate::dom::TextAlignment>>(
         mut self,
         a: V,
     ) -> Self {
@@ -68,10 +76,6 @@ pub trait WithText: Sized {
     }
 }
 
-// `apply_universal` lives in `renderer::apply_universal`. The
-// `UniversalElement` impl for `UikitElem` uses the trait's default
-// no-op for `set_tool_tip` (UIView has no hover-tooltip concept).
-use ios_dom::layout::apply_universal;
 
 /// Apply [`IosText`] (text_color, alignment, font_size) to the live
 /// UIView.
@@ -100,12 +104,6 @@ fn apply_text(el: UikitElem, attrs: IosText) -> Vec<RenderEffect<()>> {
     out
 }
 
-// `apply_layout` lives in `renderer::apply_layout`; the
-// `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
-use ios_dom::layout::apply_layout;
-use leptos_native::node_ref::NodeRef;
-use leptos_native::prelude::AddAnyAttr;
-
 /// Apply the always-present `universal` (+ optional `text`) and
 /// `layout` cascade tail every typed builder runs. Layout LAST
 /// because `hidden=Display::None` lives in `LayoutAttrs`. iOS-port
@@ -129,10 +127,10 @@ fn apply_common(
 /// (or its CALayer); each is reactive via `MaybeReactive`.
 fn apply_chrome(
     el: UikitElem,
-    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    background_color: Option<MaybeReactive<Color>>,
     corner_radius: Option<MaybeReactive<f64>>,
     border_width: Option<MaybeReactive<f64>>,
-    border_color: Option<MaybeReactive<ios_dom::Color>>,
+    border_color: Option<MaybeReactive<Color>>,
 ) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(c) = background_color {
@@ -237,10 +235,10 @@ pub struct View<Children> {
     inset_right: Option<f32>,
     inset_bottom: Option<f32>,
     inset_left: Option<f32>,
-    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    background_color: Option<MaybeReactive<Color>>,
     corner_radius: Option<MaybeReactive<f64>>,
     border_width: Option<MaybeReactive<f64>>,
-    border_color: Option<MaybeReactive<ios_dom::Color>>,
+    border_color: Option<MaybeReactive<Color>>,
     layout: LayoutAttrs,
     universal: UniversalAttrs,
     handlers: Vec<PendingHandler>,
@@ -344,7 +342,7 @@ impl<Ch> View<Ch> {
     }
     /// Background fill colour. Pass a `Color` (e.g.
     /// `Color::SYSTEM_BACKGROUND`) or a closure.
-    pub fn background_color<V: IntoMaybeReactive<ios_dom::Color>>(
+    pub fn background_color<V: IntoMaybeReactive<Color>>(
         mut self,
         c: V,
     ) -> Self {
@@ -364,7 +362,7 @@ impl<Ch> View<Ch> {
         self
     }
     /// Border colour. See `border_width` for thickness.
-    pub fn border_color<V: IntoMaybeReactive<ios_dom::Color>>(
+    pub fn border_color<V: IntoMaybeReactive<Color>>(
         mut self,
         c: V,
     ) -> Self {
@@ -450,7 +448,7 @@ impl<Ch: Render<Dom>> Render<Dom> for View<Ch> {
             set_aspect_ratio(el, r);
         }
         if self.position_absolute {
-            ios_dom::layout::set_position(el, Position::Absolute);
+            crate::dom::layout::set_position(el, Position::Absolute);
             set_inset(
                 el,
                 self.inset_top,
@@ -510,10 +508,10 @@ pub struct Grid<Children> {
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align_content:   Option<MaybeReactive<AlignContent>>,
 
-    background_color: Option<MaybeReactive<ios_dom::Color>>,
+    background_color: Option<MaybeReactive<Color>>,
     corner_radius:    Option<MaybeReactive<f64>>,
     border_width:     Option<MaybeReactive<f64>>,
-    border_color:     Option<MaybeReactive<ios_dom::Color>>,
+    border_color:     Option<MaybeReactive<Color>>,
     layout:           LayoutAttrs,
     universal:        UniversalAttrs,
     handlers:         Vec<PendingHandler>,
@@ -611,7 +609,7 @@ impl<Ch> Grid<Ch> {
         self.align_content = Some(v.into_maybe_reactive());
         self
     }
-    pub fn background_color<V: IntoMaybeReactive<ios_dom::Color>>(
+    pub fn background_color<V: IntoMaybeReactive<Color>>(
         mut self,
         c: V,
     ) -> Self {
@@ -626,7 +624,7 @@ impl<Ch> Grid<Ch> {
         self.border_width = Some(w.into_maybe_reactive());
         self
     }
-    pub fn border_color<V: IntoMaybeReactive<ios_dom::Color>>(
+    pub fn border_color<V: IntoMaybeReactive<Color>>(
         mut self,
         c: V,
     ) -> Self {
@@ -1680,7 +1678,7 @@ pub struct ImageView {
     source: MaybeReactive<String>,
     bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
     sf_symbol: Option<MaybeReactive<String>>,
-    tint: Option<MaybeReactive<ios_dom::Color>>,
+    tint: Option<MaybeReactive<Color>>,
     handlers: Vec<PendingHandler>,
     pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     node_ref: Option<NodeRef<UikitElem>>,
@@ -1728,7 +1726,7 @@ impl ImageView {
     }
     /// Tint the image. Most useful with SF Symbols / template
     /// images; UIKit propagates the tint through automatically.
-    pub fn tint<V: IntoMaybeReactive<ios_dom::Color>>(mut self, c: V) -> Self {
+    pub fn tint<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
         self.tint = Some(c.into_maybe_reactive());
         self
     }
@@ -2103,7 +2101,7 @@ impl Render<Dom> for PopUpButton {
 // ---------------------------------------------------------------------
 
 pub struct ColorWell {
-    value: MaybeReactive<ios_dom::Color>,
+    value: MaybeReactive<Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_value: Option<crate::ios::bind::BoundColor>,
     handlers: Vec<PendingHandler>,
@@ -2115,7 +2113,7 @@ pub struct ColorWell {
 
 pub fn color_well() -> ColorWell {
     ColorWell {
-        value: MaybeReactive::Static(ios_dom::Color::BLACK),
+        value: MaybeReactive::Static(Color::BLACK),
         enabled: None,
         pending_bind_value: None,
         handlers: Vec::new(),
@@ -2127,7 +2125,7 @@ pub fn color_well() -> ColorWell {
 }
 
 impl ColorWell {
-    pub fn value<V: IntoMaybeReactive<ios_dom::Color>>(mut self, v: V) -> Self {
+    pub fn value<V: IntoMaybeReactive<Color>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
     }
@@ -2217,7 +2215,7 @@ impl Render<Dom> for ColorWell {
 // ---------------------------------------------------------------------
 
 pub struct DatePicker {
-    value: MaybeReactive<ios_dom::Date>,
+    value: MaybeReactive<Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundDate>,
     handlers: Vec<PendingHandler>,
@@ -2225,14 +2223,14 @@ pub struct DatePicker {
     node_ref: Option<NodeRef<UikitElem>>,
     universal: UniversalAttrs,
     layout: LayoutAttrs,
-    style: Option<MaybeReactive<ios_dom::DatePickerStyle>>,
-    min_date: Option<MaybeReactive<ios_dom::Date>>,
-    max_date: Option<MaybeReactive<ios_dom::Date>>,
+    style: Option<MaybeReactive<DatePickerStyle>>,
+    min_date: Option<MaybeReactive<Date>>,
+    max_date: Option<MaybeReactive<Date>>,
 }
 
 pub fn date_picker() -> DatePicker {
     DatePicker {
-        value: MaybeReactive::Static(ios_dom::Date::now()),
+        value: MaybeReactive::Static(Date::now()),
         enabled: None,
         pending_bind: None,
         handlers: Vec::new(),
@@ -2247,7 +2245,7 @@ pub fn date_picker() -> DatePicker {
 }
 
 impl DatePicker {
-    pub fn value<V: IntoMaybeReactive<ios_dom::Date>>(mut self, v: V) -> Self {
+    pub fn value<V: IntoMaybeReactive<Date>>(mut self, v: V) -> Self {
         self.value = v.into_maybe_reactive();
         self
     }
@@ -2266,19 +2264,19 @@ impl DatePicker {
         self.pending_bind = Some(bound);
     }
     /// Visual style: `Wheels`, `Compact` (default), `Inline`,
-    /// `Automatic`. See `ios_dom::DatePickerStyle`.
+    /// `Automatic`. See `DatePickerStyle`.
     pub fn style<V>(mut self, s: V) -> Self
     where
-        V: IntoMaybeReactive<ios_dom::DatePickerStyle>,
+        V: IntoMaybeReactive<DatePickerStyle>,
     {
         self.style = Some(s.into_maybe_reactive());
         self
     }
-    pub fn min_date<V: IntoMaybeReactive<ios_dom::Date>>(mut self, d: V) -> Self {
+    pub fn min_date<V: IntoMaybeReactive<Date>>(mut self, d: V) -> Self {
         self.min_date = Some(d.into_maybe_reactive());
         self
     }
-    pub fn max_date<V: IntoMaybeReactive<ios_dom::Date>>(mut self, d: V) -> Self {
+    pub fn max_date<V: IntoMaybeReactive<Date>>(mut self, d: V) -> Self {
         self.max_date = Some(d.into_maybe_reactive());
         self
     }

@@ -12,7 +12,6 @@ members = [
   "cocoa/leptos_cocoa",
 
   "uikit/leptos_uikit",
-  "uikit/dom",
 
   # cocoa examples
   "cocoa/examples/*",
@@ -46,7 +45,6 @@ default-members = [
   "cocoa/leptos_cocoa",
   "gtk/leptos_gtk",
   "uikit/leptos_uikit",
-  "uikit/dom",
 
   "cocoa/examples/async_derived",
   "cocoa/examples/bind_tuple_form",

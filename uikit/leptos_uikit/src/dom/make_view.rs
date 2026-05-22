@@ -9,11 +9,7 @@
 //! Same shape as cocoa's `make_view.rs` — replaces the old tag-string
 //! match.
 
-use crate::{
-    event::IosNodeHandlers,
-    layout::{Dimension, FlexDirection, IosMeta, Style},
-    node::UikitElem,
-};
+use crate::dom::{event::IosNodeHandlers, layout, layout::{Dimension, FlexDirection, IosMeta, Style}, node::UikitElem};
 
 #[allow(unused_imports)]
 use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly};
@@ -231,7 +227,7 @@ impl UikitElem {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
-        s.display = crate::layout::Display::Grid;
+        s.display = layout::Display::Grid;
         UikitElem::from_view(view, s, IosMeta::default())
     }
 }

@@ -19,7 +19,7 @@ use crate::ios::element::{
     ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
     Stepper, Switch, TextField, TextView,
 };
-use ios_dom::UikitElem;
+use crate::dom::{Color, Date, UikitElem};
 use objc2::rc::Retained;
 use reactive_graph::{
     effect::RenderEffect,
@@ -109,9 +109,9 @@ pub(crate) struct BoundChecked {
 
 pub(crate) struct BoundDate {
     pub(crate) getter:
-        Box<dyn Fn() -> ios_dom::Date + Send + 'static>,
+        Box<dyn Fn() -> Date + Send + 'static>,
     pub(crate) setter:
-        Box<dyn FnMut(ios_dom::Date) + Send + 'static>,
+        Box<dyn FnMut(Date) + Send + 'static>,
 }
 
 pub(crate) struct BoundIndex {
@@ -293,7 +293,7 @@ pub(crate) fn install_stepper_value_bind(
 
 impl<Sig> BindAttribute<crate::keys::Value, Sig> for DatePicker
 where
-    Sig: IntoSignal<ios_dom::Date>,
+    Sig: IntoSignal<Date>,
 {
     fn bind(
         mut self,
@@ -318,7 +318,7 @@ pub(crate) fn install_date_picker_bind(
     let picker_out = picker.clone();
     el.on_click(move || {
         let d = picker_out.date();
-        setter(ios_dom::Date::from_nsdate(&d));
+        setter(Date::from_nsdate(&d));
     });
 
     let getter = bound.getter;
@@ -409,13 +409,13 @@ where
 // ---------------------------------------------------------------------
 
 pub(crate) struct BoundColor {
-    pub(crate) getter: Box<dyn Fn() -> ios_dom::Color + Send + 'static>,
-    pub(crate) setter: Box<dyn FnMut(ios_dom::Color) + Send + 'static>,
+    pub(crate) getter: Box<dyn Fn() -> Color + Send + 'static>,
+    pub(crate) setter: Box<dyn FnMut(Color) + Send + 'static>,
 }
 
 impl<Sig> BindAttribute<crate::keys::Value, Sig> for ColorWell
 where
-    Sig: IntoSignal<ios_dom::Color>,
+    Sig: IntoSignal<Color>,
 {
     fn bind(mut self, _key: crate::keys::Value, signal: Sig) -> Self {
         let getter = signal.into_get();

@@ -12,7 +12,7 @@
 //! `SendWrapper` for parity with web's API but only usable on
 //! main.
 
-use crate::MainThreadMarker;
+use crate::dom::MainThreadMarker;
 use objc2::{
     define_class, msg_send, rc::Retained, runtime::NSObject, sel,
     DefinedClass, MainThreadOnly,

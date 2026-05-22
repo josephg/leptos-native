@@ -24,7 +24,7 @@
 //! `Retained<NSUserDefaults>` is wrapped in `SendWrapper` to
 //! match the rest of `ios_dom`'s main-thread contract.
 
-use crate::MainThreadMarker;
+use super::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_foundation::{NSString, NSUserDefaults};
 use send_wrapper::SendWrapper;

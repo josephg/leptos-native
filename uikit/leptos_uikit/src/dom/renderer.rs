@@ -10,12 +10,13 @@
 //! setting, hydration tree walking) are present so the type-checker is
 //! happy, but they panic with `unimplemented!()` if actually called.
 
-use crate::node::UikitElem;
+use super::node::UikitElem;
 use objc2_ui_kit::UIEvent;
 use objc2::rc::Retained;
 use send_wrapper::SendWrapper;
 use std::fmt;
 use leptos_native::renderer::CastFrom;
+use crate::dom::layout;
 
 /// A UIKit event delivered to a handler. Currently a placeholder
 /// wrapper around a `UIEvent`.
@@ -97,7 +98,7 @@ impl Renderer {
     pub fn remove(node: UikitElem) {
         // Detach the view and remove the node (and its structural
         // subtree) from the store, returning node count to baseline.
-        crate::layout::drop_node(node);
+        layout::drop_node(node);
     }
 
     pub fn get_parent(_node: UikitElem) -> Option<UikitElem> {
