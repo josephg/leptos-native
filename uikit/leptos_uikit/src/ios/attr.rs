@@ -19,7 +19,7 @@
 //!
 //! [`RenderEffect`]: reactive_graph::effect::RenderEffect
 
-pub use renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
+pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 use ios_dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
     Color, Date, DatePickerStyle, TextAlignment,

@@ -13,10 +13,10 @@ use crate::{
     event_ios::{EventDescriptor, PendingHandler, SupportsEvent},
     Dom,
 };
-use renderer::attrs::{
+use leptos_native::renderer::attrs::{
     LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
 };
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{ApplyAttr, Mountable, Render};
 use ios_dom::{
     layout::{
         set_align_content, set_align_items, set_aspect_ratio, set_column_gap,
@@ -104,6 +104,7 @@ fn apply_text(el: UikitElem, attrs: IosText) -> Vec<RenderEffect<()>> {
 // `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
 use ios_dom::layout::apply_layout;
 use leptos_native::node_ref::NodeRef;
+use leptos_native::prelude::AddAnyAttr;
 
 /// Apply the always-present `universal` (+ optional `text`) and
 /// `layout` cascade tail every typed builder runs. Layout LAST
@@ -779,10 +780,10 @@ impl<Ch: Render<Dom>> Render<Dom> for Grid<Ch> {
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for Grid<Children> {
+impl<Children> AddAnyAttr<crate::Dom> for Grid<Children> {
     fn add_any_attr<__A>(mut self, attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: ApplyAttr<crate::Dom>,
     {
         self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
@@ -2597,10 +2598,10 @@ impl Render<Dom> for TextView {
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl renderer::view::AddAnyAttr<crate::Dom> for $builder {
+            impl leptos_native::renderer::view::AddAnyAttr<crate::Dom> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: renderer::view::ApplyAttr<crate::Dom>,
+                    __A: leptos_native::renderer::view::ApplyAttr<crate::Dom>,
                 {
                     self.pending_spreads.push(Box::new(move |el: UikitElem| {
                         attr.apply_to(el);
@@ -2622,10 +2623,10 @@ impl_add_any_attr_for_leaf!(
 // than silently drop. (UITextView and UIProgressView CAN take tap
 // gesture recognizers in principle, but adding the storage is
 // scope-creep for this commit.)
-impl renderer::view::AddAnyAttr<crate::Dom> for ProgressIndicator {
+impl AddAnyAttr<crate::Dom> for ProgressIndicator {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: renderer::view::ApplyAttr<crate::Dom> {
+    where __A: ApplyAttr<crate::Dom> {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ProgressIndicator — \
              UIProgressView doesn't carry handler/spread storage in \
@@ -2634,10 +2635,10 @@ impl renderer::view::AddAnyAttr<crate::Dom> for ProgressIndicator {
     }
 }
 
-impl renderer::view::AddAnyAttr<crate::Dom> for TextView {
+impl AddAnyAttr<crate::Dom> for TextView {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: renderer::view::ApplyAttr<crate::Dom> {
+    where __A: ApplyAttr<crate::Dom> {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on TextView — UITextView \
              doesn't carry handler/spread storage in this fork. \
@@ -2651,10 +2652,10 @@ impl renderer::view::AddAnyAttr<crate::Dom> for TextView {
 // views, so View *does* have a real install path. Push to
 // pending_spreads, drained in Render::build like the inline
 // `.on(click, …)` path.
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
+impl<Children> AddAnyAttr<crate::Dom> for View<Children> {
     fn add_any_attr<__A>(mut self, attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: ApplyAttr<crate::Dom>,
     {
         self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
@@ -2666,11 +2667,11 @@ impl<Children> renderer::view::AddAnyAttr<crate::Dom> for View<Children> {
 // ScrollView lacks pending_spreads in its struct — same treatment as
 // ProgressIndicator/TextView. UIScrollView could host a tap gesture
 // recognizer in principle but isn't wired here.
-impl<Children> renderer::view::AddAnyAttr<crate::Dom> for ScrollView<Children> {
+impl<Children> AddAnyAttr<crate::Dom> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::Dom>,
+        __A: ApplyAttr<crate::Dom>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ScrollView — no spread \

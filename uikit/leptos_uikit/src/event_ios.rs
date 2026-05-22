@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------
 
 use ios_dom::UikitElem;
+use leptos_native::renderer::view::ApplyAttr;
 
 pub struct ClickEvent;
 pub const click: ClickEvent = ClickEvent;
@@ -197,7 +198,7 @@ impl OnAttribute {
 // also had `Attribute` / `NextAttribute` / `ToTemplate` impls — those
 // are SSR-coupled and gone in this fork.
 
-impl renderer::view::ApplyAttr<crate::Dom> for OnAttribute {
+impl ApplyAttr<crate::Dom> for OnAttribute {
     fn apply_to(self, el: UikitElem) {
         OnAttribute::apply(self, el)
     }

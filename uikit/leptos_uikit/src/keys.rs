@@ -3,7 +3,7 @@
 //! `Checked`, `AttributeKey`) live in `renderer::attr_keys`; this
 //! module re-exports them and adds the iOS-specific `Selection`.
 
-pub use renderer::attr_keys::{AttributeKey, Checked, Value};
+pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, Value};
 
 /// `bind:selection` key — defined in `crate::ios::bind` next to its
 /// `BindAttribute` impls. Re-exported here so the macro path

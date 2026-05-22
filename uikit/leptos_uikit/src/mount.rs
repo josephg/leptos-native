@@ -12,7 +12,7 @@
 use crate::Dom;
 use ios_dom::app::{store_view_builder, uiapplication_main};
 use reactive_graph::owner::Owner;
-use renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{Mountable, Render};
 
 /// Run a UIKit application whose root view is built by `f`.
 ///

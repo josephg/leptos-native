@@ -35,7 +35,8 @@ use objc2_ui_kit::{
     UIWindowSceneDelegate,
 };
 use std::cell::{Cell, RefCell};
-
+use leptos_native::prelude::Dim;
+use leptos_native::renderer;
 // ---------------------------------------------------------------------
 // Global slot for the view-building closure
 // ---------------------------------------------------------------------
@@ -237,7 +238,6 @@ define_class!(
             // See cocoa's window.rs for the rationale; matches the
             // cross-port pattern.
             {
-                use renderer::attrs::Dim;
                 renderer::setters::set_size_width(
                     content_root,
                     Dim::Pct(1.0),

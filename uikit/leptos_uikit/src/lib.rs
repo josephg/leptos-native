@@ -27,7 +27,7 @@ pub mod mount_ios {
 pub use renderer_ios::Dom;
 
 /// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
-pub type AnyView = renderer::view::AnyView<Dom>;
+pub type AnyView = leptos_native::renderer::view::AnyView<Dom>;
 
 /// iOS-pinned alias of [`leptos_native::children::ChildrenFn`].
 pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
@@ -50,7 +50,7 @@ pub use leptos_native::typed_builder_macro;
 pub use leptos_native::callback;
 
 pub mod tachys {
-    pub use ::renderer::view;
+    pub use leptos_native::renderer::view;
 
     /// Re-export of the iOS builders + helpers, for the
     /// `::leptos_native::tachys::ios::*` paths some user code references
@@ -92,7 +92,7 @@ pub mod prelude {
     // Type-erased view container — see crate-level `AnyView` alias.
     pub use crate::AnyView;
     pub use crate::ChildrenFn;
-    pub use renderer::view::IntoAny;
+    pub use leptos_native::renderer::view::IntoAny;
 
     pub use crate::mount::{mount, run};
 
@@ -110,17 +110,17 @@ pub mod prelude {
 
     // Grid track-sizing helpers — re-exported from Taffy via
     // renderer so example code can write `[fr(1.0), auto()]`.
-    pub use renderer::{
+    pub use leptos_native::renderer::{
         auto, fit_content, fr, length, max_content, min_content, minmax,
         percent, repeat,
     };
-    pub use renderer::attrs::{auto_line, span, GridLine};
+    pub use leptos_native::renderer::attrs::{auto_line, span, GridLine};
 
     // Renderer-common attribute-accessor traits that builders impl.
     // Importing the traits brings the chainable setters
     // (`.padding(...)`, `.alpha(...)`, `.flex_grow(...)`, ...) into
     // scope on every builder.
-    pub use ::renderer::attrs::{
+    pub use leptos_native::renderer::attrs::{
         AlignSelf, Dim, Overflow, WithLayout, WithUniversal,
     };
 

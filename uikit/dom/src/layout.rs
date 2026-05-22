@@ -18,14 +18,27 @@ use objc2_ui_kit::{UIControl, UIScrollView, UITextField, UIView};
 use send_wrapper::SendWrapper;
 use std::cell::RefCell;
 use std::sync::OnceLock;
-
-pub use renderer::{
+use taffy::Point;
+pub use leptos_native::renderer::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
     FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use renderer::{LayoutBackend, LayoutState};
+use leptos_native::renderer::{LayoutBackend, LayoutElement, LayoutNodeOps, LayoutState, UniversalElement};
+
+pub use leptos_native::renderer::{
+    align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
+    grid_line_to_placement, set_align_content, set_align_items, set_align_self,
+    set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,
+    set_flex_shrink, set_flex_wrap, set_gap, set_grid_auto_columns,
+    set_grid_auto_flow, set_grid_auto_rows, set_grid_column_end,
+    set_grid_column_start, set_grid_row_end, set_grid_row_start,
+    set_grid_template_columns, set_grid_template_rows, set_height,
+    set_justify_content, set_justify_items, set_margin, set_max_height,
+    set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
+    set_row_gap, set_width,
+};
 
 // ---------------------------------------------------------------------
 // iOS backend
@@ -72,7 +85,7 @@ impl LayoutBackend for IosBackend {
     }
 }
 
-pub type NodeContext = renderer::NodeContext<IosBackend>;
+pub type NodeContext = leptos_native::renderer::NodeContext<IosBackend>;
 
 // Introspection over the global store (used by tests).
 pub fn node_count() -> usize {
@@ -505,7 +518,6 @@ pub fn first_baseline_offset(view: &UIView) -> Option<f64> {
 }
 
 fn set_frame_from_layout(view: &UIView, layout: &Layout) {
-    use renderer::Point;
     let Point { x, y } = layout.location;
     let Size { width, height } = layout.size;
     if layout_debug_enabled() {
@@ -525,7 +537,7 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 // cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for UikitElem {
+impl LayoutNodeOps for UikitElem {
     fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
         update_style(self, f);
     }
@@ -539,29 +551,16 @@ impl renderer::LayoutNodeOps for UikitElem {
 
 // iOS Node impls — `set_tool_tip` uses the default no-op (UIView
 // has no hover tooltips).
-impl renderer::LayoutElement for UikitElem {
+impl LayoutElement for UikitElem {
     fn set_view_hidden(self, hidden: bool) {
         UikitElem::set_hidden(self, hidden);
     }
 }
-impl renderer::UniversalElement for UikitElem {
+impl UniversalElement for UikitElem {
     fn set_alpha(self, alpha: f64) {
         UikitElem::set_alpha(self, alpha)
     }
 }
-
-pub use renderer::{
-    align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
-    grid_line_to_placement, set_align_content, set_align_items, set_align_self,
-    set_column_gap, set_flex_basis, set_flex_direction, set_flex_grow,
-    set_flex_shrink, set_flex_wrap, set_gap, set_grid_auto_columns,
-    set_grid_auto_flow, set_grid_auto_rows, set_grid_column_end,
-    set_grid_column_start, set_grid_row_end, set_grid_row_start,
-    set_grid_template_columns, set_grid_template_rows, set_height,
-    set_justify_content, set_justify_items, set_margin, set_max_height,
-    set_max_width, set_min_height, set_min_width, set_overflow, set_padding,
-    set_row_gap, set_width,
-};
 
 // ---------------------------------------------------------------------
 // iOS-only setters — Taffy fields the cocoa port doesn't currently

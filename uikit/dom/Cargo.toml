@@ -13,27 +13,8 @@ send_wrapper = { workspace = true, default-features = true }
 [dev-dependencies]
 reactive_graph = { workspace = true, features = ["effects"] }
 
-[[test]]
-name = "layout"
-path = "tests/layout.rs"
-harness = false
-
-[[test]]
-name = "grid_layout"
-path = "tests/grid_layout.rs"
-harness = false
-
-[[test]]
-name = "apply_attrs"
-path = "tests/apply_attrs.rs"
-harness = false
-
-[[test]]
-name = "node_lifecycle"
-path = "tests/node_lifecycle.rs"
-harness = false
-
 [target.'cfg(target_os = "ios")'.dependencies]
+leptos_native = { workspace = true }
 objc2 = "0.6"
 dispatch2 = "0.3"
 any_spawner = { workspace = true }
@@ -92,6 +73,26 @@ objc2-ui-kit = { version = "0.3", features = [
     "UITextInputTraits",
 ] }
 block2 = "0.6"
+
+[[test]]
+name = "layout"
+path = "tests/layout.rs"
+harness = false
+
+[[test]]
+name = "grid_layout"
+path = "tests/grid_layout.rs"
+harness = false
+
+[[test]]
+name = "apply_attrs"
+path = "tests/apply_attrs.rs"
+harness = false
+
+[[test]]
+name = "node_lifecycle"
+path = "tests/node_lifecycle.rs"
+harness = false
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

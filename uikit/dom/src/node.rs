@@ -26,7 +26,7 @@ use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc};
 use crate::layout::IosBackend;
-use renderer::LayoutBackend;
+use leptos_native::renderer::LayoutBackend;
 
 /// A handle into the ambient node store — structurally just a
 /// generational [`NodeId`]. `Copy + Send`.

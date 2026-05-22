@@ -8,4 +8,4 @@
 
 #![allow(unused_imports)]
 
-pub(crate) use renderer::directive::{pack, run_all};
+pub(crate) use leptos_native::renderer::directive::{pack, run_all};

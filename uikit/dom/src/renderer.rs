@@ -15,6 +15,7 @@ use objc2_ui_kit::UIEvent;
 use objc2::rc::Retained;
 use send_wrapper::SendWrapper;
 use std::fmt;
+use leptos_native::renderer::CastFrom;
 
 /// A UIKit event delivered to a handler. Currently a placeholder
 /// wrapper around a `UIEvent`.
@@ -121,8 +122,6 @@ impl Renderer {
 // CastFrom is from `renderer`, which has no local-type reference, so
 // the impls have to live here).
 // ---------------------------------------------------------------------
-
-use renderer::renderer::CastFrom;
 
 impl CastFrom<UikitElem> for UikitElem {
     fn cast_from(source: UikitElem) -> Option<UikitElem> {

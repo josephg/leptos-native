@@ -6,13 +6,13 @@
 
 #![allow(missing_docs)]
 
-use ios_dom::Renderer as IosRenderer;
-use renderer::{
-    renderer::Renderer as RendererTrait,
-    view::Mountable,
-};
 use ios_dom::layout::IosBackend;
-use renderer::LayoutBackend;
+use ios_dom::Renderer as IosRenderer;
+use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::{
+    view::Mountable,
+    Renderer as RendererTrait,
+};
 
 // `Text` and `Placeholder` are aliases for `UikitElem` — the renderer
 // trait wants distinct associated types, but on native they're all
