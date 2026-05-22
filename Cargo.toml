@@ -118,7 +118,6 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 # --- workspace member crates (path-pinned) ---
-renderer = { path = "./common/renderer", version = "0.1.0" }
 leptos_devtools = { path = "./common/devtools", version = "0.1.0" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos_native = { path = "./common/leptos_native", version = "0.1.0" }
@@ -134,9 +133,9 @@ either_of = { default-features = false, version = "0.1.9" }
 next_tuple = { default-features = false, version = "0.1.0" }
 oco_ref = { default-features = false, version = "0.2.1" }
 or_poisoned = { default-features = false, version = "0.1.0" }
-reactive_graph = { default-features = false, version = "0.2.14" }
-reactive_stores = { default-features = false, version = "0.4.3" }
-reactive_stores_macro = { default-features = false, version = "0.4.2" }
+reactive_graph = { default-features = false, version = "0.3.0-alpha" }
+reactive_stores = { default-features = false, version = "0.5.0-alpha" }
+reactive_stores_macro = { default-features = false, version = "0.5.0-alpha" }
 
 # --- third-party deps ---
 itertools = { default-features = false, version = "0.14" }
@@ -168,9 +167,9 @@ syn = { default-features = false, version = "2.0" }
 paste = { default-features = false, version = "1.0" }
 quote = { default-features = false, version = "1.0" }
 serial_test = { default-features = false, version = "3.3" }
-glib = { default-features = false, version = "0.21" }
-gio = { default-features = false, version = "0.21" }
-gtk4 = { default-features = false, version = "0.10" }
+glib = { default-features = false, version = "0.22" }
+gio = { default-features = false, version = "0.22" }
+gtk4 = { default-features = false, version = "0.11" }
 prettyplease = { default-features = false, version = "0.2" }
 uuid = { default-features = false, version = "1.20" }
 attribute-derive = { default-features = false, version = "0.10" }

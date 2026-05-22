@@ -5,7 +5,7 @@ use crate::{
 };
 use either_of::Either;
 use leptos_macro::component;
-use reactive_graph::{computed::ArcMemo, traits::Get};
+use reactive_graph::{computed::ArcMemo, traits::Get, wrappers::read::Signal};
 use crate::renderer::Renderer;
 use std::{marker::PhantomData, sync::Arc};
 
@@ -52,11 +52,13 @@ where
 /// A component that renders its children only when `when` returns `true`.
 /// Renders the optional `fallback` (or nothing) when `when` is `false`.
 #[component(transparent)]
-pub fn Show<W, C, Fb, R>(
+pub fn Show<C, Fb, R>(
     /// The children rendered whenever the `when` closure returns `true`.
     children: TypedChildrenFn<C, R>,
-    /// A closure that determines whether children render.
-    when: W,
+    /// A signal of a bool that determines whether children render. This also
+    /// accepts a closure that returns a bool.
+    #[prop(into)]
+    when: Signal<bool>,
     /// Optional fallback rendered whenever `when` is `false`. Pass any
     /// `Fn() -> impl IntoView` closure (e.g.
     /// `fallback=|| view!{ <label>"loading"</label> }`).
@@ -65,11 +67,10 @@ pub fn Show<W, C, Fb, R>(
 ) -> impl IntoView<R>
 where
     R: Renderer,
-    W: Fn() -> bool + Send + Sync + 'static,
     C: IntoView<R> + 'static,
     Fb: IntoView<R> + 'static,
 {
-    let memoized_when = ArcMemo::new(move |_| when());
+    let memoized_when = ArcMemo::new(move |_| when.get());
     let children = children.into_inner();
 
     move || match memoized_when.get() {

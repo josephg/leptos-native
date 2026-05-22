@@ -24,9 +24,9 @@ either_of = { default-features = false, version = "0.1.9" }
 next_tuple = { default-features = false, version = "0.1.0" }
 oco_ref = { default-features = false, version = "0.2.1" }
 or_poisoned = { default-features = false, version = "0.1.0" }
-reactive_graph = { default-features = false, version = "0.2.14" }
-reactive_stores = { default-features = false, version = "0.4.3" }
-reactive_stores_macro = { default-features = false, version = "0.4.2" }
+reactive_graph = { default-features = false, version = "0.3.0-alpha" }
+reactive_stores = { default-features = false, version = "0.5.0-alpha" }
+reactive_stores_macro = { default-features = false, version = "0.5.0-alpha" }
 
 # --- third-party deps ---
 itertools = { default-features = false, version = "0.14" }
