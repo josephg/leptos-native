@@ -1,10 +1,8 @@
 # leptos-native
 
-A native-only fork of [Leptos](https://leptos.dev) targeting macOS
-(AppKit), iOS (UIKit), and Linux (GTK4). The same `view!{}` macro,
-`#[component]` attribute, and fine-grained reactive signals you'd
-use on the web drive a real native UI on each platform — no
-embedded WebView, no client-server split, no WASM.
+This project is a fork of [Leptos](https://leptos.dev), targetting native UI rendering instead of the web.
+
+Here's an app:
 
 ```rust
 // Cargo.toml: leptos = { package = "leptos_cocoa" }   (or leptos_uikit / leptos_gtk)
@@ -30,23 +28,47 @@ fn main() {
 }
 ```
 
-That program produces a native AppKit window with three NSButtons
-on macOS (or three UIButtons on iOS, or three GtkButtons on Linux,
-depending on which `leptos_<platform>` crate the example depends on).
+This app can run on any of our supported platforms: Currently Linux (via GTK), MacOS (Cocoa) and iOS (UIKit).
+
+Unlike many other UI libraries for rust (eg Slint), leptos-native does not implement our own renderer. We do not invent our own library of UI components. This library wraps the native rendering & component libraries of our target platforms. As a result:
+
+- There are inconsistencies in our API and rendering results between platforms. GTK apps look like GTK apps, because we're using GTK under the hood. MacOS apps look native because we're using apple's own UI toolkit.
+- There are platform differences. Some components (eg SplitView, Toolbar) are only provided by a single platform.
+- Your code will probably not work unmodified across all our supported platforms. This is expected. Down the road we'll provide some examples of how to write cross-platform code.
+- Binary sizes are tiny. A Hello World Electron app is hundreds of megabytes. A hello world leptos-native app is about 500kb. (Honestly thats still too big, but much better).
+
+We do make some affordances to platform consistency:
+
+- Common components (buttons, labels, etc) have standard attributes wherever that makes sense.
+- We use [Taffy](https://taffylayout.com/) for layout instead of the platform-native layout engines. Taffy provides *Flexbox*, *Grid* and *Block* layout primitives.
+
+
+## Why
+
+Over the last 20 years, web UI frameworks have gotten better than native UI component libraries. On the web, we have:
+
+- Pure components
+- Reactivity
+- Declarative layout
+- Signals
+
+This is thanks to the constant innovation cycle of Elm, jQuery, Angular, React, Svelte, SolidJS and many many others.
+
+Its gotten to the point that people are making desktop applications out of web browsers. Discord. Spotify. Slack. MS Teams. And so on. These applications are huge downloads, and performance is terrible. But developers figure its easier to spend your RAM than spend their own time. What selfish rubbish. Especially in the era of AI RAM shortages. Electron apps (and friends) also never quite look or feel like native applications. I think my mac should feel like a mac. GTK has a whole thing going on too. Applications should fit in to the look and feel of the operating system. Not replace it.
+
+Another answer is to use native UI replacement libraries. Like egui, Slint, Cushy and so on. These libraries reinvent their own look and feel from scratch. They almost always mess up native keyboard shortcuts and break accessibility (eg screen readers). I want native apps on my phone and laptop to look and feel like part of the ecosystem. I don't want every application to invent its own tab bar, or reinvent what buttons look like or how they work. I want screen readers to work correctly using the native platform libraries.
+
+Hence Leptos-native.
+
+Combine the best recent ideas from web development (SolidJS's signals, reactivity, declarative views) with native controls (native cocoa, GTK, iOS, etc platform support). Tiny binaries (everything is just native code). Low memory footprint. Platform-native look and feel. Native platform accessibility support. Extensibility (if we don't support some macos component you need, you can just add it). Its great!
+
 
 ## Why a fork
 
-Upstream Leptos is built around the SSR/hydration shape: server
-renders HTML, the client hydrates an interactive shell, server
-functions bridge the two. That whole architecture is the wrong fit
-for a native app — there's no server, no DOM, no WASM-in-a-browser.
-This fork **deletes** the web-specific layers (`tachys/html`,
-`leptos_router`, `leptos_meta`, `server_fn`, `hydration_context`,
-SSR/CSR/hydrate Cargo features, …) and replaces the renderer with
-target-specific platform impls.
+Greg (Leptos author & maintainer) said he'd rather this code was in a fork than upstreamed.
 
-Greg Johnston (Leptos author) gave explicit blessing to fork rather
-than upstream — the divergence is too sharp for a shared codebase.
+We're still using upstream `reactive_graph` and signal code. We just changed what the signals actually do.
+
 
 ## Workspace layout
 
@@ -126,13 +148,13 @@ cargo test --manifest-path uikit/dom/Cargo.toml \
 
 ## What's working / what isn't
 
-- ✅ **macOS:** 18/22 examples build and run. Counter, counters,
+- **macOS:** 18/22 examples build and run. Counter, counters,
   greeter, persistent_counter, error_boundary, two_windows
   (multi-window), showcase (every supported control), all
   end-to-end.
-- ✅ **iOS:** 10/10 examples build for the simulator. Counter etc.
+- **iOS:** 10/10 examples build for the simulator. Counter etc.
   launch + render correctly via `run_ios.sh`.
-- 🚧 **Linux/GTK:** the `leptos_gtk` builder layer (analogous to
+- **Linux/GTK:** the `leptos_gtk` builder layer (analogous to
   `leptos_cocoa` / `leptos_uikit`) now exists and drives the GTK
   examples via the shared Taffy layout engine. Still maturing
   relative to the macOS port.
