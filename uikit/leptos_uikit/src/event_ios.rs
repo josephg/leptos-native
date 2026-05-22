@@ -198,7 +198,7 @@ impl OnAttribute {
 // also had `Attribute` / `NextAttribute` / `ToTemplate` impls — those
 // are SSR-coupled and gone in this fork.
 
-impl ApplyAttr<crate::Dom> for OnAttribute {
+impl ApplyAttr<crate::UikitDom> for OnAttribute {
     fn apply_to(self, el: UikitElem) {
         OnAttribute::apply(self, el)
     }

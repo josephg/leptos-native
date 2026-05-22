@@ -33,8 +33,8 @@ mod ios {
     /// with the content root.
     fn with_mounted_view<V, F>(view: V, size: (f64, f64), f: F)
     where
-        V: Render<leptos_uikit::Dom>,
-        V::State: Mountable<leptos_uikit::Dom>,
+        V: Render<leptos_uikit::UiKitDom>,
+        V::State: Mountable<leptos_uikit::UiKitDom>,
         F: FnOnce(&ios_dom::Element),
     {
         let _mtm = common::test_mtm();

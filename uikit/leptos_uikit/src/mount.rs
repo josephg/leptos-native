@@ -9,7 +9,7 @@
 //! is added later it'll be a `Scene` builder integrated with
 //! `UISceneDelegate`, not a window builder.
 
-use crate::Dom;
+use crate::UikitDom;
 use crate::dom::app::{store_view_builder, uiapplication_main};
 use reactive_graph::owner::Owner;
 use leptos_native::renderer::view::{Mountable, Render};
@@ -25,8 +25,8 @@ use leptos_native::renderer::view::{Mountable, Render};
 pub fn run<F, V>(f: F) -> !
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom>,
-    V::State: Mountable<Dom> + 'static,
+    V: Render<UikitDom>,
+    V::State: Mountable<UikitDom> + 'static,
 {
     store_view_builder(move |window, content_root| {
         let owner = Owner::new();
@@ -57,8 +57,8 @@ where
 pub fn mount<F, V>(f: F) -> !
 where
     F: FnOnce() -> V + 'static,
-    V: Render<Dom>,
-    V::State: Mountable<Dom> + 'static,
+    V: Render<UikitDom>,
+    V::State: Mountable<UikitDom> + 'static,
 {
     run(f)
 }

@@ -1,5 +1,5 @@
 //! `Dom`: this crate's [`renderer::Renderer`] impl, plus the orphan-rule
-//! [`Mountable<Dom>`] impls on the ios_dom types.
+//! [`Mountable<UikitDom>`] impls on the ios_dom types.
 //!
 //! Mirror of `cocoa/leptos_cocoa/src/renderer_cocoa.rs`. CastFrom impls
 //! live in `ios_dom::renderer` (orphan rule — see comment there).
@@ -26,9 +26,9 @@ pub type Text = UikitElem;
 pub type Placeholder = UikitElem;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Dom;
+pub struct UikitDom;
 
-impl RendererTrait for Dom {
+impl RendererTrait for UikitDom {
     type Backend = IosBackend;
     type Node = UikitElem;
 
@@ -96,13 +96,13 @@ impl RendererTrait for Dom {
     }
 }
 
-impl Dom {
+impl UikitDom {
     /// Mount `new_child` immediately before `before`. Panics if
     /// `before` has no parent (must-succeed variant).
     #[track_caller]
     pub fn mount_before<M>(new_child: &mut M, before: UikitElem)
     where
-        M: Mountable<Dom>,
+        M: Mountable<UikitDom>,
     {
         let parent = parent_of(before)
             .expect("Dom::mount_before — node has no parent");
@@ -127,7 +127,7 @@ fn parent_of(before: UikitElem) -> Option<UikitElem> {
 /// anchor.
 pub(crate) fn insert_before_node(
     before: UikitElem,
-    child: &mut dyn Mountable<Dom>,
+    child: &mut dyn Mountable<UikitDom>,
 ) -> bool {
     let Some(parent) = parent_of(before) else {
         return false;
@@ -136,13 +136,13 @@ pub(crate) fn insert_before_node(
     true
 }
 
-impl Mountable<Dom> for UikitElem {
+impl Mountable<UikitDom> for UikitElem {
     fn unmount(&mut self) {
         self.teardown();
     }
 
     fn mount(&mut self, parent: UikitElem, marker: Option<UikitElem>) {
-        <Dom as RendererTrait>::insert_node(parent, *self, marker);
+        <UikitDom as RendererTrait>::insert_node(parent, *self, marker);
     }
 
     fn try_mount(
@@ -153,7 +153,7 @@ impl Mountable<Dom> for UikitElem {
         IosRenderer::try_insert_node(parent, *self, marker)
     }
 
-    fn insert_before_this(&self, child: &mut dyn Mountable<Dom>) -> bool {
+    fn insert_before_this(&self, child: &mut dyn Mountable<UikitDom>) -> bool {
         insert_before_node(*self, child)
     }
 

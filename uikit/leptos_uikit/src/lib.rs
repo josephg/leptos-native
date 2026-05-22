@@ -25,13 +25,13 @@ pub mod mount_ios {
     pub use crate::mount::*;
 }
 
-pub use renderer_ios::Dom;
+pub use renderer_ios::UikitDom;
 
 /// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
-pub type AnyView = leptos_native::renderer::view::AnyView<Dom>;
+pub type AnyView = leptos_native::renderer::view::AnyView<UikitDom>;
 
 /// iOS-pinned alias of [`leptos_native::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos_native::children::ChildrenFn<Dom>;
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<UikitDom>;
 
 pub mod attr {
     pub use crate::keys::*;
@@ -76,10 +76,10 @@ pub mod tachys {
     }
 }
 
-/// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`Dom`]
+/// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`UikitDom`]
 /// so user code writes `impl IntoView` (no R param visible).
-pub trait IntoView: leptos_native::IntoView<Dom> {}
-impl<T: leptos_native::IntoView<Dom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<UikitDom> {}
+impl<T: leptos_native::IntoView<UikitDom>> IntoView for T {}
 
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our UIKit-specialized
