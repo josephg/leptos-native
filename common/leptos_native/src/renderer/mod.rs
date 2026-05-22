@@ -163,15 +163,3 @@ pub trait Renderer: Send + Sized + Debug + 'static {
         }
     }
 }
-
-/// Attempts to cast from one type to another.
-///
-/// Like `TryFrom`, but as a separate trait so it can be implemented on
-/// foreign types without orphan-rule issues.
-pub trait CastFrom<T>
-where
-    Self: Sized,
-{
-    /// Casts a node from one type to another.
-    fn cast_from(source: T) -> Option<Self>;
-}

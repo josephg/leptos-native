@@ -50,7 +50,7 @@ pub use interval::{
 pub use key_event::KeyEvent;
 pub use node::UikitElem;
 pub use storage::{local_storage, Storage, StorageError};
-pub use renderer::{Event, Renderer};
+pub use renderer::Event;
 
 // Re-export the most common objc2 / objc2_ui_kit types so
 // downstream crates don't have to take a direct objc2 dependency

@@ -7,7 +7,7 @@
 #![allow(missing_docs)]
 
 use crate::dom::layout::IosBackend;
-use crate::dom::Renderer as IosRenderer;
+use crate::dom::layout;
 use leptos_native::renderer::LayoutBackend;
 use leptos_native::renderer::{
     view::Mountable,
@@ -33,19 +33,19 @@ impl RendererTrait for UikitDom {
     type Node = UikitElem;
 
     fn intern(text: &str) -> &str {
-        IosRenderer::intern(text)
+        text
     }
 
     fn create_text_node(text: &str) -> UikitElem {
-        IosRenderer::create_text_node(text)
+        UikitElem::create_text(text)
     }
 
     fn create_placeholder() -> UikitElem {
-        IosRenderer::create_placeholder()
+        UikitElem::create_placeholder()
     }
 
     fn set_text(node: UikitElem, text: &str) {
-        IosRenderer::set_text(node, text);
+        node.set_text(text);
     }
 
     fn insert_node(
@@ -53,19 +53,21 @@ impl RendererTrait for UikitDom {
         new_child: UikitElem,
         anchor: Option<UikitElem>,
     ) {
-        IosRenderer::insert_node(parent, new_child, anchor);
+        parent.insert_node(new_child, anchor);
     }
 
     fn remove_node(parent: UikitElem, child: UikitElem) -> Option<UikitElem> {
-        IosRenderer::remove_node(parent, child)
+        parent.remove_child(child)
     }
 
     fn clear_children(parent: UikitElem) {
-        IosRenderer::clear_children(parent);
+        parent.clear_children();
     }
 
     fn remove(node: UikitElem) {
-        IosRenderer::remove(node);
+        // Detach the view and remove the node (and its structural
+        // subtree) from the store,
+        layout::drop_node(node)
     }
 
     fn get_parent(node: UikitElem) -> Option<UikitElem> {
@@ -77,22 +79,7 @@ impl RendererTrait for UikitDom {
     }
 
     fn log_node(node: UikitElem) {
-        IosRenderer::log_node(node);
-    }
-
-    /// Override the trait default: synthesise a parent UikitElem from
-    /// `before`'s superview, with the right LayoutHandle so the new
-    /// child registers in the same Taffy tree.
-    #[track_caller]
-    fn try_mount_before<M>(new_child: &mut M, before: UikitElem) -> bool
-    where
-        M: Mountable<Self>,
-    {
-        let Some(parent) = parent_of(before) else {
-            return false;
-        };
-        new_child.mount(parent, Some(before));
-        true
+        eprintln!("[ios_dom] {node:?}");
     }
 }
 
@@ -150,7 +137,9 @@ impl Mountable<UikitDom> for UikitElem {
         parent: UikitElem,
         marker: Option<UikitElem>,
     ) -> bool {
-        IosRenderer::try_insert_node(parent, *self, marker)
+        // Gross.
+        parent.insert_node(*self, marker);
+        true
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<UikitDom>) -> bool {

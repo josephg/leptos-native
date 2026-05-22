@@ -43,17 +43,3 @@ impl fmt::Debug for Event {
             .finish()
     }
 }
-
-// ---------------------------------------------------------------------
-// CastFrom impls — used by leptos_gtk::Dom and the renderer-agnostic
-// view tree. They live here for the same orphan-rule reasons as the
-// cocoa_dom CastFrom impls do.
-// ---------------------------------------------------------------------
-
-use leptos_native::renderer::CastFrom;
-
-impl CastFrom<GtkElem> for GtkElem {
-    fn cast_from(source: GtkElem) -> Option<GtkElem> {
-        Some(source)
-    }
-}
