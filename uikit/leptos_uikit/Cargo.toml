@@ -88,6 +88,26 @@ name = "layout"
 path = "tests/layout.rs"
 harness = false
 
+[[test]]
+name = "dom_layout"
+path = "tests/dom/layout.rs"
+harness = false
+
+[[test]]
+name = "dom_grid_layout"
+path = "tests/dom/grid_layout.rs"
+harness = false
+
+[[test]]
+name = "dom_apply_attrs"
+path = "tests/dom/apply_attrs.rs"
+harness = false
+
+[[test]]
+name = "dom_node_lifecycle"
+path = "tests/dom/node_lifecycle.rs"
+harness = false
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
