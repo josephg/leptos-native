@@ -8,11 +8,13 @@
 //! XFCE it's a classic title-bar menu, on macOS-style overlays it
 //! goes to the top-screen menu bar via the AppMenu extension.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     // The `view!{}` macro emits `event::action` for `on:action=…`.
     // Only needed when constructing items in Rust outside the macro.
-    use leptos_native::tachys::html::event;
+    use leptos_platform::event;
 
     pub fn main() {
         run("org.leptos.menu_demo_gtk", |app| {

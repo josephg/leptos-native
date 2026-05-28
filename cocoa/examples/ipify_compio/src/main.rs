@@ -31,13 +31,15 @@
 //! their own HTTPS via `compio-tls`, or just use tokio + reqwest.
 //! The point here is the *integration*, not the HTTP surface.
 
+extern crate leptos_cocoa as leptos_platform;
+
 use compio::{
     buf::BufResult,
     dispatcher::Dispatcher,
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
-use leptos_native::prelude::*;
+use leptos_platform::prelude::*;
 use std::sync::Arc;
 
 async fn fetch_ip_via_compio(d: Arc<Dispatcher>) -> Result<String, String> {

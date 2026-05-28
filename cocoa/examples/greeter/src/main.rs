@@ -2,9 +2,11 @@
 //! `<text_field>`. Type into the field; the label below echoes
 //! whatever you type.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Greeter() -> impl IntoView {

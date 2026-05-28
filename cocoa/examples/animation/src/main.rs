@@ -7,10 +7,12 @@
 //! - "Both" button uses a single `with_animation` to do both at
 //!   once.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::cocoa::animation::{ease_in_out, spring, with_animation};
-    use leptos_native::prelude::*;
+    use leptos_platform::cocoa::animation::{ease_in_out, spring, with_animation};
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Demo() -> impl IntoView {

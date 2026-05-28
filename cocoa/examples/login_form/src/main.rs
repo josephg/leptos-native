@@ -1,9 +1,11 @@
 //! Login form — realistic use of `bind:` plus a derived `Memo`
 //! gating the submit button via `enabled=`.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn LoginForm() -> impl IntoView {

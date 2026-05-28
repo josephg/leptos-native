@@ -2,8 +2,10 @@
 //! `<text_field>`. Type into the field; the label below echoes
 //! whatever you type.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Greeter() -> impl IntoView {

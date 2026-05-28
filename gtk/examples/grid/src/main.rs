@@ -2,8 +2,10 @@
 //! sidebar spanning two rows, and footer spanning two columns —
 //! same shape as the cocoa / iOS grid examples.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     pub fn main() {
         mount_to_window(

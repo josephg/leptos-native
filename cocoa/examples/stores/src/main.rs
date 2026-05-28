@@ -1,9 +1,11 @@
 //! macOS port of `stores` — demonstrates `reactive_stores`:
 //! `Store`, `Field`, and sub-field reactivity.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use reactive_stores::{Patch, Store};
 
     #[derive(Debug, Store, Patch)]

@@ -9,9 +9,11 @@
 //!   taller than the viewport. `axis=ScrollAxis::Both` lets the
 //!   user scroll on both axes.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     fn rect(color: Color, w: f32, h: f32, label_text: String) -> impl IntoView {
         view! {

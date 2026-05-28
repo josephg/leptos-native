@@ -6,9 +6,11 @@
 //! shall touch the run loop) is identical to the cocoa version —
 //! libdispatch's main queue is the same primitive on both.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]
@@ -53,7 +55,7 @@ mod app {
     pub fn main() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         let _guard = rt.enter();
-        leptos_native::mount_ios::run(|| view! { <App /> });
+        leptos_platform::mount_ios::run(|| view! { <App /> });
     }
 }
 

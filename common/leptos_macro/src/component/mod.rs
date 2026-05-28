@@ -140,8 +140,6 @@ impl ToTokens for Model {
 
         let props_name = format_ident!("{name}Props");
         let props_builder_name = format_ident!("{name}PropsBuilder");
-        #[cfg(feature = "tracing")]
-        let trace_name = format!("<{name} />");
 
         let prop_builder_fields = prop_builder_fields(vis, props);
 
@@ -167,69 +165,6 @@ impl ToTokens for Model {
             }
         };
 
-        let (
-            tracing_instrument_attr,
-            tracing_span_expr,
-            tracing_guard_expr,
-            tracing_props_expr,
-        ) = {
-            #[cfg(feature = "tracing")]
-            {
-                /* TODO for 0.8: fix this
-                 *
-                 * The problem is that cargo now warns about an
-                 * expected "tracing" cfg if you don't have a "tracing"
-                 * feature in your actual crate.
-                 *
-                 * However, until
-                 * https://github.com/tokio-rs/tracing/pull/1819 is
-                 * merged (?), you can't provide an alternate path for
-                 * `tracing` (e.g. ::leptos_native::tracing), which means that
-                 * if you're going to use the macro you *must* have
-                 * `tracing` in your Cargo.toml.
-                 *
-                 * Including the feature-check here causes cargo
-                 * warnings on previously-working projects.
-                 *
-                 * Removing the feature-check here breaks any project
-                 * that uses leptos with the tracing feature turned on,
-                 * but without a tracing dependency in its Cargo.toml.
-                 */
-                let instrument = cfg!(feature = "trace-components").then(|| quote! {
-                    #[cfg_attr(
-                        feature = "tracing",
-                        ::leptos_native::tracing::instrument(level = "info", name = #trace_name, skip_all)
-                    )]
-                });
-
-                (
-                    quote! {
-                        #[allow(clippy::let_with_type_underscore)]
-                        #instrument
-                    },
-                    quote! {
-                        let __span = ::leptos_native::tracing::Span::current();
-                    },
-                    quote! {
-                        #[cfg(debug_assertions)]
-                        let _guard = __span.entered();
-                    },
-                    if no_props || !cfg!(feature = "trace-component-props") {
-                        quote!()
-                    } else {
-                        quote! {
-                            ::leptos_native::leptos_dom::tracing_props![#prop_names];
-                        }
-                    },
-                )
-            }
-
-            #[cfg(not(feature = "tracing"))]
-            {
-                (quote!(), quote!(), quote!(), quote!())
-            }
-        };
-
         let body_name = unmodified_fn_name_from_fn_name(&body_name);
         let body_expr = quote! {
             #body_name(#prop_names)
@@ -237,24 +172,10 @@ impl ToTokens for Model {
 
         let component = if *is_transparent {
             body_expr
-        } else if cfg!(feature = "__internal_erase_components") {
-            quote! {
-                ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(
-                    ::leptos_native::reactive::graph::untrack_with_diagnostics(
-                        move || {
-                            #tracing_guard_expr
-                            #tracing_props_expr
-                            #body_expr
-                        }
-                    )
-                )
-            }
         } else {
             quote! {
-                ::leptos_native::reactive::graph::untrack_with_diagnostics(
+                ::leptos_platform::reactive::graph::untrack_with_diagnostics(
                     move || {
-                        #tracing_guard_expr
-                        #tracing_props_expr
                         #body_expr
                     }
                 )
@@ -281,7 +202,6 @@ impl ToTokens for Model {
 
         let body = quote! {
             #destructure_props
-            #tracing_span_expr
             #component
         };
 
@@ -289,15 +209,15 @@ impl ToTokens for Model {
             #[doc = #builder_name_doc]
             #[doc = ""]
             #docs_and_prop_docs
-            #[derive(::leptos_native::typed_builder_macro::TypedBuilder)]
+            #[derive(::leptos_platform::typed_builder_macro::TypedBuilder)]
             //#[builder(doc)]
-            #[builder(crate_module_path=::leptos_native::typed_builder)]
+            #[builder(crate_module_path=::leptos_platform::typed_builder)]
             #[allow(non_snake_case)]
             #vis struct #props_name #impl_generics #where_clause {
                 #prop_builder_fields
             }
 
-            impl #impl_generics ::leptos_native::component::Props for #props_name #generics #where_clause {
+            impl #impl_generics ::leptos_platform::component::Props for #props_name #generics #where_clause {
                 type Builder = #props_builder_name #generics;
 
                 fn builder() -> Self::Builder {
@@ -309,7 +229,6 @@ impl ToTokens for Model {
             #docs_and_prop_docs
             #[allow(non_snake_case, clippy::too_many_arguments)]
             #[allow(clippy::needless_lifetimes)]
-            #tracing_instrument_attr
             #vis fn #name #impl_generics (
                 #props_arg
             ) #ret

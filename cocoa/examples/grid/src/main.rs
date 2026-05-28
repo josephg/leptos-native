@@ -3,9 +3,11 @@
 //! sidebar spanning two rows, main content, right rail, and a footer
 //! that spans the two right-most columns.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     pub fn main() {
         mount_to_window("Grid", (640.0, 480.0), || {

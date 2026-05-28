@@ -21,7 +21,9 @@
 //! - Deterministic task ordering (FIFO on a single worker).
 //! - Easier reasoning about concurrency for tests.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 use serde::Deserialize;
 use std::future;
 

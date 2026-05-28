@@ -11,14 +11,16 @@
 //!   `Vec<MenuItem>` (dynamic, signal-driven repopulation of a
 //!   menu is a future enhancement — see the plan doc).
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     // The `view!{}` macro emits `event::action` for `on:action=…`. The
-    // macro path resolves to `::leptos_native::tachys::html::event::action`,
+    // macro path resolves to `::leptos_platform::event::action`,
     // not to `event::action` in scope, so this `use` is only needed
     // when constructing builders directly (see `recent_items` below).
-    use leptos_native::tachys::html::event;
+    use leptos_platform::event;
 
     pub fn main() {
         run(|| {

@@ -8,8 +8,10 @@
 //!   most recently committed value (return key). This verifies all
 //!   three coexist on the same entry.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Demo() -> impl IntoView {

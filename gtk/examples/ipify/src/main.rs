@@ -7,8 +7,10 @@
 //! (via `any_spawner::init_glib`), so awaiting a tokio JoinHandle
 //! inside an `AsyncDerived` works exactly like the cocoa version.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use serde::Deserialize;
 
     #[derive(Debug, Clone, Deserialize)]

@@ -10,6 +10,12 @@
 #![cfg(feature = "gtk")]
 #![allow(missing_docs)]
 
+// `leptos_platform` is the sentinel name the `leptos_macro` proc-macros
+// emit absolute paths against. Self-aliased here so that the
+// `#[component]` / `view!{}` macros invoked inside this crate resolve
+// cleanly.
+extern crate self as leptos_platform;
+
 pub mod event_gtk;
 pub mod gtk;
 pub mod mount;
@@ -66,41 +72,42 @@ use leptos_native::renderer;
 /// shape the `view!{}` macro emits (`::leptos_native::tachys::html::element::*`,
 /// `::leptos_native::tachys::view::*`).
 ///
-/// The web Leptos macro additionally routed SVG-tag-named elements
-/// through `tachys::svg::*` and emitted `.attr(name, value)` for
-/// every attribute. On native there's no SVG renderer and no
-/// untyped `.attr()` slot, so this fork's macro routes every tag
-/// through `tachys::html::element::*`.
-pub mod tachys {
-    pub use ::leptos_native::renderer::view;
+// Flat modules at the paths the `view!{}` macro emits:
+// `::leptos_platform::element::*`, `::leptos_platform::event::*`,
+// `::leptos_platform::attribute::*`, `::leptos_platform::view::*`,
+// `::leptos_platform::reactive_graph::bind::*`.
+//
+// (Upstream had a `tachys::html::*` namespace; we flattened it here.)
 
-    /// Re-export of the gtk builders/window/etc., for the
-    /// `::leptos_native::tachys::gtk::*` paths some examples reference
-    /// directly.
-    pub mod gtk {
-        pub use crate::gtk::*;
-    }
+/// GTK-flavoured element builders (button, vstack, label, ...).
+pub mod element {
+    pub use crate::gtk::element::{
+        button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
+        slider, stack, stack_view, text_field, toggle, vstack,
+    };
 
-    pub mod html {
-        pub mod element {
-            //! GTK-flavoured element builders (button, vstack, label, ...).
-            pub use crate::gtk::element::{
-                button, checkbox, grid, hstack, label, pop_up_button, secure_text_field,
-                slider, stack, stack_view, text_field, toggle, vstack,
-            };
+    // Menus: `<menu_bar>` + `<menu>` + `<menu_item>` + `<menu_separator>`.
+    // `<menu_bar>` sits as a top-level sibling of `<window>` in `run()`;
+    // the others only make sense nested inside.
+    pub use crate::gtk::menu::{menu, menu_bar, menu_item, menu_separator};
+}
 
-            // Menus: `<menu_bar>` + `<menu>` + `<menu_item>` + `<menu_separator>`.
-            // `<menu_bar>` sits as a top-level sibling of `<window>` in `run()`;
-            // the others only make sense nested inside.
-            pub use crate::gtk::menu::{menu, menu_bar, menu_item, menu_separator};
-        }
-        pub mod event {
-            pub use crate::event_gtk::*;
-        }
-        pub mod attribute {
-            pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, Value};
-        }
-    }
+/// GTK-flavoured event descriptors.
+pub mod event {
+    pub use crate::event_gtk::*;
+}
+
+/// Attribute / bind-key markers (Value, Checked, ...).
+pub mod attribute {
+    pub use leptos_native::renderer::attr_keys::{AttributeKey, Checked, Value};
+}
+
+/// Renderer view machinery (View, iterators, static_types, ...).
+pub use leptos_native::renderer::view;
+
+/// Reactive-graph bind helpers re-exported from the renderer.
+pub mod reactive_graph {
+    pub use leptos_native::renderer::reactive_graph::*;
 }
 
 /// GTK-specialized [`IntoView`](leptos_native::IntoView). Pinning R to

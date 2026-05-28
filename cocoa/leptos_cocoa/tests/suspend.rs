@@ -18,6 +18,8 @@
 
 #![cfg(target_os = "macos")]
 
+extern crate leptos_cocoa as leptos_platform;
+
 mod common;
 
 use leptos_cocoa::dom::event::handler_store_size_for_test;

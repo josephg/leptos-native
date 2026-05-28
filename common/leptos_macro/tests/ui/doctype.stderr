@@ -1,0 +1,8 @@
+error: <!DOCTYPE …> has no meaning in a native view tree
+
+         = help: native renderers don't emit HTML — remove the DOCTYPE node
+
+ --> tests/ui/doctype.rs:5:19
+  |
+5 |         <!DOCTYPE html>
+  |                   ^^^^

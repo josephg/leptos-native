@@ -7,6 +7,8 @@
 
 #![cfg(target_os = "macos")]
 
+extern crate leptos_cocoa as leptos_platform;
+
 mod common;
 
 use leptos_cocoa::prelude::*;

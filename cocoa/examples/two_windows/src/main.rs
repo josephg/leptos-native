@@ -4,7 +4,7 @@
 //! Run with:
 //!     cargo run --manifest-path cocoa/examples/two_windows/Cargo.toml
 //!
-//! Validates the multi-window architecture: `leptos_native::mount::run`
+//! Validates the multi-window architecture: `leptos_platform::mount::run`
 //! accepts a tuple of `Window<…>` builders; each builder opens its own
 //! NSWindow on `Render::build`. Quitting either window or Cmd-Q quits
 //! the whole app.
@@ -12,10 +12,12 @@
 //! For a single-window app, use `mount_to_window` instead — it's a
 //! one-liner that wraps your view in a `window()` builder for you.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
-    use leptos_native::tachys::html::element::window;
+    use leptos_platform::prelude::*;
+    use leptos_platform::element::window;
 
     pub fn main() {
         // Two independent counters — each window has its own state, with

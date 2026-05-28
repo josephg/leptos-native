@@ -14,7 +14,9 @@
 //!   * No CSS-based "hidden" toggling; we hide via
 //!     `hidden=move || …`.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

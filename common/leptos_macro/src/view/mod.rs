@@ -11,8 +11,8 @@ use convert_case::{
     Casing,
 };
 use convert_case_extras::is_case;
-use crate::parsing::{is_component_node, value_to_string};
-use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+use crate::parsing::is_component_node;
+use proc_macro2::{Ident, Span, TokenStream};
 use proc_macro_error2::abort;
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use rstml::node::{
@@ -24,7 +24,6 @@ use std::{
     collections::{HashMap, HashSet},
 };
 use syn::{
-    punctuated::Pair::{End, Punctuated},
     spanned::Spanned,
     Expr::{self, Tuple},
     ExprArray, ExprLit, ExprPath, ExprRange, Lit, LitStr, RangeLimits, Stmt,
@@ -32,7 +31,6 @@ use syn::{
 
 pub fn render_view(
     nodes: &mut [Node],
-    global_class: Option<&TokenTree>,
     view_marker: Option<String>,
 ) -> Option<TokenStream> {
     let (base, should_add_view) = match nodes.len() {
@@ -49,7 +47,6 @@ pub fn render_view(
             node_to_tokens(
                 &mut nodes[0],
                 None,
-                global_class,
                 view_marker.as_deref(),
                 true,
             ),
@@ -64,7 +61,6 @@ pub fn render_view(
             fragment_to_tokens(
                 nodes,
                 None,
-                global_class,
                 view_marker.as_deref(),
             ),
             true,
@@ -75,14 +71,14 @@ pub fn render_view(
             view
         } else if let Some(vm) = view_marker {
             quote! {
-                ::leptos_native::prelude::View::new(
+                ::leptos_platform::prelude::View::new(
                     #view
                 )
                 .with_view_marker(#vm)
             }
         } else {
             quote! {
-                ::leptos_native::prelude::View::new(
+                ::leptos_platform::prelude::View::new(
                     #view
                 )
             }
@@ -94,13 +90,11 @@ pub fn render_view(
 fn element_children_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
 ) -> Option<TokenStream> {
     let children = children_to_tokens(
         nodes,
         parent_slots,
-        global_class,
         view_marker,
         false,
     );
@@ -112,14 +106,6 @@ fn element_children_to_tokens(
             .child(
                 #[allow(unused_braces)]
                 { #child }
-            )
-        })
-    } else if cfg!(feature = "__internal_erase_components") {
-        Some(quote! {
-            .child(
-                ::leptos_native::tachys::view::iterators::StaticVec::from(vec![#(
-                    ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(#children)
-                ),*])
             )
         })
     } else if children.len() > 16 {
@@ -149,13 +135,11 @@ fn element_children_to_tokens(
 fn fragment_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
 ) -> Option<TokenStream> {
     let children = children_to_tokens(
         nodes,
         parent_slots,
-        global_class,
         view_marker,
         true,
     );
@@ -163,12 +147,6 @@ fn fragment_to_tokens(
         None
     } else if children.len() == 1 {
         children.into_iter().next()
-    } else if cfg!(feature = "__internal_erase_components") {
-        Some(quote! {
-            ::leptos_native::tachys::view::iterators::StaticVec::from(vec![#(
-                ::leptos_native::prelude::IntoMaybeErased::into_maybe_erased(#children)
-            ),*])
-        })
     } else if children.len() > 16 {
         // implementations of various traits used in routing and rendering are implemented for
         // tuples of sizes 0, 1, 2, 3, ... N. N varies but is > 16. The traits are also implemented
@@ -192,7 +170,6 @@ fn fragment_to_tokens(
 fn children_to_tokens(
     nodes: &mut [Node<impl CustomNode>],
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
     top_level: bool,
 ) -> Vec<TokenStream> {
@@ -200,7 +177,6 @@ fn children_to_tokens(
         match node_to_tokens(
             &mut nodes[0],
             parent_slots,
-            global_class,
             view_marker,
             top_level,
         ) {
@@ -215,7 +191,6 @@ fn children_to_tokens(
                 node_to_tokens(
                     node,
                     Some(&mut slots),
-                    global_class,
                     view_marker,
                     top_level,
                 )
@@ -236,20 +211,21 @@ fn children_to_tokens(
 fn node_to_tokens(
     node: &mut Node<impl CustomNode>,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
     _top_level: bool,
 ) -> Option<TokenStream> {
     match node {
         Node::Comment(_) => None,
         Node::Doctype(node) => {
-            let value = node.value.to_string_best();
-            Some(quote! { ::leptos_native::tachys::html::doctype(#value) })
+            abort!(
+                node.value.span(),
+                "<!DOCTYPE …> has no meaning in a native view tree";
+                help = "native renderers don't emit HTML — remove the DOCTYPE node"
+            );
         }
         Node::Fragment(fragment) => fragment_to_tokens(
             &mut fragment.children,
             parent_slots,
-            global_class,
             view_marker,
         ),
         Node::Block(block) => {
@@ -273,7 +249,6 @@ fn node_to_tokens(
         Node::Element(el_node) => element_to_tokens(
             el_node,
             parent_slots,
-            global_class,
             view_marker,
         ),
         Node::Custom(node) => Some(node.to_token_stream()),
@@ -284,7 +259,7 @@ fn text_to_tokens(text: &LitStr) -> TokenStream {
     // on nightly, can use static string optimization
     if cfg!(all(feature = "nightly", rustc_nightly)) {
         quote! {
-            ::leptos_native::tachys::view::static_types::Static::<#text>
+            ::leptos_platform::view::static_types::Static::<#text>
         }
     }
     // otherwise, just use the literal string
@@ -296,7 +271,6 @@ fn text_to_tokens(text: &LitStr) -> TokenStream {
 pub(crate) fn element_to_tokens(
     node: &mut NodeElement<impl CustomNode>,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
     view_marker: Option<&str>,
 ) -> Option<TokenStream> {
     // attribute sorting:
@@ -402,11 +376,10 @@ pub(crate) fn element_to_tokens(
                 node,
                 &slot,
                 parent_slots,
-                global_class,
             );
             None
         } else {
-            Some(component_to_tokens(node, global_class))
+            Some(component_to_tokens(node))
         }
     } else if is_spread_marker(node) {
         let mut attributes = Vec::new();
@@ -443,67 +416,54 @@ pub(crate) fn element_to_tokens(
             }
         }
 
-        if cfg!(feature = "__internal_erase_components") {
-            Some(quote! {
-                vec![#(#attributes.into_any_attr(),)*]
-                #(.add_any_attr(#additions))*
-            })
-        } else {
-            Some(quote! {
-                (#(#attributes,)*)
-                #(.add_any_attr(#additions))*
-            })
-        }
+        Some(quote! {
+            (#(#attributes,)*)
+            #(.add_any_attr(#additions))*
+        })
     } else {
         let tag = name.to_string();
         let is_custom = is_custom_element(&tag);
-        // Native-only: every tag routes through `tachys::html::element::*`.
+        // Native-only: every tag routes through `element::*`.
         // Upstream Leptos special-cased SVG and MathML element names
-        // to route through `tachys::svg::*` / `tachys::mathml::*` and
-        // to emit `.attr(name, value)` for every attribute. On native
-        // there are no SVG or MathML renderers and no untyped `.attr()`
+        // to route through `svg::*` / `mathml::*` and to emit
+        // `.attr(name, value)` for every attribute. On native there
+        // are no SVG or MathML renderers and no untyped `.attr()`
         // shim, so we drop the special-case routing entirely and use
         // raw identifiers for the two tags whose names collide with
         // Rust keywords (`use`, `switch`).
         let name = if is_custom {
             let name = node.name().to_string();
             let custom = Ident::new("custom", name.span());
-            quote_spanned! { node.name().span() => ::leptos_native::tachys::html::element::#custom(#name) }
+            quote_spanned! { node.name().span() => ::leptos_platform::element::#custom(#name) }
         } else {
             let ident = match tag.as_str() {
                 "use" | "use_" => Ident::new_raw("use", name.span()).to_token_stream(),
                 "switch" => Ident::new_raw("switch", name.span()).to_token_stream(),
                 _ => name.to_token_stream(),
             };
-            quote_spanned! { node.name().span() => ::leptos_native::tachys::html::element::#ident() }
+            quote_spanned! { node.name().span() => ::leptos_platform::element::#ident() }
         };
 
         let attributes = node.attributes();
         let attributes = if attributes.len() == 1 {
             Some(attribute_to_tokens(
                 &attributes[0],
-                global_class,
                 is_custom,
             ))
         } else {
             let nodes = attributes.iter().map(|node| {
-                attribute_to_tokens(node, global_class, is_custom)
+                attribute_to_tokens(node, is_custom)
             });
             Some(quote! {
                 #(#nodes)*
             })
         };
 
-        let global_class_expr = global_class.map(|class| {
-            quote! { .class((#class, true)) }
-        });
-
         let self_closing = is_self_closing(node);
         let children = if !self_closing {
             element_children_to_tokens(
                 &mut node.children,
                 parent_slots,
-                global_class,
                 view_marker,
             )
         } else {
@@ -526,7 +486,6 @@ pub(crate) fn element_to_tokens(
             #name
             #children
             #attributes
-            #global_class_expr
         })
     }
 }
@@ -570,7 +529,6 @@ fn as_spread_attr(node: &NodeBlock) -> Option<Option<&Expr>> {
 
 fn attribute_to_tokens(
     node: &NodeAttribute,
-    global_class: Option<&TokenTree>,
     is_custom: bool,
 ) -> TokenStream {
     match node {
@@ -603,62 +561,40 @@ fn attribute_to_tokens(
                 event_to_tokens(name, node)
             } else if let Some(name) = name.strip_prefix("bind:") {
                 two_way_binding_to_tokens(name, node)
-            } else if let Some(name) = name.strip_prefix("class:") {
-                let class = match &node.key {
-                    NodeName::Punctuated(parts) => &parts[0],
-                    _ => unreachable!(),
-                };
-                class_to_tokens(node, class.into_token_stream(), Some(name))
-            } else if name == "class" {
-                let class = match &node.key {
-                    NodeName::Path(path) => path.path.get_ident(),
-                    _ => unreachable!(),
-                };
-                class_to_tokens(node, class.into_token_stream(), None)
-            } else if let Some(name) = name.strip_prefix("style:") {
-                let style = match &node.key {
-                    NodeName::Punctuated(parts) => &parts[0],
-                    _ => unreachable!(),
-                };
-                style_to_tokens(node, style.into_token_stream(), Some(name))
-            } else if name == "style" {
-                let style = match &node.key {
-                    NodeName::Path(path) => path.path.get_ident(),
-                    _ => unreachable!(),
-                };
-                style_to_tokens(node, style.into_token_stream(), None)
-            } else if let Some(name) = name.strip_prefix("prop:") {
-                let prop = match &node.key {
-                    NodeName::Punctuated(parts) => &parts[0],
-                    _ => unreachable!(),
-                };
-                prop_to_tokens(node, prop.into_token_stream(), name)
+            } else if name.starts_with("class:") || name == "class" {
+                proc_macro_error2::abort!(
+                    node.key.span(),
+                    "`class:` / `class=` attributes have no meaning in a native view tree";
+                    help = "native renderers don't emit HTML/CSS \u{2014} use a builder method like `.background_color(\u{2026})` or your port's styling APIs"
+                );
+            } else if name.starts_with("style:") || name == "style" {
+                proc_macro_error2::abort!(
+                    node.key.span(),
+                    "`style:` / `style=` attributes have no meaning in a native view tree";
+                    help = "native renderers don't emit HTML/CSS \u{2014} use a builder method like `.padding(\u{2026})` or your port's styling APIs"
+                );
+            } else if name.starts_with("prop:") {
+                proc_macro_error2::abort!(
+                    node.key.span(),
+                    "`prop:` (DOM property) syntax has no meaning in a native view tree";
+                    help = "use a typed builder method on the element instead"
+                );
             }
-            // Unchecked attributes go through `.attr(name, value)`:
-            // 1) custom elements, which can have any attributes
-            // 2) custom + data attributes (anything hyphenated, except `aria-*`)
+            // Unchecked attributes: on native we don't have an untyped
+            // `.attr(name, value)` fallback. Either the attribute name
+            // matches a typed builder method (handled below) or it's an
+            // error.
             else if is_custom ||
                 (name.contains('-') && !name.starts_with("aria-"))
             {
-                let value = attribute_value(node, true);
-                quote! {
-                    .attr(#name, #value)
-                }
+                proc_macro_error2::abort!(
+                    node.key.span(),
+                    &format!("attribute `{name}` has no typed builder method on this element");
+                    help = "native ports don't expose an untyped `.attr()` setter \u{2014} use one of the element's typed setters or remove the attribute"
+                );
             } else {
                 let key = attribute_name(&node.key);
                 let value = attribute_value(node, true);
-
-                // special case of global_class and class attribute
-                if &node.key.to_string() == "class"
-                    && global_class.is_some()
-                    && node.value().and_then(value_to_string).is_none()
-                {
-                    let span = node.key.span();
-                    proc_macro_error2::emit_error!(span, "Combining a global class (view! { class = ... }) \
-            and a dynamic `class=` attribute on an element causes runtime inconsistencies. You can \
-            toggle individual classes dynamically with the `class:name=value` syntax. \n\nSee this issue \
-            for more information and an example: https://github.com/leptos-rs/leptos/issues/773")
-                };
 
                 quote! {
                     .#key(#value)
@@ -691,37 +627,11 @@ pub(crate) fn attribute_absolute(
                         if id == "let" || id == "clone" {
                             None
                         } else if id == "attr" {
-                            let value = attribute_value(node, true);
-                            let multipart = parts.len() > 2;
-                            let key = &parts[1];
-                            let key_name = key.to_string();
-                            if key_name == "class" || key_name == "style" {
-                                Some(
-                                    quote! { ::leptos_native::tachys::html::#key::#key(#value) },
-                                )
-                            } else if key_name == "aria" {
-                                let value = attribute_value(node, true);
-                                let mut parts_iter = parts.iter();
-                                parts_iter.next();
-                                let fn_name = parts_iter.map(|p| p.to_string()).collect::<Vec<String>>().join("_");
-                                let key = Ident::new(&fn_name, key.span());
-                                Some(
-                                    quote! { ::leptos_native::tachys::html::attribute::#key(#value) },
-                                )
-                            } else if multipart {
-                                // e.g., attr:data-foo="bar"
-                                let key_name = parts.pairs().skip(1).map(|p| match p {
-                                    Punctuated(n, p) => format!("{n}{p}"),
-                                    End(n) => n.to_string(),
-                                }).collect::<String>();
-                                Some(
-                                    quote! { ::leptos_native::tachys::html::attribute::custom::custom_attribute(#key_name, #value) },
-                                )
-                            } else {
-                                Some(
-                                    quote! { ::leptos_native::tachys::html::attribute::#key(#value) },
-                                )
-                            }
+                            proc_macro_error2::abort!(
+                                id.span(),
+                                "`attr:` syntax has no meaning in a native view tree";
+                                help = "native ports don't have an untyped HTML attribute slot \u{2014} use a typed builder method instead"
+                            );
                         } else if id == "use" {
                             let key = &parts[1];
                             let param = if let Some(value) = node.value() {
@@ -731,35 +641,31 @@ pub(crate) fn attribute_absolute(
                             };
                             Some(
                                 quote! {
-                                    ::leptos_native::tachys::html::directive::directive(
+                                    ::leptos_platform::directive::directive(
                                         #key,
                                         #[allow(clippy::useless_conversion)] #param
                                     )
                                 },
                             )
                         } else if id == "style" || id == "class" {
-                            let value = attribute_value(node, false);
-                            let key = &node.key.to_string();
-                            let key = key
-                                .replacen("style:", "", 1)
-                                .replacen("class:", "", 1);
-                            Some(
-                                quote! { ::leptos_native::tachys::html::#id::#id((#key, #value)) },
-                            )
+                            proc_macro_error2::abort!(
+                                id.span(),
+                                &format!("`{id}:` attributes have no meaning in a native view tree");
+                                help = "native renderers don't emit HTML/CSS \u{2014} use a typed builder method"
+                            );
                         } else if id == "prop" {
-                            let value = attribute_value(node, false);
-                            let key = &node.key.to_string();
-                            let key = key.replacen("prop:", "", 1);
-                            Some(
-                                quote! { ::leptos_native::tachys::html::property::#id(#key, #value) },
-                            )
+                            proc_macro_error2::abort!(
+                                id.span(),
+                                "`prop:` (DOM property) syntax has no meaning in a native view tree";
+                                help = "use a typed builder method on the element instead"
+                            );
                         } else if id == "on" {
                             let key = &node.key.to_string();
                             let key = key.replacen("on:", "", 1);
                             let (on, ty, handler) =
                                 event_type_and_handler(&key, node);
                             Some(
-                                quote! { ::leptos_native::tachys::html::event::#on(#ty, #handler) },
+                                quote! { ::leptos_platform::event::#on(#ty, #handler) },
                             )
                         } else {
                             proc_macro_error2::abort!(
@@ -777,31 +683,19 @@ pub(crate) fn attribute_absolute(
                 None
             }
         }
-        _ => after_spread.then(|| {
-            let key = attribute_name(&node.key);
-            let value = &node.value();
-            let name = &node.key.to_string();
-            if name == "class" || name == "style" {
-                quote! {
-                    ::leptos_native::tachys::html::#key::#key(#value)
-                }
+        _ => {
+            if after_spread {
+                proc_macro_error2::abort!(
+                    node.key.span(),
+                    &format!(
+                        "bare attribute `{}` after a spread `{{..}}` is not supported on native",
+                        node.key.to_string()
+                    );
+                    help = "native ports have no untyped attribute path \u{2014} apply this attribute before the spread or via a typed builder method"
+                );
             }
-            else if name.contains('-') && !name.starts_with("aria-") {
-                quote! {
-                    ::leptos_native::tachys::html::attribute::custom::custom_attribute(#name, #value)
-                }
-            }
-            else if name == "node_ref" {
-                quote! {
-                    ::leptos_native::tachys::html::node_ref::#key(#value)
-                }
-            }
-            else {
-                quote! {
-                    ::leptos_native::tachys::html::attribute::#key(#value)
-                }
-            }
-        }),
+            None
+        }
     }
 }
 
@@ -816,11 +710,11 @@ pub(crate) fn two_way_binding_to_tokens(
 
     if name == "group" {
         quote! {
-            .bind(leptos_native::tachys::reactive_graph::bind::#ident, #value)
+            .bind(leptos_platform::reactive_graph::bind::#ident, #value)
         }
     } else {
         quote! {
-            .bind(::leptos_native::attr::#ident, #value)
+            .bind(::leptos_platform::attr::#ident, #value)
         }
     }
 }
@@ -884,7 +778,7 @@ pub(crate) fn event_type_and_handler(
     };
 
     let event_type = quote! {
-        ::leptos_native::tachys::html::event::#event_type
+        ::leptos_platform::event::#event_type
     };
     let event_type = if options.captured {
         let capture = if let Some(capture) = capture_ident {
@@ -892,7 +786,7 @@ pub(crate) fn event_type_and_handler(
         } else {
             quote! { capture }
         };
-        quote! { ::leptos_native::tachys::html::event::#capture(#event_type) }
+        quote! { ::leptos_platform::event::#capture(#event_type) }
     } else {
         event_type
     };
@@ -903,83 +797,12 @@ pub(crate) fn event_type_and_handler(
         } else {
             quote! { undelegated }
         };
-        quote! { ::leptos_native::tachys::html::event::#undelegated(#event_type) }
+        quote! { ::leptos_platform::event::#undelegated(#event_type) }
     } else {
         event_type
     };
 
     (on, event_type, handler)
-}
-
-fn class_to_tokens(
-    node: &KeyedAttribute,
-    class: TokenStream,
-    class_name: Option<&str>,
-) -> TokenStream {
-    // case of class=(["foo", "bar"], /* something */)
-    // just expands to multiple uses of class:
-    if let Some(Tuple(tuple)) = node.value() {
-        if tuple.elems.len() == 2 {
-            let name = &tuple.elems[0];
-            let value = &tuple.elems[1];
-            if let Expr::Array(ExprArray { elems, .. }) = name {
-                return elems
-                    .iter()
-                    .map(|elem| match elem {
-                        Expr::Lit(ExprLit {
-                            lit: Lit::Str(s), ..
-                        }) => quote! {
-                            .#class((#s, #value))
-                        },
-                        _ => proc_macro_error2::abort!(
-                            elem.span(),
-                            "invalid name"
-                        ),
-                    })
-                    .collect();
-            }
-        }
-    }
-
-    // default case
-    let value = attribute_value(node, false);
-    if let Some(class_name) = class_name {
-        quote! {
-            .#class((#class_name, #value))
-        }
-    } else {
-        quote! {
-            .#class(#value)
-        }
-    }
-}
-
-fn style_to_tokens(
-    node: &KeyedAttribute,
-    style: TokenStream,
-    style_name: Option<&str>,
-) -> TokenStream {
-    let value = attribute_value(node, false);
-    if let Some(style_name) = style_name {
-        quote! {
-            .#style((#style_name, #value))
-        }
-    } else {
-        quote! {
-            .#style(#value)
-        }
-    }
-}
-
-fn prop_to_tokens(
-    node: &KeyedAttribute,
-    prop: TokenStream,
-    key: &str,
-) -> TokenStream {
-    let value = attribute_value(node, false);
-    quote! {
-        .#prop(#key, #value)
-    }
 }
 
 fn is_custom_element(tag: &str) -> bool {
@@ -1040,7 +863,7 @@ fn attribute_value(
                     if cfg!(all(feature = "nightly", rustc_nightly)) {
                         if let Lit::Str(str) = &lit.lit {
                             return quote! {
-                                ::leptos_native::tachys::view::static_types::Static::<#str>
+                                ::leptos_platform::view::static_types::Static::<#str>
                             };
                         }
                     }
@@ -1052,7 +875,7 @@ fn attribute_value(
                     }
                 } else {
                     quote! {
-                        ::leptos_native::prelude::IntoAttributeValue::into_attribute_value(#expr)
+                        ::leptos_platform::prelude::IntoAttributeValue::into_attribute_value(#expr)
                     }
                 }
             }
@@ -1060,7 +883,7 @@ fn attribute_value(
             KVAttributeValue::InvalidBraced(block) => {
                 if is_attribute_proper {
                     quote! {
-                        ::leptos_native::prelude::IntoAttributeValue::into_attribute_value(#block)
+                        ::leptos_platform::prelude::IntoAttributeValue::into_attribute_value(#block)
                     }
                 } else {
                     quote! {

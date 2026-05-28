@@ -4,6 +4,8 @@
 
 #![cfg(feature = "gtk")]
 
+extern crate leptos_gtk as leptos_platform;
+
 mod common;
 
 use leptos_gtk::dom::spawner;

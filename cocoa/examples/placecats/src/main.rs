@@ -14,7 +14,9 @@
 //! window) would need a window-size signal in the framework, which
 //! doesn't exist yet. This example uses a fixed 480×320 image.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 
 const W: u32 = 480;
 const H: u32 = 320;

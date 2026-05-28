@@ -16,7 +16,9 @@
 //! installed under `/usr/share/glib-2.0/schemas/` (see
 //! `glib-compile-schemas`).
 
-use leptos_native::prelude::*;
+extern crate leptos_gtk as leptos_platform;
+
+use leptos_platform::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

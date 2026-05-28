@@ -1,9 +1,11 @@
 //! macOS port of `error_boundary` — type a number into the field;
 //! a parse error triggers the `<ErrorBoundary/>` fallback.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn App() -> impl IntoView {

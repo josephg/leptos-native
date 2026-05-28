@@ -1,0 +1,5 @@
+error[E0432]: unresolved import `leptos_macro::template`
+ --> tests/ui/template_macro.rs:1:5
+  |
+1 | use leptos_macro::template;
+  |     ^^^^^^^^^^^^^^^^^^^^^^ no `template` in the root

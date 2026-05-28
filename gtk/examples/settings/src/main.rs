@@ -3,8 +3,10 @@
 //! signals and a slider whose `enabled=` is gated by the mute
 //! checkbox.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Settings() -> impl IntoView {

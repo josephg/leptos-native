@@ -2,9 +2,11 @@
 //! cancels and re-schedules when its interval signal changes.
 //! Sanity test for the iOS spawner (NSTimer-driven).
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use std::time::Duration;
 
     #[component]
@@ -74,7 +76,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <TimerDemo /> });
+        leptos_platform::mount_ios::run(|| view! { <TimerDemo /> });
     }
 
 }

@@ -1,8 +1,10 @@
 //! Counter — iOS UIKit port using `view!{}` and `#[component]`.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Counter(initial: i32) -> impl IntoView {
@@ -21,7 +23,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <Counter initial=0 /> });
+        leptos_platform::mount_ios::run(|| view! { <Counter initial=0 /> });
     }
 
 }

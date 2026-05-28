@@ -3,10 +3,12 @@
 //! interactive control with a label that displays its current
 //! value, demonstrating the `bind:` / `value=` reactivity.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
-    use leptos_native::core::children::TypedChildrenFn;
+    use leptos_platform::prelude::*;
+    use leptos_platform::core::children::TypedChildrenFn;
     use std::marker::PhantomData;
 
     // Section takes typed children. With this fork's no-AnyView design,

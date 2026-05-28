@@ -7,9 +7,11 @@
 //! code paths in tachys::renderer::cocoa that have so far been
 //! unexercised.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Counters() -> impl IntoView {

@@ -23,7 +23,6 @@ use std::{hash::Hash, marker::PhantomData};
 /// item — when the list rebuilds (any signal `each` reads of changes),
 /// rows whose keys match between old and new lists keep their built
 /// state; new keys produce new rows; missing keys unmount their rows.
-#[cfg_attr(feature = "tracing", tracing::instrument(level = "trace", skip_all))]
 #[component]
 pub fn For<IF, I, T, EF, N, KF, K, R>(
     /// Items to iterate over.

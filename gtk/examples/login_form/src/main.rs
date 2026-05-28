@@ -4,8 +4,10 @@
 //! Exercises: `<text_field>`, `<secure_text_field>`, `<checkbox>`,
 //! `bind:value`, `bind:checked`, `Memo`, `enabled=closure`.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn LoginForm() -> impl IntoView {

@@ -3,9 +3,11 @@
 //! `on:click` handler to the component itself, and it propagates to
 //! the button.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn InnerButton() -> impl IntoView {

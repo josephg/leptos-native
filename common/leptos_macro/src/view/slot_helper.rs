@@ -3,7 +3,7 @@ use super::{
     convert_to_snake_case, full_path_from_tag_name,
 };
 use crate::view::{fragment_to_tokens, utils::filter_prefixed_attrs};
-use proc_macro2::{Ident, TokenStream, TokenTree};
+use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned};
 use rstml::node::{CustomNode, KeyedAttribute, NodeAttribute, NodeElement};
 use std::collections::HashMap;
@@ -13,7 +13,6 @@ pub(crate) fn slot_to_tokens(
     node: &mut NodeElement<impl CustomNode>,
     slot: &KeyedAttribute,
     parent_slots: Option<&mut HashMap<String, Vec<TokenStream>>>,
-    global_class: Option<&TokenTree>,
 ) {
     let name = slot.key.to_string();
     let name = name.trim();
@@ -111,7 +110,6 @@ pub(crate) fn slot_to_tokens(
         let children = fragment_to_tokens(
             &mut node.children,
             Some(&mut slots),
-            global_class,
             None,
         );
 
@@ -153,7 +151,7 @@ pub(crate) fn slot_to_tokens(
                     .children({
                         #(#clonables)*
 
-                        ::leptos_native::children::ToChildren::to_children(move || #children #view_marker)
+                        ::leptos_platform::children::ToChildren::to_children(move || #children #view_marker)
                     })
                 }
             }

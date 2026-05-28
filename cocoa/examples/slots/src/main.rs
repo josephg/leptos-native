@@ -1,7 +1,9 @@
 //! macOS port of `slots` — demonstrates the `#[slot]` attribute
 //! for creating named child slots in components.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 
 #[slot]
 struct Then {

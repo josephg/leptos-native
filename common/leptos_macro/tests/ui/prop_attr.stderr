@@ -1,0 +1,8 @@
+error: `prop:` (DOM property) syntax has no meaning in a native view tree
+
+         = help: use a typed builder method on the element instead
+
+ --> tests/ui/prop_attr.rs:5:14
+  |
+5 |         <div prop:disabled=true></div>
+  |              ^^^^

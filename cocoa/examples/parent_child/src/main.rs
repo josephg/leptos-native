@@ -6,9 +6,11 @@
 //!      (the Tier 2.F feature)
 //!   4. `<ButtonD/>`: provide_context / use_context
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[derive(Copy, Clone)]
     pub struct ToggleContext(WriteSignal<bool>);

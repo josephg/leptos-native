@@ -6,6 +6,8 @@
 
 #![cfg(target_os = "macos")]
 
+extern crate leptos_cocoa as leptos_platform;
+
 mod common;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +33,6 @@ fn with_reactive_scope<F: FnOnce()>(body: F) {
     owner.with(body);
 }
 use leptos_cocoa::cocoa::toolbar::ToolbarHandle;
-
 
 // ---------------------------------------------------------------------
 // 1. <toolbar> attaches to its containing NSWindow

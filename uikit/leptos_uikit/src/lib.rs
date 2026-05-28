@@ -10,6 +10,12 @@
 #![cfg(target_os = "ios")]
 #![allow(missing_docs)]
 
+// `leptos_platform` is the sentinel name the `leptos_macro` proc-macros
+// emit absolute paths against. Self-aliased here so that the
+// `#[component]` / `view!{}` macros invoked inside this crate resolve
+// cleanly.
+extern crate self as leptos_platform;
+
 pub mod element_ios;
 pub mod event_ios;
 pub mod ios;
@@ -50,30 +56,32 @@ pub use leptos_native::typed_builder;
 pub use leptos_native::typed_builder_macro;
 pub use leptos_native::callback;
 
-pub mod tachys {
-    pub use leptos_native::renderer::view;
+// Flat modules at the paths the `view!{}` macro emits:
+// `::leptos_platform::element::*`, `::leptos_platform::event::*`,
+// `::leptos_platform::attribute::*`, `::leptos_platform::view::*`,
+// `::leptos_platform::reactive_graph::bind::*`.
 
-    /// Re-export of the iOS builders + helpers, for the
-    /// `::leptos_native::tachys::ios::*` paths some user code references
-    /// directly.
-    pub mod ios {
-        pub use crate::ios::*;
-    }
+/// iOS-flavoured element builders.
+pub mod element {
+    pub use crate::element_ios::*;
+}
 
-    pub mod html {
-        pub mod element {
-            pub use crate::element_ios::*;
-        }
-        pub mod event {
-            pub use crate::event_ios::*;
-        }
-        pub mod attribute {
-            pub use crate::keys::*;
-        }
-        // pub mod directive {
-        //     pub use crate::directive::*;
-        // }
-    }
+/// iOS-flavoured event descriptors.
+pub mod event {
+    pub use crate::event_ios::*;
+}
+
+/// Attribute / bind-key markers.
+pub mod attribute {
+    pub use crate::keys::*;
+}
+
+/// Renderer view machinery.
+pub use leptos_native::renderer::view;
+
+/// Reactive-graph bind helpers.
+pub mod reactive_graph {
+    pub use leptos_native::renderer::reactive_graph::*;
 }
 
 /// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`UikitDom`]

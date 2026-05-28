@@ -5,9 +5,11 @@
 //!
 //! All data is hardcoded; clicks navigate but do nothing else.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     // ---- palette ----------------------------------------------------
 
@@ -107,7 +109,7 @@ mod app {
     /// pair so the caller can bind both: `bind:mouse_hover=raw`
     /// + `background_color=bg`.
     fn card_hover_bg() -> (RwSignal<bool>, impl Fn() -> Color + Send + Sync + Copy + 'static) {
-        use leptos_native::cocoa::animation::{ease_in_out, with_animation};
+        use leptos_platform::cocoa::animation::{ease_in_out, with_animation};
         let raw = RwSignal::new(false);
         let progress = RwSignal::new(0.0_f64);
         Effect::new(move |_| {

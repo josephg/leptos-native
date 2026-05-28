@@ -14,9 +14,11 @@
 //!     `on:change`. Same reason.
 //!   * `<switch>` instead of `<checkbox>`.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;
 
@@ -195,7 +197,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <TodoMVC /> });
+        leptos_platform::mount_ios::run(|| view! { <TodoMVC /> });
     }
 
 }

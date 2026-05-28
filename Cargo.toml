@@ -96,6 +96,8 @@ exclude = [
   # full TodoMVC). Kept in the source tree as documentation.
   "cocoa/examples/fetch",
   "cocoa/examples/todomvc",
+  "cocoa/examples/transition",
+  "cocoa/examples/async_derived",
 
   # Network-dependent async examples — listed in `members` so they
   # build with `cargo build --workspace`, but kept OUT of
@@ -117,6 +119,7 @@ rust-version = "1.88"
 leptos_devtools = { path = "./common/devtools", version = "0.1.0" }
 leptos_macro = { path = "./common/leptos_macro", version = "0.1.0" }
 leptos_native = { path = "./common/leptos_native", version = "0.1.0" }
+leptos_cocoa = { path = "./cocoa/leptos_cocoa", version = "0.1.0" }
 leptos_uikit = { path = "./uikit/leptos_uikit", version = "0.1.0" }
 leptos_gtk = { path = "./gtk/leptos_gtk", version = "0.1.0" }
 leptos_apple_shared = { path = "./apple_shared", version = "0.1.0" }
@@ -147,6 +150,7 @@ rustc_version = { default-features = false, version = "0.4" }
 guardian = { default-features = false, version = "1.3" }
 rustc-hash = { default-features = false, version = "2.1" }
 tracing = { default-features = false, version = "0.1" }
+trybuild = { default-features = false, version = "1.0" }
 slotmap = { default-features = false, version = "1.1" }
 taffy = { default-features = false, version = "0.10", features = ["std", "flexbox", "grid", "taffy_tree"] }
 futures = { default-features = false, version = "0.3" }
@@ -185,5 +189,4 @@ max_combination_size = 2
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(leptos_debuginfo)',
-  'cfg(erase_components)',
 ] }

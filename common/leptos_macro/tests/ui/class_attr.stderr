@@ -1,0 +1,8 @@
+error: `class:` / `class=` attributes have no meaning in a native view tree
+
+         = help: native renderers don't emit HTML/CSS — use a builder method like `.background_color(…)` or your port's styling APIs
+
+ --> tests/ui/class_attr.rs:5:14
+  |
+5 |         <div class:foo=true></div>
+  |              ^^^^^
