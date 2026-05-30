@@ -4,9 +4,11 @@
 //! the top, but as soon as the keyboard slides up the bottom
 //! padding kicks in so the submit button stays visible.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn LoginForm() -> impl IntoView {
@@ -57,7 +59,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <LoginForm /> });
+        leptos_platform::mount_ios::run(|| view! { <LoginForm /> });
     }
 
 }

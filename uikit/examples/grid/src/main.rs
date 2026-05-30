@@ -1,11 +1,13 @@
 //! Grid — iOS port. Same dashboard layout as the cocoa grid example.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| {
+        leptos_platform::mount_ios::run(|| {
             let counter = RwSignal::new(0);
             view! {
                 <grid

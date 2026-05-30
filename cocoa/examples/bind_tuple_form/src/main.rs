@@ -8,9 +8,11 @@
 //! the `greeter` example — this is what you reach for when one
 //! direction needs filtering.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn App() -> impl IntoView {

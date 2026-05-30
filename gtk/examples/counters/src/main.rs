@@ -5,8 +5,10 @@
 //! children — it exercises the `mount_before` / `try_mount_before`
 //! code paths in tachys::renderer::gtk.
 
+extern crate leptos_gtk as leptos_platform;
+
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Counters() -> impl IntoView {

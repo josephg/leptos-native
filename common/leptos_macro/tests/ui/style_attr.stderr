@@ -1,0 +1,8 @@
+error: `style:` / `style=` attributes have no meaning in a native view tree
+
+         = help: native renderers don't emit HTML/CSS — use a builder method like `.padding(…)` or your port's styling APIs
+
+ --> tests/ui/style_attr.rs:5:14
+  |
+5 |         <div style:color="red"></div>
+  |              ^^^^^

@@ -7,9 +7,11 @@
 //! examples (image needs a bundled asset; date_picker is its own
 //! interactive thing).
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Showcase() -> impl IntoView {
@@ -135,7 +137,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <Showcase /> });
+        leptos_platform::mount_ios::run(|| view! { <Showcase /> });
     }
 
 }

@@ -110,6 +110,14 @@
 #![cfg_attr(all(feature = "nightly", rustc_nightly), feature(unboxed_closures))]
 
 extern crate self as leptos_native;
+// `leptos_platform` is the JSX-pragma-equivalent sentinel name the
+// `leptos_macro` proc-macros emit absolute paths against (e.g.
+// `::leptos_platform::component::Props`). Inside this crate, the
+// sentinel is self-aliased so that the `#[component]` macro invoked
+// here (in show.rs, for_loop.rs, etc.) resolves cleanly. Downstream
+// consumers do their own `extern crate <port> as leptos_platform;`
+// at crate root.
+extern crate self as leptos_platform;
 
 /// Identity trait the `leptos_macro` view!{} expansion emits as
 /// `::leptos_native::prelude::IntoAttributeValue::into_attribute_value(...)`
@@ -254,10 +262,6 @@ pub mod task {
         spawn_local_scoped, spawn_local_scoped_with_cancellation,
     };
 }
-
-#[cfg(feature = "tracing")]
-#[doc(hidden)]
-pub use tracing;
 
 #[doc(hidden)]
 pub mod __reexports {

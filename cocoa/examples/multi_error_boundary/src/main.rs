@@ -4,9 +4,11 @@
 //! the `Errors` map is keyed by an internal id and aggregates
 //! every active error in the subtree.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn App() -> impl IntoView {

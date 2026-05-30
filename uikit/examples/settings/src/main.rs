@@ -2,9 +2,11 @@
 //! driven by `bind:`. The slider's `enabled=` is gated by the mute
 //! switch (a derived `enabled=move || !mute.get()` closure).
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Settings() -> impl IntoView {
@@ -57,7 +59,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <Settings /> });
+        leptos_platform::mount_ios::run(|| view! { <Settings /> });
     }
 
 }

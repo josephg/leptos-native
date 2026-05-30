@@ -34,9 +34,11 @@
 //!   `<Show>` / `<For>` over items don't work — `ToolbarHandle` is
 //!   the supported escape hatch).
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     pub fn main() {
         mount_to_split_window("Toolbar Demo", (900.0, 560.0), || {
@@ -300,7 +302,7 @@ mod app {
                                                 .icon(Icon::sf_symbol("circle.fill"))
                                                 .tool_tip("Inserted at runtime")
                                                 .on(
-                                                    leptos_native::tachys::html::event::action,
+                                                    leptos_platform::event::action,
                                                     move |_| {
                                                         println!("dynamic {id} clicked");
                                                     },

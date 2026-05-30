@@ -8,7 +8,7 @@ publish = false
 # `default-members` so it's skipped by bare `cargo build`.
 
 [dependencies]
-leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+leptos_cocoa = { path = "../../leptos_cocoa" }
 tokio = { version = "1", features = ["rt", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }

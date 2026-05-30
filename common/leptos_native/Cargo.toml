@@ -20,7 +20,6 @@ send_wrapper = { workspace = true, default-features = true }
 paste = { workspace = true, default-features = true }
 rustc-hash = { workspace = true, default-features = true }
 slotmap = { workspace = true, default-features = true }
-tracing = { optional = true, workspace = true, default-features = true }
 typed-builder = { workspace = true, default-features = true }
 typed-builder-macro = { workspace = true, default-features = true }
 thiserror = { workspace = true, default-features = true }
@@ -37,21 +36,10 @@ taffy = { workspace = true }
 
 default = ["reactive_graph"]
 nightly = ["leptos_macro/nightly", "reactive_graph/nightly"]
-tracing = [
-  "dep:tracing",
-  "reactive_graph/tracing",
-  "leptos_macro/tracing",
-]
 reactive_graph = [] # Not sure if anything works if this is disabled. TODO.
 
 [build-dependencies]
 rustc_version = { workspace = true, default-features = true }
-
-# See note in upstream Cargo.toml — proc macros don't see RUSTFLAGS
-# when --target is specified, so the erasure feature is enabled via
-# this normal-crate dependency rather than a cfg.
-[target.'cfg(erase_components)'.dependencies]
-leptos_macro = { workspace = true, features = ["__internal_erase_components"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

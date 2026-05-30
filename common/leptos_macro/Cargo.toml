@@ -28,19 +28,16 @@ rstml = { workspace = true, default-features = true }
 convert_case = { workspace = true, default-features = true }
 convert_case_extras = { workspace = true, default-features = true }
 uuid = { features = ["v4"], workspace = true, default-features = true }
-tracing = { optional = true, workspace = true, default-features = true }
+
+[dev-dependencies]
+leptos_native = { workspace = true }
+trybuild = { workspace = true, default-features = true }
 
 [build-dependencies]
 rustc_version = { workspace = true, default-features = true }
 
 [features]
 nightly = []
-tracing = ["dep:tracing"]
-trace-components = []
-trace-component-props = []
-# Having an erasure feature rather than normal --cfg erase_components for the proc macro crate is a workaround for this rust issue:
-# https://github.com/rust-lang/cargo/issues/4423
-__internal_erase_components = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rustc_nightly)'] }

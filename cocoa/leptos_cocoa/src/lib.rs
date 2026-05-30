@@ -10,6 +10,12 @@
 #![cfg(target_os = "macos")]
 #![allow(missing_docs)]
 
+// `leptos_platform` is the sentinel name the `leptos_macro` proc-macros
+// emit absolute paths against. Self-aliased here so that the
+// `#[component]` / `view!{}` macros invoked inside this crate (in
+// tests, in examples bundled with the crate, etc.) resolve cleanly.
+extern crate self as leptos_platform;
+
 pub mod cocoa;
 pub mod element_macos;
 pub mod event_macos;
@@ -64,34 +70,34 @@ pub use leptos_native::typed_builder;
 pub use leptos_native::typed_builder_macro;
 pub use leptos_native::callback;
 
-/// View-tree machinery + element builders + events under the path
-/// shape the `view!{}` macro emits
-/// (`::leptos_native::tachys::html::element::*`, `::leptos_native::tachys::view::*`).
-///
-/// The web Leptos macro additionally routed tags whose names are real
-/// SVG elements (`<switch>`, ...) through `tachys::svg::*` and emitted
-/// `.attr(name, value)` for every attribute. On native there's no SVG
-/// renderer and no untyped `.attr()` slot, so this fork's macro routes
-/// every tag through `tachys::html::element::*`.
-///
-/// User code reaching for a builder directly (no `view!{}`) should
-/// import it from this path (`leptos_native::tachys::html::element::button`,
-/// ...) or from `leptos_native::prelude` if the prelude re-exports it.
-pub mod tachys {
-    pub use leptos_native::renderer::view;
+// Flat modules at the paths the `view!{}` macro emits:
+// `::leptos_platform::element::*`, `::leptos_platform::event::*`,
+// `::leptos_platform::attribute::*`, `::leptos_platform::view::*`,
+// `::leptos_platform::reactive_graph::bind::*`.
+//
+// (Upstream had a `tachys::html::*` namespace; we flattened it here.)
 
-    pub mod html {
-        pub mod element {
-            //! Cocoa-flavoured element builders (button, vstack, label, ...).
-            pub use crate::element_macos::*;
-        }
-        pub mod event {
-            pub use crate::event_macos::*;
-        }
-        pub mod attribute {
-            pub use crate::keys::*;
-        }
-    }
+/// Cocoa-flavoured element builders (button, vstack, label, ...).
+pub mod element {
+    pub use crate::element_macos::*;
+}
+
+/// Cocoa-flavoured event descriptors (click, input, change, ...).
+pub mod event {
+    pub use crate::event_macos::*;
+}
+
+/// Attribute / bind-key markers (Value, Checked, ...).
+pub mod attribute {
+    pub use crate::keys::*;
+}
+
+/// Renderer view machinery (View, iterators, static_types, ...).
+pub use leptos_native::renderer::view;
+
+/// Reactive-graph bind helpers re-exported from the renderer.
+pub mod reactive_graph {
+    pub use leptos_native::renderer::reactive_graph::*;
 }
 
 /// Cocoa-specialized [`IntoView`](leptos_native::IntoView). Pinning R to

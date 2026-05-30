@@ -28,7 +28,9 @@
 //! For tasks where that latency matters (long HTTP requests, slow
 //! DB queries), keep the `JoinHandle` and abort it on unmount.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -70,7 +72,7 @@ fn CancellableFetch() -> impl IntoView {
         // Spawn a main-thread task to await the receiver. If the
         // slot still holds it when the result arrives, publish;
         // otherwise we were cancelled.
-        leptos_native::core::task::spawn_local(async move {
+        leptos_platform::core::task::spawn_local(async move {
             // Take the current receiver. If it's been replaced
             // already (e.g. user clicked Start twice in a row),
             // this drops the previous one — which is fine; we
@@ -151,7 +153,7 @@ fn MathService() -> impl IntoView {
     let call = move |op: Op, a: i64, b: i64| {
         let (reply_tx, reply_rx) = oneshot::channel();
         let _ = svc.send(MathRequest { op, a, b, reply: reply_tx });
-        leptos_native::core::task::spawn_local(async move {
+        leptos_platform::core::task::spawn_local(async move {
             if let Ok(v) = reply_rx.await {
                 last.set(format!("= {v}"));
             }

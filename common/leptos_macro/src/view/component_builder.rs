@@ -4,7 +4,7 @@ use super::{
 use crate::view::{
     attribute_absolute, text_to_tokens, utils::filter_prefixed_attrs,
 };
-use proc_macro2::{Ident, TokenStream, TokenTree};
+use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use rstml::node::{
     CustomNode, KeyedAttributeValue, Node, NodeAttribute, NodeBlock,
@@ -17,7 +17,6 @@ use syn::{
 
 pub(crate) fn component_to_tokens(
     node: &mut NodeElement<impl CustomNode>,
-    global_class: Option<&TokenTree>,
 ) -> TokenStream {
     #[allow(unused)] // TODO this is used by hot-reloading
     #[cfg(debug_assertions)]
@@ -89,7 +88,7 @@ pub(crate) fn component_to_tokens(
 
         if optional {
             optional_props.push(quote! {
-                props.#name = { #value }.map(::leptos_native::prelude::IntoReactiveValue::into_reactive_value);
+                props.#name = { #value }.map(::leptos_platform::prelude::IntoReactiveValue::into_reactive_value);
             })
         } else {
             required_props.push(quote! {
@@ -173,16 +172,8 @@ pub(crate) fn component_to_tokens(
         .collect::<Vec<_>>();
 
     let spreads = (!(spreads.is_empty())).then(|| {
-        if cfg!(feature = "__internal_erase_components") {
-            quote! {
-                .add_any_attr({
-                    vec![#(::leptos_native::attr::any_attribute::IntoAnyAttribute::into_any_attr(#spreads),)*]
-                })
-            }
-        } else {
-            quote! {
-                .add_any_attr((#(#spreads,)*))
-            }
+        quote! {
+            .add_any_attr((#(#spreads,)*))
         }
     });
 
@@ -212,7 +203,6 @@ pub(crate) fn component_to_tokens(
         let children = fragment_to_tokens(
             &mut node.children,
             Some(&mut slots),
-            global_class,
             None,
         );
 
@@ -249,7 +239,7 @@ pub(crate) fn component_to_tokens(
                     .children({
                         #(#clonables)*
 
-                        ::leptos_native::children::ToChildren::to_children(move || #children)
+                        ::leptos_platform::children::ToChildren::to_children(move || #children)
                     })
                 }
             }
@@ -291,11 +281,11 @@ pub(crate) fn component_to_tokens(
             #[allow(unreachable_code)]
             #[allow(unused_mut)]
             #[allow(clippy::let_and_return)]
-            ::leptos_native::component::component_view(
+            ::leptos_platform::component::component_view(
                 #[allow(clippy::needless_borrows_for_generic_args)]
                 &#name,
                 {
-                    let mut props = ::leptos_native::component::component_props_builder(&#name #generics)
+                    let mut props = ::leptos_platform::component::component_props_builder(&#name #generics)
                         #(#required_props)*
                         #(#slots)*
                         #children
@@ -336,7 +326,7 @@ pub fn items_to_clone_to_tokens(
 }
 
 /// By default all children are placed in an outer closure || #children.
-/// This is to work with all the variants of the leptos_native::children::ToChildren::to_children trait.
+/// This is to work with all the variants of the leptos_platform::children::ToChildren::to_children trait.
 /// Strings are optimised to be passed without the wrapping closure, providing significant compile time and binary size improvements.
 pub fn maybe_optimised_component_children(
     children: &[Node<impl CustomNode>],
@@ -418,7 +408,7 @@ pub fn maybe_optimised_component_children(
         .children({
             #(#clonables)*
 
-            ::leptos_native::children::ToChildren::to_children(::leptos_native::children::ChildrenOptContainer(#children))
+            ::leptos_platform::children::ToChildren::to_children(::leptos_platform::children::ChildrenOptContainer(#children))
         })
     })
 }

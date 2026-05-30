@@ -3,9 +3,11 @@
 //! cancels and re-schedules a timer when its interval signal
 //! changes.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
     use std::time::Duration;
 
     #[component]

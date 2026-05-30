@@ -3,9 +3,11 @@
 //! `mount_before` / `try_mount_before` paths in
 //! `tachys::renderer::ios`.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Counters() -> impl IntoView {
@@ -57,7 +59,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <Counters /> });
+        leptos_platform::mount_ios::run(|| view! { <Counters /> });
     }
 
 }

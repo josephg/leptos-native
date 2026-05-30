@@ -9,7 +9,7 @@ publish = false
 # pulls in gtk4 at link time.
 
 [dependencies]
-leptos_native = { package = "leptos_gtk", path = "../../leptos_gtk" }
+leptos_gtk = { path = "../../leptos_gtk" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde = { version = "1", features = ["derive"] }

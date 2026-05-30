@@ -7,7 +7,9 @@
 //! Multi-threaded tokio runtime keeps IO workers alive while the
 //! AppKit run loop blocks the main thread.
 
-use leptos_native::prelude::*;
+extern crate leptos_cocoa as leptos_platform;
+
+use leptos_platform::prelude::*;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]

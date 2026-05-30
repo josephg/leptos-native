@@ -8,9 +8,11 @@
 //! fork — you may need to scroll manually to bring the active
 //! field above the keyboard.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn App() -> impl IntoView {
@@ -69,7 +71,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <App /> });
+        leptos_platform::mount_ios::run(|| view! { <App /> });
     }
 }
 

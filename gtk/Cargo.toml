@@ -80,5 +80,4 @@ max_combination_size = 2
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(leptos_debuginfo)',
-    'cfg(erase_components)',
 ] }

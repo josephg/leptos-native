@@ -1,9 +1,11 @@
 //! Greeter — `bind:value` two-way binding on `<text_field>`.
 //! Type into the field; the label below echoes whatever you type.
 
+extern crate leptos_uikit as leptos_platform;
+
 #[cfg(target_os = "ios")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Greeter() -> impl IntoView {
@@ -26,7 +28,7 @@ mod app {
     }
 
     pub fn main() {
-        leptos_native::mount_ios::run(|| view! { <Greeter /> });
+        leptos_platform::mount_ios::run(|| view! { <Greeter /> });
     }
 
 }

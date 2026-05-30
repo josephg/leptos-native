@@ -9,41 +9,9 @@ use syn::{
     Path, PathArguments, ReturnType, Signature, Type, TypeImplTrait, TypeParam,
     TypePath,
 };
-#[cfg(feature = "__internal_erase_components")]
-use syn::parse_quote;
 
-/// Exists to fix nested routes defined in a separate component in
-/// erased mode, by replacing the return type with `AnyNestedRoute`,
-/// which is what it'll be — but is required as the return type for
-/// compiler inference.
 pub(super) fn maybe_modify_return_type(ret: &mut ReturnType) {
-    #[cfg(feature = "__internal_erase_components")]
-    {
-        if let ReturnType::Type(_, ty) = ret {
-            if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty.as_ref() {
-                if bounds.iter().any(|bound| {
-                    if let syn::TypeParamBound::Trait(trait_bound) = bound {
-                        if trait_bound.path.segments.iter().any(
-                            |path_segment| {
-                                path_segment.ident == "MatchNestedRoutes"
-                            },
-                        ) {
-                            return true;
-                        }
-                    }
-                    false
-                }) {
-                    *ty = parse_quote!(
-                        ::leptos_router::any_nested_route::AnyNestedRoute
-                    );
-                }
-            }
-        }
-    }
-    #[cfg(not(feature = "__internal_erase_components"))]
-    {
-        let _ = ret;
-    }
+    let _ = ret;
 }
 
 /// Manual implementation of `Vec::drain_filter` (which is nightly-only).

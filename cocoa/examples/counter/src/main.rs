@@ -1,13 +1,15 @@
-//! Counter — using `leptos_native::prelude::*`, the `view!{}` macro, and
+//! Counter — using `leptos_platform::prelude::*`, the `view!{}` macro, and
 //! `#[component]`.
 //!
 //! Stage 5 part 3 (slice 2): IntoView + #[component] now work on
 //! macOS. Components return `impl IntoView` and can be invoked with
 //! `<MyComponent prop=value />` syntax inside `view!{}`.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[component]
     pub fn Counter(initial: i32) -> impl IntoView {

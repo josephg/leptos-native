@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-leptos_native = { package = "leptos_cocoa", path = "../../leptos_cocoa" }
+leptos_cocoa = { path = "../../leptos_cocoa" }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
 serde = { version = "1.0", features = ["derive"] }

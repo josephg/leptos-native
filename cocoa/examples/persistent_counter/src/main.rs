@@ -6,9 +6,11 @@
 //! ports across with one substitution (`window().local_storage()`
 //! → `local_storage()`).
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     pub const KEY: &str = "leptos_macos.persistent_counter.value";
 

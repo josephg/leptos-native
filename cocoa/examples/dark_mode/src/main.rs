@@ -7,9 +7,11 @@
 //! `Color::SYSTEM_BACKGROUND` / `LABEL` constants you can swap
 //! in directly.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
+    use leptos_platform::prelude::*;
 
     #[derive(Copy, Clone)]
     struct Palette {

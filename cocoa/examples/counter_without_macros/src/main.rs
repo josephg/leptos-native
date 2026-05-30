@@ -1,12 +1,12 @@
 //! Builder-style API (no `view!` macro) on macOS.
 
+extern crate leptos_cocoa as leptos_platform;
+
 #[cfg(target_os = "macos")]
 mod app {
-    use leptos_native::prelude::*;
-    use leptos_native::tachys::html::{
-        element::{button, hstack, label, vstack},
-        event::click,
-    };
+    use leptos_platform::prelude::*;
+    use leptos_platform::element::{button, hstack, label, vstack};
+    use leptos_platform::event::click;
 
     #[derive(Debug, Clone)]
     pub struct Count {
