@@ -77,6 +77,11 @@ name = "layout"
 path = "tests/layout.rs"
 harness = false
 
+[[test]]
+name = "snapshot"
+path = "tests/snapshot.rs"
+harness = false
+
 
 # DOM tests. I'd love a nicer way to express this...
 

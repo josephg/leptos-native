@@ -138,6 +138,19 @@ pub fn insert_child_at(parent: impl std::borrow::Borrow<GtkElem>, child: impl st
     queue_root_resize_for(parent_id);
 }
 
+/// Mirror a native insert-before-`marker` into Taffy by marker (no
+/// native-order readback). `marker == None` appends. Canary counterpart to
+/// [`insert_child_at`].
+pub fn insert_child_before(
+    parent: impl std::borrow::Borrow<GtkElem>,
+    child: impl std::borrow::Borrow<GtkElem>,
+    marker: Option<GtkElem>,
+) {
+    let parent_id = parent.borrow().id();
+    GtkBackend::insert_child_before(parent_id, child.borrow().id(), marker.map(|m| m.id()));
+    queue_root_resize_for(parent_id);
+}
+
 pub fn detach_child(parent: impl std::borrow::Borrow<GtkElem>, child: impl std::borrow::Borrow<GtkElem>) {
     let parent_id = parent.borrow().id();
     GtkBackend::remove_child(parent_id, child.borrow().id());

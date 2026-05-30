@@ -197,13 +197,10 @@ impl GtkElem {
             }
         }
 
-        // Mirror into Taffy at the right index.
-        let idx = child_index_in_parent(parent, child_widget);
-        if let Some(idx) = idx {
-            layout::insert_child_at(self, child, idx);
-        } else {
-            layout::attach_child(self, child);
-        }
+        // Mirror into Taffy by marker — no native-order readback.
+        // (Canary: was `child_index_in_parent` + `insert_child_at` /
+        // `attach_child`. We now drive both trees from the same marker.)
+        layout::insert_child_before(self, child, marker);
         true
     }
 
@@ -576,23 +573,6 @@ fn attach_under(
             child.insert_before(parent, Some(&m.widget()));
         }
     }
-}
-
-/// Find the index of `target` in `parent`'s child chain.
-fn child_index_in_parent(
-    parent: &gtk4::Widget,
-    target: &gtk4::Widget,
-) -> Option<usize> {
-    let mut cur = parent.first_child();
-    let mut idx = 0usize;
-    while let Some(w) = cur {
-        if w.as_ptr() == target.as_ptr() {
-            return Some(idx);
-        }
-        idx += 1;
-        cur = w.next_sibling();
-    }
-    None
 }
 
 /// Install our [`TaffyLayout`] on `widget` so its layout is driven by
