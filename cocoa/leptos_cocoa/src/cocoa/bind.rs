@@ -18,11 +18,7 @@ use crate::cocoa::element::{
     Slider, Stack, Stepper, TextField, TextView,
 };
 use objc2::rc::Retained;
-use reactive_graph::{
-    effect::RenderEffect,
-    signal::RwSignal,
-    traits::{Get, Set},
-};
+use reactive_graph::effect::RenderEffect;
 use crate::dom::{CocoaElem, CocoaNodeExt, Color, Date};
 
 /// Downcast the element's NSView to a specific subclass at install

@@ -21,11 +21,7 @@ use crate::ios::element::{
 };
 use crate::dom::{Color, Date, UikitElem, UikitNodeExt};
 use objc2::rc::Retained;
-use reactive_graph::{
-    effect::RenderEffect,
-    signal::RwSignal,
-    traits::{Get, Set},
-};
+use reactive_graph::effect::RenderEffect;
 
 /// Downcast the element's UIView to a specific subclass at install
 /// time. Same shape and rationale as the cocoa port's helper —
