@@ -22,6 +22,7 @@ use leptos_native::renderer::{Renderer, view::Mountable, LayoutBackend};
 pub use crate::dom::{
     CocoaElem, Event,
 };
+use crate::dom::CocoaNodeExt;
 use crate::dom::layout;
 
 pub type Text = CocoaElem;

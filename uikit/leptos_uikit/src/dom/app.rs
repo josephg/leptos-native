@@ -21,7 +21,7 @@
 //! The user's view-building closure is stored in a thread-local
 //! before `UIApplicationMain` is called.
 
-use crate::dom::{layout, UikitElem};
+use crate::dom::{layout, UikitElem, UikitNodeExt};
 use objc2::{
     define_class, msg_send,
     rc::{Allocated, Retained},

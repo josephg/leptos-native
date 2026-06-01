@@ -127,7 +127,7 @@ use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::cocoa::bind::{BindAttribute, BoundValue, IntoSignal};
 use crate::dom::{toolbar::{
     self as dom_toolbar, *
-}, CocoaElem, Icon, MainThreadMarker};
+}, CocoaElem, CocoaNodeExt, Icon, MainThreadMarker};
 use crate::event_macos::{
     ActionEvent, EventDescriptor, InputEvent, PendingHandler, SupportsEvent,
 };

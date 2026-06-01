@@ -14,7 +14,7 @@ extern crate leptos_cocoa as leptos_platform;
 mod common;
 
 use leptos_cocoa::cocoa::element::{button, hstack, label, vstack};
-use leptos_cocoa::dom::{layout, spawner, window, CocoaElem};
+use leptos_cocoa::dom::{layout, spawner, window, CocoaElem, CocoaNodeExt};
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;

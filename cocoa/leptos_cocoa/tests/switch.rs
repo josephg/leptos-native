@@ -15,7 +15,7 @@ extern crate leptos_cocoa as leptos_platform;
 mod common;
 
 use leptos_cocoa::cocoa::element::{label, vstack};
-use leptos_cocoa::dom::{spawner, CocoaElem};
+use leptos_cocoa::dom::{spawner, CocoaElem, CocoaNodeExt};
 use leptos_cocoa::prelude::*;
 use leptos_native::children::ToChildren;
 use leptos_native::renderer::view::{Mountable, Render};

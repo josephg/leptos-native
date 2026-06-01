@@ -7,7 +7,7 @@ mod common;
 
 use objc2::runtime::AnyObject;
 use objc2_app_kit::NSTextField;
-use leptos_cocoa::dom::CocoaElem;
+use leptos_cocoa::dom::{CocoaElem, CocoaNodeExt};
 
 fn text_create_basic() {
     let _mtm = common::test_mtm();

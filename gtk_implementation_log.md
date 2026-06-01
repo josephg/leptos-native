@@ -4,6 +4,18 @@ A running record of design decisions made during the Linux/GTK port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
+## 2026-06-01 — PR-1 cocoa+uikit finish (cross-cutting; see macOS log)
+
+The cocoa/uikit half of PR-1 (unify per-port `*Elem` newtypes onto the
+generic `Node<B>`) landed, mirroring this port's earlier `GtkElem` →
+`Node<GtkBackend>` + `GtkNodeExt`/`GtkMakeView` migration (`154d09b7`).
+Full rationale — and the non-obvious reason the native view-setters now
+live as `LayoutBackend` hooks (orphan rule under full newtype
+elimination forces the element-driver traits to be blanket impls in
+core) — is in `implementation_log.md` (2026-06-01). No GTK code changed;
+re-run the snapshot oracle + `leptos_gtk` suite on Linux as the final
+cross-port check.
+
 ## 2026-05-20 — Post-`NodeId`-refactor polish (port mirror)
 
 Cross-cutting follow-ups logged in `implementation_log.md`. GTK-side:

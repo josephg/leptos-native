@@ -14,7 +14,7 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSControl, NSTextField};
 use std::cell::Cell;
 use std::rc::Rc;
-use leptos_cocoa::dom::CocoaElem;
+use leptos_cocoa::dom::{CocoaElem, CocoaMakeView, CocoaNodeExt};
 // ---------------------------------------------------------------------
 // on_click — buttons + popups (NSButton subtree)
 // ---------------------------------------------------------------------

@@ -41,7 +41,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use crate::dom::node::downcast;
-use crate::dom::UikitElem;
+use crate::dom::{UikitElem, UikitNodeExt};
 // ---------------------------------------------------------------------
 // Live counts for leak tests.
 // ---------------------------------------------------------------------

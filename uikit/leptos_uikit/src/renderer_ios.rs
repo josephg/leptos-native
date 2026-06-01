@@ -8,6 +8,7 @@
 
 use crate::dom::layout::IosBackend;
 use crate::dom::layout;
+use crate::dom::UikitNodeExt;
 use leptos_native::renderer::LayoutBackend;
 use leptos_native::renderer::{
     view::Mountable,

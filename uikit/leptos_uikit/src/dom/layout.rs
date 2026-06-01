@@ -10,7 +10,7 @@
 //! GTK-style measure/allocate protocol — UIView frames are
 //! authoritative once set.
 
-use crate::dom::node::UikitElem;
+use crate::dom::node::{UikitElem, UikitNodeExt};
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -25,7 +25,7 @@ pub use leptos_native::renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{LayoutBackend, LayoutElement, LayoutNodeOps, LayoutState, UniversalElement};
+use leptos_native::renderer::{LayoutBackend, LayoutState};
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
@@ -561,30 +561,14 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 // cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-impl LayoutNodeOps for UikitElem {
-    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
-        update_style(self, f);
-    }
-    fn schedule_relayout(self) {
-        schedule_relayout(self);
-    }
-    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
-        UikitElem::with_style(self, f)
-    }
-}
-
-// iOS Node impls — `set_tool_tip` uses the default no-op (UIView
-// has no hover tooltips).
-impl LayoutElement for UikitElem {
-    fn set_view_hidden(self, hidden: bool) {
-        UikitElem::set_hidden(self, hidden);
-    }
-}
-impl UniversalElement for UikitElem {
-    fn set_alpha(self, alpha: f64) {
-        UikitElem::set_alpha(self, alpha)
-    }
-}
+// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
+// that used to live here are gone: with `UikitElem` now an alias for the
+// foreign `Node<IosBackend>`, impl'ing those (foreign, param-less) traits
+// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
+// forwarding to the `LayoutBackend` native-setter hooks (`set_hidden`,
+// `set_alpha`, `schedule_relayout`) on `IosBackend` above. iOS leaves
+// `set_clip` / `set_tool_tip` defaulted (no inline clip primitive / no
+// hover tooltips on touch).
 
 // ---------------------------------------------------------------------
 // iOS-only setters — Taffy fields the cocoa port doesn't currently

@@ -23,6 +23,7 @@ extern crate leptos_cocoa as leptos_platform;
 mod common;
 
 use leptos_cocoa::dom::event::handler_store_size_for_test;
+use leptos_cocoa::dom::CocoaNodeExt;
 use leptos_native::prelude::*;
 use leptos_cocoa::cocoa::element::{button, hstack, label};
 use leptos_cocoa::event_macos::{click, on};

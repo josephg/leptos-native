@@ -10,7 +10,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use crate::dom::{KeyEvent, UikitElem};
+use crate::dom::{KeyEvent, UikitElem, UikitNodeExt};
 use leptos_native::renderer::view::ApplyAttr;
 
 pub struct ClickEvent;

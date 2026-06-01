@@ -35,7 +35,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::event::{action_fired_sel, ActionTarget};
-use super::{event, layout, node, CocoaElem, Icon};
+use super::{event, layout, node, CocoaElem, CocoaNodeExt, Icon};
 use objc2::{
     define_class, msg_send,
     rc::Retained,

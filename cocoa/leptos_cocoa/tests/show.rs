@@ -16,6 +16,7 @@ mod common;
 
 use leptos_cocoa::cocoa::element::label;
 use leptos_cocoa::dom::window::open_window;
+use leptos_cocoa::dom::CocoaNodeExt;
 use leptos_cocoa::CocoaDom;
 use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;

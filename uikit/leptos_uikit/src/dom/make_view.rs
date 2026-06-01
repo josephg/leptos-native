@@ -9,7 +9,7 @@
 //! Same shape as cocoa's `make_view.rs` — replaces the old tag-string
 //! match.
 
-use crate::dom::{event::IosNodeHandlers, layout, layout::{Dimension, FlexDirection, IosMeta, Style}, node::UikitElem};
+use crate::dom::{event::IosNodeHandlers, layout, layout::{Dimension, FlexDirection, IosMeta, Style}, node::{UikitElem, UikitNodeExt}};
 
 #[allow(unused_imports)]
 use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly};
@@ -35,10 +35,35 @@ fn leaf_style() -> Style {
     s
 }
 
-impl UikitElem {
+/// Typed widget constructors for [`UikitElem`]. Exposed via an extension
+/// trait because inherent impls on the foreign `Node<IosBackend>` alias
+/// aren't possible from this crate (see [`crate::dom::node`]). Bring
+/// `UikitMakeView` into scope to call `UikitElem::create_button()` etc.
+pub trait UikitMakeView: Sized {
+    fn create_button() -> (UikitElem, Retained<UIButton>);
+    fn create_switch() -> (UikitElem, Retained<UISwitch>);
+    fn create_label() -> (UikitElem, Retained<UILabel>);
+    fn create_text_field() -> (UikitElem, Retained<UITextField>);
+    fn create_secure_text_field() -> (UikitElem, Retained<UITextField>);
+    fn create_slider() -> (UikitElem, Retained<UISlider>);
+    fn create_date_picker() -> (UikitElem, Retained<UIDatePicker>);
+    fn create_stepper() -> (UikitElem, Retained<UIStepper>);
+    fn create_progress_indicator() -> (UikitElem, Retained<UIProgressView>);
+    fn create_image_view() -> (UikitElem, Retained<UIImageView>);
+    fn create_pop_up_button() -> (UikitElem, Retained<UIButton>);
+    fn create_color_well() -> (UikitElem, Retained<UIColorWell>);
+    fn create_segmented_control() -> (UikitElem, Retained<UISegmentedControl>);
+    fn create_scroll_view() -> (UikitElem, Retained<UIScrollView>);
+    fn create_text_view() -> (UikitElem, Retained<UITextView>);
+    fn create_vstack() -> UikitElem;
+    fn create_hstack() -> UikitElem;
+    fn create_grid() -> UikitElem;
+}
+
+impl UikitMakeView for UikitElem {
     /// System-style push button (UIButton with type System). Targets/
     /// titles wired later via attribute setters / `on_click`.
-    pub fn create_button() -> (UikitElem, Retained<UIButton>) {
+    fn create_button() -> (UikitElem, Retained<UIButton>) {
         let b = UIButton::buttonWithType(UIButtonType::System, mtm());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(b.clone()) };
         let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
@@ -46,14 +71,14 @@ impl UikitElem {
     }
 
     /// UISwitch — boolean toggle.
-    pub fn create_switch() -> (UikitElem, Retained<UISwitch>) {
+    fn create_switch() -> (UikitElem, Retained<UISwitch>) {
         let sw = UISwitch::initWithFrame(UISwitch::alloc(mtm()), zero_frame());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(sw.clone()) };
         let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
         (n, sw)
     }
 
-    pub fn create_label() -> (UikitElem, Retained<UILabel>) {
+    fn create_label() -> (UikitElem, Retained<UILabel>) {
         let l = UILabel::initWithFrame(UILabel::alloc(mtm()), zero_frame());
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(l.clone()) };
         let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
@@ -61,7 +86,7 @@ impl UikitElem {
     }
 
     /// Editable single-line text field with rounded-rect bezel.
-    pub fn create_text_field() -> (UikitElem, Retained<UITextField>) {
+    fn create_text_field() -> (UikitElem, Retained<UITextField>) {
         let tf = UITextField::initWithFrame(UITextField::alloc(mtm()), zero_frame());
         tf.setBorderStyle(UITextBorderStyle::RoundedRect);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tf.clone()) };
@@ -69,7 +94,7 @@ impl UikitElem {
         (n, tf)
     }
 
-    pub fn create_secure_text_field() -> (UikitElem, Retained<UITextField>) {
+    fn create_secure_text_field() -> (UikitElem, Retained<UITextField>) {
         let tf = UITextField::initWithFrame(UITextField::alloc(mtm()), zero_frame());
         tf.setSecureTextEntry(true);
         tf.setBorderStyle(UITextBorderStyle::RoundedRect);
@@ -79,7 +104,7 @@ impl UikitElem {
     }
 
     /// Continuous-update slider — `setContinuous(true)`.
-    pub fn create_slider() -> (UikitElem, Retained<UISlider>) {
+    fn create_slider() -> (UikitElem, Retained<UISlider>) {
         let sl = UISlider::initWithFrame(UISlider::alloc(mtm()), zero_frame());
         sl.setContinuous(true);
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(sl.clone()) };
@@ -87,7 +112,7 @@ impl UikitElem {
         (n, sl)
     }
 
-    pub fn create_date_picker() -> (UikitElem, Retained<UIDatePicker>) {
+    fn create_date_picker() -> (UikitElem, Retained<UIDatePicker>) {
         let dp = UIDatePicker::initWithFrame(
             UIDatePicker::alloc(mtm()),
             zero_frame(),
@@ -99,7 +124,7 @@ impl UikitElem {
 
     /// +/- numeric stepper. `setAutorepeat(true)` + `setContinuous(true)`
     /// — fire on every drag tick.
-    pub fn create_stepper() -> (UikitElem, Retained<UIStepper>) {
+    fn create_stepper() -> (UikitElem, Retained<UIStepper>) {
         let st = UIStepper::initWithFrame(UIStepper::alloc(mtm()), zero_frame());
         st.setAutorepeat(true);
         st.setContinuous(true);
@@ -110,7 +135,7 @@ impl UikitElem {
 
     /// `UIProgressView` (Default style). Named for cocoa parity
     /// (`<progress_indicator>`).
-    pub fn create_progress_indicator() -> (UikitElem, Retained<UIProgressView>) {
+    fn create_progress_indicator() -> (UikitElem, Retained<UIProgressView>) {
         let pv = UIProgressView::initWithProgressViewStyle(
             UIProgressView::alloc(mtm()),
             UIProgressViewStyle::Default,
@@ -121,7 +146,7 @@ impl UikitElem {
     }
 
     /// UIImageView with aspect-fit scaling.
-    pub fn create_image_view() -> (UikitElem, Retained<UIImageView>) {
+    fn create_image_view() -> (UikitElem, Retained<UIImageView>) {
         let iv = UIImageView::initWithFrame(
             UIImageView::alloc(mtm()),
             zero_frame(),
@@ -133,7 +158,7 @@ impl UikitElem {
     }
 
     /// Menu-style button — UIButton with `setShowsMenuAsPrimaryAction`.
-    pub fn create_pop_up_button() -> (UikitElem, Retained<UIButton>) {
+    fn create_pop_up_button() -> (UikitElem, Retained<UIButton>) {
         let b = UIButton::buttonWithType(UIButtonType::System, mtm());
         b.setShowsMenuAsPrimaryAction(true);
         b.setChangesSelectionAsPrimaryAction(true);
@@ -142,7 +167,7 @@ impl UikitElem {
         (n, b)
     }
 
-    pub fn create_color_well() -> (UikitElem, Retained<UIColorWell>) {
+    fn create_color_well() -> (UikitElem, Retained<UIColorWell>) {
         let cw = UIColorWell::initWithFrame(
             UIColorWell::alloc(mtm()),
             zero_frame(),
@@ -152,7 +177,7 @@ impl UikitElem {
         (n, cw)
     }
 
-    pub fn create_segmented_control() -> (UikitElem, Retained<UISegmentedControl>) {
+    fn create_segmented_control() -> (UikitElem, Retained<UISegmentedControl>) {
         let sc = UISegmentedControl::initWithFrame(
             UISegmentedControl::alloc(mtm()),
             zero_frame(),
@@ -165,7 +190,7 @@ impl UikitElem {
     /// User-scrollable container — UIScrollView with a content UIView
     /// added as the first subview. Children added via `insert_node`
     /// route to the content view.
-    pub fn create_scroll_view() -> (UikitElem, Retained<UIScrollView>) {
+    fn create_scroll_view() -> (UikitElem, Retained<UIScrollView>) {
         let scroll = UIScrollView::initWithFrame(
             UIScrollView::alloc(mtm()),
             zero_frame(),
@@ -194,7 +219,7 @@ impl UikitElem {
     }
 
     /// Multi-line text editing surface — UITextView, editable + selectable.
-    pub fn create_text_view() -> (UikitElem, Retained<UITextView>) {
+    fn create_text_view() -> (UikitElem, Retained<UITextView>) {
         let tv = UITextView::initWithFrame(UITextView::alloc(mtm()), zero_frame());
         tv.setEditable(true);
         tv.setSelectable(true);
@@ -205,7 +230,7 @@ impl UikitElem {
 
     /// `<stack_view>` / `<vstack>` / `<view>` — vertical UIView
     /// container.
-    pub fn create_vstack() -> UikitElem {
+    fn create_vstack() -> UikitElem {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
@@ -214,7 +239,7 @@ impl UikitElem {
     }
 
     /// `<hstack>` — horizontal UIView container.
-    pub fn create_hstack() -> UikitElem {
+    fn create_hstack() -> UikitElem {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();
@@ -223,7 +248,7 @@ impl UikitElem {
     }
 
     /// `<grid>` — UIView container with Taffy `Display::Grid`.
-    pub fn create_grid() -> UikitElem {
+    fn create_grid() -> UikitElem {
         let view: Retained<UIView> =
             UIView::initWithFrame(UIView::alloc(mtm()), zero_frame());
         let mut s = Style::default();

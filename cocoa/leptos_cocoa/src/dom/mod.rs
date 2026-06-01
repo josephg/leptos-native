@@ -57,7 +57,8 @@ pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
 pub use key_event::KeyEvent;
-pub use node::CocoaElem;
+pub use make_view::CocoaMakeView;
+pub use node::{CocoaElem, CocoaNodeExt};
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::Event;
 

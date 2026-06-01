@@ -7,7 +7,7 @@
 //! them.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::dom::{event, layout::*, CocoaElem, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
+use crate::dom::{event, layout::*, CocoaElem, CocoaMakeView, CocoaNodeExt, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
 use crate::CocoaDom;
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;

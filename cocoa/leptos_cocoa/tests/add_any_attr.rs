@@ -10,6 +10,7 @@ extern crate leptos_cocoa as leptos_platform;
 mod common;
 
 use leptos_cocoa::dom::spawner;
+use leptos_cocoa::dom::CocoaNodeExt;
 use leptos_cocoa::{
     cocoa::element::button,
     event_macos::{click, on},

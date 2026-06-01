@@ -11,7 +11,7 @@
 mod common;
 
 use objc2::MainThreadMarker;
-use leptos_cocoa::dom::{app, window, CocoaElem};
+use leptos_cocoa::dom::{app, window, CocoaElem, CocoaMakeView, CocoaNodeExt};
 
 /// Initialise NSApplication once per test process. `init_app`
 /// returns `(app, delegate)` — both are intentionally leaked here

@@ -48,7 +48,8 @@ pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
 pub use key_event::KeyEvent;
-pub use node::UikitElem;
+pub use make_view::UikitMakeView;
+pub use node::{UikitElem, UikitNodeExt};
 pub use storage::{local_storage, Storage, StorageError};
 pub use renderer::Event;
 

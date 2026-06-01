@@ -31,7 +31,7 @@
 //! handlers to the Rust `Node` decouples them from AppKit's view
 //! lifecycle entirely.
 
-use super::{node, CocoaElem, KeyEvent};
+use super::{node, CocoaElem, CocoaNodeExt, KeyEvent};
 use objc2::{
     define_class, msg_send,
     rc::Retained,

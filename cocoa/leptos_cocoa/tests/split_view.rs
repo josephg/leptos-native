@@ -16,6 +16,7 @@ use leptos_cocoa::dom::split_window::{
     open_split_window, OpenedSplitWindow, PaneBehavior, PaneSpec,
 };
 use leptos_cocoa::cocoa::element::label;
+use leptos_cocoa::dom::CocoaNodeExt;
 use leptos_cocoa::cocoa::split::{
     split_pane, split_view, IntoSplitView,
 };
