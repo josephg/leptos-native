@@ -18,11 +18,7 @@ use crate::cocoa::element::{
     Slider, Stack, Stepper, TextField, TextView,
 };
 use objc2::rc::Retained;
-use reactive_graph::{
-    effect::RenderEffect,
-    signal::RwSignal,
-    traits::{Get, Set},
-};
+use reactive_graph::effect::RenderEffect;
 use crate::dom::{CocoaElem, CocoaNodeExt, Color, Date};
 
 /// Downcast the element's NSView to a specific subclass at install
@@ -52,54 +48,10 @@ where
         })
 }
 
-/// Conversion trait: turn whatever the user passed to `bind:` into a
-/// `(getter, setter)` pair we can wire up.
-///
-/// Provided impls:
-///  - `RwSignal<T>` — most common case
-///  - `(impl Get<Value = T>, impl Set<Value = T>)` — split signals
-pub trait IntoSignal<T: Send + Sync + 'static>: 'static {
-    /// Returns a getter that reads the current value (subscribes to
-    /// changes when called inside an Effect).
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static>;
-
-    /// Returns a setter that updates the underlying signal.
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static>;
-}
-
-impl<T> IntoSignal<T> for RwSignal<T>
-where
-    T: Send + Sync + Clone + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let s = *self;
-        Box::new(move || s.get())
-    }
-
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let s = *self;
-        Box::new(move |v: T| s.set(v))
-    }
-}
-
-// `(getter_fn, setter_fn)` tuple — handy for split signals or
-// derived-state controllers where you don't have an `RwSignal`.
-impl<T, G, S> IntoSignal<T> for (G, S)
-where
-    T: Send + Sync + 'static,
-    G: Fn() -> T + Clone + Send + 'static,
-    S: FnMut(T) + Clone + Send + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let g = self.0.clone();
-        Box::new(move || g())
-    }
-
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let mut s = self.1.clone();
-        Box::new(move |v: T| s(v))
-    }
-}
+// `IntoSignal` (the `RwSignal` / `(getter, setter)` erasure) is shared
+// across ports — it lives in core. Re-exported so existing paths
+// (`crate::cocoa::bind::IntoSignal`) keep resolving.
+pub use leptos_native::renderer::IntoSignal;
 
 /// `.bind(Key, Sig)` — invoked by `view!{}` macro for `bind:foo=...`.
 pub trait BindAttribute<Key, Sig> {

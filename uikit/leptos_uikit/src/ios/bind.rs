@@ -21,11 +21,7 @@ use crate::ios::element::{
 };
 use crate::dom::{Color, Date, UikitElem, UikitNodeExt};
 use objc2::rc::Retained;
-use reactive_graph::{
-    effect::RenderEffect,
-    signal::RwSignal,
-    traits::{Get, Set},
-};
+use reactive_graph::effect::RenderEffect;
 
 /// Downcast the element's UIView to a specific subclass at install
 /// time. Same shape and rationale as the cocoa port's helper —
@@ -47,40 +43,10 @@ where
 
 /// Conversion trait: turn whatever the user passed to `bind:` into a
 /// `(getter, setter)` pair we can wire up.
-pub trait IntoSignal<T: Send + Sync + 'static>: 'static {
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static>;
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static>;
-}
-
-impl<T> IntoSignal<T> for RwSignal<T>
-where
-    T: Send + Sync + Clone + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let s = *self;
-        Box::new(move || s.get())
-    }
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let s = *self;
-        Box::new(move |v: T| s.set(v))
-    }
-}
-
-impl<T, G, S> IntoSignal<T> for (G, S)
-where
-    T: Send + Sync + 'static,
-    G: Fn() -> T + Clone + Send + 'static,
-    S: FnMut(T) + Clone + Send + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let g = self.0.clone();
-        Box::new(move || g())
-    }
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let mut s = self.1.clone();
-        Box::new(move |v: T| s(v))
-    }
-}
+// `IntoSignal` (the `RwSignal` / `(getter, setter)` erasure) is shared
+// across ports — it lives in core. Re-exported so existing paths
+// (`crate::ios::bind::IntoSignal`) keep resolving.
+pub use leptos_native::renderer::IntoSignal;
 
 /// `.bind(Key, Sig)` — invoked by `view!{}` for `bind:foo=…`.
 pub trait BindAttribute<Key, Sig> {

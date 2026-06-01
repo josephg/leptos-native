@@ -9,49 +9,13 @@ use crate::gtk::element::{
 };
 use crate::dom::GtkElem as GtkElement;
 use crate::dom::GtkNodeExt;
-use reactive_graph::{
-    effect::RenderEffect,
-    signal::RwSignal,
-    traits::{Get, Set},
-};
+use reactive_graph::effect::RenderEffect;
 use leptos_native::renderer::attr_keys;
 
-pub trait IntoSignal<T: Send + Sync + 'static>: 'static {
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static>;
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static>;
-}
-
-impl<T> IntoSignal<T> for RwSignal<T>
-where
-    T: Send + Sync + Clone + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let s = *self;
-        Box::new(move || s.get())
-    }
-
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let s = *self;
-        Box::new(move |v: T| s.set(v))
-    }
-}
-
-impl<T, G, S> IntoSignal<T> for (G, S)
-where
-    T: Send + Sync + 'static,
-    G: Fn() -> T + Clone + Send + 'static,
-    S: FnMut(T) + Clone + Send + 'static,
-{
-    fn into_get(&self) -> Box<dyn Fn() -> T + Send + 'static> {
-        let g = self.0.clone();
-        Box::new(move || g())
-    }
-
-    fn into_set(&self) -> Box<dyn FnMut(T) + Send + 'static> {
-        let mut s = self.1.clone();
-        Box::new(move |v: T| s(v))
-    }
-}
+// `IntoSignal` (the `RwSignal` / `(getter, setter)` erasure) is shared
+// across ports — it lives in core. Re-exported so existing paths
+// (`crate::gtk::bind::IntoSignal`) keep resolving.
+pub use leptos_native::renderer::IntoSignal;
 
 pub trait BindAttribute<Key, Sig> {
     fn bind(self, key: Key, signal: Sig) -> Self;

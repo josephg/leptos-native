@@ -32,28 +32,10 @@ pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
 }
 
-/// Generate the static + closure impls of [`IntoMaybeReactive<T>`]
-/// for one or more concrete `T`s. See the cocoa equivalent for the
-/// rationale.
-macro_rules! impl_pair {
-    ($($t:ty),* $(,)?) => {
-        $(
-            impl IntoMaybeReactive<$t> for $t {
-                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
-                    MaybeReactive::Static(self)
-                }
-            }
-            impl<F> IntoMaybeReactive<$t> for F
-            where
-                F: Fn() -> $t + Send + 'static,
-            {
-                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
-                    MaybeReactive::Reactive(Box::new(self))
-                }
-            }
-        )*
-    };
-}
+// `impl_pair!` (the static + closure `IntoMaybeReactive` impl generator)
+// is identical across ports → it lives in core. The impls it generates
+// resolve against this port's local `IntoMaybeReactive` + `MaybeReactive`.
+use leptos_native::impl_pair;
 
 impl_pair!(
     String, bool, i32, f32, f64, usize, Dim,
