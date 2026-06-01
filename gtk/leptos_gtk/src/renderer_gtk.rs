@@ -123,7 +123,7 @@ impl Mountable<GtkDom> for GtkElem {
         parent: GtkElem,
         marker: Option<GtkElem>,
     ) -> bool {
-        parent.try_insert_node(*self, marker)
+        parent.insert_node(*self, marker)
     }
 
     fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {

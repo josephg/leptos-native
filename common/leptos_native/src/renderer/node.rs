@@ -27,7 +27,7 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
 
-use super::scene::{LayoutBackend, NodeId, Style};
+use super::scene::{AttachOutcome, LayoutBackend, NodeId, Style};
 
 /// A `Copy` handle into the ambient [`LayoutState<B>`] node store —
 /// structurally just a [`NodeId`]. See the module docs.
@@ -119,5 +119,39 @@ impl<B: LayoutBackend> Node<B> {
     /// underlying-view equality.
     pub fn ptr_eq(self, other: Self) -> bool {
         self.id == other.id
+    }
+
+    // ---- tree edits: native (via the backend) + Taffy mirror, once ----
+
+    /// Insert `child` under `self` immediately before `marker` (append if
+    /// `None`). Drives the port's native attach, then mirrors the edge
+    /// into Taffy by marker. Returns `false` if the insert was rejected
+    /// (self-parent / marker isn't a child / unsupported parent).
+    pub fn insert_node(self, child: Self, marker: Option<Self>) -> bool {
+        match B::attach_native(self.id, child.id, marker.map(|m| m.id)) {
+            AttachOutcome::Mirror => {
+                B::with_tree(|s| s.insert_child_before(self.id, child.id, marker.map(|m| m.id)));
+                true
+            }
+            AttachOutcome::NativeOnly => true,
+            AttachOutcome::Rejected => false,
+        }
+    }
+
+    /// Detach `child` from `self` (native + Taffy). Returns `Some(child)`
+    /// if it was actually a child, else `None`. Does **not** free `child`.
+    pub fn remove_child(self, child: Self) -> Option<Self> {
+        if B::detach_native(self.id, child.id) {
+            B::with_tree(|s| s.remove_child(self.id, child.id));
+            Some(child)
+        } else {
+            None
+        }
+    }
+
+    /// Remove every child of `self` (native level). Taffy children are
+    /// reclaimed by the remove cascade, matching prior per-port behavior.
+    pub fn clear_children(self) {
+        B::clear_native_children(self.id);
     }
 }

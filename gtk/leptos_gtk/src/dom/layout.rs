@@ -25,7 +25,7 @@ pub use leptos_native::renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // GTK backend
@@ -109,6 +109,103 @@ impl LayoutBackend for GtkBackend {
 
     fn schedule_relayout(id: NodeId) {
         schedule_relayout_for(id);
+    }
+
+    fn attach_native(parent: NodeId, child: NodeId, before: Option<NodeId>) -> AttachOutcome {
+        use crate::dom::node::attach_under;
+        let p = GtkElem::from_id(parent);
+        let c = GtkElem::from_id(child);
+        let marker = before.map(GtkElem::from_id);
+        let parent_w = p.widget();
+        let parent_ref: &gtk4::Widget = &parent_w;
+        let child_w = c.widget();
+        let child_widget: &gtk4::Widget = &child_w;
+
+        // Self-parent? Reject.
+        if child_widget.as_ptr() == parent_ref.as_ptr() {
+            return AttachOutcome::Rejected;
+        }
+
+        // Window parents use `set_child` (single child) — native-only, the
+        // window is not a Taffy container.
+        if let Some(window) = parent_ref.downcast_ref::<gtk4::ApplicationWindow>() {
+            if marker.is_some() {
+                return AttachOutcome::Rejected;
+            }
+            window.set_child(Some(child_widget));
+            return AttachOutcome::NativeOnly;
+        }
+        if let Some(window) = parent_ref.downcast_ref::<gtk4::Window>() {
+            if marker.is_some() {
+                return AttachOutcome::Rejected;
+            }
+            window.set_child(Some(child_widget));
+            return AttachOutcome::NativeOnly;
+        }
+
+        // Generic container path.
+        match child_widget.parent() {
+            Some(pp) if pp.as_ptr() == parent_ref.as_ptr() => match marker {
+                None => {
+                    child_widget.insert_before(parent_ref, None::<&gtk4::Widget>);
+                }
+                Some(m) => {
+                    let m_widget = m.widget();
+                    if m_widget.as_ptr() == child_widget.as_ptr() {
+                        // Insert-before-self: no-op; the Taffy mirror guards
+                        // this case too.
+                        return AttachOutcome::Mirror;
+                    }
+                    if m_widget.parent().map(|w| w.as_ptr()) != Some(parent_ref.as_ptr()) {
+                        return AttachOutcome::Rejected;
+                    }
+                    child_widget.insert_before(parent_ref, Some(&m_widget));
+                }
+            },
+            Some(_) => {
+                child_widget.unparent();
+                attach_under(parent_ref, child_widget, marker);
+            }
+            None => {
+                attach_under(parent_ref, child_widget, marker);
+            }
+        }
+        AttachOutcome::Mirror
+    }
+
+    fn detach_native(parent: NodeId, child: NodeId) -> bool {
+        use crate::dom::node::detach_child_widget;
+        let p = GtkElem::from_id(parent);
+        let c = GtkElem::from_id(child);
+        let parent_w = p.widget();
+        let parent_ref: &gtk4::Widget = &parent_w;
+        let child_w = c.widget();
+        let child_widget: &gtk4::Widget = &child_w;
+        let Some(child_parent) = child_widget.parent() else {
+            return false;
+        };
+        if child_parent.as_ptr() != parent_ref.as_ptr() {
+            return false;
+        }
+        detach_child_widget(parent_ref, child_widget);
+        true
+    }
+
+    fn clear_native_children(parent: NodeId) {
+        let p = GtkElem::from_id(parent);
+        let parent_w = p.widget();
+        let parent_ref: &gtk4::Widget = &parent_w;
+        if let Some(window) = parent_ref.downcast_ref::<gtk4::ApplicationWindow>() {
+            window.set_child(None::<&gtk4::Widget>);
+            return;
+        }
+        if let Some(window) = parent_ref.downcast_ref::<gtk4::Window>() {
+            window.set_child(None::<&gtk4::Widget>);
+            return;
+        }
+        while let Some(child) = parent_ref.first_child() {
+            child.unparent();
+        }
     }
 }
 

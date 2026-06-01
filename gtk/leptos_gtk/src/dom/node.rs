@@ -34,10 +34,6 @@ pub trait GtkNodeExt: Copy {
     fn into_widget(self) -> gtk4::Widget;
     fn teardown(self);
     fn create_container() -> Self;
-    fn insert_node(self, child: GtkElem, marker: Option<GtkElem>);
-    fn try_insert_node(self, child: GtkElem, marker: Option<GtkElem>) -> bool;
-    fn remove_child(self, child: GtkElem) -> Option<GtkElem>;
-    fn clear_children(self);
     fn set_title(self, value: &str);
     fn set_value(self, value: &str);
     fn set_placeholder(self, value: &str);
@@ -109,105 +105,6 @@ impl GtkNodeExt for GtkElem {
     /// Generic flexbox container (gtk::Box-backed).
     fn create_container() -> Self {
         GtkElem::new_from_widget(container_widget(), Style::default()).with_tag("container")
-    }
-
-    /// Insert `child` before `marker`; if `marker` is `None`, append.
-    fn insert_node(self, child: GtkElem, marker: Option<GtkElem>) {
-        let _ = self.try_insert_node(child, marker);
-    }
-
-    /// Try to insert `child` before `marker`. Returns `false` if the
-    /// parent isn't a supported container, or `marker` isn't its child.
-    fn try_insert_node(self, child: GtkElem, marker: Option<GtkElem>) -> bool {
-        let parent_w = self.widget();
-        let parent: &gtk4::Widget = &parent_w;
-        let child_w = child.widget();
-        let child_widget: &gtk4::Widget = &child_w;
-
-        // Self-parent? Reject.
-        if child_widget.as_ptr() == parent.as_ptr() {
-            return false;
-        }
-
-        // Window parents use `set_child` (single child).
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
-            if marker.is_some() {
-                return false;
-            }
-            window.set_child(Some(child_widget));
-            return true;
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
-            if marker.is_some() {
-                return false;
-            }
-            window.set_child(Some(child_widget));
-            return true;
-        }
-
-        // Generic container path.
-        match child_widget.parent() {
-            Some(p) if p.as_ptr() == parent.as_ptr() => match marker {
-                None => {
-                    child_widget.insert_before(parent, None::<&gtk4::Widget>);
-                }
-                Some(m) => {
-                    let m_widget = m.widget();
-                    if m_widget.as_ptr() == child_widget.as_ptr() {
-                        return true;
-                    }
-                    if m_widget.parent().map(|p| p.as_ptr()) != Some(parent.as_ptr()) {
-                        return false;
-                    }
-                    child_widget.insert_before(parent, Some(&m_widget));
-                }
-            },
-            Some(_) => {
-                child_widget.unparent();
-                attach_under(parent, child_widget, marker);
-            }
-            None => {
-                attach_under(parent, child_widget, marker);
-            }
-        }
-
-        // Mirror into Taffy by marker — no native-order readback.
-        // (Canary: was `child_index_in_parent` + `insert_child_at` /
-        // `attach_child`. We now drive both trees from the same marker.)
-        layout::insert_child_before(self, child, marker);
-        true
-    }
-
-    /// Remove `child` from this element's child list.
-    fn remove_child(self, child: GtkElem) -> Option<GtkElem> {
-        let parent_w = self.widget();
-        let parent: &gtk4::Widget = &parent_w;
-        let child_w = child.widget();
-        let child_widget: &gtk4::Widget = &child_w;
-        let child_parent = child_widget.parent()?;
-        if child_parent.as_ptr() != parent.as_ptr() {
-            return None;
-        }
-        detach_child_widget(parent, child_widget);
-        layout::detach_child(self, child);
-        Some(child)
-    }
-
-    /// Remove every child.
-    fn clear_children(self) {
-        let parent_w = self.widget();
-        let parent: &gtk4::Widget = &parent_w;
-        if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
-            window.set_child(None::<&gtk4::Widget>);
-            return;
-        }
-        if let Some(window) = parent.downcast_ref::<gtk4::Window>() {
-            window.set_child(None::<&gtk4::Widget>);
-            return;
-        }
-        while let Some(child) = parent.first_child() {
-            child.unparent();
-        }
     }
 
     /// Set the title on a button-flavoured widget. No-op otherwise.
@@ -473,7 +370,7 @@ use crate::dom::make_view::container_widget;
 /// surfacing as `gtk_widget_unparent: assertion 'GTK_IS_WIDGET'
 /// failed` at window/overlay teardown. Detach through the owning API
 /// for those parents instead.
-fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
+pub(crate) fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
     if let Some(win) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
         win.set_child(None::<&gtk4::Widget>);
     } else if let Some(win) = parent.downcast_ref::<gtk4::Window>() {
@@ -492,7 +389,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 }
 
 /// Append or insert `child` under `parent`.
-fn attach_under(parent: &gtk4::Widget, child: &gtk4::Widget, marker: Option<GtkElem>) {
+pub(crate) fn attach_under(parent: &gtk4::Widget, child: &gtk4::Widget, marker: Option<GtkElem>) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {
             None => box_.append(child),

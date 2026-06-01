@@ -80,6 +80,20 @@ use taffy::{
 /// **Drop ordering**: when the store drops a node, the `handlers` field
 /// drops BEFORE the `view` field so port-specific `Handlers` `Drop` impls
 /// can nil `setTarget`/`setDelegate` on the still-live view.
+/// Result of [`LayoutBackend::attach_native`]: how core should mirror a
+/// just-performed native child-attach into the Taffy tree.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AttachOutcome {
+    /// Native insert done — mirror `child` under `parent` before the marker.
+    Mirror,
+    /// Native insert done, but `parent` isn't a Taffy container (e.g. a
+    /// GTK window's single child / a content root) — do **not** mirror.
+    NativeOnly,
+    /// Nothing was inserted (self-parent, marker isn't `parent`'s child,
+    /// unsupported container). Core reports the insert as failed.
+    Rejected,
+}
+
 pub trait LayoutBackend: 'static + Sized {
     /// The platform view associated with each node (cheap to clone).
     type View: Clone;
@@ -141,6 +155,29 @@ pub trait LayoutBackend: 'static + Sized {
     /// `id` (gtk `queue_resize`, cocoa/iOS main-queue dispatch). Required:
     /// scheduling is genuinely per-port, so there is no sensible default.
     fn schedule_relayout(id: NodeId);
+
+    // ---------------------------------------------------------------------
+    // Native tree edits. The port performs the platform-specific child
+    // wiring (NSView `addSubview:` / gtk `insert_before` / UIKit
+    // `insertSubview:`, including any redirects like a scroll view's
+    // documentView); core ([`Node::insert_node`] etc.) drives them and
+    // mirrors the edge into the Taffy tree. Taking `NodeId`s (not views)
+    // lets the port read its own meta/redirects. These do NOT touch Taffy.
+    // ---------------------------------------------------------------------
+
+    /// Natively attach `child` under `parent`, before `before` (append if
+    /// `None`). The [`AttachOutcome`] tells core whether to mirror the
+    /// edge into Taffy.
+    fn attach_native(parent: NodeId, child: NodeId, before: Option<NodeId>) -> AttachOutcome;
+
+    /// Natively detach `child` from `parent`. Returns `false` if `child`
+    /// wasn't actually a child of `parent` (core then skips the Taffy
+    /// detach and reports "not removed").
+    fn detach_native(parent: NodeId, child: NodeId) -> bool;
+
+    /// Natively remove every child of `parent`. (Taffy is left to the
+    /// caller / the remove cascade, matching prior per-port behavior.)
+    fn clear_native_children(parent: NodeId);
 
     // *** Utility methods. These methods are implemented in the trait to make them available for
     // downstream consumers. It is not expected that implementers of LayoutBackend override these
@@ -543,6 +580,12 @@ impl<B: LayoutBackend> LayoutState<B> {
     /// insertion canary: whether ports can rely on this instead of the
     /// native-order readback is exactly what's under test.)
     pub fn insert_child_before(&mut self, parent: NodeId, child: NodeId, marker: Option<NodeId>) {
+        // Insert-before-self is a no-op (a node is already "before" itself);
+        // without this guard the `others()` filter drops `child`, fails to
+        // find the marker, and appends — silently reordering.
+        if marker == Some(child) {
+            return;
+        }
         let idx = self
             .nodes
             .get(key(parent))
