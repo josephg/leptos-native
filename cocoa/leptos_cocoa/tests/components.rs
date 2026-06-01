@@ -18,7 +18,10 @@ use leptos_cocoa::dom::spawner;
 use leptos_native::renderer::view::Render;
 
 fn with_reactive_scope<F: FnOnce()>(f: F) {
-    let _ = spawner::init().unwrap();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
+    let _ = spawner::init();
     let owner = Owner::new();
     owner.with(f);
 }

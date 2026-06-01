@@ -24,7 +24,10 @@ use std::sync::{Arc, Mutex};
 /// must wire the handler so synthetic action firing invokes it.
 fn add_any_attr_routes_on_click_to_button() {
     let _mtm = common::test_mtm();
-    let _ = spawner::init().unwrap();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
+    let _ = spawner::init();
     let owner = reactive_graph::owner::Owner::new();
     owner.with(|| {
         let fired = Arc::new(Mutex::new(0));

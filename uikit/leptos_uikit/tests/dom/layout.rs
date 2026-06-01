@@ -1,7 +1,7 @@
-//! Layout regression tests for `ios_dom`.
+//! Layout regression tests for `leptos_uikit`.
 //!
 //! Mirror of the cocoa side's `cocoa/leptos_cocoa/tests/layout.rs`,
-//! but written at the `ios_dom` layer (no leptos_uikit needed) since
+//! but written at the `leptos_uikit` layer (no leptos_uikit needed) since
 //! the iOS-side tachys-builder port is still in flight (TODO_ios.md).
 //!
 //! Bug under test: leaf controls (UIButton, UILabel) must end up with
@@ -19,34 +19,37 @@
 //! Runs on the iOS simulator via the cargo runner config in
 //! `.cargo/config.toml`:
 //!
-//!   cargo test -p ios_dom --target aarch64-apple-ios-sim
+//!   cargo test -p leptos_uikit --target aarch64-apple-ios-sim
 //!
 //! Requires a booted simulator (`xcrun simctl boot ...`).
 
 
 #[cfg(target_os = "ios")]
-mod ios {
-    mod common;
+mod common;
 
-    use ios_dom::{
+#[cfg(target_os = "ios")]
+mod ios {
+    use super::common;
+
+    use leptos_uikit::dom::{
         layout::{compute_layout, set_padding},
-        Element,
+        UikitElem, UikitMakeView, UikitNodeExt,
     };
     use objc2::runtime::AnyObject;
     use objc2_foundation::NSSize;
     use objc2_ui_kit::{UIButton, UILabel};
 
-    /// Build a "content_root"–style Element with a pinned size.
-    fn make_root_with_size(width: f64, height: f64) -> Element {
+    /// Build a "content_root"–style UikitElem with a pinned size.
+    fn make_root_with_size(width: f64, height: f64) -> UikitElem {
         let _mtm = common::test_mtm();
 
-        let root = Element::create_vstack();
+        let root = UikitElem::create_vstack();
         // Pin the root's size in its style so layout has something to
         // distribute against.
-        root.as_node().with_style_mut(|s| {
-            s.size = ios_dom::layout::Size {
-                width: ios_dom::layout::Dimension::length(width as f32),
-                height: ios_dom::layout::Dimension::length(height as f32),
+        root.with_style_mut(|s| {
+            s.size = leptos_uikit::dom::layout::Size {
+                width: leptos_uikit::dom::layout::Dimension::length(width as f32),
+                height: leptos_uikit::dom::layout::Dimension::length(height as f32),
             };
         });
 
@@ -62,14 +65,14 @@ mod ios {
         let _mtm = common::test_mtm();
 
         let root = make_root_with_size(320.0, 480.0);
-        set_padding(root.as_node(), 12.0);
+        set_padding(root, 12.0);
 
-        let label = Element::create_label().0;
+        let label = UikitElem::create_label().0;
         label.set_title("Hello, iOS!");
-        root.insert_node(label.as_node(), None);
+        root.insert_node(label, None);
 
         compute_layout(
-            root.as_node(),
+            root,
             NSSize::new(320.0, 480.0),
         );
 
@@ -92,7 +95,7 @@ mod ios {
         let any: &AnyObject = view.as_ref();
         assert!(
             any.downcast_ref::<UILabel>().is_some(),
-            "ios_dom Element with tag=label didn't produce a UILabel"
+            "leptos_uikit UikitElem with tag=label didn't produce a UILabel"
         );
     }
 
@@ -104,19 +107,19 @@ mod ios {
 
         let root = make_root_with_size(320.0, 200.0);
 
-        let hstack = Element::create_hstack();
-        root.insert_node(hstack.as_node(), None);
+        let hstack = UikitElem::create_hstack();
+        root.insert_node(hstack, None);
 
-        let b1 = Element::create_button().0;
+        let b1 = UikitElem::create_button().0;
         b1.set_title("OK");
-        hstack.insert_node(b1.as_node(), None);
+        hstack.insert_node(b1, None);
 
-        let b2 = Element::create_button().0;
+        let b2 = UikitElem::create_button().0;
         b2.set_title("Cancel");
-        hstack.insert_node(b2.as_node(), None);
+        hstack.insert_node(b2, None);
 
         compute_layout(
-            root.as_node(),
+            root,
             NSSize::new(320.0, 200.0),
         );
 
@@ -152,22 +155,22 @@ mod ios {
         let _mtm = common::test_mtm();
 
         let root = make_root_with_size(320.0, 480.0);
-        set_padding(root.as_node(), 12.0);
+        set_padding(root, 12.0);
 
-        let label = Element::create_label().0;
+        let label = UikitElem::create_label().0;
         label.set_title("Count: 0");
-        root.insert_node(label.as_node(), None);
+        root.insert_node(label, None);
 
-        let hstack = Element::create_hstack();
-        root.insert_node(hstack.as_node(), None);
+        let hstack = UikitElem::create_hstack();
+        root.insert_node(hstack, None);
         for title in ["-1", "Reset", "+1"] {
-            let b = Element::create_button().0;
+            let b = UikitElem::create_button().0;
             b.set_title(title);
-            hstack.insert_node(b.as_node(), None);
+            hstack.insert_node(b, None);
         }
 
         compute_layout(
-            root.as_node(),
+            root,
             NSSize::new(320.0, 480.0),
         );
 
@@ -192,8 +195,8 @@ mod ios {
         );
     }
 
-    fn main() {
-        println!("ios_dom layout regression tests");
+    pub fn run() {
+        println!("leptos_uikit layout regression tests");
         common::run_tests(&[
             ("label_in_vstack_has_nonzero_height", label_in_vstack_has_nonzero_height),
             ("buttons_in_hstack_have_natural_size", buttons_in_hstack_have_natural_size),
@@ -202,6 +205,11 @@ mod ios {
     }
 }
 
+
+#[cfg(target_os = "ios")]
+fn main() {
+    ios::run();
+}
 
 #[cfg(not(target_os = "ios"))]
 fn main() {

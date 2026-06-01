@@ -39,7 +39,10 @@ use leptos_native::renderer::view::{AddAnyAttr, Mountable, Render};
 /// tasks (e.g. `bind:value`'s spawned closure) complete and drop
 /// their captured Elements before we snapshot.
 fn with_scope<R>(f: impl FnOnce() -> R) -> R {
-    let _ = leptos_cocoa::dom::spawner::init().unwrap();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
+    let _ = leptos_cocoa::dom::spawner::init();
     objc2::rc::autoreleasepool(|_| {
         let owner = Owner::new();
         let result = owner.with(f);
@@ -781,6 +784,9 @@ fn build_in_pool_then_show_off() {
     use leptos_cocoa::cocoa::element::{label, vstack};
     let _mtm = common::test_mtm();
     let before = snapshot();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = cocoa_dom::spawner::init();
     objc2::rc::autoreleasepool(|_| {
         let owner = reactive_graph::owner::Owner::new();

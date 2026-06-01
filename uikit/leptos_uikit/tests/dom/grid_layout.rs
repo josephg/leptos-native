@@ -3,32 +3,35 @@
 //!
 //! Runs on the iOS simulator via:
 //!
-//!   cargo test -p ios_dom --target aarch64-apple-ios-sim --test grid_layout
+//!   cargo test -p leptos_uikit --target aarch64-apple-ios-sim --test grid_layout
 //!
 //! Requires a booted simulator (`xcrun simctl boot ...`). The cargo
 //! runner for `aarch64-apple-ios-sim` is configured in
 //! `uikit/dom/.cargo/config.toml`.
 
 #[cfg(target_os = "ios")]
-mod ios {
-    mod common;
+mod common;
 
-    use ios_dom::{layout, Element};
-    use renderer::{auto, fr, length, GridAutoFlow};
+#[cfg(target_os = "ios")]
+mod ios {
+    use super::common;
+
+    use leptos_uikit::dom::{layout, UikitElem, UikitMakeView};
+    use leptos_native::renderer::{auto, fr, length, GridAutoFlow};
     use objc2_foundation::NSSize;
-    use renderer::attrs::GridLine;
+    use leptos_native::renderer::attrs::GridLine;
 
     /// Read the Taffy-computed layout for `el` and assert position +
     /// size. Reads from the store rather than via `UIView::frame()`
     /// because tests don't run a UIKit event loop.
     fn frame_eq(
-        el: &Element,
+        el: &UikitElem,
         x: f32,
         y: f32,
         w: f32,
         h: f32,
     ) {
-        let l = layout::layout(el.as_node().id()).expect("no layout computed");
+        let l = layout::layout(el.id()).expect("no layout computed");
         let tol = 0.5;
         assert!(
             (l.location.x - x).abs() < tol
@@ -42,13 +45,13 @@ mod ios {
     }
 
     fn make_grid(
-        columns: Vec<renderer::GridTemplateComponent>,
-        rows: Vec<renderer::GridTemplateComponent>,
-    ) -> Element {
+        columns: Vec<leptos_native::renderer::GridTemplateComponent>,
+        rows: Vec<leptos_native::renderer::GridTemplateComponent>,
+    ) -> UikitElem {
         let _mtm = common::test_mtm();
-        let g = Element::create_grid();
-        layout::set_grid_template_columns(g.as_node(), columns);
-        layout::set_grid_template_rows(g.as_node(), rows);
+        let g = UikitElem::create_grid();
+        layout::set_grid_template_columns(g, columns);
+        layout::set_grid_template_rows(g, rows);
         g
     }
 
@@ -56,10 +59,10 @@ mod ios {
 
     fn create_grid_sets_display_grid() {
         let _mtm = common::test_mtm();
-        let g = Element::create_grid();
-        let id = g.as_node().id();
+        let g = UikitElem::create_grid();
+        let id = g.id();
         let style = layout::style(id).expect("registered node has a style");
-        assert_eq!(style.display, renderer::Display::Grid);
+        assert_eq!(style.display, leptos_native::renderer::Display::Grid);
     }
 
     fn three_column_fixed_widths() {
@@ -68,12 +71,12 @@ mod ios {
             vec![length(50.0)],
         );
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
+        layout::compute_layout(g, NSSize::new(400.0, 50.0));
 
         frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
         frame_eq(&b, 100.0, 0.0, 200.0, 50.0);
@@ -85,14 +88,14 @@ mod ios {
             vec![length(50.0)],
         );
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        let c = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
-        g.insert_node(c.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        let c = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
+        g.insert_node(c, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
+        layout::compute_layout(g, NSSize::new(400.0, 50.0));
 
         frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
         frame_eq(&b, 100.0, 0.0, 200.0, 50.0);
@@ -105,14 +108,14 @@ mod ios {
             vec![length(50.0)],
         );
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        let c = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
-        g.insert_node(c.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        let c = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
+        g.insert_node(c, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(400.0, 50.0));
+        layout::compute_layout(g, NSSize::new(400.0, 50.0));
 
         frame_eq(&a, 0.0, 0.0, 100.0, 50.0);
         frame_eq(&b, 100.0, 0.0, 300.0, 50.0);
@@ -125,16 +128,16 @@ mod ios {
             vec![length(50.0), length(50.0)],
         );
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        let c = Element::create_vstack();
-        let d = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
-        g.insert_node(c.as_node(), None);
-        g.insert_node(d.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        let c = UikitElem::create_vstack();
+        let d = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
+        g.insert_node(c, None);
+        g.insert_node(d, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(100.0, 100.0));
+        layout::compute_layout(g, NSSize::new(100.0, 100.0));
 
         frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
         frame_eq(&b, 50.0, 0.0, 50.0, 50.0);
@@ -147,16 +150,16 @@ mod ios {
             vec![length(50.0), length(50.0)],
             vec![length(50.0), length(50.0)],
         );
-        layout::set_gap(g.as_node(), 10.0);
+        layout::set_gap(g, 10.0);
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        let c = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
-        g.insert_node(c.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        let c = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
+        g.insert_node(c, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(110.0, 110.0));
+        layout::compute_layout(g, NSSize::new(110.0, 110.0));
 
         frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
         frame_eq(&b, 60.0, 0.0, 50.0, 50.0);
@@ -168,17 +171,17 @@ mod ios {
             vec![length(50.0), length(50.0)],
             vec![length(50.0), length(50.0)],
         );
-        layout::set_column_gap(g.as_node(), 5.0);
-        layout::set_row_gap(g.as_node(), 20.0);
+        layout::set_column_gap(g, 5.0);
+        layout::set_row_gap(g, 20.0);
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        let c = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
-        g.insert_node(c.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        let c = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
+        g.insert_node(c, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(105.0, 120.0));
+        layout::compute_layout(g, NSSize::new(105.0, 120.0));
 
         frame_eq(&a, 0.0, 0.0, 50.0, 50.0);
         frame_eq(&b, 55.0, 0.0, 50.0, 50.0);
@@ -191,11 +194,11 @@ mod ios {
             vec![length(40.0)],
         );
 
-        let wide = Element::create_vstack();
-        layout::set_grid_column_end(wide.as_node(), GridLine::Span(2));
-        g.insert_node(wide.as_node(), None);
+        let wide = UikitElem::create_vstack();
+        layout::set_grid_column_end(wide, GridLine::Span(2));
+        g.insert_node(wide, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(150.0, 40.0));
+        layout::compute_layout(g, NSSize::new(150.0, 40.0));
 
         frame_eq(&wide, 0.0, 0.0, 100.0, 40.0);
     }
@@ -206,12 +209,12 @@ mod ios {
             vec![length(40.0)],
         );
 
-        let full = Element::create_vstack();
-        layout::set_grid_column_start(full.as_node(), GridLine::Line(1));
-        layout::set_grid_column_end(full.as_node(), GridLine::Line(-1));
-        g.insert_node(full.as_node(), None);
+        let full = UikitElem::create_vstack();
+        layout::set_grid_column_start(full, GridLine::Line(1));
+        layout::set_grid_column_end(full, GridLine::Line(-1));
+        g.insert_node(full, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(150.0, 40.0));
+        layout::compute_layout(g, NSSize::new(150.0, 40.0));
 
         frame_eq(&full, 0.0, 0.0, 150.0, 40.0);
     }
@@ -222,20 +225,20 @@ mod ios {
             vec![length(50.0), length(50.0), length(50.0)],
         );
 
-        let block = Element::create_vstack();
-        layout::set_grid_column_start(block.as_node(), GridLine::Line(1));
-        layout::set_grid_column_end(block.as_node(), GridLine::Line(3));
-        layout::set_grid_row_start(block.as_node(), GridLine::Line(1));
-        layout::set_grid_row_end(block.as_node(), GridLine::Line(3));
-        g.insert_node(block.as_node(), None);
+        let block = UikitElem::create_vstack();
+        layout::set_grid_column_start(block, GridLine::Line(1));
+        layout::set_grid_column_end(block, GridLine::Line(3));
+        layout::set_grid_row_start(block, GridLine::Line(1));
+        layout::set_grid_row_end(block, GridLine::Line(3));
+        g.insert_node(block, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(150.0, 150.0));
+        layout::compute_layout(g, NSSize::new(150.0, 150.0));
 
         frame_eq(&block, 0.0, 0.0, 100.0, 100.0);
     }
 
     fn grid_line_to_placement_handles_each_variant() {
-        use renderer::GridPlacement;
+        use leptos_native::renderer::GridPlacement;
         let _mtm = common::test_mtm();
 
         assert!(matches!(
@@ -253,14 +256,14 @@ mod ios {
             vec![length(50.0), length(50.0)],
             vec![length(40.0)],
         );
-        layout::set_grid_auto_flow(g.as_node(), GridAutoFlow::Column);
+        layout::set_grid_auto_flow(g, GridAutoFlow::Column);
 
-        let a = Element::create_vstack();
-        let b = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
-        g.insert_node(b.as_node(), None);
+        let a = UikitElem::create_vstack();
+        let b = UikitElem::create_vstack();
+        g.insert_node(a, None);
+        g.insert_node(b, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(100.0, 40.0));
+        layout::compute_layout(g, NSSize::new(100.0, 40.0));
 
         frame_eq(&a, 0.0, 0.0, 50.0, 40.0);
         frame_eq(&b, 50.0, 0.0, 50.0, 40.0);
@@ -271,32 +274,32 @@ mod ios {
             vec![length(50.0), length(50.0)],
             vec![length(50.0)],
         );
-        layout::set_padding(g.as_node(), 10.0);
+        layout::set_padding(g, 10.0);
 
-        let a = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
+        let a = UikitElem::create_vstack();
+        g.insert_node(a, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(120.0, 70.0));
+        layout::compute_layout(g, NSSize::new(120.0, 70.0));
 
         frame_eq(&a, 10.0, 10.0, 50.0, 50.0);
     }
 
     fn empty_grid_no_panic() {
         let _mtm = common::test_mtm();
-        let g = Element::create_grid();
-        layout::compute_layout(g.as_node(), NSSize::new(100.0, 100.0));
+        let g = UikitElem::create_grid();
+        layout::compute_layout(g, NSSize::new(100.0, 100.0));
     }
 
     fn zero_available_size_no_panic() {
         let g = make_grid(vec![fr(1.0), fr(1.0)], vec![fr(1.0)]);
 
-        let a = Element::create_vstack();
-        g.insert_node(a.as_node(), None);
+        let a = UikitElem::create_vstack();
+        g.insert_node(a, None);
 
-        layout::compute_layout(g.as_node(), NSSize::new(0.0, 0.0));
+        layout::compute_layout(g, NSSize::new(0.0, 0.0));
     }
 
-    fn main() {
+    pub fn run() {
         common::run_tests(&[
             ("create_grid_sets_display_grid", create_grid_sets_display_grid),
             ("three_column_fixed_widths", three_column_fixed_widths),
@@ -327,6 +330,11 @@ mod ios {
             ("zero_available_size_no_panic", zero_available_size_no_panic),
         ]);
     }
+}
+
+#[cfg(target_os = "ios")]
+fn main() {
+    ios::run();
 }
 
 #[cfg(not(target_os = "ios"))]

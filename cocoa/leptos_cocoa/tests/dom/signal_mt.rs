@@ -34,7 +34,10 @@ use leptos_cocoa::dom::spawner;
 
 fn arc_rw_set_from_worker_fires_main_effect() {
     let _mtm = common::test_mtm();
-    let _ = spawner::init().unwrap();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
+    let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
 
@@ -80,6 +83,9 @@ fn arc_rw_set_from_worker_fires_main_effect() {
 
 fn rw_set_from_worker_fires_main_effect() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
@@ -111,6 +117,9 @@ fn rw_set_from_worker_fires_main_effect() {
 
 fn concurrent_writers_dont_deadlock() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
@@ -164,6 +173,9 @@ fn concurrent_writers_dont_deadlock() {
 
 fn try_set_returns_none_then_some_after_dispose() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
@@ -191,6 +203,9 @@ fn try_set_returns_none_then_some_after_dispose() {
 
 fn worker_shuts_down_on_dispose() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
@@ -239,6 +254,9 @@ fn worker_shuts_down_on_dispose() {
 
 fn on_cleanup_runs_before_arena_disposal() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let owner = Owner::new();
     owner.set();
@@ -272,6 +290,9 @@ fn on_cleanup_runs_before_arena_disposal() {
 
 fn on_cleanup_scoped_to_creating_owner() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let outer = Owner::new();
     outer.set();

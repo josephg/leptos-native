@@ -10,42 +10,46 @@
 //! Requires a booted simulator.
 
 #[cfg(target_os = "ios")]
+mod common;
+
+#[cfg(target_os = "ios")]
 mod ios {
-    mod common;
+    use super::common;
 
     use leptos_uikit::ios::element::{button, hstack, label, vstack};
+    use leptos_uikit::dom::{UikitMakeView, UikitNodeExt};
     use objc2::runtime::AnyObject;
     use objc2_ui_kit::{UIButton, UILabel};
     use reactive_graph::owner::Owner;
-    use renderer::attrs::WithLayout;
-    use renderer::view::{Mountable, Render};
+    use leptos_native::renderer::attrs::WithLayout;
+    use leptos_native::renderer::view::{Mountable, Render};
 
     /// Spin up a fresh reactive owner + the spawner the iOS effect
     /// machinery needs.
     fn with_reactive_scope<F: FnOnce()>(body: F) {
-        let _ = ios_dom::spawner::init();
+        let _ = leptos_uikit::dom::spawner::init();
         let owner = Owner::new();
         owner.with(body);
     }
 
-    /// Construct a content_root-style Element with a Taffy tree, build
+    /// Construct a content_root-style UikitElem with a Taffy tree, build
     /// `view`, mount it, run compute_layout against `size`, and call `f`
     /// with the content root.
     fn with_mounted_view<V, F>(view: V, size: (f64, f64), f: F)
     where
-        V: Render<leptos_uikit::UiKitDom>,
-        V::State: Mountable<leptos_uikit::UiKitDom>,
-        F: FnOnce(&ios_dom::Element),
+        V: Render<leptos_uikit::UikitDom>,
+        V::State: Mountable<leptos_uikit::UikitDom>,
+        F: FnOnce(&leptos_uikit::dom::UikitElem),
     {
         let _mtm = common::test_mtm();
 
-        let root = ios_dom::Element::create_vstack();
+        let root = leptos_uikit::dom::UikitElem::create_vstack();
 
         let mut state = view.build();
-        state.mount(&root, None);
+        state.mount(root, None);
 
-        ios_dom::layout::compute_layout(
-            root.as_node(),
+        leptos_uikit::dom::layout::compute_layout(
+            root,
             objc2_foundation::NSSize::new(size.0, size.1),
         );
 
@@ -71,7 +75,7 @@ mod ios {
             );
             with_mounted_view(view, (320.0, 480.0), |root| {
                 let mut found_label = false;
-                walk(&root.ui_view(), &mut |v| {
+                walk(&*root.ui_view(), &mut |v| {
                     let any: &AnyObject = v.as_ref();
                     if let Some(lbl) = any.downcast_ref::<UILabel>() {
                         found_label = true;
@@ -101,7 +105,7 @@ mod ios {
                 .child(button().title("Cancel"));
             with_mounted_view(view, (320.0, 100.0), |root| {
                 let mut button_frames = Vec::new();
-                walk(&root.ui_view(), &mut |v| {
+                walk(&*root.ui_view(), &mut |v| {
                     let any: &AnyObject = v.as_ref();
                     if any.downcast_ref::<UIButton>().is_some() {
                         button_frames.push(v.frame());
@@ -165,7 +169,7 @@ mod ios {
         });
     }
 
-    fn main() {
+    pub fn run() {
         println!("leptos_uikit builder-layer layout regression tests");
         common::run_tests(&[
             (
@@ -183,6 +187,11 @@ mod ios {
         ]);
     }
 
+}
+
+#[cfg(target_os = "ios")]
+fn main() {
+    ios::run();
 }
 
 #[cfg(not(target_os = "ios"))]

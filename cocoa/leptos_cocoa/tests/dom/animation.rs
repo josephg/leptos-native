@@ -21,7 +21,10 @@ use std::{
 
 fn slot_empty_before_and_after() {
     let _mtm = common::test_mtm();
-    let _ = spawner::init().unwrap();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
+    let _ = spawner::init();
     assert!(current_animation().is_none(), "clean state");
 
     with_animation(Animation::ease_in_out(0.2), || {
@@ -35,6 +38,9 @@ fn slot_empty_before_and_after() {
 
 fn body_sees_animation_synchronously() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let observed = Rc::new(Cell::new(None));
     let obs = observed.clone();
@@ -50,6 +56,9 @@ fn body_sees_animation_synchronously() {
 
 fn fifo_keeps_animation_for_queued_effect() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let saw_animation_in_task = Rc::new(Cell::new(false));
     let flag = saw_animation_in_task.clone();
@@ -78,6 +87,9 @@ fn fifo_keeps_animation_for_queued_effect() {
 
 fn panic_in_body_still_clears_slot() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
 
     let result = std::panic::catch_unwind(|| {
@@ -97,6 +109,9 @@ fn panic_in_body_still_clears_slot() {
 
 fn nested_restores_outer() {
     let _mtm = common::test_mtm();
+    // `init` is process-global; the custom harness runs every test in one
+    // process, so only the first call succeeds. Ignore the `AlreadySet` the
+    // rest return — it just means the executor is already wired up.
     let _ = spawner::init();
     let outer = Animation::linear(1.0);
     let inner = Animation::linear(0.1);
