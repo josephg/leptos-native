@@ -33,6 +33,12 @@ pub mod attrs;
 /// tuples, primitives, strings, iterators, either, fragments, keyed lists).
 pub mod view;
 
+/// The renderer-agnostic view handle [`node::Node<B>`] — a `Copy + Send`
+/// generational id tagged with its backend. Replaces the per-port
+/// `*Elem` newtypes; ports add platform widget setters via an extension
+/// trait `impl … for Node<PortBackend>`.
+pub mod node;
+
 /// The retained render tree: a per-thread [`scene::LayoutState<B>`]
 /// node store (generational slotmap of view + style + handlers),
 /// generic over a [`LayoutBackend`](scene::LayoutBackend), with the
@@ -76,6 +82,7 @@ use std::fmt::Debug;
 // Re-export every scene + setters item at the renderer root so
 // consumer paths (`use renderer::{Style, set_padding, LayoutNodeOps}`)
 // match the shape the per-port code already uses.
+pub use node::Node;
 pub use scene::*;
 pub use setters::*;
 pub use window::{WindowPosition, WindowSize};

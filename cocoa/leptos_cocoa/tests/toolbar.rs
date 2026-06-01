@@ -18,7 +18,7 @@ use leptos_cocoa::cocoa::toolbar::{
     ToolbarMountable,
 };
 use leptos_cocoa::dom::window::open_window;
-use leptos_cocoa::dom::{event, toolbar, Icon};
+use leptos_cocoa::dom::{event, toolbar, CocoaNodeExt, Icon};
 use leptos_cocoa::CocoaDom;
 use reactive_graph::{
     owner::Owner,

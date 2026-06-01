@@ -5,7 +5,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, CocoaElem};
+use leptos_cocoa::dom::{layout, CocoaElem, CocoaMakeView, CocoaNodeExt};
 use objc2_foundation::NSSize;
 
 fn frame_eq(view: &objc2_app_kit::NSView, x: f64, y: f64, w: f64, h: f64) {

@@ -15,7 +15,7 @@
 //! on the next frame, and our [`super::taffy_layout::TaffyLayout`]
 //! `LayoutManager` is what runs Taffy from inside that pass.
 
-use crate::dom::node::GtkElem;
+use crate::dom::node::{GtkElem, GtkNodeExt};
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use leptos_native::renderer;
@@ -72,6 +72,43 @@ impl LayoutBackend for GtkBackend {
 
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
         TREE.with(|t| f(&mut t.borrow_mut()))
+    }
+
+    // Native view setters — relocated from the old per-port `LayoutElement`
+    // / `UniversalElement` impls (now blanket-impl'd in core for `Node<B>`,
+    // forwarding here). Bodies are diff-guarded, matching the originals.
+
+    fn set_hidden(view: &Self::View, hidden: bool) {
+        if view.is_visible() == hidden {
+            view.set_visible(!hidden);
+        }
+    }
+
+    fn set_clip(view: &Self::View, clip: bool) {
+        view.set_overflow(if clip {
+            gtk4::Overflow::Hidden
+        } else {
+            gtk4::Overflow::Visible
+        });
+    }
+
+    fn set_alpha(view: &Self::View, alpha: f64) {
+        let clamped = alpha.clamp(0.0, 1.0);
+        if (view.opacity() - clamped).abs() > f64::EPSILON {
+            view.set_opacity(clamped);
+        }
+    }
+
+    fn set_tool_tip(view: &Self::View, tip: &str) {
+        if tip.is_empty() {
+            view.set_tooltip_text(None);
+        } else {
+            view.set_tooltip_text(Some(tip));
+        }
+    }
+
+    fn schedule_relayout(id: NodeId) {
+        schedule_relayout_for(id);
     }
 }
 
@@ -200,39 +237,11 @@ pub fn schedule_relayout_for(id: NodeId) {
 // cocoa port's equivalent block for the design rationale.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for GtkElem {
-    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
-        update_style(self, f);
-    }
-    fn schedule_relayout(self) {
-        schedule_relayout(self);
-    }
-    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
-        GtkElem::with_style(self, f)
-    }
-}
-
-impl renderer::LayoutElement for GtkElem {
-    fn set_view_hidden(self, hidden: bool) {
-        GtkElem::set_hidden(self, hidden);
-    }
-    fn set_clip(self, clip: bool) {
-        use gtk4::prelude::WidgetExt;
-        self.widget().set_overflow(if clip {
-            gtk4::Overflow::Hidden
-        } else {
-            gtk4::Overflow::Visible
-        });
-    }
-}
-impl renderer::UniversalElement for GtkElem {
-    fn set_alpha(self, alpha: f64) {
-        GtkElem::set_alpha(self, alpha)
-    }
-    fn set_tool_tip(self, tip: &str) {
-        GtkElem::set_tool_tip(self, tip)
-    }
-}
+// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
+// that used to live here are gone: with `GtkElem` now an alias for the
+// foreign `Node<GtkBackend>`, impl'ing those (foreign, param-less) traits
+// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
+// forwarding to the `LayoutBackend` native-setter hooks above.
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,

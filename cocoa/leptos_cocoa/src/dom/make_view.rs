@@ -28,7 +28,7 @@ use crate::dom::{event::NodeHandlers, flipped_view::FlippedView, layout, layout:
     build_scroll_wrapper_style, scroll_view_document, CocoaBackend,
     CocoaMeta, Dimension, FlexDirection, ScrollAxis,
     Style
-}, node::CocoaElem};
+}, node::{CocoaElem, CocoaNodeExt}};
 use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSBorderType, NSButton, NSColorWell, NSDatePicker, NSImageScaling,
@@ -59,7 +59,30 @@ fn leaf_style() -> Style {
     s
 }
 
-impl CocoaElem {
+/// Typed widget constructors for [`CocoaElem`]. Exposed via an extension
+/// trait because inherent impls on the foreign `Node<CocoaBackend>` alias
+/// aren't possible from this crate (see [`crate::dom::node`]). Bring
+/// `CocoaMakeView` into scope to call `CocoaElem::create_button()` etc.
+pub trait CocoaMakeView: Sized {
+    fn create_button() -> (CocoaElem, Retained<NSButton>);
+    fn create_checkbox() -> (CocoaElem, Retained<NSButton>);
+    fn create_label() -> (CocoaElem, Retained<NSTextField>);
+    fn create_text_field() -> (CocoaElem, Retained<NSTextField>);
+    fn create_secure_text_field() -> (CocoaElem, Retained<NSSecureTextField>);
+    fn create_slider() -> (CocoaElem, Retained<NSSlider>);
+    fn create_pop_up_button() -> (CocoaElem, Retained<NSPopUpButton>);
+    fn create_date_picker() -> (CocoaElem, Retained<NSDatePicker>);
+    fn create_stepper() -> (CocoaElem, Retained<NSStepper>);
+    fn create_progress_indicator() -> (CocoaElem, Retained<NSProgressIndicator>);
+    fn create_color_well() -> (CocoaElem, Retained<NSColorWell>);
+    fn create_segmented_control() -> (CocoaElem, Retained<NSSegmentedControl>);
+    fn create_image_view() -> (CocoaElem, Retained<NSImageView>);
+    fn create_text_view() -> (CocoaElem, Retained<NSScrollView>);
+    fn create_scroll_view() -> (CocoaElem, Retained<NSScrollView>);
+    fn create_grid() -> CocoaElem;
+}
+
+impl CocoaMakeView for CocoaElem {
     /// Push button. Use `buttonWithTitle:target:action:` rather than
     /// `initWithFrame:` — the former produces a properly-styled push
     /// button (rounded bezel, ~32px tall, sensible intrinsic size).
@@ -69,7 +92,7 @@ impl CocoaElem {
     ///
     /// Title and target/action are set later via attribute setters /
     /// `on_click(...)`.
-    pub fn create_button() -> (CocoaElem, Retained<NSButton>) {
+    fn create_button() -> (CocoaElem, Retained<NSButton>) {
         let mtm = mtm();
         let button = unsafe {
             NSButton::buttonWithTitle_target_action(
@@ -94,7 +117,7 @@ impl CocoaElem {
     /// set later.
     ///
     /// `flex_shrink=0`: clipping a checkbox label looks bad.
-    pub fn create_checkbox() -> (CocoaElem, Retained<NSButton>) {
+    fn create_checkbox() -> (CocoaElem, Retained<NSButton>) {
         let mtm = mtm();
         let button = unsafe {
             NSButton::checkboxWithTitle_target_action(
@@ -122,7 +145,7 @@ impl CocoaElem {
     /// Never shrink: NSTextField doesn't clip its text content, so a
     /// frame shorter than the text height results in text overflowing
     /// into siblings' space.
-    pub fn create_label() -> (CocoaElem, Retained<NSTextField>) {
+    fn create_label() -> (CocoaElem, Retained<NSTextField>) {
         let mtm = mtm();
         let label =
             NSTextField::wrappingLabelWithString(&NSString::from_str(""), mtm);
@@ -136,7 +159,7 @@ impl CocoaElem {
     /// Editable single-line text field. Measured via NSTextField
     /// intrinsic; never shrinks (editable content shouldn't get
     /// clipped by sibling overlap).
-    pub fn create_text_field() -> (CocoaElem, Retained<NSTextField>) {
+    fn create_text_field() -> (CocoaElem, Retained<NSTextField>) {
         let mtm = mtm();
         let tf =
             NSTextField::initWithFrame(NSTextField::alloc(mtm), zero_frame());
@@ -149,7 +172,7 @@ impl CocoaElem {
 
     /// Password-style text field. NSSecureTextField IS-A NSTextField,
     /// so downstream code that downcasts to NSTextField still works.
-    pub fn create_secure_text_field() -> (CocoaElem, Retained<NSSecureTextField>) {
+    fn create_secure_text_field() -> (CocoaElem, Retained<NSSecureTextField>) {
         let mtm = mtm();
         let tf = NSSecureTextField::initWithFrame(
             NSSecureTextField::alloc(mtm),
@@ -169,7 +192,7 @@ impl CocoaElem {
     ///
     /// Sliders have a defined intrinsic height; the parent decides
     /// width via the cross-axis stretch.
-    pub fn create_slider() -> (CocoaElem, Retained<NSSlider>) {
+    fn create_slider() -> (CocoaElem, Retained<NSSlider>) {
         let mtm = mtm();
         let slider =
             NSSlider::initWithFrame(NSSlider::alloc(mtm), zero_frame());
@@ -184,7 +207,7 @@ impl CocoaElem {
     /// Pop-up button. `pullsDown=false` → menu-style (current
     /// selection shown in the bezel). The builder may flip to
     /// pull-down later via `setPullsDown`.
-    pub fn create_pop_up_button() -> (CocoaElem, Retained<NSPopUpButton>) {
+    fn create_pop_up_button() -> (CocoaElem, Retained<NSPopUpButton>) {
         let mtm = mtm();
         let p = NSPopUpButton::initWithFrame_pullsDown(
             NSPopUpButton::alloc(mtm),
@@ -198,7 +221,7 @@ impl CocoaElem {
         (el, p)
     }
 
-    pub fn create_date_picker() -> (CocoaElem, Retained<NSDatePicker>) {
+    fn create_date_picker() -> (CocoaElem, Retained<NSDatePicker>) {
         let mtm = mtm();
         let dp = NSDatePicker::initWithFrame(
             NSDatePicker::alloc(mtm),
@@ -219,7 +242,7 @@ impl CocoaElem {
     /// `setAutorepeat(true)`: fire on every drag tick (continuous),
     /// matches slider's default — consistent expectation for live-
     /// update controls.
-    pub fn create_stepper() -> (CocoaElem, Retained<NSStepper>) {
+    fn create_stepper() -> (CocoaElem, Retained<NSStepper>) {
         let mtm = mtm();
         let st =
             NSStepper::initWithFrame(NSStepper::alloc(mtm), zero_frame());
@@ -235,7 +258,7 @@ impl CocoaElem {
     /// Bar-style determinate progress indicator (0..1). User can flip
     /// to indeterminate (spinner) via `.indeterminate(true)` on the
     /// builder.
-    pub fn create_progress_indicator() -> (CocoaElem, Retained<NSProgressIndicator>) {
+    fn create_progress_indicator() -> (CocoaElem, Retained<NSProgressIndicator>) {
         let mtm = mtm();
         let pi = NSProgressIndicator::initWithFrame(
             NSProgressIndicator::alloc(mtm),
@@ -251,7 +274,7 @@ impl CocoaElem {
         (el, pi)
     }
 
-    pub fn create_color_well() -> (CocoaElem, Retained<NSColorWell>) {
+    fn create_color_well() -> (CocoaElem, Retained<NSColorWell>) {
         let mtm = mtm();
         let cw = NSColorWell::initWithFrame(
             NSColorWell::alloc(mtm),
@@ -264,7 +287,7 @@ impl CocoaElem {
         (el, cw)
     }
 
-    pub fn create_segmented_control() -> (CocoaElem, Retained<NSSegmentedControl>) {
+    fn create_segmented_control() -> (CocoaElem, Retained<NSSegmentedControl>) {
         let mtm = mtm();
         let sc = NSSegmentedControl::initWithFrame(
             NSSegmentedControl::alloc(mtm),
@@ -279,7 +302,7 @@ impl CocoaElem {
 
     /// Scaling-down-only image view. Images larger than the frame fit
     /// inside; smaller images render at native size.
-    pub fn create_image_view() -> (CocoaElem, Retained<NSImageView>) {
+    fn create_image_view() -> (CocoaElem, Retained<NSImageView>) {
         let mtm = mtm();
         let iv = NSImageView::initWithFrame(
             NSImageView::alloc(mtm),
@@ -308,7 +331,7 @@ impl CocoaElem {
     ///
     /// Returns the *outer* NSScrollView; the inner NSTextView is
     /// reachable via `scroll.documentView()`.
-    pub fn create_text_view() -> (CocoaElem, Retained<NSScrollView>) {
+    fn create_text_view() -> (CocoaElem, Retained<NSScrollView>) {
         let mtm = mtm();
         let scroll =
             NSScrollView::initWithFrame(NSScrollView::alloc(mtm), zero_frame());
@@ -356,7 +379,7 @@ impl CocoaElem {
     /// scroll_view collapses to nothing by default and only the
     /// user's flex_grow / explicit height grows it back to the
     /// viewport.
-    pub fn create_scroll_view() -> (CocoaElem, Retained<NSScrollView>) {
+    fn create_scroll_view() -> (CocoaElem, Retained<NSScrollView>) {
         let mtm = mtm();
         let scroll =
             NSScrollView::initWithFrame(NSScrollView::alloc(mtm), zero_frame());
@@ -410,7 +433,7 @@ impl CocoaElem {
     /// `<grid>` — 2-D grid container backed by Taffy's grid algorithm.
     /// Template tracks / gap / placement attrs are applied by the
     /// higher-level builder; this just establishes the container.
-    pub fn create_grid() -> CocoaElem {
+    fn create_grid() -> CocoaElem {
         let mtm = mtm();
         let view: Retained<NSView> =
             unsafe { Retained::cast_unchecked(FlippedView::new(mtm)) };

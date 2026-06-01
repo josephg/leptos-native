@@ -21,7 +21,7 @@
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use leptos_native::renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
 use crate::CocoaDom;
-use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaElem, MainThreadMarker};
+use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaElem, CocoaNodeExt, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};

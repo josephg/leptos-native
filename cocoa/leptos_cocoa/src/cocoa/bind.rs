@@ -23,7 +23,7 @@ use reactive_graph::{
     signal::RwSignal,
     traits::{Get, Set},
 };
-use crate::dom::{CocoaElem, Color, Date};
+use crate::dom::{CocoaElem, CocoaNodeExt, Color, Date};
 
 /// Downcast the element's NSView to a specific subclass at install
 /// time. Returns `Retained<T>` so the install closures can hold a

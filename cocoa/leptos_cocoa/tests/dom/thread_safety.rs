@@ -11,7 +11,7 @@
 mod common;
 
 use std::sync::{Arc, Mutex};
-use leptos_cocoa::dom::CocoaElem;
+use leptos_cocoa::dom::{CocoaElem, CocoaMakeView, CocoaNodeExt};
 
 /// `Element::create` reads `MainThreadMarker::new()` at the start;
 /// off-main this returns `None` and the unwrap panics with a clear

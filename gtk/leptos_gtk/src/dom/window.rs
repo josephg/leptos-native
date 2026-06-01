@@ -7,7 +7,8 @@
 //! calling [`OpenedWindow::show`].
 
 use crate::dom::layout::{self, FlexDirection};
-use crate::dom::node::{install_taffy_layout_for_container, GtkElem};
+use crate::dom::make_view::GtkMakeView;
+use crate::dom::node::{install_taffy_layout_for_container, GtkElem, GtkNodeExt};
 use gtk4::prelude::*;
 use leptos_native::renderer;
 

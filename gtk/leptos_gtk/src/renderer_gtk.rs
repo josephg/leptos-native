@@ -24,7 +24,7 @@ use leptos_native::renderer::{
 // a "text node" or "placeholder" from a regular Element is the
 // widget subclass + default style applied at creation.
 pub use crate::dom::{
-    Event, GtkElem,
+    Event, GtkElem, GtkMakeView, GtkNodeExt,
 };
 pub type Text = GtkElem;
 pub type Placeholder = GtkElem;

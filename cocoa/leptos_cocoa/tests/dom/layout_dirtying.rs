@@ -9,7 +9,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, layout::compute_layout, CocoaElem};
+use leptos_cocoa::dom::{layout, layout::compute_layout, CocoaElem, CocoaMakeView, CocoaNodeExt};
 use objc2_foundation::NSSize;
 
 fn dirty_for(el: &CocoaElem) -> bool {

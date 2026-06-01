@@ -10,7 +10,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::CocoaElem;
+use leptos_cocoa::dom::{CocoaElem, CocoaMakeView, CocoaNodeExt};
 use objc2::runtime::AnyObject;
 use objc2::Message;
 use objc2_app_kit::NSImageView;

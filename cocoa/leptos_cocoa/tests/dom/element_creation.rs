@@ -12,7 +12,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, CocoaElem, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
+use leptos_cocoa::dom::{layout, CocoaElem, CocoaMakeView, CocoaNodeExt, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
 use objc2::{runtime::AnyObject, DowncastTarget};
 use objc2_app_kit::{
     NSButton, NSColorWell, NSDatePicker, NSImageView, NSPopUpButton,

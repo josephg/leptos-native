@@ -14,6 +14,7 @@ use leptos_gtk::{
 use leptos_native::renderer::view::{AddAnyAttr, Render};
 use std::sync::{Arc, Mutex};
 use leptos_gtk::dom::spawner;
+use leptos_gtk::dom::GtkNodeExt;
 
 fn add_any_attr_routes_on_click_to_button() {
     let _ = spawner::init();

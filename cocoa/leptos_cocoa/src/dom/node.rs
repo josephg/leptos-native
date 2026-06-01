@@ -22,35 +22,160 @@ use objc2_app_kit::{
     NSButton, NSControl, NSTextField, NSView, NSWindowOrderingMode,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use leptos_native::renderer::{LayoutBackend, NodeId};
+use leptos_native::renderer::{LayoutBackend, Node};
 use send_wrapper::SendWrapper;
 use taffy::Style;
 use crate::dom::{event, layout, Color, Date, DatePickerStyle, KeyEvent, LineBreak, SegmentStyle, TextAlignment};
 use super::layout::CocoaBackend;
 
-/// A handle into the ambient node store — structurally just a
-/// generational [`NodeId`]. `Copy + Send`; cloning is a bitwise copy.
+/// The macOS port's node handle: a [`Node`] tagged with [`CocoaBackend`].
+///
+/// Structurally just a generational [`NodeId`] (`Copy + Send`). The
+/// generic accessor surface (`id`, `view`, `with_style`, `with_style_mut`,
+/// `with_tag`, `ptr_eq`, `from_id`) is inherent on [`Node`] and needs no
+/// import. The **AppKit-specific** widget operations live on the
+/// [`CocoaNodeExt`] extension trait below — inherent `impl` on the foreign
+/// `Node<CocoaBackend>` alias isn't possible from this crate, so a local
+/// trait carries them (orphan-safe: the trait is local).
 ///
 /// All per-node state (the `NSView`, Taffy style, [`CocoaMeta`], ObjC
-/// handler retains) lives in `LayoutState<CocoaBackend>`. Accessors
-/// (`with_style`, `with_meta`, `with_handlers_mut`, `ns_view`) read
+/// handler retains) lives in `LayoutState<CocoaBackend>`. Accessors read
 /// through the store keyed by `id`.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct CocoaElem {
-    pub(crate) id: NodeId,
+pub type CocoaElem = Node<CocoaBackend>;
+
+/// AppKit-specific operations on a [`CocoaElem`]. Bring this trait into
+/// scope to call `.set_title()`, `.on_click()`, `CocoaElem::create_text()`,
+/// etc. (The generic `.id()` / `.view()` / `.with_style()` surface is
+/// inherent on [`Node`] and needs no import.)
+///
+/// The few `try_downcast` / `apply_font` / `read_font_*` entries are
+/// internal helpers shared across the bodies; they ride along on the trait
+/// because, post-newtype-elimination, there's no private inherent block to
+/// hold them.
+pub trait CocoaNodeExt: Copy {
+    fn from_view<V>(
+        view: Retained<V>,
+        default_style: Style,
+        default_meta: CocoaMeta,
+    ) -> Self
+    where
+        V: AsRef<NSView> + Message;
+    fn ns_view(self) -> Retained<NSView>;
+    fn try_ns_view(self) -> Option<Retained<NSView>>;
+    fn try_downcast<T>(self) -> Option<Retained<T>>
+    where
+        T: DowncastTarget;
+    fn ns_view_retained(self) -> Retained<NSView>;
+    fn teardown(self);
+    fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R;
+    fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R;
+    fn with_handlers_mut<R>(
+        self,
+        f: impl FnOnce(&mut event::NodeHandlers) -> R,
+    ) -> R;
+    fn create_container() -> Self;
+    fn create_container_with(mtm: MainThreadMarker) -> Self;
+    fn subview_parent(self) -> Retained<NSView>;
+    fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>);
+    fn remove_child(self, child: CocoaElem) -> Option<CocoaElem>;
+    fn clear_children(self);
+    fn set_title(self, value: &str);
+    fn set_value(self, value: &str);
+    fn set_placeholder(self, value: &str);
+    fn set_enabled(self, value: bool);
+    fn set_checked(self, value: bool);
+    fn on_click(self, cb: impl FnMut() + 'static);
+    fn on_action(self, cb: impl FnMut() + 'static);
+    fn on_value_change(self, cb: impl FnMut() + Send + 'static);
+    fn on_text_change(self, cb: impl FnMut(String) + 'static);
+    fn on_hover(self, cb: impl FnMut(bool) + 'static);
+    fn checked(self) -> bool;
+    fn double_value(self) -> f64;
+    fn set_double_value(self, v: f64);
+    fn set_slider_min(self, v: f64);
+    fn set_slider_max(self, v: f64);
+    fn set_popup_items(self, items: &[String]);
+    fn popup_selection(self) -> isize;
+    fn set_popup_selection(self, idx: isize);
+    fn set_segmented_items(self, items: &[String]);
+    fn segmented_selection(self) -> isize;
+    fn set_segmented_selection(self, idx: isize);
+    fn set_alpha(self, alpha: f64);
+    fn set_tool_tip(self, tip: &str);
+    fn set_text_color(self, color: Color);
+    fn set_text_alignment(self, alignment: TextAlignment);
+    fn set_font_size(self, points: f64);
+    fn set_bold(self, bold: bool);
+    fn set_italic(self, italic: bool);
+    fn apply_font(
+        self,
+        points: f64,
+        traits: objc2_app_kit::NSFontDescriptorSymbolicTraits,
+    );
+    fn read_font_point_size(self) -> Option<f64>;
+    fn read_font_traits(self) -> objc2_app_kit::NSFontDescriptorSymbolicTraits;
+    fn set_button_bordered(self, bordered: bool);
+    fn set_key_equivalent(self, key: &str);
+    fn set_button_title_color(self, color: Color);
+    fn set_button_sf_symbol(self, name: &str);
+    fn set_intrinsic_width_from_content(self, on: bool);
+    fn set_text_field_bordered(self, bordered: bool);
+    fn set_text_field_bezeled(self, bezeled: bool);
+    fn set_selectable(self, selectable: bool);
+    fn set_line_break(self, mode: LineBreak);
+    fn set_multiline(self, multi: bool);
+    fn set_slider_vertical(self, vertical: bool);
+    fn set_slider_tick_marks(self, count: usize);
+    fn set_slider_snaps_to_ticks(self, snaps: bool);
+    fn set_pulls_down(self, pulls_down: bool);
+    fn set_segment_style(self, style: SegmentStyle);
+    fn set_date_picker_style(self, style: DatePickerStyle);
+    fn set_date_picker_min(self, d: Option<Date>);
+    fn set_date_picker_max(self, d: Option<Date>);
+    fn set_autohides_scrollers(self, autohides: bool);
+    fn set_has_horizontal_scroller(self, has: bool);
+    fn set_has_vertical_scroller(self, has: bool);
+    fn set_scroll_axis(self, axis: layout::ScrollAxis);
+    fn set_progress_displayed_when_stopped(self, shown: bool);
+    fn date_picker_value(self) -> Date;
+    fn set_date_picker_value(self, d: Date);
+    fn stepper_value(self) -> f64;
+    fn set_stepper_value(self, v: f64);
+    fn configure_stepper(self, min: f64, max: f64, increment: f64);
+    fn set_stepper_min(self, v: f64);
+    fn set_stepper_max(self, v: f64);
+    fn set_stepper_increment(self, v: f64);
+    fn set_progress_value(self, v: f64);
+    fn set_progress_indeterminate(self, indeterminate: bool);
+    fn set_progress_max(self, max: f64);
+    fn color_well_value(self) -> Color;
+    fn set_color_well_value(self, color: Color);
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static);
+    fn on_text_focus(self, cb: impl FnMut() + 'static);
+    fn on_text_blur(self, cb: impl FnMut() + 'static);
+    fn on_text_keydown(self, cb: impl FnMut(KeyEvent) + 'static);
+    fn on_text_keyup(self, cb: impl FnMut(KeyEvent) + 'static);
+    fn set_image_view_path(self, path: &str);
+    fn set_image_view_bytes(self, bytes: Option<&[u8]>);
+    fn set_image_view_sf_symbol(self, name: &str);
+    fn set_image_view_tint(self, color: Color);
+    fn on_text_view_change(self, cb: impl FnMut(String) + 'static);
+    fn set_text_view_editable(self, editable: bool);
+    fn text_view_value(self) -> Option<String>;
+    fn focus(self) -> bool;
+    fn blur(self) -> bool;
+    fn create_text(content: &str) -> Self;
+    fn create_text_with(content: &str, mtm: MainThreadMarker) -> Self;
+    fn set_text(self, content: &str);
+    fn create_placeholder() -> Self;
+    fn create_placeholder_with(mtm: MainThreadMarker) -> Self;
 }
 
-impl AsRef<CocoaElem> for CocoaElem {
-    fn as_ref(&self) -> &CocoaElem {
-        self
-    }
-}
-
-impl CocoaElem {
+impl CocoaNodeExt for CocoaElem {
     /// Allocate a fresh entry in the store and return a `Node` for it.
     /// The typed registration primitive: hand in a concrete NSView
     /// subclass, get back a `Node`.
-    pub fn from_view<V>(
+    fn from_view<V>(
         view: Retained<V>,
         default_style: Style,
         default_meta: CocoaMeta,
@@ -68,31 +193,19 @@ impl CocoaElem {
         // Wire the handlers' view back-ref so teardown can nil
         // setTarget/setDelegate while the view is still alive.
         CocoaBackend::with_handlers_mut(id, |h| h.attach_view(view));
-        CocoaElem { id }
-    }
-
-    /// Wrap an existing store id as a `Node`. Used where some other
-    /// code already registered the entry (e.g. the relayout scheduler
-    /// reconstructing a root handle).
-    pub fn from_id(id: NodeId) -> Self {
-        CocoaElem { id }
-    }
-
-    /// The node's `NodeId`.
-    pub fn id(self) -> NodeId {
-        self.id
+        Node::from_id(id)
     }
 
     /// Borrow the underlying NSView (owned clone). Main-thread only.
     /// Panics if the node is no longer in the store.
-    pub fn ns_view(self) -> Retained<NSView> {
+    fn ns_view(self) -> Retained<NSView> {
         CocoaBackend::view(self.id)
             .map(|sw| sw.take())
             .expect("Node id must exist in the store")
     }
 
     /// `Some(view)` if the node is still in the store, else `None`.
-    pub fn try_ns_view(self) -> Option<Retained<NSView>> {
+    fn try_ns_view(self) -> Option<Retained<NSView>> {
         CocoaBackend::view(self.id).map(|sw| sw.take())
     }
 
@@ -128,25 +241,13 @@ impl CocoaElem {
 
     /// Get a `Retained<NSView>` without panicking-vs-cloning concerns —
     /// kept for call-site parity with the old API.
-    pub fn ns_view_retained(self) -> Retained<NSView> {
+    fn ns_view_retained(self) -> Retained<NSView> {
         self.ns_view()
-    }
-
-    /// Pointer-equality check (same underlying NSView object).
-    pub fn ptr_eq(self, other: &CocoaElem) -> bool {
-        match (self.try_ns_view(), other.try_ns_view()) {
-            (Some(a), Some(b)) => {
-                let pa: *const NSView = &*a;
-                let pb: *const NSView = &*b;
-                pa == pb
-            }
-            _ => false,
-        }
     }
 
     /// Remove this node and its whole structural subtree from the
     /// store, and detach its NSView from its superview.
-    pub fn teardown(self) {
+    fn teardown(self) {
         if let Some(view) = self.try_ns_view() {
             view.removeFromSuperview();
         }
@@ -155,28 +256,14 @@ impl CocoaElem {
 
     // ---- Accessor surface ------------------------------------------
 
-    /// Borrow the node's [`renderer::Style`] for read.
-    pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = CocoaBackend::style(self.id).unwrap_or_default();
-        f(&style)
-    }
-
-    /// Mutate the node's [`renderer::Style`] (marks it dirty).
-    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = CocoaBackend::style(self.id).unwrap_or_default();
-        let r = f(&mut style);
-        CocoaBackend::set_style(self.id, style);
-        r
-    }
-
     /// Borrow the node's [`CocoaMeta`] for read.
-    pub fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R {
+    fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R {
         let meta = CocoaBackend::meta(self.id).unwrap_or_default();
         f(&meta)
     }
 
     /// Mutate the node's [`CocoaMeta`].
-    pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R {
+    fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R {
         let mut meta = CocoaBackend::meta(self.id).unwrap_or_default();
         let r = f(&mut meta);
         CocoaBackend::set_meta(self.id, meta);
@@ -186,7 +273,7 @@ impl CocoaElem {
     /// Mutate this node's per-node handler set in the store. Panics
     /// if the node isn't present (callers install handlers on live,
     /// mounted nodes).
-    pub fn with_handlers_mut<R>(
+    fn with_handlers_mut<R>(
         self,
         f: impl FnOnce(&mut event::NodeHandlers) -> R,
     ) -> R {
@@ -195,13 +282,13 @@ impl CocoaElem {
     }
 
     /// Generic flipped container (FlippedView, default Taffy style).
-    pub fn create_container() -> Self {
+    fn create_container() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
         Self::create_container_with(mtm)
     }
 
-    pub fn create_container_with(mtm: MainThreadMarker) -> Self {
+    fn create_container_with(mtm: MainThreadMarker) -> Self {
         use super::{flipped_view::FlippedView, layout::Style};
         let view: Retained<NSView> = unsafe {
             Retained::cast_unchecked(FlippedView::new(mtm))
@@ -211,7 +298,7 @@ impl CocoaElem {
 
     /// The NSView that *actually* parents this node's children. For
     /// `<scroll_view>` it's the NSScrollView's documentView.
-    pub fn subview_parent(self) -> Retained<NSView> {
+    fn subview_parent(self) -> Retained<NSView> {
         let direct = self.ns_view();
         let routes_to_doc = self.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
@@ -228,7 +315,7 @@ impl CocoaElem {
 
     /// Insert `child` before `marker` in this element's child list.
     /// If `marker` is `None`, append.
-    pub fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>) {
+    fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>) {
         let parent_retained = self.subview_parent();
         let parent: &NSView = &parent_retained;
         let child_view = child.ns_view();
@@ -264,7 +351,7 @@ impl CocoaElem {
 
     /// Remove `child` from this element. Returns the node back if it was
     /// actually our child, otherwise `None`.
-    pub fn remove_child(self, child: CocoaElem) -> Option<CocoaElem> {
+    fn remove_child(self, child: CocoaElem) -> Option<CocoaElem> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const NSView = &*parent_retained;
         let child_view = child.ns_view();
@@ -285,7 +372,7 @@ impl CocoaElem {
     }
 
     /// Remove every child (NSView level only).
-    pub fn clear_children(self) {
+    fn clear_children(self) {
         let parent_retained = self.subview_parent();
         let parent: &NSView = &parent_retained;
         let subs = parent.subviews();
@@ -295,7 +382,7 @@ impl CocoaElem {
     }
 
     /// Set the title on an NSButton. No-op on other view classes.
-    pub fn set_title(self, value: &str) {
+    fn set_title(self, value: &str) {
         if let Some(button) = self.try_downcast::<NSButton>() {
             let current = button.title().to_string();
             if current != value {
@@ -307,7 +394,7 @@ impl CocoaElem {
 
     /// Set the string value on an NSControl, or route to the
     /// `<text_view>`'s documentView. No-op on other view classes.
-    pub fn set_value(self, value: &str) {
+    fn set_value(self, value: &str) {
         let Some(view) = self.try_ns_view() else { return; };
         if let Some(control) = downcast::<NSControl>(&view) {
             let current = control.stringValue().to_string();
@@ -334,7 +421,7 @@ impl CocoaElem {
     }
 
     /// Set the placeholder string on an NSTextField. No-op otherwise.
-    pub fn set_placeholder(self, value: &str) {
+    fn set_placeholder(self, value: &str) {
         if let Some(field) = self.try_downcast::<NSTextField>() {
             let current: String = field
                 .placeholderString()
@@ -347,16 +434,8 @@ impl CocoaElem {
         }
     }
 
-    /// Toggle the underlying NSView's visibility. Diff-guarded.
-    pub fn set_hidden(self, value: bool) {
-        let Some(view) = self.try_ns_view() else { return; };
-        if view.isHidden() != value {
-            view.setHidden(value);
-        }
-    }
-
     /// Toggle the enabled state on an NSControl. Diff-guarded.
-    pub fn set_enabled(self, value: bool) {
+    fn set_enabled(self, value: bool) {
         if let Some(control) = self.try_downcast::<NSControl>() {
             if control.isEnabled() != value {
                 control.setEnabled(value);
@@ -365,7 +444,7 @@ impl CocoaElem {
     }
 
     /// Set the on/off state on an NSButton. No-op otherwise.
-    pub fn set_checked(self, value: bool) {
+    fn set_checked(self, value: bool) {
         if let Some(button) = self.try_downcast::<NSButton>() {
             use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn};
             let want = if value {
@@ -380,19 +459,19 @@ impl CocoaElem {
     }
 
     /// Wire a click handler. No-op if not an NSControl.
-    pub fn on_click(self, cb: impl FnMut() + 'static) {
+    fn on_click(self, cb: impl FnMut() + 'static) {
         event::on_control_action(self, cb);
     }
 
     /// Wire a value-change (target/action) handler. No-op if not an
     /// NSControl.
-    pub fn on_action(self, cb: impl FnMut() + 'static) {
+    fn on_action(self, cb: impl FnMut() + 'static) {
         event::on_control_action(self, cb);
     }
 
     /// Unit-payload value-change callback (delegate fan-out for text
     /// fields, target/action otherwise).
-    pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
+    fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
         if self.try_downcast::<NSTextField>().is_some() {
             event::on_text_field_change(self, move |_| cb());
             return;
@@ -402,17 +481,17 @@ impl CocoaElem {
 
     /// Wire a per-keystroke text-change callback. No-op if not an
     /// NSTextField. Multiple handlers supported.
-    pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_change(self, cb: impl FnMut(String) + 'static) {
         event::on_text_field_change(self, cb);
     }
 
     /// Install hover tracking.
-    pub fn on_hover(self, cb: impl FnMut(bool) + 'static) {
+    fn on_hover(self, cb: impl FnMut(bool) + 'static) {
         event::on_hover(self, cb);
     }
 
     /// Read the on/off state of an NSButton. `false` for non-buttons.
-    pub fn checked(self) -> bool {
+    fn checked(self) -> bool {
         if let Some(button) = self.try_downcast::<NSButton>() {
             use objc2_app_kit::NSControlStateValueOn;
             return button.state() == NSControlStateValueOn;
@@ -421,7 +500,7 @@ impl CocoaElem {
     }
 
     /// Read the current `doubleValue` of an NSControl. 0.0 otherwise.
-    pub fn double_value(self) -> f64 {
+    fn double_value(self) -> f64 {
         if let Some(c) = self.try_downcast::<NSControl>() {
             return c.doubleValue();
         }
@@ -429,7 +508,7 @@ impl CocoaElem {
     }
 
     /// Set the `doubleValue` on an NSControl. Diff-guarded.
-    pub fn set_double_value(self, v: f64) {
+    fn set_double_value(self, v: f64) {
         if let Some(c) = self.try_downcast::<NSControl>() {
             if (c.doubleValue() - v).abs() > f64::EPSILON {
                 c.setDoubleValue(v);
@@ -438,7 +517,7 @@ impl CocoaElem {
     }
 
     /// Slider min.
-    pub fn set_slider_min(self, v: f64) {
+    fn set_slider_min(self, v: f64) {
         use objc2_app_kit::NSSlider;
         if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setMinValue(v);
@@ -446,7 +525,7 @@ impl CocoaElem {
     }
 
     /// Slider max.
-    pub fn set_slider_max(self, v: f64) {
+    fn set_slider_max(self, v: f64) {
         use objc2_app_kit::NSSlider;
         if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setMaxValue(v);
@@ -454,7 +533,7 @@ impl CocoaElem {
     }
 
     /// Replace the items list on an NSPopUpButton. No-op otherwise.
-    pub fn set_popup_items(self, items: &[String]) {
+    fn set_popup_items(self, items: &[String]) {
         use objc2_app_kit::NSPopUpButton;
         if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             p.removeAllItems();
@@ -465,7 +544,7 @@ impl CocoaElem {
     }
 
     /// Currently-selected index on an NSPopUpButton (-1 otherwise).
-    pub fn popup_selection(self) -> isize {
+    fn popup_selection(self) -> isize {
         use objc2_app_kit::NSPopUpButton;
         if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             return p.indexOfSelectedItem();
@@ -474,7 +553,7 @@ impl CocoaElem {
     }
 
     /// Programmatically pick an item by index. Diff-guarded.
-    pub fn set_popup_selection(self, idx: isize) {
+    fn set_popup_selection(self, idx: isize) {
         use objc2_app_kit::NSPopUpButton;
         if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             if p.indexOfSelectedItem() != idx {
@@ -484,7 +563,7 @@ impl CocoaElem {
     }
 
     /// Replace the labels on an NSSegmentedControl. No-op otherwise.
-    pub fn set_segmented_items(self, items: &[String]) {
+    fn set_segmented_items(self, items: &[String]) {
         use objc2_app_kit::NSSegmentedControl;
         let Some(view) = self.try_ns_view() else { return; };
         let Some(sc) = downcast::<NSSegmentedControl>(&view) else {
@@ -497,7 +576,7 @@ impl CocoaElem {
     }
 
     /// Currently-selected segment (-1 otherwise).
-    pub fn segmented_selection(self) -> isize {
+    fn segmented_selection(self) -> isize {
         use objc2_app_kit::NSSegmentedControl;
         if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             return sc.selectedSegment();
@@ -506,7 +585,7 @@ impl CocoaElem {
     }
 
     /// Programmatically pick a segment by index. Diff-guarded.
-    pub fn set_segmented_selection(self, idx: isize) {
+    fn set_segmented_selection(self, idx: isize) {
         use objc2_app_kit::NSSegmentedControl;
         if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             if sc.selectedSegment() != idx {
@@ -520,7 +599,7 @@ impl CocoaElem {
     // -----------------------------------------------------------------
 
     /// Set this view's opacity (0.0..=1.0). Diff-guarded.
-    pub fn set_alpha(self, alpha: f64) {
+    fn set_alpha(self, alpha: f64) {
         let Some(v) = self.try_ns_view() else { return; };
         let clamped = alpha.clamp(0.0, 1.0);
         let old = v.alphaValue();
@@ -546,7 +625,7 @@ impl CocoaElem {
     }
 
     /// Set this view's tool tip. Empty string removes it.
-    pub fn set_tool_tip(self, tip: &str) {
+    fn set_tool_tip(self, tip: &str) {
         let Some(v) = self.try_ns_view() else { return; };
         if tip.is_empty() {
             v.setToolTip(None);
@@ -561,7 +640,7 @@ impl CocoaElem {
     // -----------------------------------------------------------------
 
     /// Set the text color on a text-bearing view. No-op otherwise.
-    pub fn set_text_color(self, color: Color) {
+    fn set_text_color(self, color: Color) {
         let Some(view) = self.try_ns_view() else { return; };
         let nscolor = color.to_nscolor();
 
@@ -582,7 +661,7 @@ impl CocoaElem {
     }
 
     /// Set text alignment on a text-bearing view. No-op otherwise.
-    pub fn set_text_alignment(self, alignment: TextAlignment) {
+    fn set_text_alignment(self, alignment: TextAlignment) {
         let Some(view) = self.try_ns_view() else { return; };
 
         if let Some(field) = downcast::<NSTextField>(&view) {
@@ -602,13 +681,13 @@ impl CocoaElem {
     }
 
     /// Set the font size (in points); preserves symbolic traits.
-    pub fn set_font_size(self, points: f64) {
+    fn set_font_size(self, points: f64) {
         let traits = self.read_font_traits();
         self.apply_font(points, traits);
     }
 
     /// Toggle bold weight; preserves size + other traits.
-    pub fn set_bold(self, bold: bool) {
+    fn set_bold(self, bold: bool) {
         use objc2_app_kit::NSFontDescriptorSymbolicTraits;
         let pts = self
             .read_font_point_size()
@@ -623,7 +702,7 @@ impl CocoaElem {
     }
 
     /// Toggle italic; preserves size + other traits.
-    pub fn set_italic(self, italic: bool) {
+    fn set_italic(self, italic: bool) {
         use objc2_app_kit::NSFontDescriptorSymbolicTraits;
         let pts = self
             .read_font_point_size()
@@ -707,21 +786,21 @@ impl CocoaElem {
     // -----------------------------------------------------------------
 
     /// Toggle whether an NSButton draws its bezel. No-op otherwise.
-    pub fn set_button_bordered(self, bordered: bool) {
+    fn set_button_bordered(self, bordered: bool) {
         if let Some(b) = self.try_downcast::<NSButton>() {
             b.setBordered(bordered);
         }
     }
 
     /// Set the keyboard shortcut for an NSButton. No-op otherwise.
-    pub fn set_key_equivalent(self, key: &str) {
+    fn set_key_equivalent(self, key: &str) {
         if let Some(b) = self.try_downcast::<NSButton>() {
             b.setKeyEquivalent(&NSString::from_str(key));
         }
     }
 
     /// Apply a custom title color to an NSButton (`contentTintColor`).
-    pub fn set_button_title_color(self, color: Color) {
+    fn set_button_title_color(self, color: Color) {
         let Some(view) = self.try_ns_view() else { return; };
         let Some(button) = downcast::<NSButton>(&view) else {
             return;
@@ -731,7 +810,7 @@ impl CocoaElem {
     }
 
     /// Render an SF Symbol as the button's image. Empty name clears it.
-    pub fn set_button_sf_symbol(self, name: &str) {
+    fn set_button_sf_symbol(self, name: &str) {
         use objc2_app_kit::NSCellImagePosition;
         let Some(view) = self.try_ns_view() else { return; };
         let Some(button) = downcast::<NSButton>(&view) else {
@@ -755,7 +834,7 @@ impl CocoaElem {
 
     /// Toggle the `intrinsic_width = FromContent` opt-in. No-op
     /// on non-NSTextField.
-    pub fn set_intrinsic_width_from_content(self, on: bool) {
+    fn set_intrinsic_width_from_content(self, on: bool) {
         if self.try_downcast::<NSTextField>().is_some() {
             layout::mark_intrinsic_width_from_content(self, on);
             layout::schedule_relayout(self);
@@ -763,28 +842,28 @@ impl CocoaElem {
     }
 
     /// Toggle whether an NSTextField draws a border. No-op otherwise.
-    pub fn set_text_field_bordered(self, bordered: bool) {
+    fn set_text_field_bordered(self, bordered: bool) {
         if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setBordered(bordered);
         }
     }
 
     /// Toggle whether an NSTextField draws its bezel. No-op otherwise.
-    pub fn set_text_field_bezeled(self, bezeled: bool) {
+    fn set_text_field_bezeled(self, bezeled: bool) {
         if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setBezeled(bezeled);
         }
     }
 
     /// Toggle whether a label can be selected. No-op otherwise.
-    pub fn set_selectable(self, selectable: bool) {
+    fn set_selectable(self, selectable: bool) {
         if let Some(f) = self.try_downcast::<NSTextField>() {
             f.setSelectable(selectable);
         }
     }
 
     /// Set the line-break behaviour on a text view. No-op otherwise.
-    pub fn set_line_break(self, mode: LineBreak) {
+    fn set_line_break(self, mode: LineBreak) {
         use objc2_app_kit::NSLineBreakMode;
         let wraps = matches!(
             mode.0,
@@ -816,7 +895,7 @@ impl CocoaElem {
     }
 
     /// Shorthand for word-wrap / truncate-tail.
-    pub fn set_multiline(self, multi: bool) {
+    fn set_multiline(self, multi: bool) {
         self.set_line_break(if multi {
             LineBreak::WORD_WRAP
         } else {
@@ -825,7 +904,7 @@ impl CocoaElem {
     }
 
     /// Switch an NSSlider orientation. No-op otherwise.
-    pub fn set_slider_vertical(self, vertical: bool) {
+    fn set_slider_vertical(self, vertical: bool) {
         use objc2_app_kit::NSSlider;
         if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setVertical(vertical);
@@ -833,7 +912,7 @@ impl CocoaElem {
     }
 
     /// Set tick-mark count on an NSSlider. No-op otherwise.
-    pub fn set_slider_tick_marks(self, count: usize) {
+    fn set_slider_tick_marks(self, count: usize) {
         use objc2_app_kit::NSSlider;
         if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setNumberOfTickMarks(count as isize);
@@ -841,7 +920,7 @@ impl CocoaElem {
     }
 
     /// Toggle snap-to-tick on an NSSlider. No-op otherwise.
-    pub fn set_slider_snaps_to_ticks(self, snaps: bool) {
+    fn set_slider_snaps_to_ticks(self, snaps: bool) {
         use objc2_app_kit::NSSlider;
         if let Some(s) = self.try_downcast::<NSSlider>() {
             s.setAllowsTickMarkValuesOnly(snaps);
@@ -849,7 +928,7 @@ impl CocoaElem {
     }
 
     /// Switch an NSPopUpButton between popup / pull-down. No-op otherwise.
-    pub fn set_pulls_down(self, pulls_down: bool) {
+    fn set_pulls_down(self, pulls_down: bool) {
         use objc2_app_kit::NSPopUpButton;
         if let Some(p) = self.try_downcast::<NSPopUpButton>() {
             p.setPullsDown(pulls_down);
@@ -857,7 +936,7 @@ impl CocoaElem {
     }
 
     /// Set an NSSegmentedControl's visual style. No-op otherwise.
-    pub fn set_segment_style(self, style: SegmentStyle) {
+    fn set_segment_style(self, style: SegmentStyle) {
         use objc2_app_kit::NSSegmentedControl;
         if let Some(sc) = self.try_downcast::<NSSegmentedControl>() {
             sc.setSegmentStyle(style.0);
@@ -865,7 +944,7 @@ impl CocoaElem {
     }
 
     /// Set NSDatePicker's visual style. No-op otherwise.
-    pub fn set_date_picker_style(self, style: DatePickerStyle) {
+    fn set_date_picker_style(self, style: DatePickerStyle) {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             dp.setDatePickerStyle(style.0);
@@ -873,7 +952,7 @@ impl CocoaElem {
     }
 
     /// Constrain an NSDatePicker's min date.
-    pub fn set_date_picker_min(self, d: Option<Date>) {
+    fn set_date_picker_min(self, d: Option<Date>) {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let nd = d.map(|d| d.to_nsdate());
@@ -881,7 +960,7 @@ impl CocoaElem {
         }
     }
 
-    pub fn set_date_picker_max(self, d: Option<Date>) {
+    fn set_date_picker_max(self, d: Option<Date>) {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let nd = d.map(|d| d.to_nsdate());
@@ -890,7 +969,7 @@ impl CocoaElem {
     }
 
     /// Toggle auto-hiding of an NSScrollView's scrollers.
-    pub fn set_autohides_scrollers(self, autohides: bool) {
+    fn set_autohides_scrollers(self, autohides: bool) {
         use objc2_app_kit::NSScrollView;
         if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setAutohidesScrollers(autohides);
@@ -898,7 +977,7 @@ impl CocoaElem {
     }
 
     /// Show/hide an NSScrollView's horizontal scroller.
-    pub fn set_has_horizontal_scroller(self, has: bool) {
+    fn set_has_horizontal_scroller(self, has: bool) {
         use objc2_app_kit::NSScrollView;
         if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setHasHorizontalScroller(has);
@@ -906,7 +985,7 @@ impl CocoaElem {
     }
 
     /// Show/hide an NSScrollView's vertical scroller.
-    pub fn set_has_vertical_scroller(self, has: bool) {
+    fn set_has_vertical_scroller(self, has: bool) {
         use objc2_app_kit::NSScrollView;
         if let Some(s) = self.try_downcast::<NSScrollView>() {
             s.setHasVerticalScroller(has);
@@ -914,7 +993,7 @@ impl CocoaElem {
     }
 
     /// Configure an `<scroll_view>`'s scroll axis. No-op otherwise.
-    pub fn set_scroll_axis(self, axis: layout::ScrollAxis) {
+    fn set_scroll_axis(self, axis: layout::ScrollAxis) {
         use layout::ScrollAxis;
         use taffy::FlexDirection;
         if !self.with_meta(|m| m.is_scroll_view) {
@@ -957,7 +1036,7 @@ impl CocoaElem {
     }
 
     /// Toggle whether an NSProgressIndicator stays visible when stopped.
-    pub fn set_progress_displayed_when_stopped(self, shown: bool) {
+    fn set_progress_displayed_when_stopped(self, shown: bool) {
         use objc2_app_kit::NSProgressIndicator;
         if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setDisplayedWhenStopped(shown);
@@ -965,7 +1044,7 @@ impl CocoaElem {
     }
 
     /// Read the current value of a `<date_picker>`.
-    pub fn date_picker_value(self) -> Date {
+    fn date_picker_value(self) -> Date {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let d = dp.dateValue();
@@ -975,7 +1054,7 @@ impl CocoaElem {
     }
 
     /// Set the date shown in a `<date_picker>`. Diff-guarded.
-    pub fn set_date_picker_value(self, d: Date) {
+    fn set_date_picker_value(self, d: Date) {
         use objc2_app_kit::NSDatePicker;
         if let Some(dp) = self.try_downcast::<NSDatePicker>() {
             let current = dp.dateValue();
@@ -987,7 +1066,7 @@ impl CocoaElem {
     }
 
     /// Read the value of a `<stepper>`. 0.0 otherwise.
-    pub fn stepper_value(self) -> f64 {
+    fn stepper_value(self) -> f64 {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             return s.doubleValue();
@@ -996,7 +1075,7 @@ impl CocoaElem {
     }
 
     /// Set the value of a `<stepper>`. Diff-guarded.
-    pub fn set_stepper_value(self, v: f64) {
+    fn set_stepper_value(self, v: f64) {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             if (s.doubleValue() - v).abs() > f64::EPSILON {
@@ -1006,7 +1085,7 @@ impl CocoaElem {
     }
 
     /// Configure a `<stepper>`'s min/max/increment in one call.
-    pub fn configure_stepper(self, min: f64, max: f64, increment: f64) {
+    fn configure_stepper(self, min: f64, max: f64, increment: f64) {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMinValue(min);
@@ -1015,21 +1094,21 @@ impl CocoaElem {
         }
     }
 
-    pub fn set_stepper_min(self, v: f64) {
+    fn set_stepper_min(self, v: f64) {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMinValue(v);
         }
     }
 
-    pub fn set_stepper_max(self, v: f64) {
+    fn set_stepper_max(self, v: f64) {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setMaxValue(v);
         }
     }
 
-    pub fn set_stepper_increment(self, v: f64) {
+    fn set_stepper_increment(self, v: f64) {
         use objc2_app_kit::NSStepper;
         if let Some(s) = self.try_downcast::<NSStepper>() {
             s.setIncrement(v);
@@ -1037,7 +1116,7 @@ impl CocoaElem {
     }
 
     /// Set the `value` of a `<progress_indicator>`.
-    pub fn set_progress_value(self, v: f64) {
+    fn set_progress_value(self, v: f64) {
         use objc2_app_kit::NSProgressIndicator;
         if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setDoubleValue(v);
@@ -1045,7 +1124,7 @@ impl CocoaElem {
     }
 
     /// Switch a `<progress_indicator>` between determinate / spinner.
-    pub fn set_progress_indeterminate(self, indeterminate: bool) {
+    fn set_progress_indeterminate(self, indeterminate: bool) {
         use objc2_app_kit::NSProgressIndicator;
         if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setIndeterminate(indeterminate);
@@ -1060,7 +1139,7 @@ impl CocoaElem {
     }
 
     /// Set the progress max value. Default 1.0.
-    pub fn set_progress_max(self, max: f64) {
+    fn set_progress_max(self, max: f64) {
         use objc2_app_kit::NSProgressIndicator;
         if let Some(p) = self.try_downcast::<NSProgressIndicator>() {
             p.setMaxValue(max);
@@ -1068,7 +1147,7 @@ impl CocoaElem {
     }
 
     /// Read the current color from an `<color_well>`.
-    pub fn color_well_value(self) -> Color {
+    fn color_well_value(self) -> Color {
         use objc2_app_kit::NSColorWell;
         if let Some(cw) = self.try_downcast::<NSColorWell>() {
             let c = cw.color();
@@ -1079,7 +1158,7 @@ impl CocoaElem {
     }
 
     /// Set the color shown in an `<color_well>`. No-op otherwise.
-    pub fn set_color_well_value(self, color: Color) {
+    fn set_color_well_value(self, color: Color) {
         use objc2_app_kit::NSColorWell;
         if let Some(cw) = self.try_downcast::<NSColorWell>() {
             cw.setColor(&color.to_nscolor());
@@ -1087,32 +1166,32 @@ impl CocoaElem {
     }
 
     /// Wire a commit-edit callback. No-op on non-NSTextField.
-    pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
         event::on_text_field_end_editing(self, cb);
     }
 
     /// Wire a focus-gained callback. No-op on non-NSTextField.
-    pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
+    fn on_text_focus(self, cb: impl FnMut() + 'static) {
         event::on_text_field_focus(self, cb);
     }
 
     /// Wire a focus-lost callback. No-op on non-NSTextField.
-    pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
+    fn on_text_blur(self, cb: impl FnMut() + 'static) {
         event::on_text_field_blur(self, cb);
     }
 
     /// Wire a keydown observer on a text field. No-op otherwise.
-    pub fn on_text_keydown(self, cb: impl FnMut(KeyEvent) + 'static) {
+    fn on_text_keydown(self, cb: impl FnMut(KeyEvent) + 'static) {
         event::on_text_field_keydown(self, cb);
     }
 
     /// Wire a keyup observer on a text field. No-op otherwise.
-    pub fn on_text_keyup(self, cb: impl FnMut(KeyEvent) + 'static) {
+    fn on_text_keyup(self, cb: impl FnMut(KeyEvent) + 'static) {
         event::on_text_field_keyup(self, cb);
     }
 
     /// Load an image into an `<image_view>` from a file path.
-    pub fn set_image_view_path(self, path: &str) {
+    fn set_image_view_path(self, path: &str) {
         use objc2_app_kit::{NSImage, NSImageView};
         let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
@@ -1131,7 +1210,7 @@ impl CocoaElem {
     }
 
     /// Load an image into an `<image_view>` from in-memory bytes.
-    pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
+    fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
         use objc2_app_kit::{NSImage, NSImageView};
         use objc2_foundation::NSData;
         let Some(view) = self.try_ns_view() else { return; };
@@ -1151,7 +1230,7 @@ impl CocoaElem {
     }
 
     /// Set an `<image_view>` to render an SF Symbol by name.
-    pub fn set_image_view_sf_symbol(self, name: &str) {
+    fn set_image_view_sf_symbol(self, name: &str) {
         use objc2_app_kit::NSImageView;
         let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
@@ -1163,7 +1242,7 @@ impl CocoaElem {
     }
 
     /// Set an image view's tint color.
-    pub fn set_image_view_tint(self, color: Color) {
+    fn set_image_view_tint(self, color: Color) {
         use objc2_app_kit::NSImageView;
         let Some(view) = self.try_ns_view() else { return; };
         let Some(iv) = downcast::<NSImageView>(&view) else {
@@ -1173,12 +1252,12 @@ impl CocoaElem {
     }
 
     /// Wire a change observer on the NSTextView inside a `<text_view>`.
-    pub fn on_text_view_change(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_view_change(self, cb: impl FnMut(String) + 'static) {
         event::on_text_view_change(self, cb);
     }
 
     /// Set the editability of the NSTextView inside a `<text_view>`.
-    pub fn set_text_view_editable(self, editable: bool) {
+    fn set_text_view_editable(self, editable: bool) {
         let Some(view) = self.try_ns_view() else { return; };
         let Some(scroll) = downcast::<objc2_app_kit::NSScrollView>(&view)
         else {
@@ -1196,7 +1275,7 @@ impl CocoaElem {
     }
 
     /// Read the value of a `<text_view>`. `None` for non-text_view.
-    pub fn text_view_value(self) -> Option<String> {
+    fn text_view_value(self) -> Option<String> {
         let view = self.try_ns_view()?;
         let scroll = downcast::<objc2_app_kit::NSScrollView>(&view)?;
         let doc = scroll.documentView()?;
@@ -1206,7 +1285,7 @@ impl CocoaElem {
     }
 
     /// Make this element the window's first responder (focus).
-    pub fn focus(self) -> bool {
+    fn focus(self) -> bool {
         let Some(view) = self.try_ns_view() else { return false; };
         let Some(window) = view.window() else { return false };
         let responder: &objc2_app_kit::NSResponder = &view;
@@ -1214,27 +1293,25 @@ impl CocoaElem {
     }
 
     /// Resign first-responder status (clears focus window-wide).
-    pub fn blur(self) -> bool {
+    fn blur(self) -> bool {
         let Some(view) = self.try_ns_view() else { return false; };
         let Some(window) = view.window() else { return false };
         window.makeFirstResponder(None)
     }
-}
 
-// ---------------------------------------------------------------------
-// Node: text-label & placeholder constructors
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // text-label & placeholder constructors
+    // ---------------------------------------------------------------------
 
-impl CocoaElem {
     /// Build a text-label Node — a non-editable, non-bordered
     /// NSTextField (AppKit's "label" configuration).
-    pub fn create_text(content: &str) -> Self {
+    fn create_text(content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
         Self::create_text_with(content, mtm)
     }
 
-    pub fn create_text_with(content: &str, mtm: MainThreadMarker) -> Self {
+    fn create_text_with(content: &str, mtm: MainThreadMarker) -> Self {
         let label = NSTextField::labelWithString(
             &NSString::from_str(content),
             mtm,
@@ -1248,7 +1325,7 @@ impl CocoaElem {
     }
 
     /// Update the displayed string on a text-label Node.
-    pub fn set_text(self, content: &str) {
+    fn set_text(self, content: &str) {
         if let Some(field) = self.try_downcast::<NSTextField>() {
             field.setStringValue(&NSString::from_str(content));
         }
@@ -1257,13 +1334,13 @@ impl CocoaElem {
 
     /// Build a placeholder Node — a hidden, zero-sized, absolutely-
     /// positioned NSView used as a stable mount anchor.
-    pub fn create_placeholder() -> Self {
+    fn create_placeholder() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("cocoa_dom must run on the main thread");
         Self::create_placeholder_with(mtm)
     }
 
-    pub fn create_placeholder_with(mtm: MainThreadMarker) -> Self {
+    fn create_placeholder_with(mtm: MainThreadMarker) -> Self {
         let view = NSView::initWithFrame(
             NSView::alloc(mtm),
             NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0)),

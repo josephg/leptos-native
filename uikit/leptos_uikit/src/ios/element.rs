@@ -25,7 +25,7 @@ use crate::dom::{layout::{
     AlignContent, AlignItems, FlexDirection, GridAutoFlow,
     GridTemplateComponent, JustifyContent, JustifyItems, Position,
     TrackSizingFunction,
-}, Color, Date, DatePickerStyle, UikitElem};
+}, Color, Date, DatePickerStyle, UikitElem, UikitMakeView, UikitNodeExt};
 use reactive_graph::effect::RenderEffect;
 
 // `apply_universal` lives in `renderer::apply_universal`. The

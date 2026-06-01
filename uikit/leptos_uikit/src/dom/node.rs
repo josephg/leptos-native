@@ -17,7 +17,7 @@
 //! See the crate-level docs for the threading contract.
 
 use crate::dom::{Color, Date, DatePickerStyle, KeyEvent, TextAlignment};
-use super::layout::{IosMeta, NodeId, Style};
+use super::layout::{IosMeta, Style};
 use objc2::{
     rc::Retained, runtime::AnyObject, DowncastTarget, MainThreadMarker,
     MainThreadOnly, Message,
@@ -27,26 +27,143 @@ use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc};
 use super::layout::IosBackend;
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::{LayoutBackend, Node};
 use crate::dom::event::IosNodeHandlers;
 use crate::dom::{event, layout};
 
-/// A handle into the ambient node store — structurally just a
-/// generational [`NodeId`]. `Copy + Send`.
+/// The iOS port's node handle: a [`Node`] tagged with [`IosBackend`].
+///
+/// Structurally just a generational [`NodeId`] (`Copy + Send`). The
+/// generic accessor surface (`id`, `view`, `with_style`, `with_style_mut`,
+/// `with_tag`, `ptr_eq`, `from_id`) is inherent on [`Node`] and needs no
+/// import. The **UIKit-specific** widget operations live on the
+/// [`UikitNodeExt`] extension trait below — inherent `impl` on the foreign
+/// `Node<IosBackend>` alias isn't possible from this crate, so a local
+/// trait carries them (orphan-safe: the trait is local).
 ///
 /// All per-node state (the `UIView`, Taffy style, [`IosMeta`], ObjC
 /// handler retains) lives in `LayoutState<IosBackend>`; accessors read
-/// through the store keyed by `id`. A `Node` owns nothing — capturing
-/// one in a handler closure can't form a retain cycle.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct UikitElem {
-    pub(crate) id: NodeId,
+/// through the store keyed by `id`. A `Node` owns nothing — capturing one
+/// in a handler closure can't form a retain cycle.
+pub type UikitElem = Node<IosBackend>;
+
+/// UIKit-specific operations on a [`UikitElem`]. Bring this trait into
+/// scope to call `.set_title()`, `.on_click()`, `UikitElem::create_text()`,
+/// etc. (The generic `.id()` / `.view()` / `.with_style()` surface is
+/// inherent on [`Node`] and needs no import.)
+///
+/// The `try_downcast` / `sf_symbol_image` entries are internal helpers
+/// shared across the bodies; they ride along on the trait because,
+/// post-newtype-elimination, there's no private inherent block to hold
+/// them.
+pub trait UikitNodeExt: Copy {
+    fn from_view<V>(
+        view: Retained<V>,
+        default_style: Style,
+        default_meta: IosMeta,
+    ) -> Self
+    where
+        V: AsRef<UIView> + Message;
+    fn ui_view(self) -> Retained<UIView>;
+    fn try_ui_view(self) -> Option<Retained<UIView>>;
+    fn try_downcast<T>(self) -> Option<Retained<T>>
+    where
+        T: DowncastTarget;
+    fn ui_view_retained(self) -> Retained<UIView>;
+    fn teardown(self);
+    fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R;
+    fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R;
+    fn with_handlers_mut<R>(
+        self,
+        f: impl FnOnce(&mut IosNodeHandlers) -> R,
+    ) -> R;
+    fn create_container() -> Self;
+    fn create_container_with(mtm: MainThreadMarker) -> Self;
+    fn subview_parent(self) -> Retained<UIView>;
+    fn insert_node(self, child: UikitElem, marker: Option<UikitElem>);
+    fn remove_child(self, child: UikitElem) -> Option<UikitElem>;
+    fn clear_children(self);
+    fn set_title(self, value: &str);
+    fn set_value(self, value: &str);
+    fn set_placeholder(self, value: &str);
+    fn set_enabled(self, value: bool);
+    fn set_checked(self, value: bool);
+    fn on_click(self, cb: impl FnMut() + 'static);
+    fn on_action(self, cb: impl FnMut() + 'static);
+    fn on_value_change(self, cb: impl FnMut() + Send + 'static);
+    fn on_text_change(self, cb: impl FnMut(String) + 'static);
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static);
+    fn on_text_focus(self, cb: impl FnMut() + 'static);
+    fn on_text_blur(self, cb: impl FnMut() + 'static);
+    fn on_text_keydown(self, cb: impl FnMut(KeyEvent) + 'static);
+    fn on_text_keyup(self, cb: impl FnMut(KeyEvent) + 'static);
+    fn checked(self) -> bool;
+    fn double_value(self) -> f64;
+    fn set_double_value(self, v: f64);
+    fn set_slider_min(self, v: f64);
+    fn set_slider_max(self, v: f64);
+    fn set_segmented_items(self, items: &[String]);
+    fn segmented_selection(self) -> isize;
+    fn set_segmented_selection(self, idx: isize);
+    fn set_popup_items(
+        self,
+        items: &[String],
+        selected_idx: usize,
+        on_select: impl FnMut(usize) + 'static,
+    );
+    fn set_popup_selection(self, items: &[String], idx: usize);
+    fn set_color_well_value(self, color: Color);
+    fn color_well_value(self) -> Option<Color>;
+    fn on_color_change(self, cb: impl FnMut(Color) + 'static);
+    fn set_alpha(self, alpha: f64);
+    fn set_background_color(self, color: Option<Color>);
+    fn set_corner_radius(self, radius: f64);
+    fn set_border_width(self, width: f64);
+    fn set_border_color(self, color: Option<Color>);
+    fn set_text_color(self, color: Color);
+    fn set_text_alignment(self, alignment: TextAlignment);
+    fn set_font_size(self, points: f64);
+    fn set_text_field_bordered(self, bordered: bool);
+    fn set_text_field_bezeled(self, bezeled: bool);
+    fn set_slider_vertical(self, vertical: bool);
+    fn set_slider_tick_marks(self, count: usize);
+    fn set_slider_snaps_to_ticks(self, snaps: bool);
+    fn set_date_picker_style(self, style: DatePickerStyle);
+    fn set_date_picker_min(self, d: Option<Date>);
+    fn set_date_picker_max(self, d: Option<Date>);
+    fn set_autohides_scrollers(self, autohides: bool);
+    fn set_has_horizontal_scroller(self, has: bool);
+    fn set_has_vertical_scroller(self, has: bool);
+    fn set_progress_displayed_when_stopped(self, shown: bool);
+    fn date_picker_value(self) -> Date;
+    fn set_date_picker_value(self, d: Date);
+    fn stepper_value(self) -> f64;
+    fn set_stepper_value(self, v: f64);
+    fn configure_stepper(self, min: f64, max: f64, increment: f64);
+    fn set_progress_value(self, v: f64);
+    fn set_progress_indeterminate(self, indeterminate: bool);
+    fn set_progress_max(self, max: f64);
+    fn on_text_view_change(self, cb: impl FnMut(String) + 'static);
+    fn set_text_view_editable(self, editable: bool);
+    fn text_view_value(self) -> Option<String>;
+    fn focus(self) -> bool;
+    fn blur(self) -> bool;
+    fn set_image_view_path(self, path: &str);
+    fn set_image_view_bytes(self, bytes: Option<&[u8]>);
+    fn sf_symbol_image(name: &str) -> Option<Retained<objc2_ui_kit::UIImage>>;
+    fn set_sf_symbol(self, name: &str);
+    fn set_tint(self, color: Option<Color>);
+    fn create_text(content: &str) -> Self;
+    fn create_text_with(content: &str, mtm: MainThreadMarker) -> Self;
+    fn set_text(self, content: &str);
+    fn create_placeholder() -> Self;
+    fn create_placeholder_with(mtm: MainThreadMarker) -> Self;
 }
 
-impl UikitElem {
+impl UikitNodeExt for UikitElem {
     /// Typed registration primitive: hand in a concrete UIView
     /// subclass, get back a `Node`.
-    pub fn from_view<V>(
+    fn from_view<V>(
         view: Retained<V>,
         default_style: Style,
         default_meta: IosMeta,
@@ -64,29 +181,19 @@ impl UikitElem {
         // Wire the handlers' view back-ref so teardown can nil
         // setDelegate / removeAllTargets while the view is still alive.
         IosBackend::with_handlers_mut(id, |h| h.attach_view(view));
-        UikitElem { id }
-    }
-
-    /// Wrap an existing store id as a `Node`.
-    pub fn from_id(id: NodeId) -> Self {
-        UikitElem { id }
-    }
-
-    /// The node's `NodeId`.
-    pub fn id(self) -> NodeId {
-        self.id
+        Node::from_id(id)
     }
 
     /// The underlying UIView (owned clone). Main-thread only. Panics
     /// if the node is no longer in the store.
-    pub fn ui_view(self) -> Retained<UIView> {
+    fn ui_view(self) -> Retained<UIView> {
         IosBackend::view(self.id)
             .map(|sw| sw.take())
             .expect("Node id must exist in the store")
     }
 
     /// `Some(view)` if the node is still in the store.
-    pub fn try_ui_view(self) -> Option<Retained<UIView>> {
+    fn try_ui_view(self) -> Option<Retained<UIView>> {
         IosBackend::view(self.id).map(|sw| sw.take())
     }
 
@@ -118,17 +225,13 @@ impl UikitElem {
         self.try_ui_view().and_then(|v| downcast::<T>(&v))
     }
 
-    pub fn ui_view_retained(self) -> Retained<UIView> {
+    fn ui_view_retained(self) -> Retained<UIView> {
         self.ui_view()
-    }
-
-    pub fn ptr_eq(self, other: UikitElem) -> bool {
-        self.id == other.id
     }
 
     /// Remove this node (and its structural subtree) from the store
     /// and detach its UIView.
-    pub fn teardown(self) {
+    fn teardown(self) {
         if let Some(view) = self.try_ui_view() {
             view.removeFromSuperview();
         }
@@ -137,24 +240,12 @@ impl UikitElem {
 
     // ---- Accessor surface ------------------------------------------
 
-    pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = IosBackend::style(self.id).unwrap_or_default();
-        f(&style)
-    }
-
-    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = IosBackend::style(self.id).unwrap_or_default();
-        let r = f(&mut style);
-        IosBackend::set_style(self.id, style);
-        r
-    }
-
-    pub fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R {
+    fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R {
         let meta = IosBackend::meta(self.id).unwrap_or_default();
         f(&meta)
     }
 
-    pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
+    fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
         let mut meta = IosBackend::meta(self.id).unwrap_or_default();
         let r = f(&mut meta);
         IosBackend::set_meta(self.id, meta);
@@ -163,30 +254,28 @@ impl UikitElem {
 
     /// Mutate this node's per-node handler set in the store. Panics if
     /// the node isn't present (handlers install on live nodes).
-    pub fn with_handlers_mut<R>(
+    fn with_handlers_mut<R>(
         self,
         f: impl FnOnce(&mut IosNodeHandlers) -> R,
     ) -> R {
         IosBackend::with_handlers_mut(self.id, f)
             .expect("Node id must exist in the store")
     }
-}
 
-// ---------------------------------------------------------------------
-// Node — typed-builder / renderer-protocol surface
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // typed-builder / renderer-protocol surface
+    // ---------------------------------------------------------------------
 
-impl UikitElem {
     /// Generic UIView container (default style). Used by
     /// `<view>` / `<stack>` builders and by `RootViewController`
     /// for the content root.
-    pub fn create_container() -> Self {
+    fn create_container() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
         Self::create_container_with(mtm)
     }
 
-    pub fn create_container_with(mtm: MainThreadMarker) -> Self {
+    fn create_container_with(mtm: MainThreadMarker) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};
         let frame = NSRect::new(NSPoint::ZERO, NSSize::new(0.0, 0.0));
         let view: Retained<UIView> = UIView::initWithFrame(UIView::alloc(mtm), frame);
@@ -195,7 +284,7 @@ impl UikitElem {
 
 
     /// The UIView that *actually* parents this element's children.
-    pub fn subview_parent(self) -> Retained<UIView> {
+    fn subview_parent(self) -> Retained<UIView> {
         let direct = self.ui_view();
         let routes_to_doc = self.with_meta(|m| m.is_scroll_view);
         if routes_to_doc {
@@ -211,7 +300,7 @@ impl UikitElem {
         direct
     }
 
-    pub fn insert_node(self, child: UikitElem, marker: Option<UikitElem>) {
+    fn insert_node(self, child: UikitElem, marker: Option<UikitElem>) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
         let child_view = child.ui_view();
@@ -243,7 +332,7 @@ impl UikitElem {
         }
     }
 
-    pub fn remove_child(self, child: UikitElem) -> Option<UikitElem> {
+    fn remove_child(self, child: UikitElem) -> Option<UikitElem> {
         let parent_retained = self.subview_parent();
         let parent_ptr: *const UIView = &*parent_retained;
         let child_view = child.ui_view();
@@ -263,7 +352,7 @@ impl UikitElem {
         Some(child)
     }
 
-    pub fn clear_children(self) {
+    fn clear_children(self) {
         let parent_retained = self.subview_parent();
         let parent: &UIView = &parent_retained;
         let subs = parent.subviews();
@@ -274,7 +363,7 @@ impl UikitElem {
 
     /// Set the title on a UIButton (Normal state) or the text on a
     /// UILabel. No-op on other classes.
-    pub fn set_title(self, value: &str) {
+    fn set_title(self, value: &str) {
         let Some(view) = self.try_ui_view() else { return; };
         let mut changed = false;
         if let Some(button) = downcast::<UIButton>(&view) {
@@ -304,7 +393,7 @@ impl UikitElem {
 
     /// Set the text/value on a UITextField or UITextView. No-op on
     /// other classes.
-    pub fn set_value(self, value: &str) {
+    fn set_value(self, value: &str) {
         let Some(view) = self.try_ui_view() else { return; };
         let mut changed = false;
         if let Some(field) = downcast::<UITextField>(&view) {
@@ -327,7 +416,7 @@ impl UikitElem {
     }
 
     /// Set the placeholder on a UITextField. No-op on other classes.
-    pub fn set_placeholder(self, value: &str) {
+    fn set_placeholder(self, value: &str) {
         let Some(view) = self.try_ui_view() else { return; };
         if let Some(field) = downcast::<UITextField>(&view) {
             let current: String = field
@@ -341,18 +430,10 @@ impl UikitElem {
         }
     }
 
-    /// Toggle UIView visibility.
-    pub fn set_hidden(self, value: bool) {
-        let Some(view) = self.try_ui_view() else { return; };
-        if view.isHidden() != value {
-            view.setHidden(value);
-        }
-    }
-
     /// Toggle user-interaction / enabled state. Sets
     /// `isUserInteractionEnabled` on the UIView; for UIControl
     /// subclasses, also sets `isEnabled`.
-    pub fn set_enabled(self, value: bool) {
+    fn set_enabled(self, value: bool) {
         let Some(view) = self.try_ui_view() else { return; };
         if view.isUserInteractionEnabled() != value {
             view.setUserInteractionEnabled(value);
@@ -366,7 +447,7 @@ impl UikitElem {
 
     /// Set the on/off state on a UISwitch (animated). No-op on
     /// other classes.
-    pub fn set_checked(self, value: bool) {
+    fn set_checked(self, value: bool) {
         let Some(view) = self.try_ui_view() else { return; };
         if let Some(sw) = downcast::<objc2_ui_kit::UISwitch>(&view) {
             if sw.isOn() != value {
@@ -375,7 +456,7 @@ impl UikitElem {
         }
     }
 
-    pub fn on_click(self, cb: impl FnMut() + 'static) {
+    fn on_click(self, cb: impl FnMut() + 'static) {
         let Some(view) = self.try_ui_view() else { return; };
         if downcast::<UIControl>(&view).is_some() {
             event::on_control_action(self, cb);
@@ -384,11 +465,11 @@ impl UikitElem {
         }
     }
 
-    pub fn on_action(self, cb: impl FnMut() + 'static) {
+    fn on_action(self, cb: impl FnMut() + 'static) {
         event::on_control_action(self, cb);
     }
 
-    pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
+    fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
         if self.try_downcast::<UITextField>().is_some() {
             event::on_text_field_change(self, move |_| cb());
             return;
@@ -396,50 +477,50 @@ impl UikitElem {
         event::on_control_action(self, cb);
     }
 
-    pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_change(self, cb: impl FnMut(String) + 'static) {
         event::on_text_field_change(self, cb);
     }
 
-    pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
         event::on_text_field_end_editing(self, cb);
     }
 
-    pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
+    fn on_text_focus(self, cb: impl FnMut() + 'static) {
         event::on_text_field_focus(self, cb);
     }
 
-    pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
+    fn on_text_blur(self, cb: impl FnMut() + 'static) {
         event::on_text_field_blur(self, cb);
     }
 
-    pub fn on_text_keydown(
+    fn on_text_keydown(
         self,
         _cb: impl FnMut(KeyEvent) + 'static,
     ) {
         // Deferred: UIKeyCommand + pressesBegan:
     }
 
-    pub fn on_text_keyup(
+    fn on_text_keyup(
         self,
         _cb: impl FnMut(KeyEvent) + 'static,
     ) {
     }
 
-    pub fn checked(self) -> bool {
+    fn checked(self) -> bool {
         if let Some(sw) = self.try_downcast::<objc2_ui_kit::UISwitch>() {
             return sw.isOn();
         }
         false
     }
 
-    pub fn double_value(self) -> f64 {
+    fn double_value(self) -> f64 {
         if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             return sl.value() as f64;
         }
         0.0
     }
 
-    pub fn set_double_value(self, v: f64) {
+    fn set_double_value(self, v: f64) {
         if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             let current = sl.value() as f64;
             if (current - v).abs() > f64::EPSILON {
@@ -448,19 +529,19 @@ impl UikitElem {
         }
     }
 
-    pub fn set_slider_min(self, v: f64) {
+    fn set_slider_min(self, v: f64) {
         if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             sl.setMinimumValue(v as f32);
         }
     }
 
-    pub fn set_slider_max(self, v: f64) {
+    fn set_slider_max(self, v: f64) {
         if let Some(sl) = self.try_downcast::<objc2_ui_kit::UISlider>() {
             sl.setMaximumValue(v as f32);
         }
     }
 
-    pub fn set_segmented_items(self, items: &[String]) {
+    fn set_segmented_items(self, items: &[String]) {
         let Some(sc) =
             self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         else {
@@ -479,7 +560,7 @@ impl UikitElem {
         }
     }
 
-    pub fn segmented_selection(self) -> isize {
+    fn segmented_selection(self) -> isize {
         if let Some(sc) =
             self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         {
@@ -488,7 +569,7 @@ impl UikitElem {
         -1
     }
 
-    pub fn set_segmented_selection(self, idx: isize) {
+    fn set_segmented_selection(self, idx: isize) {
         if let Some(sc) =
             self.try_downcast::<objc2_ui_kit::UISegmentedControl>()
         {
@@ -498,7 +579,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_popup_items(
+    fn set_popup_items(
         self,
         items: &[String],
         selected_idx: usize,
@@ -558,7 +639,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_popup_selection(self, items: &[String], idx: usize) {
+    fn set_popup_selection(self, items: &[String], idx: usize) {
         let Some(button) = self.try_downcast::<UIButton>() else {
             return;
         };
@@ -578,7 +659,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_color_well_value(self, color: Color) {
+    fn set_color_well_value(self, color: Color) {
         use objc2_ui_kit::UIColorWell;
         let Some(cw) = self.try_downcast::<UIColorWell>() else {
             return;
@@ -586,14 +667,14 @@ impl UikitElem {
         cw.setSelectedColor(Some(&color.to_uicolor()));
     }
 
-    pub fn color_well_value(self) -> Option<Color> {
+    fn color_well_value(self) -> Option<Color> {
         use objc2_ui_kit::UIColorWell;
         let cw = self.try_downcast::<UIColorWell>()?;
         let c = cw.selectedColor()?;
         Color::from_uicolor(&c)
     }
 
-    pub fn on_color_change(
+    fn on_color_change(
         self,
         mut cb: impl FnMut(Color) + 'static,
     ) {
@@ -611,7 +692,7 @@ impl UikitElem {
         });
     }
 
-    pub fn set_alpha(self, alpha: f64) {
+    fn set_alpha(self, alpha: f64) {
         let Some(v) = self.try_ui_view() else { return; };
         let clamped = alpha.clamp(0.0, 1.0);
         if (v.alpha() - clamped).abs() > f64::EPSILON {
@@ -619,7 +700,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_background_color(self, color: Option<Color>) {
+    fn set_background_color(self, color: Option<Color>) {
         let Some(v) = self.try_ui_view() else { return; };
         match color {
             Some(c) => v.setBackgroundColor(Some(&c.to_uicolor())),
@@ -627,7 +708,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_corner_radius(self, radius: f64) {
+    fn set_corner_radius(self, radius: f64) {
         let Some(__v) = self.try_ui_view() else { return; };
         let layer = __v.layer();
         if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
@@ -636,7 +717,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_border_width(self, width: f64) {
+    fn set_border_width(self, width: f64) {
         let Some(__v) = self.try_ui_view() else { return; };
         let layer = __v.layer();
         if (layer.borderWidth() - width).abs() > f64::EPSILON {
@@ -644,7 +725,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_border_color(self, color: Option<Color>) {
+    fn set_border_color(self, color: Option<Color>) {
         let Some(__v) = self.try_ui_view() else { return; };
         let layer = __v.layer();
         match color {
@@ -656,7 +737,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_color(self, color: Color) {
+    fn set_text_color(self, color: Color) {
         let Some(view) = self.try_ui_view() else { return; };
         let uicolor = color.to_uicolor();
 
@@ -673,7 +754,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_alignment(self, alignment: TextAlignment) {
+    fn set_text_alignment(self, alignment: TextAlignment) {
         let Some(view) = self.try_ui_view() else { return; };
 
         if let Some(field) = downcast::<UITextField>(&view) {
@@ -689,7 +770,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_font_size(self, points: f64) {
+    fn set_font_size(self, points: f64) {
         use objc2_ui_kit::UIFont;
         let font = UIFont::systemFontOfSize(points);
 
@@ -715,7 +796,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_field_bordered(self, bordered: bool) {
+    fn set_text_field_bordered(self, bordered: bool) {
         if let Some(f) = self.try_downcast::<UITextField>() {
             use objc2_ui_kit::UITextBorderStyle;
             f.setBorderStyle(if bordered {
@@ -726,15 +807,15 @@ impl UikitElem {
         }
     }
 
-    pub fn set_text_field_bezeled(self, bezeled: bool) {
+    fn set_text_field_bezeled(self, bezeled: bool) {
         self.set_text_field_bordered(bezeled);
     }
 
-    pub fn set_slider_vertical(self, _vertical: bool) {}
-    pub fn set_slider_tick_marks(self, _count: usize) {}
-    pub fn set_slider_snaps_to_ticks(self, _snaps: bool) {}
+    fn set_slider_vertical(self, _vertical: bool) {}
+    fn set_slider_tick_marks(self, _count: usize) {}
+    fn set_slider_snaps_to_ticks(self, _snaps: bool) {}
 
-    pub fn set_date_picker_style(self, style: DatePickerStyle) {
+    fn set_date_picker_style(self, style: DatePickerStyle) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -742,7 +823,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_date_picker_min(self, d: Option<Date>) {
+    fn set_date_picker_min(self, d: Option<Date>) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -751,7 +832,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_date_picker_max(self, d: Option<Date>) {
+    fn set_date_picker_max(self, d: Option<Date>) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -760,9 +841,9 @@ impl UikitElem {
         }
     }
 
-    pub fn set_autohides_scrollers(self, _autohides: bool) {}
+    fn set_autohides_scrollers(self, _autohides: bool) {}
 
-    pub fn set_has_horizontal_scroller(self, has: bool) {
+    fn set_has_horizontal_scroller(self, has: bool) {
         if let Some(s) =
             self.try_downcast::<objc2_ui_kit::UIScrollView>()
         {
@@ -770,7 +851,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_has_vertical_scroller(self, has: bool) {
+    fn set_has_vertical_scroller(self, has: bool) {
         if let Some(s) =
             self.try_downcast::<objc2_ui_kit::UIScrollView>()
         {
@@ -778,9 +859,9 @@ impl UikitElem {
         }
     }
 
-    pub fn set_progress_displayed_when_stopped(self, _shown: bool) {}
+    fn set_progress_displayed_when_stopped(self, _shown: bool) {}
 
-    pub fn date_picker_value(self) -> Date {
+    fn date_picker_value(self) -> Date {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -790,7 +871,7 @@ impl UikitElem {
         Date::now()
     }
 
-    pub fn set_date_picker_value(self, d: Date) {
+    fn set_date_picker_value(self, d: Date) {
         if let Some(dp) =
             self.try_downcast::<objc2_ui_kit::UIDatePicker>()
         {
@@ -804,7 +885,7 @@ impl UikitElem {
         }
     }
 
-    pub fn stepper_value(self) -> f64 {
+    fn stepper_value(self) -> f64 {
         if let Some(s) =
             self.try_downcast::<objc2_ui_kit::UIStepper>()
         {
@@ -813,7 +894,7 @@ impl UikitElem {
         0.0
     }
 
-    pub fn set_stepper_value(self, v: f64) {
+    fn set_stepper_value(self, v: f64) {
         if let Some(s) =
             self.try_downcast::<objc2_ui_kit::UIStepper>()
         {
@@ -823,7 +904,7 @@ impl UikitElem {
         }
     }
 
-    pub fn configure_stepper(
+    fn configure_stepper(
         self,
         min: f64,
         max: f64,
@@ -838,7 +919,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_progress_value(self, v: f64) {
+    fn set_progress_value(self, v: f64) {
         if let Some(p) =
             self.try_downcast::<objc2_ui_kit::UIProgressView>()
         {
@@ -846,17 +927,17 @@ impl UikitElem {
         }
     }
 
-    pub fn set_progress_indeterminate(self, _indeterminate: bool) {}
-    pub fn set_progress_max(self, _max: f64) {}
+    fn set_progress_indeterminate(self, _indeterminate: bool) {}
+    fn set_progress_max(self, _max: f64) {}
 
-    pub fn on_text_view_change(
+    fn on_text_view_change(
         self,
         cb: impl FnMut(String) + 'static,
     ) {
         event::on_text_view_change(self, cb);
     }
 
-    pub fn set_text_view_editable(self, editable: bool) {
+    fn set_text_view_editable(self, editable: bool) {
         if let Some(tv) =
             self.try_downcast::<objc2_ui_kit::UITextView>()
         {
@@ -866,23 +947,23 @@ impl UikitElem {
         }
     }
 
-    pub fn text_view_value(self) -> Option<String> {
+    fn text_view_value(self) -> Option<String> {
         let tv =
             self.try_downcast::<objc2_ui_kit::UITextView>()?;
         Some(tv.text().to_string())
     }
 
-    pub fn focus(self) -> bool {
+    fn focus(self) -> bool {
         let Some(view) = self.try_ui_view() else { return false; };
         view.becomeFirstResponder()
     }
 
-    pub fn blur(self) -> bool {
+    fn blur(self) -> bool {
         let Some(view) = self.try_ui_view() else { return false; };
         view.resignFirstResponder()
     }
 
-    pub fn set_image_view_path(self, path: &str) {
+    fn set_image_view_path(self, path: &str) {
         use objc2_ui_kit::{UIImage, UIImageView};
         let Some(iv) = self.try_downcast::<UIImageView>() else {
             return;
@@ -898,7 +979,7 @@ impl UikitElem {
         layout::schedule_relayout(self);
     }
 
-    pub fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
+    fn set_image_view_bytes(self, bytes: Option<&[u8]>) {
         use objc2_ui_kit::{UIImage, UIImageView};
         use objc2_foundation::NSData;
         let Some(iv) = self.try_downcast::<UIImageView>() else {
@@ -924,7 +1005,7 @@ impl UikitElem {
         UIImage::systemImageNamed(&ns_name)
     }
 
-    pub fn set_sf_symbol(self, name: &str) {
+    fn set_sf_symbol(self, name: &str) {
         let Some(view) = self.try_ui_view() else { return; };
         let image = Self::sf_symbol_image(name);
         if let Some(button) = downcast::<UIButton>(&view) {
@@ -941,7 +1022,7 @@ impl UikitElem {
         }
     }
 
-    pub fn set_tint(self, color: Option<Color>) {
+    fn set_tint(self, color: Option<Color>) {
         let Some(view) = self.try_ui_view() else { return; };
         unsafe {
             if let Some(c) = color {
@@ -955,13 +1036,13 @@ impl UikitElem {
     /// Build a text-label Node — a UILabel. Used by the renderer's
     /// `create_text_node`, which is the `Render` impl for `&str` /
     /// `String` / numerics.
-    pub fn create_text(content: &str) -> Self {
+    fn create_text(content: &str) -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
         Self::create_text_with(content, mtm)
     }
 
-    pub fn create_text_with(
+    fn create_text_with(
         content: &str,
         mtm: MainThreadMarker,
     ) -> Self {
@@ -981,7 +1062,7 @@ impl UikitElem {
 
     /// Update the displayed string on a text-label Node. No-op if
     /// the backing view isn't a UILabel.
-    pub fn set_text(self, content: &str) {
+    fn set_text(self, content: &str) {
         let Some(view) = self.try_ui_view() else { return; };
         if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
             label.setText(Some(&NSString::from_str(content)));
@@ -992,13 +1073,13 @@ impl UikitElem {
     /// Build a placeholder Node — a hidden, zero-sized UIView used
     /// by the renderer's control-flow primitives (`Render for ()`,
     /// tuple/iterator/keyed end-markers) as a stable mount anchor.
-    pub fn create_placeholder() -> Self {
+    fn create_placeholder() -> Self {
         let mtm = MainThreadMarker::new()
             .expect("ios_dom must run on the main thread");
         Self::create_placeholder_with(mtm)
     }
 
-    pub fn create_placeholder_with(
+    fn create_placeholder_with(
         mtm: MainThreadMarker,
     ) -> Self {
         use objc2_foundation::{NSPoint, NSRect, NSSize};

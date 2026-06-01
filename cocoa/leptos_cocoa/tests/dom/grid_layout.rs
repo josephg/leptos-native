@@ -9,7 +9,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{layout, CocoaElem};
+use leptos_cocoa::dom::{layout, CocoaElem, CocoaMakeView, CocoaNodeExt};
 use leptos_native::renderer::attrs::GridLine;
 use leptos_native::renderer::{auto, fr, length, GridAutoFlow, GridPlacement, GridTemplateComponent};
 use objc2_foundation::NSSize;

@@ -2,22 +2,38 @@
 //!
 //! Each function here allocates a concrete gtk4 widget class
 //! (`gtk::Button`, `gtk::Label`, ...), builds its default Taffy
-//! [`Style`], and registers it in `tree` via [`GtkElem::new_from_widget`].
+//! [`Style`], and registers it in `tree` via [`GtkNodeExt::new_from_widget`].
 //! Every typed builder in `leptos_gtk` calls exactly one of these
-//! from its `Render::build`.
+//! from its `Render::build` (`GtkElem::create_button()`, …).
 //!
-//! Replaces the old tag-string dispatch
-//! (`Element::create(tree, "button")` → big `match tag` in
-//! `node.rs`). Same shape as cocoa's `make_view.rs`.
+//! These are exposed via the [`GtkMakeView`] extension trait (inherent
+//! impls on the foreign `Node<GtkBackend>` alias aren't possible — see
+//! [`crate::dom::node`]). Bring `GtkMakeView` into scope to call
+//! `GtkElem::create_button()` etc.
 
 use crate::dom::{
     layout::{FlexDirection, Style},
-    node::GtkElem,
+    node::{GtkElem, GtkNodeExt},
 };
 use gtk4::prelude::*;
 
-impl GtkElem {
-    pub fn create_button() -> (GtkElem, gtk4::Button) {
+/// Typed widget constructors for [`GtkElem`]. See the module docs.
+pub trait GtkMakeView: Sized {
+    fn create_button() -> (GtkElem, gtk4::Button);
+    fn create_checkbox() -> (GtkElem, gtk4::CheckButton);
+    fn create_label() -> (GtkElem, gtk4::Label);
+    fn create_text_field() -> (GtkElem, gtk4::Entry);
+    fn create_secure_text_field() -> (GtkElem, gtk4::PasswordEntry);
+    fn create_slider() -> (GtkElem, gtk4::Scale);
+    fn create_pop_up_button() -> (GtkElem, gtk4::DropDown);
+    fn create_hstack() -> GtkElem;
+    fn create_vstack() -> GtkElem;
+    fn create_stack() -> GtkElem;
+    fn create_grid() -> GtkElem;
+}
+
+impl GtkMakeView for GtkElem {
+    fn create_button() -> (GtkElem, gtk4::Button) {
         let b = gtk4::Button::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -25,7 +41,7 @@ impl GtkElem {
         (n, b)
     }
 
-    pub fn create_checkbox() -> (GtkElem, gtk4::CheckButton) {
+    fn create_checkbox() -> (GtkElem, gtk4::CheckButton) {
         let c = gtk4::CheckButton::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -35,7 +51,7 @@ impl GtkElem {
 
     /// Wrapping multi-line label. Default left-aligned text — matches
     /// AppKit's `wrappingLabel` default. Wraps on overflow.
-    pub fn create_label() -> (GtkElem, gtk4::Label) {
+    fn create_label() -> (GtkElem, gtk4::Label) {
         let l = gtk4::Label::new(None);
         l.set_xalign(0.0);
         l.set_wrap(true);
@@ -46,7 +62,7 @@ impl GtkElem {
         (n, l)
     }
 
-    pub fn create_text_field() -> (GtkElem, gtk4::Entry) {
+    fn create_text_field() -> (GtkElem, gtk4::Entry) {
         let e = gtk4::Entry::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -54,7 +70,7 @@ impl GtkElem {
         (n, e)
     }
 
-    pub fn create_secure_text_field() -> (GtkElem, gtk4::PasswordEntry) {
+    fn create_secure_text_field() -> (GtkElem, gtk4::PasswordEntry) {
         let e = gtk4::PasswordEntry::new();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -64,11 +80,8 @@ impl GtkElem {
 
     /// Horizontal `gtk::Scale` with the numeric value display off
     /// (the slider is just the thumb + track).
-    pub fn create_slider() -> (GtkElem, gtk4::Scale) {
-        let scale = gtk4::Scale::new(
-            gtk4::Orientation::Horizontal,
-            None::<&gtk4::Adjustment>,
-        );
+    fn create_slider() -> (GtkElem, gtk4::Scale) {
+        let scale = gtk4::Scale::new(gtk4::Orientation::Horizontal, None::<&gtk4::Adjustment>);
         scale.set_draw_value(false);
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -76,7 +89,7 @@ impl GtkElem {
         (n, scale)
     }
 
-    pub fn create_pop_up_button() -> (GtkElem, gtk4::DropDown) {
+    fn create_pop_up_button() -> (GtkElem, gtk4::DropDown) {
         let dd = gtk4::DropDown::default();
         let mut s = Style::default();
         s.flex_shrink = 0.0;
@@ -85,7 +98,7 @@ impl GtkElem {
     }
 
     /// Horizontal flexbox container (`<hstack>`).
-    pub fn create_hstack() -> GtkElem {
+    fn create_hstack() -> GtkElem {
         let w = container_widget();
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Row;
@@ -93,7 +106,7 @@ impl GtkElem {
     }
 
     /// Vertical flexbox container (`<vstack>` / `<stack_view>`).
-    pub fn create_vstack() -> GtkElem {
+    fn create_vstack() -> GtkElem {
         let w = container_widget();
         let mut s = Style::default();
         s.flex_direction = FlexDirection::Column;
@@ -102,7 +115,7 @@ impl GtkElem {
 
     /// Bare flexbox container — direction defaults to Row unless the
     /// builder sets it. `<stack>` / `<view>` route here.
-    pub fn create_stack() -> GtkElem {
+    fn create_stack() -> GtkElem {
         let w = container_widget();
         GtkElem::new_from_widget(w, Style::default()).with_tag("stack")
     }
@@ -110,7 +123,7 @@ impl GtkElem {
     /// 2-D grid container backed by Taffy's grid algorithm. Template
     /// tracks / gap / placement attrs are applied by the higher-level
     /// builder.
-    pub fn create_grid() -> GtkElem {
+    fn create_grid() -> GtkElem {
         let w = container_widget();
         let mut s = Style::default();
         s.display = crate::dom::layout::Display::Grid;

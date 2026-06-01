@@ -373,6 +373,66 @@ pub trait UniversalElement: Copy + Clone + 'static {
 }
 
 // ---------------------------------------------------------------------
+// Blanket driver impls for the universal handle `Node<B>`.
+//
+// These replace the per-port impls that the `*Elem` newtypes used to
+// carry. They can't live in the port crates any more: with the newtype
+// gone, `impl LayoutElement for Node<B>` in a port would be an orphan
+// violation (foreign trait, foreign `Node`, the local `B` doesn't
+// count). So they live here, once, forwarding the platform-specific
+// parts to the `LayoutBackend` native-setter hooks.
+//
+// Every native setter routes through `try_view()`, never the panicking
+// `view()`: a `RenderEffect` can fire after its node is torn down, and
+// must degrade to a no-op rather than panic on a freed node.
+// ---------------------------------------------------------------------
+
+use crate::renderer::node::Node;
+use crate::renderer::scene::LayoutBackend;
+
+impl<B: LayoutBackend> LayoutNodeOps for Node<B> {
+    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
+        self.with_style_mut(f);
+    }
+    fn schedule_relayout(self) {
+        B::schedule_relayout(self.id);
+    }
+    #[allow(deprecated)]
+    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
+        // Inlined rather than calling the (same-named) inherent method, to
+        // avoid any method-resolution ambiguity with this trait method.
+        let style = B::style(self.id).unwrap_or_default();
+        f(&style)
+    }
+}
+
+impl<B: LayoutBackend> LayoutElement for Node<B> {
+    fn set_view_hidden(self, hidden: bool) {
+        if let Some(v) = self.try_view() {
+            B::set_hidden(&v, hidden);
+        }
+    }
+    fn set_clip(self, clip: bool) {
+        if let Some(v) = self.try_view() {
+            B::set_clip(&v, clip);
+        }
+    }
+}
+
+impl<B: LayoutBackend> UniversalElement for Node<B> {
+    fn set_alpha(self, alpha: f64) {
+        if let Some(v) = self.try_view() {
+            B::set_alpha(&v, alpha);
+        }
+    }
+    fn set_tool_tip(self, tip: &str) {
+        if let Some(v) = self.try_view() {
+            B::set_tool_tip(&v, tip);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
 // Display (used by the `hidden=` attr — display: none collapses the
 // slot in Taffy in addition to whatever visual hiding the port does).
 // ---------------------------------------------------------------------

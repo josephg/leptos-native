@@ -6,6 +6,7 @@
 
 mod common;
 
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::GtkElem;
 use leptos_gtk::gtk4::prelude::*;
 

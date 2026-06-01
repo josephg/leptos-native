@@ -5,7 +5,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::CocoaElem;
+use leptos_cocoa::dom::{CocoaElem, CocoaMakeView, CocoaNodeExt};
 
 // ---------------------------------------------------------------------
 // Identity / round-trip

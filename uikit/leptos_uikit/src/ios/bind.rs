@@ -19,7 +19,7 @@ use crate::ios::element::{
     ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
     Stepper, Switch, TextField, TextView,
 };
-use crate::dom::{Color, Date, UikitElem};
+use crate::dom::{Color, Date, UikitElem, UikitNodeExt};
 use objc2::rc::Retained;
 use reactive_graph::{
     effect::RenderEffect,

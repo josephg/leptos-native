@@ -15,7 +15,7 @@
 mod common;
 
 use objc2::MainThreadMarker;
-use leptos_cocoa::dom::{app, layout, CocoaElem};
+use leptos_cocoa::dom::{app, layout, CocoaElem, CocoaNodeExt};
 use leptos_native::renderer::{Dimension, GridPlacement, LengthPercentage};
 use reactive_graph::{
     owner::Owner,

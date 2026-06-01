@@ -17,11 +17,11 @@
 //! - `schedule_relayout` / dispatch (DispatchQueue).
 //! - Layer-backed conveniences (`set_background_color`, `set_clip`).
 
-use super::node::CocoaElem;
+use super::node::{CocoaElem, CocoaNodeExt};
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use send_wrapper::SendWrapper;
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -122,6 +122,47 @@ impl LayoutBackend for CocoaBackend {
 
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
         TREE.with(|t| f(&mut t.borrow_mut()))
+    }
+
+    // Native view setters — forwarded to by the core `Node<B>` driver
+    // blanket impls (orphan rule). Diff-guarded, matching the existing
+    // per-port `LayoutElement`/`UniversalElement` bodies.
+
+    fn set_hidden(view: &Self::View, hidden: bool) {
+        let v: &NSView = view;
+        if v.isHidden() != hidden {
+            v.setHidden(hidden);
+        }
+    }
+
+    fn set_clip(view: &Self::View, clip: bool) {
+        let v: &NSView = view;
+        v.setWantsLayer(true);
+        if let Some(layer) = v.layer() {
+            layer.setMasksToBounds(clip);
+        }
+    }
+
+    fn set_alpha(view: &Self::View, alpha: f64) {
+        let v: &NSView = view;
+        let clamped = alpha.clamp(0.0, 1.0);
+        if (v.alphaValue() - clamped).abs() > f64::EPSILON {
+            v.setAlphaValue(clamped);
+        }
+    }
+
+    fn set_tool_tip(view: &Self::View, tip: &str) {
+        let v: &NSView = view;
+        if tip.is_empty() {
+            v.setToolTip(None);
+        } else {
+            v.setToolTip(Some(&NSString::from_str(tip)));
+        }
+    }
+
+    fn schedule_relayout(id: NodeId) {
+        CocoaBackend::mark_dirty(id);
+        queue_relayout_for(id);
     }
 }
 
@@ -727,37 +768,16 @@ fn set_frame_from_layout(
 // the short paths (`cocoa_dom::layout::set_padding`, etc.) stable.
 // ---------------------------------------------------------------------
 
-impl renderer::LayoutNodeOps for CocoaElem {
-    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
-        update_style(self, f);
-    }
-    fn schedule_relayout(self) {
-        schedule_relayout(self);
-    }
-    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
-        CocoaElem::with_style(self, f)
-    }
-}
-
-// `LayoutElement` / `UniversalElement` / `DecorationElement` impls let
-// `renderer::apply_layout` / `apply_universal` / `apply_decoration`
-// install reactive setters against a `cocoa_dom::Node` generically.
-impl renderer::LayoutElement for CocoaElem {
-    fn set_view_hidden(self, hidden: bool) {
-        CocoaElem::set_hidden(self, hidden);
-    }
-    fn set_clip(self, clip: bool) {
-        set_clip(self, clip);
-    }
-}
-impl renderer::UniversalElement for CocoaElem {
-    fn set_alpha(self, alpha: f64) {
-        CocoaElem::set_alpha(self, alpha)
-    }
-    fn set_tool_tip(self, tip: &str) {
-        CocoaElem::set_tool_tip(self, tip)
-    }
-}
+// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
+// that used to live here are gone: with `CocoaElem` now an alias for the
+// foreign `Node<CocoaBackend>`, impl'ing those (foreign, param-less) traits
+// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
+// forwarding to the `LayoutBackend` native-setter hooks (`set_hidden`,
+// `set_clip`, `set_alpha`, `set_tool_tip`, `schedule_relayout`) on
+// `CocoaBackend` above.
+//
+// `DecorationElement<Color>` stays a per-port impl: its local `Color` type
+// parameter makes it orphan-safe even on the alias.
 impl renderer::DecorationElement<Color> for CocoaElem {
     fn set_background_color(self, color: Color) {
         set_background_color(self, color);

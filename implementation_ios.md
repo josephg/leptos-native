@@ -6,6 +6,25 @@ top.
 
 ---
 
+## 2026-06-01 — PR-1 cocoa+uikit finish (cross-cutting; see macOS log)
+
+`UikitElem` is now `type UikitElem = Node<IosBackend>` (was
+`struct UikitElem { id: NodeId }`); the per-port widget ops moved to the
+`UikitNodeExt` / `UikitMakeView` extension traits, and the three driver
+impls (`LayoutNodeOps` / `LayoutElement` / `UniversalElement` for
+`UikitElem`) were deleted in favour of the core blanket impls for
+`Node<B>`, which forward platform bits to the `IosBackend`
+`LayoutBackend` hooks (`set_hidden` / `set_alpha` / `schedule_relayout`;
+iOS leaves `set_clip` / `set_tool_tip` defaulted). Same shape as cocoa
+and GTK. Full rationale — including why the native view-setters had to
+move onto `LayoutBackend` (orphan rule under newtype elimination) — is in
+`implementation_log.md` (2026-06-01). `cargo check -p leptos_uikit
+--target aarch64-apple-ios-sim` is clean; the counter example builds,
+launches on the simulator, and runs. (The `cfg(target_os = "ios")`
+`leptos_uikit` integration tests were already broken pre-PR-1 — they
+reference the removed `ios_dom` / `Element` API — so they're out of
+scope here.)
+
 ## 2026-05-21 — "Everything teleports to the top-left" fix (port mirror)
 
 After the render-tree refactor, every iOS example rendered all views

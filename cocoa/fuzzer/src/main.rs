@@ -11,7 +11,7 @@ use clap::Parser;
 use leptos_cocoa::dom::{app::init_app, event::{
     handler_store_size_for_test, text_field_store_size_for_test,
     text_view_store_size_for_test,
-}, layout, spawner, window, window::open_window, MainThreadMarker};
+}, layout, spawner, window, window::open_window, CocoaNodeExt, MainThreadMarker};
 use cocoa_fuzzer::{
     chaos::Chaos,
     compare::compare_trees,

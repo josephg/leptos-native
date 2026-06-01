@@ -5,6 +5,57 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-06-01 — PR-1: unify per-port node handle onto `Node<B>` (cocoa + uikit finish; cross-cutting)
+
+Completed the macOS/iOS half of PR-1, which eliminates the three
+byte-identical per-port view-handle newtypes (`CocoaElem` / `GtkElem` /
+`UikitElem`, each `struct XElem { id: NodeId }`) in favour of one generic
+core handle `Node<B>` (`common/leptos_native/src/renderer/node.rs`). GTK +
+core landed earlier (`154d09b7`); this finishes cocoa and uikit, verified
+locally on macOS.
+
+- **`CocoaElem` / `UikitElem` are now `type` aliases** for
+  `Node<CocoaBackend>` / `Node<IosBackend>`. The generic accessor surface
+  (`id`, `view`, `try_view`, `with_style`, `with_style_mut`, `with_tag`,
+  `ptr_eq`, `from_id`) lives once in core. Per-port widget ops moved to
+  **extension traits** `CocoaNodeExt` / `CocoaMakeView` (and
+  `UikitNodeExt` / `UikitMakeView`) — inherent `impl`s on the foreign
+  alias aren't allowed from the port crate, so a local trait carries them
+  (orphan-safe: trait is local, backend type is local). Mirrors GTK's
+  `GtkNodeExt` / `GtkMakeView`.
+
+- **Why the native view-setters now live on `LayoutBackend` (the
+  non-obvious bit — don't move them back).** The element-driver traits
+  `LayoutNodeOps` / `LayoutElement` / `UniversalElement` are foreign and
+  *param-less*, so once `CocoaElem`/`UikitElem` became foreign aliases,
+  a per-port `impl … for XElem` is an orphan violation. They're now
+  **blanket-impl'd in core for `Node<B>`** (`renderer/setters.rs`),
+  forwarding the platform-specific parts to new `LayoutBackend`
+  native-setter hooks (`set_hidden` / `set_clip` / `set_alpha` /
+  `set_tool_tip` / `schedule_relayout`, landed in `2adf4ef0`). So the per-port
+  driver impls were **deleted** (3 cocoa + 3 uikit). The setters reach the
+  view only through `try_view()` — no panic on a post-teardown effect re-fire.
+  cocoa keeps its `DecorationElement<Color>` impl (its local `Color` type
+  param makes it orphan-safe on the alias); uikit never had one.
+
+- **Invariants preserved (untouched):** `NodeData<B>` field order
+  (`handlers` before `view`) in `renderer/scene.rs`; the text-delegate
+  "release `Retained` before `setDelegate(None)`" sequencing in
+  `dom/event.rs::NodeHandlers::drop`; `teardown` stays port-specific in the
+  ext trait (cocoa `removeFromSuperview` → `remove`; uikit similar). The
+  full `leak_lifecycle` suite (the load-bearing `LIVE_*`-atomics-return-to-
+  baseline check) passes through the migrated `teardown` path.
+
+- **Test-harness note (pre-existing, not PR-1):** under plain `cargo test`
+  the `harness = false` cocoa suites run all tests in one process and each
+  body calls `spawner::init().unwrap()`; only the first per binary succeeds,
+  the rest panic `Err(AlreadySet)`. Failure counts are byte-identical on
+  `origin/main` and this branch. nextest can't enumerate the custom
+  harnesses (`--list` runs them). Verified the leak suite green by locally
+  tolerating `AlreadySet` (reverted, not committed).
+
+Cross-linked from `gtk_implementation_log.md` and `implementation_ios.md`.
+
 ## 2026-05-20 — Chrome DevTools Protocol server (cross-cutting; GTK wired first)
 
 Added a Chrome DevTools Protocol (CDP) server so a running app can be

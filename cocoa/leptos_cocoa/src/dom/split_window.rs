@@ -51,7 +51,7 @@
 
 use super::{
     layout,
-    node::CocoaElem,
+    node::{CocoaElem, CocoaNodeExt},
 };
 use objc2::{
     define_class, msg_send,

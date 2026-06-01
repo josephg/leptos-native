@@ -6,6 +6,7 @@
 mod common;
 
 
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{spawner, GtkElem};
 use leptos_gtk::gtk4::prelude::*;
 use reactive_graph::owner::Owner;

@@ -19,7 +19,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use crate::dom::{CocoaElem, KeyEvent};
+use crate::dom::{CocoaElem, CocoaNodeExt, KeyEvent};
 
 /// Marker type for the click event (NSButton target/action).
 pub struct ClickEvent;

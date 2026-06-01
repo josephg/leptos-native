@@ -12,7 +12,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use crate::dom::GtkElem;
+use crate::dom::{GtkElem, GtkNodeExt};
 
 /// Marker type for the click event (Button "clicked" signal).
 pub struct ClickEvent;

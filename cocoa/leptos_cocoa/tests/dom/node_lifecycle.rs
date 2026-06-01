@@ -11,7 +11,7 @@
 
 mod common;
 
-use leptos_cocoa::dom::{event::{handler_store_size_for_test, text_field_store_size_for_test}, layout, window, CocoaElem};
+use leptos_cocoa::dom::{event::{handler_store_size_for_test, text_field_store_size_for_test}, layout, window, CocoaElem, CocoaMakeView, CocoaNodeExt};
 
 // =====================================================================
 // 1. Fresh nodes are in the store from creation
