@@ -21,7 +21,7 @@ use super::node::CocoaElem;
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSControl, NSTextField, NSView};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use send_wrapper::SendWrapper;
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -122,6 +122,47 @@ impl LayoutBackend for CocoaBackend {
 
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
         TREE.with(|t| f(&mut t.borrow_mut()))
+    }
+
+    // Native view setters — forwarded to by the core `Node<B>` driver
+    // blanket impls (orphan rule). Diff-guarded, matching the existing
+    // per-port `LayoutElement`/`UniversalElement` bodies.
+
+    fn set_hidden(view: &Self::View, hidden: bool) {
+        let v: &NSView = view;
+        if v.isHidden() != hidden {
+            v.setHidden(hidden);
+        }
+    }
+
+    fn set_clip(view: &Self::View, clip: bool) {
+        let v: &NSView = view;
+        v.setWantsLayer(true);
+        if let Some(layer) = v.layer() {
+            layer.setMasksToBounds(clip);
+        }
+    }
+
+    fn set_alpha(view: &Self::View, alpha: f64) {
+        let v: &NSView = view;
+        let clamped = alpha.clamp(0.0, 1.0);
+        if (v.alphaValue() - clamped).abs() > f64::EPSILON {
+            v.setAlphaValue(clamped);
+        }
+    }
+
+    fn set_tool_tip(view: &Self::View, tip: &str) {
+        let v: &NSView = view;
+        if tip.is_empty() {
+            v.setToolTip(None);
+        } else {
+            v.setToolTip(Some(&NSString::from_str(tip)));
+        }
+    }
+
+    fn schedule_relayout(id: NodeId) {
+        CocoaBackend::mark_dirty(id);
+        queue_relayout_for(id);
     }
 }
 

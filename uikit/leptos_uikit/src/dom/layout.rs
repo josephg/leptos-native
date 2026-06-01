@@ -83,6 +83,30 @@ impl LayoutBackend for IosBackend {
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R {
         TREE.with(|t| f(&mut t.borrow_mut()))
     }
+
+    // Native view setters — forwarded to by the core `Node<B>` driver
+    // blanket impls (orphan rule). iOS leaves `set_clip` / `set_tool_tip`
+    // defaulted (no inline clip primitive / no tooltips on touch).
+
+    fn set_hidden(view: &Self::View, hidden: bool) {
+        let v: &UIView = view;
+        if v.isHidden() != hidden {
+            v.setHidden(hidden);
+        }
+    }
+
+    fn set_alpha(view: &Self::View, alpha: f64) {
+        let v: &UIView = view;
+        let clamped = alpha.clamp(0.0, 1.0);
+        if (v.alpha() - clamped).abs() > f64::EPSILON {
+            v.setAlpha(clamped);
+        }
+    }
+
+    fn schedule_relayout(id: NodeId) {
+        IosBackend::mark_dirty(id);
+        queue_relayout_for(id);
+    }
 }
 
 pub type NodeContext = leptos_native::renderer::NodeContext<IosBackend>;
