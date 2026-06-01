@@ -95,6 +95,13 @@ use crate::renderer::prelude::Mountable;
 #[cfg(feature = "reactive_graph")]
 pub mod reactive_graph;
 
+/// Two-way binding plumbing: the [`bind::IntoSignal`] trait shared by
+/// every port's `bind:value` / `bind:checked` installers.
+#[cfg(feature = "reactive_graph")]
+pub mod bind;
+#[cfg(feature = "reactive_graph")]
+pub use bind::IntoSignal;
+
 
 /// Implements the instructions necessary to render an interface on some
 /// platform. Each platform supplies its own `Renderer` impl.

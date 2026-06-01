@@ -53,6 +53,39 @@ pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
 }
 
+/// Generate the static-value + closure impls of `IntoMaybeReactive<T>`
+/// for one or more concrete `T`s.
+///
+/// Each port keeps a **port-local** `IntoMaybeReactive` trait (the
+/// orphan rule blocks the blanket closure impl
+/// `impl<F: Fn() -> Local> IntoMaybeReactive<Local> for F` from any
+/// crate that doesn't own the trait), but the macro body is identical
+/// everywhere — so it lives here once. The unqualified `IntoMaybeReactive`
+/// and `MaybeReactive` it references resolve at the **call site**, i.e.
+/// against the port's local trait + its re-exported `MaybeReactive`.
+/// Invoke as `leptos_native::impl_pair!(TypeA, TypeB, …)` (or `use
+/// leptos_native::impl_pair;` first).
+#[macro_export]
+macro_rules! impl_pair {
+    ($($t:ty),* $(,)?) => {
+        $(
+            impl IntoMaybeReactive<$t> for $t {
+                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
+                    MaybeReactive::Static(self)
+                }
+            }
+            impl<F> IntoMaybeReactive<$t> for F
+            where
+                F: Fn() -> $t + Send + 'static,
+            {
+                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
+                    MaybeReactive::Reactive(Box::new(self))
+                }
+            }
+        )*
+    };
+}
+
 /// Drives `apply` whenever the underlying signal(s) change.
 ///
 /// For `Static`, calls `apply(value)` once and returns `None`.

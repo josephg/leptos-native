@@ -21,35 +21,15 @@
 
 pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 use crate::dom::layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent};
+use leptos_native::impl_pair;
 
 /// Conversion trait so attribute setters can take either a bare
 /// value or a `Fn() -> T` closure transparently. Port-local — see
-/// the module docs for why.
+/// the module docs for why. The `impl_pair!` macro that fills it in
+/// comes from core (`leptos_native::impl_pair`); the impls it generates
+/// resolve against this local trait.
 pub trait IntoMaybeReactive<T: 'static> {
     fn into_maybe_reactive(self) -> MaybeReactive<T>;
-}
-
-/// Generate the static + closure impls of [`IntoMaybeReactive<T>`]
-/// for one or more concrete `T`s. See the cocoa equivalent for the
-/// rationale.
-macro_rules! impl_pair {
-    ($($t:ty),* $(,)?) => {
-        $(
-            impl IntoMaybeReactive<$t> for $t {
-                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
-                    MaybeReactive::Static(self)
-                }
-            }
-            impl<F> IntoMaybeReactive<$t> for F
-            where
-                F: Fn() -> $t + Send + 'static,
-            {
-                fn into_maybe_reactive(self) -> MaybeReactive<$t> {
-                    MaybeReactive::Reactive(Box::new(self))
-                }
-            }
-        )*
-    };
 }
 
 impl_pair!(
