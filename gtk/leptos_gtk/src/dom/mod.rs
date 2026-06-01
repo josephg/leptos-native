@@ -43,5 +43,6 @@ pub mod window;
 pub use color::Color;
 pub use main_thread::on_main;
 
-pub use node::GtkElem;
+pub use make_view::GtkMakeView;
+pub use node::{GtkElem, GtkNodeExt};
 pub use renderer::Event;

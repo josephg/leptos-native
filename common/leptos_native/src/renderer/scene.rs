@@ -107,7 +107,41 @@ pub trait LayoutBackend: 'static + Sized {
     /// store. The store is a main-thread-lifetime singleton; ports back
     /// it with a `thread_local!`.
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R;
-    
+
+    // ---------------------------------------------------------------------
+    // Native view setters — the platform-specific view mutations the core
+    // element drivers (`LayoutElement` / `UniversalElement` blanket impls on
+    // `Node<B>`) forward to. They live here, next to `measure_leaf` /
+    // `first_baseline`, because once the per-port newtype is gone those
+    // drivers must be blanket-impl'd in core, and only a method on this
+    // trait can carry the per-port behavior (orphan rule). Same shape as
+    // `measure_leaf`: a static fn over `&Self::View`.
+    //
+    // `set_hidden` / `set_alpha` are required (every UI toolkit has them);
+    // `set_clip` / `set_tool_tip` default to no-op so a port without a clip
+    // primitive or a touch port without tooltips degrades to layout-only /
+    // silent, matching the prior driver-trait defaults.
+
+    /// Toggle the view's visibility (`set_visible(!hidden)` / `isHidden`).
+    fn set_hidden(view: &Self::View, hidden: bool);
+
+    /// Toggle paint-time clipping of overflowing children
+    /// (`Overflow::Hidden` / `masksToBounds` / `clipsToBounds`). No-op
+    /// default: `overflow=Hidden` is layout-only on ports without it.
+    fn set_clip(_view: &Self::View, _clip: bool) {}
+
+    /// Set the view's opacity (0.0..=1.0).
+    fn set_alpha(view: &Self::View, alpha: f64);
+
+    /// Set the view's tooltip; empty string clears. No-op default for
+    /// ports without a tooltip concept (e.g. touch).
+    fn set_tool_tip(_view: &Self::View, _tip: &str) {}
+
+    /// Trigger a native re-measure/relayout for the subtree containing
+    /// `id` (gtk `queue_resize`, cocoa/iOS main-queue dispatch). Required:
+    /// scheduling is genuinely per-port, so there is no sensible default.
+    fn schedule_relayout(id: NodeId);
+
     // *** Utility methods. These methods are implemented in the trait to make them available for
     // downstream consumers. It is not expected that implementers of LayoutBackend override these
     // methods.
@@ -141,6 +175,10 @@ pub trait LayoutBackend: 'static + Sized {
 
     fn insert_child_at_index(parent: NodeId, idx: usize, child: NodeId) {
         Self::with_tree(|s| s.insert_child_at_index(parent, idx, child))
+    }
+
+    fn insert_child_before(parent: NodeId, child: NodeId, marker: Option<NodeId>) {
+        Self::with_tree(|s| s.insert_child_before(parent, child, marker))
     }
 
     fn remove_child(parent: NodeId, child: NodeId) {
@@ -490,6 +528,35 @@ impl<B: LayoutBackend> LayoutState<B> {
                 self.mark_dirty(prev);
             }
         }
+    }
+
+    /// Insert `child` under `parent` immediately before `marker`. If
+    /// `marker` is `None`, or isn't currently a child of `parent`, append.
+    /// Detaches `child` from any previous parent first (one-parent rule,
+    /// like [`Self::add_child`]). The marker index is computed against the
+    /// child list with `child` itself excluded, so reordering a node that's
+    /// already a child of `parent` lands at the right slot.
+    ///
+    /// This is the marker-based counterpart to [`Self::insert_child_at_index`]:
+    /// it lets a port mirror a native insert-before-sibling into Taffy
+    /// **without** reading the realized native child index back. (See the
+    /// insertion canary: whether ports can rely on this instead of the
+    /// native-order readback is exactly what's under test.)
+    pub fn insert_child_before(&mut self, parent: NodeId, child: NodeId, marker: Option<NodeId>) {
+        let idx = self
+            .nodes
+            .get(key(parent))
+            .map(|p| {
+                let others = || p.children.iter().filter(|c| **c != child);
+                match marker {
+                    Some(m) => others()
+                        .position(|c| *c == m)
+                        .unwrap_or_else(|| others().count()),
+                    None => others().count(),
+                }
+            })
+            .unwrap_or(0);
+        self.insert_child_at_index(parent, idx, child);
     }
 
     /// Detach `child` from `parent` (does NOT free it). The node becomes

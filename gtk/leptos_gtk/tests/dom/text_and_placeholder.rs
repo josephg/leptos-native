@@ -6,6 +6,7 @@
 mod common;
 
 use leptos_gtk::{gtk4::prelude::*, dom::GtkElem};
+use leptos_gtk::dom::GtkNodeExt;
 
 fn text_create_basic() {
     let t = GtkElem::create_text("hello");

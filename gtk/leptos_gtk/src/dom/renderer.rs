@@ -9,7 +9,6 @@
 //! setting, hydration tree walking) panic with `unimplemented!()` if
 //! actually called.
 
-use crate::dom::node::GtkElem;
 use send_wrapper::SendWrapper;
 use std::fmt;
 

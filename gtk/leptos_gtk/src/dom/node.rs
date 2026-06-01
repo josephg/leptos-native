@@ -1,121 +1,103 @@
-//! `GtkNode` — a `Copy` handle (just a `NodeId`) into the ambient
-//! thread-local node store.
+//! `GtkElem` — the GTK port's view handle, now a thin alias for the
+//! renderer-agnostic [`Node<GtkBackend>`].
 //!
-//! There is no `Rc`, no `SendWrapper`, no refcount: a `Node` is a bare
-//! generational `NodeId` (`Copy + Send`). The backing `gtk::Widget` and
-//! Taffy style live in the per-thread `LayoutState<GtkBackend>` (see
-//! [`crate::layout`] and `renderer::scene`). Accessors fetch through
-//! the store by id; a stale id resolves to `None`/no-op via the
-//! generational key.
-//!
-//! Lifecycle is explicit: [`GtkElem::teardown`] removes the node and its
-//! structural subtree from the store. Mirrors the cocoa port — see
-//! `cocoa/dom/src/node.rs` for the longer rationale.
-//!
-//! GtkNode is a newtype wrapper around NodeId to add GTK-specific methods.
+//! The handle itself (a `Copy + Send` generational [`NodeId`]) and its
+//! generic accessor surface (`id`, `view`, `with_style`, `with_tag`,
+//! `ptr_eq`, …) live in core (`leptos_native::renderer::node`). This file
+//! supplies the **GTK-specific** widget operations via the [`GtkNodeExt`]
+//! extension trait — inherent methods on `Node<GtkBackend>` aren't possible
+//! from this crate (inherent impls must live in the defining crate), so a
+//! local trait carries them. `impl GtkNodeExt for GtkElem` is orphan-safe:
+//! the trait is local even though `Node` is foreign.
 
 use crate::dom::layout::{GtkBackend, NodeId, Style};
 use crate::dom::taffy_layout::TaffyLayout;
+use crate::dom::{event, layout};
 use gtk4::glib;
 use gtk4::prelude::*;
-use leptos_native::renderer::LayoutBackend;
-use crate::dom::{event, layout};
+use leptos_native::renderer::{LayoutBackend, Node};
 
-/// A handle into the ambient node store — structurally just a
-/// generational [`NodeId`]. `Copy + Send`.
-///
-/// All per-node state (the `gtk::Widget`, Taffy style) lives in
-/// `LayoutState<GtkBackend>`; accessors read through the store keyed
-/// by `id`.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct GtkElem {
-    pub(crate) id: NodeId,
+/// The GTK port's node handle: a [`Node`] tagged with [`GtkBackend`].
+/// Generic methods come from [`Node`]; GTK widget ops from [`GtkNodeExt`].
+pub type GtkElem = Node<GtkBackend>;
+
+/// GTK-specific widget operations on a [`GtkElem`]. Bring this trait into
+/// scope to call `.set_title()`, `.on_click()`, `GtkElem::create_text()`,
+/// etc. (The generic `.id()` / `.view()` / `.with_style()` surface needs no
+/// import — it's inherent on [`Node`].)
+pub trait GtkNodeExt: Copy {
+    fn new_from_widget<W>(widget: W, default_style: Style) -> Self
+    where
+        W: IsA<gtk4::Widget>;
+    fn widget(self) -> gtk4::Widget;
+    fn try_widget(self) -> Option<gtk4::Widget>;
+    fn into_widget(self) -> gtk4::Widget;
+    fn teardown(self);
+    fn create_container() -> Self;
+    fn insert_node(self, child: GtkElem, marker: Option<GtkElem>);
+    fn try_insert_node(self, child: GtkElem, marker: Option<GtkElem>) -> bool;
+    fn remove_child(self, child: GtkElem) -> Option<GtkElem>;
+    fn clear_children(self);
+    fn set_title(self, value: &str);
+    fn set_value(self, value: &str);
+    fn set_placeholder(self, value: &str);
+    fn set_enabled(self, value: bool);
+    fn set_checked(self, value: bool);
+    fn on_click(self, cb: impl FnMut() + 'static);
+    fn on_action(self, cb: impl FnMut() + 'static);
+    fn on_value_change(self, cb: impl FnMut() + Send + 'static);
+    fn on_text_change(self, cb: impl FnMut(String) + 'static);
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static);
+    fn on_text_focus(self, cb: impl FnMut() + 'static);
+    fn on_text_blur(self, cb: impl FnMut() + 'static);
+    fn checked(self) -> bool;
+    fn double_value(self) -> f64;
+    fn set_double_value(self, v: f64);
+    fn set_slider_min(self, v: f64);
+    fn set_slider_max(self, v: f64);
+    fn set_popup_items(self, items: &[String]);
+    fn popup_selection(self) -> u32;
+    fn set_popup_selection(self, idx: u32);
+    fn focus(self) -> bool;
+    fn blur(self) -> bool;
+    fn create_text(content: &str) -> Self;
+    fn set_text(self, content: &str);
+    fn create_placeholder() -> Self;
 }
 
-impl GtkElem {
-    /// Typed registration primitive: hand in a concrete gtk widget,
-    /// get back a `Node`.
-    pub fn new_from_widget<W>(widget: W, default_style: Style) -> Self
+impl GtkNodeExt for GtkElem {
+    /// Typed registration primitive: hand in a concrete gtk widget, get
+    /// back a `Node`.
+    fn new_from_widget<W>(widget: W, default_style: Style) -> Self
     where
         W: IsA<gtk4::Widget>,
     {
         let widget: gtk4::Widget = widget.upcast();
-        let id = GtkBackend::new_leaf(default_style, widget, (), ());
-        GtkElem { id }
+        GtkElem::from_id(GtkBackend::new_leaf(default_style, widget, (), ()))
     }
 
-    /// Wrap an existing store id as a `Node`.
-    pub fn from_id(id: NodeId) -> Self {
-        GtkElem { id }
-    }
-
-    /// The node's `NodeId`.
-    pub fn id(self) -> NodeId {
-        self.id
-    }
-
-    /// Record the element kind for debug tooling (devtools inspector).
-    /// Cheap and harmless in release; set once at construction.
-    pub fn with_tag(self, tag: &'static str) -> Self {
-        GtkBackend::set_debug_tag_name(self.id, tag);
-        self
-    }
-
-    /// The underlying `gtk::Widget` (owned clone — cheap gobject
-    /// refcount bump). Main-thread only. Panics if the node is gone.
-    pub fn widget(self) -> gtk4::Widget {
-        GtkBackend::view(self.id).expect("Node id must exist in the store")
+    /// The underlying `gtk::Widget` (owned clone — cheap gobject refcount
+    /// bump). Main-thread only. Panics if the node is gone.
+    fn widget(self) -> gtk4::Widget {
+        self.view()
     }
 
     /// `Some(widget)` if the node is still in the store, else `None`.
-    ///
     /// Setters resolve their widget through this (not the panicking
-    /// `widget()`) so a reactive effect that fires *after* the node was
-    /// torn down is a graceful no-op rather than a panic. Under the
-    /// `Copy`-`NodeId` model a `RenderEffect` closure captures only the
-    /// id (it pins nothing), so an async-scheduled effect re-run can
-    /// outlive its node.
-    ///
-    /// This is **defense-in-depth, not the primary fix**. The real fix
-    /// is that `ElementState::unmount` drops `_effects` before tearing
-    /// the node down (see `leptos_gtk::gtk::element`), which ends the
-    /// effects' driver futures so they can't re-run on a freed node. We
-    /// keep this guard anyway as a uniform safety net (and because it
-    /// matches the web backend, where setting an attribute on a
-    /// detached-but-alive node is harmless). Trade-off: a future
-    /// regression of the unmount cleanup is swallowed silently here.
-    pub fn try_widget(self) -> Option<gtk4::Widget> {
-        GtkBackend::view(self.id)
+    /// `widget()`) so a reactive effect that fires after teardown is a
+    /// graceful no-op.
+    fn try_widget(self) -> Option<gtk4::Widget> {
+        self.try_view()
     }
 
     /// Get a fresh `gtk4::Widget` clone — same as [`Self::widget`].
-    pub fn into_widget(self) -> gtk4::Widget {
+    fn into_widget(self) -> gtk4::Widget {
         self.widget()
-    }
-
-    // ---- Accessor surface ------------------------------------------
-
-    pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = GtkBackend::style(self.id).unwrap_or_default();
-        f(&style)
-    }
-
-    pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = GtkBackend::style(self.id).unwrap_or_default();
-        let r = f(&mut style);
-        GtkBackend::set_style(self.id, style);
-        r
-    }
-
-    /// Pointer-equality check. Each node owns exactly one widget, so id
-    /// equality is equivalent to underlying-gobject equality.
-    pub fn ptr_eq(self, other: GtkElem) -> bool {
-        self.id == other.id
     }
 
     /// Remove this node (and its structural subtree) from the store and
     /// unparent its widget.
-    pub fn teardown(self) {
+    fn teardown(self) {
         if let Some(w) = self.try_widget() {
             if let Some(parent) = w.parent() {
                 detach_child_widget(&parent, &w);
@@ -125,22 +107,18 @@ impl GtkElem {
     }
 
     /// Generic flexbox container (gtk::Box-backed).
-    pub fn create_container() -> Self {
+    fn create_container() -> Self {
         GtkElem::new_from_widget(container_widget(), Style::default()).with_tag("container")
     }
 
     /// Insert `child` before `marker`; if `marker` is `None`, append.
-    pub fn insert_node(self, child: GtkElem, marker: Option<GtkElem>) {
+    fn insert_node(self, child: GtkElem, marker: Option<GtkElem>) {
         let _ = self.try_insert_node(child, marker);
     }
 
     /// Try to insert `child` before `marker`. Returns `false` if the
     /// parent isn't a supported container, or `marker` isn't its child.
-    pub fn try_insert_node(
-        self,
-        child: GtkElem,
-        marker: Option<GtkElem>,
-    ) -> bool {
+    fn try_insert_node(self, child: GtkElem, marker: Option<GtkElem>) -> bool {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -169,25 +147,21 @@ impl GtkElem {
 
         // Generic container path.
         match child_widget.parent() {
-            Some(p) if p.as_ptr() == parent.as_ptr() => {
-                match marker {
-                    None => {
-                        child_widget.insert_before(parent, None::<&gtk4::Widget>);
-                    }
-                    Some(m) => {
-                        let m_widget = m.widget();
-                        if m_widget.as_ptr() == child_widget.as_ptr() {
-                            return true;
-                        }
-                        if m_widget.parent().map(|p| p.as_ptr())
-                            != Some(parent.as_ptr())
-                        {
-                            return false;
-                        }
-                        child_widget.insert_before(parent, Some(&m_widget));
-                    }
+            Some(p) if p.as_ptr() == parent.as_ptr() => match marker {
+                None => {
+                    child_widget.insert_before(parent, None::<&gtk4::Widget>);
                 }
-            }
+                Some(m) => {
+                    let m_widget = m.widget();
+                    if m_widget.as_ptr() == child_widget.as_ptr() {
+                        return true;
+                    }
+                    if m_widget.parent().map(|p| p.as_ptr()) != Some(parent.as_ptr()) {
+                        return false;
+                    }
+                    child_widget.insert_before(parent, Some(&m_widget));
+                }
+            },
             Some(_) => {
                 child_widget.unparent();
                 attach_under(parent, child_widget, marker);
@@ -205,7 +179,7 @@ impl GtkElem {
     }
 
     /// Remove `child` from this element's child list.
-    pub fn remove_child(self, child: GtkElem) -> Option<GtkElem> {
+    fn remove_child(self, child: GtkElem) -> Option<GtkElem> {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         let child_w = child.widget();
@@ -220,7 +194,7 @@ impl GtkElem {
     }
 
     /// Remove every child.
-    pub fn clear_children(self) {
+    fn clear_children(self) {
         let parent_w = self.widget();
         let parent: &gtk4::Widget = &parent_w;
         if let Some(window) = parent.downcast_ref::<gtk4::ApplicationWindow>() {
@@ -237,7 +211,7 @@ impl GtkElem {
     }
 
     /// Set the title on a button-flavoured widget. No-op otherwise.
-    pub fn set_title(self, value: &str) {
+    fn set_title(self, value: &str) {
         let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(button) = widget.downcast_ref::<gtk4::Button>() {
@@ -262,7 +236,7 @@ impl GtkElem {
     }
 
     /// Set the value/text on an `Entry` / `PasswordEntry` / `Label`.
-    pub fn set_value(self, value: &str) {
+    fn set_value(self, value: &str) {
         let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
@@ -287,7 +261,7 @@ impl GtkElem {
     }
 
     /// Set placeholder text on an `Entry` / `PasswordEntry`.
-    pub fn set_placeholder(self, value: &str) {
+    fn set_placeholder(self, value: &str) {
         let Some(widget) = self.try_widget() else { return; };
         let mut changed = false;
         if let Some(entry) = widget.downcast_ref::<gtk4::Entry>() {
@@ -306,16 +280,8 @@ impl GtkElem {
         }
     }
 
-    /// Toggle widget visibility.
-    pub fn set_hidden(self, value: bool) {
-        let Some(widget) = self.try_widget() else { return; };
-        if widget.is_visible() == value {
-            widget.set_visible(!value);
-        }
-    }
-
     /// Toggle widget sensitivity (gtk's "enabled").
-    pub fn set_enabled(self, value: bool) {
+    fn set_enabled(self, value: bool) {
         let Some(widget) = self.try_widget() else { return; };
         if widget.is_sensitive() != value {
             widget.set_sensitive(value);
@@ -323,7 +289,7 @@ impl GtkElem {
     }
 
     /// Set the on/off state on a `gtk::CheckButton`. No-op otherwise.
-    pub fn set_checked(self, value: bool) {
+    fn set_checked(self, value: bool) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(check) = widget.downcast_ref::<gtk4::CheckButton>() {
             if check.is_active() != value {
@@ -332,17 +298,15 @@ impl GtkElem {
         }
     }
 
-    // ---- event hooks (delegate to crate::event) ----
-
-    pub fn on_click(self, cb: impl FnMut() + 'static) {
+    fn on_click(self, cb: impl FnMut() + 'static) {
         event::on_click(&self.widget(), cb);
     }
 
-    pub fn on_action(self, cb: impl FnMut() + 'static) {
+    fn on_action(self, cb: impl FnMut() + 'static) {
         event::on_action(&self.widget(), cb);
     }
 
-    pub fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
+    fn on_value_change(self, mut cb: impl FnMut() + Send + 'static) {
         let Some(widget) = self.try_widget() else { return; };
         if widget.downcast_ref::<gtk4::Entry>().is_some() {
             event::on_text_change(&widget, move |_| cb());
@@ -355,39 +319,37 @@ impl GtkElem {
         event::on_action(&widget, cb);
     }
 
-    pub fn on_text_change(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_change(self, cb: impl FnMut(String) + 'static) {
         event::on_text_change(&self.widget(), cb);
     }
 
-    pub fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
+    fn on_text_end_editing(self, cb: impl FnMut(String) + 'static) {
         event::on_text_end_editing(&self.widget(), cb);
     }
 
-    pub fn on_text_focus(self, cb: impl FnMut() + 'static) {
+    fn on_text_focus(self, cb: impl FnMut() + 'static) {
         event::on_text_focus(&self.widget(), cb);
     }
 
-    pub fn on_text_blur(self, cb: impl FnMut() + 'static) {
+    fn on_text_blur(self, cb: impl FnMut() + 'static) {
         event::on_text_blur(&self.widget(), cb);
     }
 
-    // ---- value accessors ----
-
-    pub fn checked(self) -> bool {
+    fn checked(self) -> bool {
         self.widget()
             .downcast_ref::<gtk4::CheckButton>()
             .map(|c| c.is_active())
             .unwrap_or(false)
     }
 
-    pub fn double_value(self) -> f64 {
+    fn double_value(self) -> f64 {
         self.widget()
             .downcast_ref::<gtk4::Scale>()
             .map(|s| s.value())
             .unwrap_or(0.0)
     }
 
-    pub fn set_double_value(self, v: f64) {
+    fn set_double_value(self, v: f64) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             if (s.value() - v).abs() > f64::EPSILON {
@@ -396,21 +358,21 @@ impl GtkElem {
         }
     }
 
-    pub fn set_slider_min(self, v: f64) {
+    fn set_slider_min(self, v: f64) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             s.adjustment().set_lower(v);
         }
     }
 
-    pub fn set_slider_max(self, v: f64) {
+    fn set_slider_max(self, v: f64) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(s) = widget.downcast_ref::<gtk4::Scale>() {
             s.adjustment().set_upper(v);
         }
     }
 
-    pub fn set_popup_items(self, items: &[String]) {
+    fn set_popup_items(self, items: &[String]) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
             let model = gtk4::StringList::new(&[]);
@@ -422,14 +384,14 @@ impl GtkElem {
     }
 
     /// Currently-selected index on a `gtk::DropDown` (0 otherwise).
-    pub fn popup_selection(self) -> u32 {
+    fn popup_selection(self) -> u32 {
         self.widget()
             .downcast_ref::<gtk4::DropDown>()
             .map(|dd| dd.selected())
             .unwrap_or(0)
     }
 
-    pub fn set_popup_selection(self, idx: u32) {
+    fn set_popup_selection(self, idx: u32) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(dd) = widget.downcast_ref::<gtk4::DropDown>() {
             if dd.selected() != idx {
@@ -438,33 +400,14 @@ impl GtkElem {
         }
     }
 
-    /// Set this view's opacity (0.0..=1.0).
-    pub fn set_alpha(self, alpha: f64) {
-        let Some(w) = self.try_widget() else { return; };
-        let clamped = alpha.clamp(0.0, 1.0);
-        if (w.opacity() - clamped).abs() > f64::EPSILON {
-            w.set_opacity(clamped);
-        }
-    }
-
-    /// Set this view's tooltip text. Empty string clears it.
-    pub fn set_tool_tip(self, tip: &str) {
-        let Some(w) = self.try_widget() else { return; };
-        if tip.is_empty() {
-            w.set_tooltip_text(None);
-        } else {
-            w.set_tooltip_text(Some(tip));
-        }
-    }
-
     /// Grab focus.
-    pub fn focus(self) -> bool {
+    fn focus(self) -> bool {
         let Some(widget) = self.try_widget() else { return false; };
         widget.grab_focus()
     }
 
     /// Resign focus.
-    pub fn blur(self) -> bool {
+    fn blur(self) -> bool {
         let Some(widget) = self.try_widget() else { return false; };
         if let Some(root) = widget.root() {
             root.set_focus(None::<&gtk4::Widget>);
@@ -474,13 +417,9 @@ impl GtkElem {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // text-label & placeholder constructors
-    // ---------------------------------------------------------------------
-
     /// Build a text-label Node — a `gtk::Label` configured for
     /// left-aligned word-wrap.
-    pub fn create_text(content: &str) -> Self {
+    fn create_text(content: &str) -> Self {
         let label = gtk4::Label::new(Some(content));
         label.set_xalign(0.0);
         label.set_wrap(true);
@@ -491,7 +430,7 @@ impl GtkElem {
     }
 
     /// Update the displayed string on a text-label Node.
-    pub fn set_text(self, content: &str) {
+    fn set_text(self, content: &str) {
         let Some(widget) = self.try_widget() else { return; };
         if let Some(label) = widget.downcast_ref::<gtk4::Label>() {
             if label.label().as_str() != content {
@@ -502,7 +441,7 @@ impl GtkElem {
     }
 
     /// Build a placeholder Node — a hidden, zero-sized `gtk::Label`.
-    pub fn create_placeholder() -> Self {
+    fn create_placeholder() -> Self {
         let widget = gtk4::Label::new(None::<&str>);
         widget.set_visible(false);
 
@@ -553,11 +492,7 @@ fn detach_child_widget(parent: &gtk4::Widget, child: &gtk4::Widget) {
 }
 
 /// Append or insert `child` under `parent`.
-fn attach_under(
-    parent: &gtk4::Widget,
-    child: &gtk4::Widget,
-    marker: Option<GtkElem>,
-) {
+fn attach_under(parent: &gtk4::Widget, child: &gtk4::Widget, marker: Option<GtkElem>) {
     if let Some(box_) = parent.downcast_ref::<gtk4::Box>() {
         match marker {
             None => box_.append(child),
@@ -577,11 +512,7 @@ fn attach_under(
 
 /// Install our [`TaffyLayout`] on `widget` so its layout is driven by
 /// the ambient store. Idempotent.
-pub fn install_taffy_layout_for_container(
-    widget: &gtk4::Widget,
-    node_id: NodeId,
-    is_root: bool,
-) {
+pub fn install_taffy_layout_for_container(widget: &gtk4::Widget, node_id: NodeId, is_root: bool) {
     if widget
         .layout_manager()
         .map(|lm| lm.is::<TaffyLayout>())
@@ -602,4 +533,3 @@ pub fn is_container_widget(widget: &gtk4::Widget) -> bool {
 fn _unused() {
     let _ = glib::value::Value::from(0i32);
 }
-

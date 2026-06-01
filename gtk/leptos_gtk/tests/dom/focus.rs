@@ -7,6 +7,7 @@
 
 use leptos_gtk::gtk::window;
 use leptos_gtk::renderer_gtk::GtkElem;
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 
 mod common;
 

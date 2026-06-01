@@ -17,7 +17,7 @@ use crate::dom::{
         FlexWrap, GridAutoFlow, GridTemplateComponent, JustifyContent,
         JustifyItems, TrackSizingFunction,
     },
-    GtkElem,
+    GtkElem, GtkMakeView, GtkNodeExt,
 };
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;

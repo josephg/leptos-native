@@ -11,6 +11,7 @@
 
 mod common;
 
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{layout, GtkElem, layout::GtkBackend};
 use leptos_native::renderer::LayoutBackend;
 

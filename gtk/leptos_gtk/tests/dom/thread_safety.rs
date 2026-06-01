@@ -7,6 +7,7 @@
 
 #![cfg(feature = "gtk")]
 
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::GtkElem;
 
 mod common;

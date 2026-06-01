@@ -22,6 +22,7 @@
 mod common;
 
 use leptos_native::renderer;
+use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{layout, GtkElem};
 use leptos_native::renderer::attrs::{LayoutAttrs, MaybeReactive, UniversalAttrs};
 
