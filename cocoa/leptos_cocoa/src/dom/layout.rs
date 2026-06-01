@@ -33,7 +33,7 @@ pub use leptos_native::renderer::{
     JustifyItems, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size,
     Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{Layout, LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, Layout, LayoutBackend, LayoutState};
 
 // ---------------------------------------------------------------------
 // Cocoa backend
@@ -163,6 +163,57 @@ impl LayoutBackend for CocoaBackend {
     fn schedule_relayout(id: NodeId) {
         CocoaBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    // Native tree edits. The native parent is `subview_parent()` (the
+    // NSScrollView documentView for `<scroll_view>`), while core mirrors
+    // the edge into Taffy under `parent` itself. Marker-based: no native
+    // subview-index readback (which also drops the debug-overlay skip the
+    // old index walk needed).
+
+    fn attach_native(parent: NodeId, child: NodeId, before: Option<NodeId>) -> AttachOutcome {
+        use super::node::splice_subview_before;
+        let p = CocoaElem::from_id(parent);
+        let c = CocoaElem::from_id(child);
+        let parent_retained = p.subview_parent();
+        let parent_ref: &NSView = &parent_retained;
+        let child_view = c.ns_view();
+        match before.map(CocoaElem::from_id) {
+            None => parent_ref.addSubview(&child_view),
+            Some(m) => {
+                let marker_view = m.ns_view();
+                splice_subview_before(parent_ref, &child_view, &marker_view);
+            }
+        }
+        AttachOutcome::Mirror
+    }
+
+    fn detach_native(parent: NodeId, child: NodeId) -> bool {
+        let p = CocoaElem::from_id(parent);
+        let c = CocoaElem::from_id(child);
+        let parent_retained = p.subview_parent();
+        let parent_ptr: *const NSView = &*parent_retained;
+        let child_view = c.ns_view();
+        let same_parent = unsafe { child_view.superview() }
+            .map(|sv| {
+                let sv_ptr: *const NSView = &*sv;
+                sv_ptr == parent_ptr
+            })
+            .unwrap_or(false);
+        if !same_parent {
+            return false;
+        }
+        child_view.removeFromSuperview();
+        true
+    }
+
+    fn clear_native_children(parent: NodeId) {
+        let p = CocoaElem::from_id(parent);
+        let parent_retained = p.subview_parent();
+        let parent_ref: &NSView = &parent_retained;
+        for sv in parent_ref.subviews().iter() {
+            sv.removeFromSuperview();
+        }
     }
 }
 

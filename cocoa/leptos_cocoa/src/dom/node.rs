@@ -76,9 +76,6 @@ pub trait CocoaNodeExt: Copy {
     fn create_container() -> Self;
     fn create_container_with(mtm: MainThreadMarker) -> Self;
     fn subview_parent(self) -> Retained<NSView>;
-    fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>);
-    fn remove_child(self, child: CocoaElem) -> Option<CocoaElem>;
-    fn clear_children(self);
     fn set_title(self, value: &str);
     fn set_value(self, value: &str);
     fn set_placeholder(self, value: &str);
@@ -311,74 +308,6 @@ impl CocoaNodeExt for CocoaElem {
             }
         }
         direct
-    }
-
-    /// Insert `child` before `marker` in this element's child list.
-    /// If `marker` is `None`, append.
-    fn insert_node(self, child: CocoaElem, marker: Option<CocoaElem>) {
-        let parent_retained = self.subview_parent();
-        let parent: &NSView = &parent_retained;
-        let child_view = child.ns_view();
-
-        match marker {
-            None => {
-                parent.addSubview(&child_view);
-                layout::attach_child(self, child);
-            }
-            Some(marker) => {
-                let marker_view = marker.ns_view();
-                splice_subview_before(parent, &child_view, &marker_view);
-                let subviews = parent.subviews();
-                let child_ptr: *const NSView = &*child_view;
-                let mut child_index = 0_usize;
-                for sv in subviews.iter() {
-                    let sv_ptr: *const NSView = &*sv;
-                    if sv_ptr == child_ptr {
-                        break;
-                    }
-                    #[cfg(feature = "debug-overlay")]
-                    {
-                        if sv.tag() == super::debug_overlay::OVERLAY_TAG {
-                            continue;
-                        }
-                    }
-                    child_index += 1;
-                }
-                layout::insert_child_at(self, child, child_index);
-            }
-        }
-    }
-
-    /// Remove `child` from this element. Returns the node back if it was
-    /// actually our child, otherwise `None`.
-    fn remove_child(self, child: CocoaElem) -> Option<CocoaElem> {
-        let parent_retained = self.subview_parent();
-        let parent_ptr: *const NSView = &*parent_retained;
-        let child_view = child.ns_view();
-        let child_super = unsafe { child_view.superview() };
-        let same_parent = match child_super {
-            Some(sv) => {
-                let sv_ptr: *const NSView = &*sv;
-                sv_ptr == parent_ptr
-            }
-            None => false,
-        };
-        if !same_parent {
-            return None;
-        }
-        child_view.removeFromSuperview();
-        layout::detach_child(self, child);
-        Some(child)
-    }
-
-    /// Remove every child (NSView level only).
-    fn clear_children(self) {
-        let parent_retained = self.subview_parent();
-        let parent: &NSView = &parent_retained;
-        let subs = parent.subviews();
-        for sv in subs.iter() {
-            sv.removeFromSuperview();
-        }
     }
 
     /// Set the title on an NSButton. No-op on other view classes.
@@ -1393,7 +1322,7 @@ pub(crate) fn sf_symbol_image(
 }
 
 /// Insert `child` immediately before `marker` in `parent`'s subview array.
-fn splice_subview_before(parent: &NSView, child: &NSView, marker: &NSView) {
+pub(crate) fn splice_subview_before(parent: &NSView, child: &NSView, marker: &NSView) {
     parent.addSubview_positioned_relativeTo(
         child,
         NSWindowOrderingMode::Below,

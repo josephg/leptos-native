@@ -80,9 +80,6 @@ pub trait UikitNodeExt: Copy {
     fn create_container() -> Self;
     fn create_container_with(mtm: MainThreadMarker) -> Self;
     fn subview_parent(self) -> Retained<UIView>;
-    fn insert_node(self, child: UikitElem, marker: Option<UikitElem>);
-    fn remove_child(self, child: UikitElem) -> Option<UikitElem>;
-    fn clear_children(self);
     fn set_title(self, value: &str);
     fn set_value(self, value: &str);
     fn set_placeholder(self, value: &str);
@@ -298,67 +295,6 @@ impl UikitNodeExt for UikitElem {
             }
         }
         direct
-    }
-
-    fn insert_node(self, child: UikitElem, marker: Option<UikitElem>) {
-        let parent_retained = self.subview_parent();
-        let parent: &UIView = &parent_retained;
-        let child_view = child.ui_view();
-
-        match marker {
-            None => {
-                parent.addSubview(&child_view);
-                layout::attach_child(self, child);
-            }
-            Some(marker) => {
-                let marker_view = marker.ui_view();
-                parent.insertSubview_belowSubview(&child_view, &marker_view);
-                let subviews = parent.subviews();
-                let child_ptr: *const UIView = &*child_view;
-                let mut child_index = subviews.len();
-                for (i, sv) in subviews.iter().enumerate() {
-                    let sv_ptr: *const UIView = &*sv;
-                    if sv_ptr == child_ptr {
-                        child_index = i;
-                        break;
-                    }
-                }
-                layout::insert_child_at(
-                    self,
-                    child,
-                    child_index,
-                );
-            }
-        }
-    }
-
-    fn remove_child(self, child: UikitElem) -> Option<UikitElem> {
-        let parent_retained = self.subview_parent();
-        let parent_ptr: *const UIView = &*parent_retained;
-        let child_view = child.ui_view();
-        let child_super = child_view.superview();
-        let same_parent = match child_super {
-            Some(sv) => {
-                let sv_ptr: *const UIView = &*sv;
-                sv_ptr == parent_ptr
-            }
-            None => false,
-        };
-        if !same_parent {
-            return None;
-        }
-        child_view.removeFromSuperview();
-        layout::detach_child(self, child);
-        Some(child)
-    }
-
-    fn clear_children(self) {
-        let parent_retained = self.subview_parent();
-        let parent: &UIView = &parent_retained;
-        let subs = parent.subviews();
-        for sv in subs.iter() {
-            sv.removeFromSuperview();
-        }
     }
 
     /// Set the title on a UIButton (Normal state) or the text on a

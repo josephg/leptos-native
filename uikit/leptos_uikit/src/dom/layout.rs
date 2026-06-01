@@ -25,7 +25,7 @@ pub use leptos_native::renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, LayoutBackend, LayoutState};
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
@@ -106,6 +106,56 @@ impl LayoutBackend for IosBackend {
     fn schedule_relayout(id: NodeId) {
         IosBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    // Native tree edits. Native parent is `subview_parent()` (the
+    // UIScrollView's content view for `<scroll_view>`); core mirrors the
+    // edge into Taffy under `parent`. Marker-based — no subview-index
+    // readback.
+
+    fn attach_native(parent: NodeId, child: NodeId, before: Option<NodeId>) -> AttachOutcome {
+        let p = UikitElem::from_id(parent);
+        let c = UikitElem::from_id(child);
+        let parent_retained = p.subview_parent();
+        let parent_ref: &UIView = &parent_retained;
+        let child_view = c.ui_view();
+        match before.map(UikitElem::from_id) {
+            None => parent_ref.addSubview(&child_view),
+            Some(m) => {
+                let marker_view = m.ui_view();
+                parent_ref.insertSubview_belowSubview(&child_view, &marker_view);
+            }
+        }
+        AttachOutcome::Mirror
+    }
+
+    fn detach_native(parent: NodeId, child: NodeId) -> bool {
+        let p = UikitElem::from_id(parent);
+        let c = UikitElem::from_id(child);
+        let parent_retained = p.subview_parent();
+        let parent_ptr: *const UIView = &*parent_retained;
+        let child_view = c.ui_view();
+        let same_parent = child_view
+            .superview()
+            .map(|sv| {
+                let sv_ptr: *const UIView = &*sv;
+                sv_ptr == parent_ptr
+            })
+            .unwrap_or(false);
+        if !same_parent {
+            return false;
+        }
+        child_view.removeFromSuperview();
+        true
+    }
+
+    fn clear_native_children(parent: NodeId) {
+        let p = UikitElem::from_id(parent);
+        let parent_retained = p.subview_parent();
+        let parent_ref: &UIView = &parent_retained;
+        for sv in parent_ref.subviews().iter() {
+            sv.removeFromSuperview();
+        }
     }
 }
 
