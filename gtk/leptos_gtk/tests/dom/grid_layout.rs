@@ -11,7 +11,7 @@
 mod common;
 
 use leptos_native::renderer;
-use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
+use leptos_gtk::dom::GtkMakeView;
 use leptos_gtk::dom::{layout::{self, GtkBackend}, GtkElem};
 use leptos_native::renderer::{auto, fr, length, GridAutoFlow, Backend};
 use leptos_native::renderer::attrs::GridLine;

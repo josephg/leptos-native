@@ -82,6 +82,7 @@ use taffy::{
 /// **Drop ordering**: when the store drops a node, the `handlers` field
 /// drops BEFORE the `view` field so port-specific `Handlers` `Drop` impls
 /// can nil `setTarget`/`setDelegate` on the still-live view.
+///
 /// Result of [`Backend::attach_native`]: how core should mirror a
 /// just-performed native child-attach into the Taffy tree.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

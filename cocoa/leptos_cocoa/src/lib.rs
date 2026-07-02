@@ -99,10 +99,9 @@ pub mod reactive_graph {
     pub use leptos_native::renderer::reactive_graph::*;
 }
 
-/// Cocoa-specialized [`IntoView`](leptos_native::IntoView). Pinning R to
-/// [`CocoaBackend`] lets user code write `impl IntoView` (the type parameter
-/// is resolved at the trait boundary) without sprinkling `<Dom>` —
-/// or worse, `<R: Renderer>` — through every component signature.
+/// Cocoa-specialized [`IntoView`](leptos_native::IntoView). Pinning the
+/// backend to [`CocoaBackend`] lets user code write `impl IntoView`
+/// without sprinkling `<B: Backend>` through every component signature.
 pub trait IntoView: leptos_native::IntoView<CocoaBackend> {}
 impl<T: leptos_native::IntoView<CocoaBackend>> IntoView for T {}
 

@@ -35,7 +35,6 @@ pub mod main_thread;
 mod make_view;
 pub mod menu;
 pub mod node;
-pub mod renderer;
 pub mod spawner;
 pub mod taffy_layout;
 pub mod window;
@@ -45,4 +44,4 @@ pub use main_thread::on_main;
 
 pub use make_view::GtkMakeView;
 pub use node::{GtkElem, GtkNodeExt};
-pub use renderer::Event;
+pub use event::Event;

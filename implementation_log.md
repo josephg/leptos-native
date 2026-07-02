@@ -5,6 +5,61 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-07-03 — Backend unification: one per-port trait, no more Renderer / driver traits (cross-cutting)
+
+Collapsed the renderer abstraction stack down to a single per-port trait.
+Three commits (`cleanup/backend-unification`):
+
+1. **`Renderer` is gone; `LayoutBackend` is renamed `Backend` and is now
+   THE port trait.** The old `Renderer` trait + per-port `CocoaDom` /
+   `GtkDom` / `UikitDom` marker structs were a pure forwarding layer —
+   every method delegated to `Node<B>` or `LayoutBackend`, and the three
+   `renderer_*.rs` files were byte-near-identical. The genuinely per-port
+   operations the view core needs moved onto `Backend` as hooks:
+   `create_text_node`, `create_placeholder`, `set_text`, and
+   `remove_from_native_parent`. `Mountable<B> for Node<B>` is one blanket
+   impl in core (mount = `insert_node`, unmount = `Node::remove`, which
+   replaces per-port `teardown` + `drop_node`). All generic view code is
+   bounded `B: Backend`; the old `R::Node` associated type is just
+   `Node<B>`. `Backend` requires `Send + Sync` of the *marker type* (all
+   ports use fieldless unit structs) because view-state structs embed
+   `PhantomData<B>`.
+
+2. **The element-driver traits are gone.** `LayoutNodeOps`,
+   `LayoutElement`, `UniversalElement`, and `DecorationElement<C>` each
+   had exactly one implementor — the blanket impl for `Node<B>` (relics
+   of the pre-PR-1 newtypes). The generic style setters (`set_padding`,
+   …) are now free functions over `Node<B>`; `apply_layout` /
+   `apply_universal` / `apply_decoration` take `Node<B>` and route visual
+   side effects through `Backend` hooks via `try_view()` (fixing a latent
+   panic: cocoa's `DecorationElement` impl used the panicking
+   `ns_view()` inside reactive effects). Decoration became `Backend`
+   surface: `type Color` + four defaulted no-op hooks; cocoa overrides
+   them with the CALayer bodies (animation-aware), GTK/uikit only declare
+   their `Color` type. A port that can't decorate should keep NOT
+   exposing the `WithDecoration` builder methods (compile-error /
+   GTK-style warn) — the no-op hook defaults are for unreachable paths,
+   not silent degradation.
+
+3. **Style/meta mutation is in-place.** `Node::with_style{,_mut}` /
+   `with_meta{,_mut}` now borrow directly into the store slot
+   (`LayoutState::update_style` / `update_meta` / `style_ref` /
+   `meta_ref`) instead of clone → mutate → write-back (Taffy `Style`
+   carries four grid-template `Vec`s; every reactive layout effect paid
+   that). **Constraint this introduces:** the closures run inside the
+   thread-local store borrow — they must NOT re-enter the store (no
+   calling other Node methods inside). All existing callers are pure
+   field reads/writes. `collect_subtree` and the remove cascade also
+   stopped cloning child vectors.
+
+Net: `Backend` is the one trait a port implements (views, measure,
+native tree edits, native setters, scheduling, node construction), plus
+the port's ext traits (`CocoaNodeExt` etc.) for its own widget surface.
+`Event` moved from the vestigial `dom/renderer.rs` stub modules into each
+port's `dom/event.rs`.
+
+---
+
 ## 2026-06-01 — PR-1: unify per-port node handle onto `Node<B>` (cocoa + uikit finish; cross-cutting)
 
 Completed the macOS/iOS half of PR-1, which eliminates the three

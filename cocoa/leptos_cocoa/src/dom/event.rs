@@ -1018,3 +1018,45 @@ pub fn on_hover(
     });
 }
 
+// ---------------------------------------------------------------------
+// Event — the payload delivered to `on:` handlers (moved here from the
+// old `dom/renderer.rs` stub module).
+// ---------------------------------------------------------------------
+
+use objc2_app_kit::NSEvent;
+use std::fmt;
+
+/// An AppKit event delivered to a handler. Currently a placeholder
+/// wrapper around an `NSEvent`; will be fleshed out in Stage 3 alongside
+/// the event-dispatch wiring.
+#[derive(Clone)]
+pub struct Event {
+    inner: Option<SendWrapper<Retained<NSEvent>>>,
+}
+
+impl Event {
+    pub fn new(ev: Retained<NSEvent>) -> Self {
+        Event {
+            inner: Some(SendWrapper::new(ev)),
+        }
+    }
+
+    /// A synthetic event with no payload — used for synthesized
+    /// notifications (e.g. button target/action that doesn't carry a
+    /// real NSEvent).
+    pub fn synthetic() -> Self {
+        Event { inner: None }
+    }
+
+    pub fn ns_event(&self) -> Option<&NSEvent> {
+        self.inner.as_deref().map(|r| &**r)
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Event")
+            .field("has_ns_event", &self.inner.is_some())
+            .finish()
+    }
+}

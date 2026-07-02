@@ -165,3 +165,42 @@ pub fn on_text_blur(widget: &gtk4::Widget, cb: impl FnMut() + 'static) {
     });
     widget.add_controller(controller);
 }
+
+// ---------------------------------------------------------------------
+// Event — the payload delivered to `on:` handlers (moved here from the
+// old `dom/renderer.rs` stub module).
+// ---------------------------------------------------------------------
+
+use send_wrapper::SendWrapper;
+use std::fmt;
+
+/// A GTK event delivered to a handler. Currently a placeholder
+/// wrapper around an optional `gdk::Event`.
+#[derive(Clone)]
+pub struct Event {
+    inner: Option<SendWrapper<gtk4::gdk::Event>>,
+}
+
+impl Event {
+    pub fn new(ev: gtk4::gdk::Event) -> Self {
+        Event {
+            inner: Some(SendWrapper::new(ev)),
+        }
+    }
+
+    pub fn synthetic() -> Self {
+        Event { inner: None }
+    }
+
+    pub fn gdk_event(&self) -> Option<&gtk4::gdk::Event> {
+        self.inner.as_deref()
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Event")
+            .field("has_gdk_event", &self.inner.is_some())
+            .finish()
+    }
+}

@@ -561,3 +561,42 @@ pub fn on_text_view_change(
     let handlers = ensure_text_view_entry(node);
     handlers.borrow_mut().on_change.push(Box::new(cb));
 }
+
+// ---------------------------------------------------------------------
+// Event — the payload delivered to `on:` handlers (moved here from the
+// old `dom/renderer.rs` stub module).
+// ---------------------------------------------------------------------
+
+use objc2_ui_kit::UIEvent;
+use std::fmt;
+
+/// A UIKit event delivered to a handler. Currently a placeholder
+/// wrapper around a `UIEvent`.
+#[derive(Clone)]
+pub struct Event {
+    inner: Option<SendWrapper<Retained<UIEvent>>>,
+}
+
+impl Event {
+    pub fn new(ev: Retained<UIEvent>) -> Self {
+        Event {
+            inner: Some(SendWrapper::new(ev)),
+        }
+    }
+
+    pub fn synthetic() -> Self {
+        Event { inner: None }
+    }
+
+    pub fn ui_event(&self) -> Option<&UIEvent> {
+        self.inner.as_deref().map(|r| &**r)
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Event")
+            .field("has_ui_event", &self.inner.is_some())
+            .finish()
+    }
+}

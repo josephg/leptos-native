@@ -14,9 +14,9 @@
 //! …), the `dispatch2`-backed spawner, `set_interval` / `local_storage`
 //! analogues, and the `Color` / `Date` / `KeyEvent` value types.
 //!
-//! `leptos_cocoa::Dom` is the [`renderer::Renderer`] impl that drives
-//! this façade from a Render tree; this crate itself doesn't know
-//! about Render or any of the upper abstractions.
+//! [`CocoaBackend`](layout::CocoaBackend) is the [`renderer::Backend`] impl
+//! that drives this façade from a Render tree; this module itself
+//! doesn't know about Render or any of the upper abstractions.
 //!
 //! # Threading
 //!
@@ -42,7 +42,6 @@ mod make_view;
 pub mod menu;
 pub mod node;
 pub mod objc_enums;
-pub mod renderer;
 pub mod spawner;
 pub mod split_window;
 pub mod storage;
@@ -60,7 +59,7 @@ pub use key_event::KeyEvent;
 pub use make_view::CocoaMakeView;
 pub use node::{CocoaElem, CocoaNodeExt};
 pub use storage::{local_storage, Storage, StorageError};
-pub use renderer::Event;
+pub use event::Event;
 
 // Re-export the most common objc2 / objc2_app_kit types so
 // downstream crates don't have to take a direct objc2 dependency

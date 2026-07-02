@@ -4,6 +4,18 @@ A running record of design decisions made during the Linux/GTK port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
+## 2026-07-03 — Backend unification (cross-cutting; see macOS log)
+
+The `Renderer` trait + `Dom` marker structs and the element-driver traits
+(`LayoutNodeOps` / `LayoutElement` / `UniversalElement` /
+`DecorationElement`) were deleted; `LayoutBackend` is renamed `Backend`
+and is the single per-port trait (it also gained `create_text_node`,
+`create_placeholder`, `set_text`, `remove_from_native_parent`, `type
+Color` + decoration hooks). `teardown()`/`drop_node` are replaced by core
+`Node::remove()`. Style/meta mutation is now in-place — style closures
+must not re-enter the node store. Full rationale in
+`implementation_log.md` (2026-07-03).
+
 ## 2026-06-01 — PR-1 cocoa+uikit finish (cross-cutting; see macOS log)
 
 The cocoa/uikit half of PR-1 (unify per-port `*Elem` newtypes onto the

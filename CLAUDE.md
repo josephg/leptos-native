@@ -81,7 +81,8 @@ common/                          # renderer-agnostic shared crates
       renderer/                  #   the `renderer` module — Render / Mountable /
                                  #     AddAnyAttr core + shared LayoutAttrs /
                                  #     UniversalAttrs / TextAttrs + Taffy
-                                 #     LayoutTree<B> + setters/apply_layout.
+                                 #     LayoutState<B> store + the per-port
+                                 #     `Backend` trait + setters/apply_layout.
                                  #     (Formerly the standalone `tachys` /
                                  #     `common/renderer` crate; inlined as a
                                  #     module so IntoMaybeReactive impls for
@@ -108,19 +109,18 @@ gtk/                             # Linux / GTK4 port — same shape as cocoa/
   examples/<name>/
 
 uikit/                           # iOS / UIKit port — same shape as cocoa/
-  dom/                           # UIView/UIButton/... façade — still the
-                                 #   standalone `ios_dom` crate (NOT yet
-                                 #   inlined like cocoa/gtk)
   leptos_uikit/
+    src/dom/                     #   — UIView/UIButton/... façade (was the
+                                 #     standalone `ios_dom` crate; now the
+                                 #     `dom` module of this crate)
   examples/<name>/               # NOT workspace members — iOS sim only
 
 apple_shared/                    # bits shared between cocoa & uikit
 ```
 
-The per-port `dom` façades for cocoa and gtk used to be separate
-crates (`cocoa_dom`, `gtk_dom`); they've been **inlined as the `dom`
-module** of `leptos_cocoa` / `leptos_gtk`. The iOS façade (`ios_dom`)
-is still its own crate at `uikit/dom/`.
+The per-port `dom` façades used to be separate crates (`cocoa_dom`,
+`gtk_dom`, `ios_dom`); each is now **inlined as the `dom` module** of
+its port crate (`leptos_cocoa` / `leptos_gtk` / `leptos_uikit`).
 
 Each example pulls in **exactly one** of `leptos_cocoa` /
 `leptos_gtk` / `leptos_uikit` under the alias `leptos = { package =
@@ -132,8 +132,8 @@ shared `leptos` crate that switches backends via feature flag.
 
 Each port iterates via "build an example and click around." Unit
 tests live with each port crate (`cocoa/leptos_cocoa/tests/`,
-`gtk/leptos_gtk/tests/` — including `tests/dom/` for the inlined
-façade — and `uikit/dom/tests/`); see `tests_<port>.md`.
+`gtk/leptos_gtk/tests/`, `uikit/leptos_uikit/tests/` — including
+`tests/dom/` for the inlined façades); see `tests_<port>.md`.
 
 ### macOS / Cocoa
 
@@ -197,9 +197,8 @@ cd uikit/examples/counter && ./run_ios.sh -t 3
 # Or call the shared script directly from anywhere:
 uikit/tools/run_ios.sh uikit/examples/counter -t 3
 
-# Just typecheck the iOS-target build (uikit/leptos_uikit and
-# uikit/dom are top-level workspace members):
-cargo check -p ios_dom --target aarch64-apple-ios-sim
+# Just typecheck the iOS-target build (leptos_uikit is a top-level
+# workspace member; the dom façade is now a module of it):
 cargo check -p leptos_uikit --target aarch64-apple-ios-sim
 
 # Build the iOS examples (from inside the inner workspace, the
@@ -242,29 +241,32 @@ there's no distinct wrapper type for them — the per-port renderer
 wrapper aliases `type Text = Element` / `type Placeholder = Element`.
 Owns:
 
-- **Layout** (`dom/layout.rs`): the storage tree itself lives in
-  the `renderer` module (`LayoutTree<CocoaBackend>`); this file
-  plugs cocoa-specific types into it via `CocoaBackend`
-  (`measure_leaf` reads `intrinsicContentSize`, `first_baseline`
-  reads `firstBaselineOffsetFromTop`, plus a scroll-view second-pass
-  hook). Each window has its own tree; every `Node` is a thin
-  handle (`Rc<NodeInner { tree, id, view, is_borrowed }>`)
-  pointing into the arena. Layout recompute is **manual** — AppKit
-  doesn't auto-reflow, so `set_attribute` / `set_text` /
-  `attach_child` / etc. each call `schedule_relayout`, which dedupes
-  via the per-tree `relayout_queued: Cell<bool>` flag and dispatches
-  one `compute_layout` pass per main-loop tick. **Always
-  `tree.mark_dirty(node_id)` when content changes** (otherwise
-  Taffy's measure cache is stale).
+- **Layout** (`dom/layout.rs`): the node store lives in the
+  `renderer` module (a thread-local `LayoutState<CocoaBackend>`
+  slotmap reached via `Backend::with_tree`); this file implements
+  `Backend` for `CocoaBackend` (`measure_leaf` reads
+  `intrinsicContentSize`, `first_baseline` reads
+  `firstBaselineOffsetFromTop`, native attach/detach, the native
+  view setters, plus a scroll-view second-pass hook). A node handle
+  (`CocoaElem = Node<CocoaBackend>`) is a bare `Copy` generational
+  id — stale ids no-op. Freeing is explicit via `node.remove()`
+  (cascades through the structural subtree). Layout recompute is
+  **manual** — AppKit doesn't auto-reflow, so every mutation calls
+  `schedule_relayout`, which dedupes via the store's
+  `relayout_queued: Cell<bool>` flag and dispatches one
+  `compute_layout` pass per main-loop tick. **Always
+  `mark_dirty(node_id)` when content changes** (otherwise Taffy's
+  measure cache is stale).
 - **Events** (`dom/event.rs`): NSButton uses `ActionTarget`
   (target/action). NSTextField uses a single `TextFieldDelegate`
   that fans out to `Vec<Box<dyn FnMut(String)>>` for both
   `controlTextDidChange:` (input) and `controlTextDidEndEditing:`
   (change). Each per-view delegate retain lives in the arena's
-  `NodeData::handlers` slot (`NodeHandlers` struct); deterministic
-  cleanup when the last `Node` clone drops via
-  `tree.decref(id)` → arena removes the entry → `NodeHandlers::Drop`
-  nils setTarget/setDelegate and releases the retains.
+  `NodeData::handlers` slot (`NodeHandlers` struct); cleanup is
+  explicit — `node.remove()` deletes the store entry, and
+  `NodeData` field order drops `handlers` before `view`, so
+  `NodeHandlers::Drop` nils setTarget/setDelegate on the still-live
+  view and releases the retains.
 - **Spawner** (`dom/spawner.rs`): `any_spawner::CustomExecutor`
   backed by `DispatchQueue::main()`. Pin soundness: don't add an
   outer `Pin` — the inner `Pin<Box<dyn Future>>` already has a
@@ -350,7 +352,7 @@ Same shape as cocoa's `dom` module (formerly the standalone
 - `node.rs` + `make_view.rs` — typed per-control constructors
   (`Node::create_button`, `create_label`, `create_vstack`, ...). Each
   builder calls one constructor; no tag-string dispatch.
-- `layout.rs` — same `LayoutBackend` plug-in pattern as cocoa.
+- `layout.rs` — same `Backend` plug-in pattern as cocoa.
   Plus `taffy_layout.rs` which exposes Taffy as a custom
   `gtk::LayoutManager`, installed per container at mount time.
 - `event.rs` — `on_click` calls `gtk::Button::connect_clicked`;
@@ -388,19 +390,19 @@ Same role as `element_macos.rs` etc. on cocoa.
 
 Mirrors the macOS layering one-for-one. The Taffy bridge is
 identical (UIView's intrinsic-size measurement closure +
-per-scene `LayoutTree<IosBackend>`), and the target/action
+per-thread `LayoutState<IosBackend>` store), and the target/action
 handler-store pattern from cocoa carries over directly (UIControl
 is structurally NSControl). The big shape changes are at the
 window/scene boundary: there's no NSWindow / NSApplicationDelegate
 run-loop you can drive yourself — UIApplicationMain owns the loop
 — and there's no menu bar.
 
-### `uikit/dom/` — DOM-shaped façade over UIKit (crate `ios_dom`)
+### `uikit/leptos_uikit/src/dom/` — DOM-shaped façade over UIKit (the `dom` module)
 
-- **Layout** (`src/layout.rs`): same `LayoutBackend` plug-in pattern,
+- **Layout** (`dom/layout.rs`): same `Backend` plug-in pattern,
   same manual-relayout discipline as cocoa. Always
   `tree.mark_dirty(node_id)` when content changes.
-- **Events** (`src/event.rs`): `ActionTarget` ObjC class wraps a
+- **Events** (`dom/event.rs`): `ActionTarget` ObjC class wraps a
   Rust closure; `on_control_action` chooses the right
   `UIControlEvents` mask based on the concrete control
   (TouchUpInside for UIButton, ValueChanged for UISwitch/UISlider/
@@ -409,9 +411,9 @@ run-loop you can drive yourself — UIApplicationMain owns the loop
   `HANDLER_STORE` keyed by view pointer (entries currently leak;
   same as cocoa). UITextView uses a `UITextViewDelegate` because
   UITextView isn't a UIControl.
-- **Spawner** (`src/spawner.rs`): `any_spawner::CustomExecutor`
+- **Spawner** (`dom/spawner.rs`): `any_spawner::CustomExecutor`
   over `dispatch2::DispatchQueue::main()`. Identical to cocoa.
-- **App + RootViewController** (`src/app.rs`): `AppDelegate`
+- **App + RootViewController** (`dom/app.rs`): `AppDelegate`
   creates the UIWindow on
   `application:didFinishLaunchingWithOptions:`,
   `RootViewController` overrides `viewDidLayoutSubviews` to re-run
@@ -426,7 +428,7 @@ run-loop you can drive yourself — UIApplicationMain owns the loop
   string. The mangled name is what objc2's `define_class!` actually
   registers.
 
-### `uikit/leptos_uikit/src/ios/` — bridges `ios_dom` to renderer's `Render`/`Mountable` traits
+### `uikit/leptos_uikit/src/ios/` — bridges the `dom` module to renderer's `Render`/`Mountable` traits
 
 Same shape as `cocoa/leptos_cocoa/src/cocoa/`. `element.rs` defines
 the builders; `bind.rs` defines `IntoSignal` / `BindAttribute<Key,
@@ -477,20 +479,22 @@ The shared core lives in the `renderer` **module** of `leptos_native`
 `use leptos_native::renderer` (or the `renderer::*` re-exports their
 preludes set up).
 
-- **`renderer` module** — `LayoutTree<B>` is a generic Taffy
-  storage tree owning per-node
-  style/cache/layout/parent/children/handlers/view/meta plus a
-  refcount. Each port implements `LayoutBackend` to supply its
-  platform view type plus three operations (measure a leaf, query
-  baseline, apply a frame). Allocation comes via `tree.new_leaf`
-  (refcount=1 — the caller's `Node` handle) or `tree.new_internal_leaf`
-  (refcount=0 — for entries no `Node` owns, kept alive solely by
-  their parent edge; e.g. cocoa's scroll-view documentView wrapper).
-  Removal is via `tree.remove(id)` (eager) or implicit through
-  `tree.decref(id)` when refcount→0 AND parent==None.
-  `tree.remove` transitively GCs any orphaned children whose
-  refcount=0, so internal entries clean up automatically when
-  their parent goes away. Layout *driving* (when to call
+- **`renderer` module** — `LayoutState<B>` is a generic per-thread
+  node store (generational slotmap) owning per-node
+  style/cache/layout/parent/children/handlers/view/meta. **One
+  trait per port: `Backend`** (in `scene.rs`) supplies the platform
+  view type, the thread-local store accessor (`with_tree`), leaf
+  measurement + baseline, native tree edits
+  (`attach_native`/`detach_native`/…), the native view setters
+  (`set_hidden`, `set_alpha`, decoration hooks + `type Color`, …),
+  relayout scheduling, and node construction (`create_text_node`,
+  `create_placeholder`, `set_text`). There is no separate
+  `Renderer` trait and no per-port `Dom` marker type; generic view
+  code is bounded `B: Backend` and the node handle is `Node<B>`
+  (`Copy`, generational — stale ids no-op). `Mountable<B>` is
+  blanket-implemented for `Node<B>` in core. Node freeing is
+  explicit via `node.remove()`, which cascades through the
+  structural subtree. Layout *driving* (when to call
   `compute_layout`, how to dispatch to the main thread) is left to
   each port. Re-exports Taffy's `Display`, `FlexDirection`,
   `AlignItems`, `GridAutoFlow`, etc., plus the track-sizing helpers
@@ -632,21 +636,17 @@ preference for the use case:
 
 - **Per-NSObject sideband state for a Node-backed view → field on
   `NodeHandlers`** (cocoa: `leptos_cocoa::dom::event::NodeHandlers`,
-  iOS: `ios_dom::event::IosNodeHandlers`). `NodeHandlers` lives as a
-  `RefCell<B::Handlers>` field on the per-window arena's
-  `NodeData<B>` entry. Install functions go through
-  `node.with_handlers_mut(|h| ...)` which calls
-  `tree.with_handlers_mut(id, f)` against the arena. The Node
-  itself is a thin `Rc<NodeInner { tree, id, kind, view, is_borrowed }>`
-  handle; the arena owns the actual per-node state.
+  iOS: `IosNodeHandlers`). `Handlers` is the `Backend` associated
+  type stored on each store entry (`NodeData<B>`). Install
+  functions go through `node.with_handlers_mut(|h| ...)`. The Node
+  handle is a bare `Copy` id; the store owns the actual per-node
+  state.
 
-  Lifecycle = arena entry lifecycle: when the last Node clone of
-  an owning Node drops, `NodeInner::Drop` calls `tree.decref(id)`.
-  Under the removal rule (`refcount == 0 AND parent == None`),
-  the arena removes the entry. `NodeData` field-drop order
-  (`handlers` before `view`) fires `NodeHandlers::Drop`, which
-  nils target/delegate on the still-live view, then releases the
-  handler retains.
+  Lifecycle = store entry lifecycle: entries are freed explicitly
+  by `node.remove()` (which cascades through the subtree).
+  `NodeData` field-drop order (`handlers` before `view`) fires
+  `NodeHandlers::Drop`, which nils target/delegate on the
+  still-live view, then releases the handler retains.
 
   **Don't use ObjC associated objects** for this. We tried — they
   tie handler lifetime to the NSView/UIView's ObjC reference
@@ -656,23 +656,12 @@ preference for the use case:
   handler leak. Rust-owned storage decouples from that and gives
   deterministic disconnect on drop.
 
-  **Avoid capturing `Element` / `Node` clones in callback closures
-  stored on the same Node's handlers** — that forms a cycle
-  (closure → captured Element → `Rc<NodeInner>` → entry stays
-  alive forever → handlers stay alive → closure stays alive).
-  The cycle is structurally possible because Node::clone bumps
-  the Rc. Use one of:
-
-   * **Typed `Retained<NSView>` / `Retained<NSControl>`** when
-     the closure only needs to call ObjC methods on the view.
-     `Retained<NSButton>` doesn't pull the Rust Node into the
-     cycle. See `Node::ns_view_retained()` / `Element::ns_view_retained()`.
-   * **`WeakElement` / `WeakNode`** when the closure needs to
-     re-enter the element's Rust API (style, meta, handlers).
-     `el.weak()` returns a `WeakElement` (a `Weak<NodeInner>`);
-     `weak.upgrade()` recovers the Element at fire time, returning
-     `None` if the original has dropped. No cycle because Weak
-     refs don't keep the Rc alive.
+  Handles are `Copy` ids, so capturing one in a closure can't form
+  an ownership cycle — but a captured handle can go stale. In a
+  closure, either capture a typed `Retained<NSView>` /
+  `Retained<NSControl>` when it only needs to message the view
+  (`node.ns_view_retained()`), or capture the `Node` handle and use
+  the `try_*` accessors, which no-op once the entry is removed.
 
   **Text-field/text-view delegate drop ordering**: the cocoa and
   iOS `NodeHandlers::Drop` impls explicitly release the
@@ -693,11 +682,11 @@ preference for the use case:
   examples. Add a `Drop` impl that nils out `setTarget` /
   `setAction` first.
 
-- **Per-tree state → field on `LayoutTree<B>`.** Each window/scene
-  has its own `LayoutTree`; data that's logically "about this tree"
-  (scheduler flags, dirty sets, debug overlays) goes on the
-  struct, not in a global keyed by tree pointer. Example: the
-  relayout-dedup `Cell<bool>` on `LayoutTree::relayout_queued`.
+- **Store-scoped state → field on `LayoutState<B>`.** Data that's
+  logically "about the node store" (scheduler flags, dirty sets,
+  debug overlays) goes on the struct, not in a separate global.
+  Example: the relayout-dedup `Cell<bool>` on
+  `LayoutState::relayout_queued` and the `pending_relayout` queue.
 
 - **Per-Node state → field on the port's `NodeMeta`.** Anything
   needed during layout (sizing flags, scroll-axis selection,
@@ -725,7 +714,7 @@ preference for the use case:
 
 The remaining `thread_local!`s in framework code are
 `cocoa/leptos_cocoa/src/dom/debug_overlay.rs` (debug-overlay state, behind
-feature flag) and `uikit/dom/src/app.rs::BUILDER` (single-shot
+feature flag) and `uikit/leptos_uikit/src/dom/app.rs::BUILDER` (single-shot
 view-builder slot consumed by `scene:willConnectToSession:`) —
 both fall under `MEMORY_POLICY.md` §2's app-scoped carve-out
 because each is a single value / fixed-size collection that
@@ -823,7 +812,7 @@ explicitly.
     `gtk/leptos_gtk/src/element_gtk.rs` +
     `impl_add_any_attr_for_leaf!` (or container panic-on-spread).
   - ios: builder in `uikit/leptos_uikit/src/ios/element.rs` + typed
-    constructor `Element::create_<tag>` in `uikit/dom/src/make_view.rs`
+    constructor `Element::create_<tag>` in `uikit/leptos_uikit/src/dom/make_view.rs`
     (alloc the UIView subclass, build default Style, call
     `Node::from_view`) + facade re-export in
     `uikit/leptos_uikit/src/element_ios.rs` +
@@ -835,14 +824,14 @@ explicitly.
   - gtk: same in `gtk/leptos_gtk/src/event_gtk.rs` +
     `gtk/leptos_gtk/src/dom/event.rs`.
   - ios: same in `uikit/leptos_uikit/src/event_ios.rs` +
-    `uikit/dom/src/event.rs`.
+    `uikit/leptos_uikit/src/dom/event.rs`.
 - **If you add a new layout attribute that's port-agnostic:**
   add the field on `LayoutAttrs` (or `UniversalAttrs`) in
   `common/leptos_native/src/renderer/attrs.rs`, add the chainable
   setter on the matching trait, then add the per-port `set_*` helper
   in each port's `dom` layout module
   (`cocoa/leptos_cocoa/src/dom/layout.rs`,
-  `gtk/leptos_gtk/src/dom/layout.rs`, `uikit/dom/src/layout.rs`) and
+  `gtk/leptos_gtk/src/dom/layout.rs`, `uikit/leptos_uikit/src/dom/layout.rs`) and
   install it in each port's
   `apply_layout` in the corresponding `element.rs`. The shared
   trait approach saves N per-builder edits.

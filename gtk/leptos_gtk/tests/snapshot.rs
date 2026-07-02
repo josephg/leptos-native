@@ -29,7 +29,7 @@ mod common;
 
 use std::fmt::Write as _;
 
-use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
+use leptos_gtk::dom::GtkMakeView;
 use leptos_gtk::dom::{layout, layout::GtkBackend, GtkElem};
 use leptos_native::renderer::{length, Backend, NodeId, Rect, Size};
 

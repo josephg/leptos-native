@@ -4,7 +4,6 @@
 use crate::GtkBackend;
 use gtk4::prelude::*;
 pub use crate::dom::{window::{open_window, OpenedWindow}, GtkElem as GtkElement, GtkElem};
-use crate::dom::GtkNodeExt;
 use leptos_native::renderer::view::{Mountable, Render};
 
 #[allow(missing_docs)]
