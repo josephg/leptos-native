@@ -5,6 +5,37 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-07-03 — Builder boilerplate → `Common` + `impl_common!` (cocoa; mirrored on iOS)
+
+Every element builder in `cocoa/element.rs` repeated the same seven
+fields (handlers, node_ref, directives, universal, layout, decoration,
+text), three methods (`on` / `node_ref` / `directive`), four accessor-
+trait impls, and the same `Render::build` tail. Consolidated: builders
+embed `common: Common`; `impl_common!(Builder)` (with `: text` for
+text-rendering controls) generates the methods + trait impls;
+`Common::finish(el, &mut effects)` is the shared build tail (handlers →
+apply_common → node_ref → directives). −614 lines.
+
+Non-obvious bits:
+
+- `finish` always applies `CocoaText`; an all-`None` struct installs
+  nothing, so builders without `WithText` pay nothing and the old
+  `Some(text)/None` parameter was noise.
+- Builders that pattern-match handlers to route Click through
+  `on_action` (Label, DatePicker, Stepper, ColorWell, SegmentedControl)
+  keep their custom loops, draining `self.common.handlers` via
+  `mem::take` so `finish` still consumes the rest of `Common`.
+- Containers (Stack, Grid, ScrollView) gained `node_ref` +
+  `use:directive` support as a side effect — deliberate; there was no
+  reason for those to be leaf-only. Their panic-on-spread `AddAnyAttr`
+  impls are unchanged.
+- Handler installation now happens in `finish`, i.e. *after* all
+  control-specific attr wiring. Previously a few builders installed
+  handlers mid-build; the only observable difference is which install
+  panics first when two target/action users collide (both still panic).
+
+---
+
 ## 2026-07-03 — Backend unification: one per-port trait, no more Renderer / driver traits (cross-cutting)
 
 Collapsed the renderer abstraction stack down to a single per-port trait.

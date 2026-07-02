@@ -435,9 +435,8 @@ the builders; `bind.rs` defines `IntoSignal` / `BindAttribute<Key,
 Sig>` impls (with cocoa-port-style `BoundValue`/`BoundFloat`/
 `BoundChecked`/`BoundDate`/`BoundIndex` payloads). The same
 `apply_universal` / `apply_text_attrs` helpers and
-`impl_universal_attrs!` / `impl_text_attrs!` /
-`impl_typed_attrs_for!` macros that DRY out cocoa's element.rs are
-ported here.
+`Common` builder-state struct + `impl_common!` macro that DRY out
+cocoa's element.rs are mirrored here.
 
 Builders implemented: `Button`, `Label`, `TextField` /
 `SecureTextField`, `Switch`, `Slider`, `Stepper`, `SegmentedControl`,
@@ -804,7 +803,11 @@ explicitly.
     `cocoa/leptos_cocoa/src/dom/make_view.rs` (alloc the concrete NSView, build
     default Style, call `Element::from_view`) + facade re-export
     in `cocoa/leptos_cocoa/src/element_macos.rs` +
-    `impl_add_any_attr_for_leaf!` line for the new builder.
+    `impl_add_any_attr_for_leaf!` line for the new builder. Embed
+    `common: Common` in the builder struct and invoke
+    `impl_common!(NewBuilder)` (add `: text` if it renders text) —
+    that supplies on/node_ref/directive + the With* accessor impls;
+    end `Render::build` with `self.common.finish(el, &mut effects)`.
   - gtk: builder in `gtk/leptos_gtk/src/gtk/element.rs` + typed
     constructor `Element::create_<tag>` in `gtk/leptos_gtk/src/dom/make_view.rs`
     (alloc the gtk widget, build default Style, call

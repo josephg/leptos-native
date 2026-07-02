@@ -6,6 +6,30 @@ top.
 
 ---
 
+## 2026-07-03 — Builder `Common` consolidation + decoration on every control
+
+Mirrors the cocoa `Common` + `impl_common!` consolidation (see macOS
+log, same date). iOS-specific deltas:
+
+- The ad-hoc chrome fields (`background_color` / `corner_radius` /
+  `border_width` / `border_color`, previously only on View + Grid) are
+  replaced by `DecorationAttrs<Color>` + a port-local `WithDecoration`
+  shadow trait, so **every** control accepts decoration attrs — cocoa
+  parity. `apply_chrome` is deleted; decoration flows through the core
+  `apply_decoration` loop into the four `Backend` decoration hooks now
+  implemented on `IosBackend` (diff-guarded; `set_corner_radius` keeps
+  the masksToBounds-when-rounded behavior).
+- **API change:** `corner_radius` / `border_width` take `f32` (were
+  `f64`) to match cocoa and the shared attr struct.
+- The prelude now exports `WithDecoration` and `NodeRef` (the missing
+  `NodeRef` export was a pre-existing gap that broke examples).
+- `uikit/examples/todomvc` was already failing at HEAD (NodeRef type
+  inference through the macro's `node_ref=` path); excluded from the
+  inner examples workspace like its cocoa sibling until that's designed
+  properly.
+
+---
+
 ## 2026-07-03 — Backend unification (cross-cutting; see macOS log)
 
 The `Renderer` trait + `Dom` marker structs and the element-driver traits
