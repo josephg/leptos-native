@@ -544,8 +544,8 @@ impl<B: Backend> LayoutState<B> {
     fn remove_collect(&mut self, id: NodeId, out: &mut Vec<NodeData<B>>) {
         let Some((parent, kids)) = self
             .nodes
-            .get(key(id))
-            .map(|n| (n.parent, n.children.clone()))
+            .get_mut(key(id))
+            .map(|n| (n.parent, std::mem::take(&mut n.children)))
         else {
             return;
         };
@@ -699,6 +699,39 @@ impl<B: Backend> LayoutState<B> {
         self.mark_dirty(id);
     }
 
+    /// Mutate a node's style in place and mark it dirty — the zero-clone
+    /// fast path behind [`Node::with_style_mut`]. Taffy's `Style` carries
+    /// grid-template `Vec`s, so the old clone → mutate → write-back cycle
+    /// allocated on every setter call. A missing node mutates a scratch
+    /// default (no-op).
+    pub fn update_style<R>(
+        &mut self,
+        id: NodeId,
+        f: impl FnOnce(&mut Style) -> R,
+    ) -> R {
+        match self.nodes.get_mut(key(id)) {
+            Some(node) => {
+                let r = f(&mut node.style);
+                self.mark_dirty(id);
+                r
+            }
+            None => f(&mut Style::default()),
+        }
+    }
+
+    /// Mutate a node's backend metadata in place. A missing node
+    /// mutates a scratch default (no-op).
+    pub fn update_meta<R>(
+        &mut self,
+        id: NodeId,
+        f: impl FnOnce(&mut B::NodeMeta) -> R,
+    ) -> R {
+        match self.nodes.get_mut(key(id)) {
+            Some(node) => f(&mut node.meta),
+            None => f(&mut B::NodeMeta::default()),
+        }
+    }
+
     /// Override the final (rounded) layout for a node. Used by ports
     /// that run a second compute pass on a subtree.
     pub fn set_final_layout(&mut self, id: NodeId, layout: Layout) {
@@ -773,6 +806,16 @@ impl<B: Backend> LayoutState<B> {
         self.with_node(id, |n| n.style.clone())
     }
 
+    /// Borrowed view of a node's style (no clone).
+    pub fn style_ref(&self, id: NodeId) -> Option<&Style> {
+        self.nodes.get(key(id)).map(|n| &n.style)
+    }
+
+    /// Borrowed view of a node's backend metadata (no clone).
+    pub fn meta_ref(&self, id: NodeId) -> Option<&B::NodeMeta> {
+        self.nodes.get(key(id)).map(|n| &n.meta)
+    }
+
     /// Cheap accessor for the platform view.
     pub fn view(&self, id: NodeId) -> Option<B::View> {
         self.with_node(id, |n| n.view.clone())
@@ -794,13 +837,10 @@ impl<B: Backend> LayoutState<B> {
     }
 
     fn collect_subtree_into(&self, id: NodeId, out: &mut Vec<(NodeId, Layout, B::View)>) {
-        if let (Some(layout), Some(view)) = (self.layout(id), self.view(id)) {
-            out.push((id, layout, view));
-        }
-        if let Some(n) = self.nodes.get(key(id)) {
-            for child in n.children.clone() {
-                self.collect_subtree_into(child, out);
-            }
+        let Some(n) = self.nodes.get(key(id)) else { return };
+        out.push((id, n.final_layout, n.view.clone()));
+        for child in &n.children {
+            self.collect_subtree_into(*child, out);
         }
     }
 }

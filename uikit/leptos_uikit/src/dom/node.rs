@@ -70,8 +70,6 @@ pub trait UikitNodeExt: Copy {
     where
         T: DowncastTarget;
     fn ui_view_retained(self) -> Retained<UIView>;
-    fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R;
-    fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R;
     fn with_handlers_mut<R>(
         self,
         f: impl FnOnce(&mut IosNodeHandlers) -> R,
@@ -228,17 +226,7 @@ impl UikitNodeExt for UikitElem {
 
     // ---- Accessor surface ------------------------------------------
 
-    fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R {
-        let meta = IosBackend::meta(self.id).unwrap_or_default();
-        f(&meta)
-    }
 
-    fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R {
-        let mut meta = IosBackend::meta(self.id).unwrap_or_default();
-        let r = f(&mut meta);
-        IosBackend::set_meta(self.id, meta);
-        r
-    }
 
     /// Mutate this node's per-node handler set in the store. Panics if
     /// the node isn't present (handlers install on live nodes).

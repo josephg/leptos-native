@@ -95,18 +95,38 @@ impl<B: Backend> Node<B> {
         B::view(self.id)
     }
 
-    /// Read the node's Taffy [`Style`] (clone-and-borrow).
+    /// Read the node's Taffy [`Style`] in place (no clone). If the node
+    /// is gone, `f` sees a default style. The closure runs while the
+    /// store is borrowed — it must not re-enter the store (read the
+    /// fields you need and return them).
     pub fn with_style<R>(self, f: impl FnOnce(&Style) -> R) -> R {
-        let style = B::style(self.id).unwrap_or_default();
-        f(&style)
+        B::with_tree(|s| match s.style_ref(self.id) {
+            Some(style) => f(style),
+            None => f(&Style::default()),
+        })
     }
 
-    /// Mutate the node's Taffy [`Style`] and write it back (marks dirty).
+    /// Mutate the node's Taffy [`Style`] in place (marks dirty). A
+    /// stale handle mutates a scratch style (no-op). Same re-entrancy
+    /// rule as [`Self::with_style`].
     pub fn with_style_mut<R>(self, f: impl FnOnce(&mut Style) -> R) -> R {
-        let mut style = B::style(self.id).unwrap_or_default();
-        let r = f(&mut style);
-        B::set_style(self.id, style);
-        r
+        B::with_tree(|s| s.update_style(self.id, f))
+    }
+
+    /// Read the node's backend metadata in place. A stale handle sees
+    /// the default. Same re-entrancy rule as [`Self::with_style`].
+    pub fn with_meta<R>(self, f: impl FnOnce(&B::NodeMeta) -> R) -> R {
+        B::with_tree(|s| match s.meta_ref(self.id) {
+            Some(meta) => f(meta),
+            None => f(&B::NodeMeta::default()),
+        })
+    }
+
+    /// Mutate the node's backend metadata in place. A stale handle
+    /// mutates a scratch value (no-op). Same re-entrancy rule as
+    /// [`Self::with_style`].
+    pub fn with_meta_mut<R>(self, f: impl FnOnce(&mut B::NodeMeta) -> R) -> R {
+        B::with_tree(|s| s.update_meta(self.id, f))
     }
 
     /// Record the element kind for debug tooling (devtools inspector).

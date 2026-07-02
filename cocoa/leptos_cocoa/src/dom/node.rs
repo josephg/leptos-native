@@ -66,8 +66,6 @@ pub trait CocoaNodeExt: Copy {
     where
         T: DowncastTarget;
     fn ns_view_retained(self) -> Retained<NSView>;
-    fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R;
-    fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R;
     fn with_handlers_mut<R>(
         self,
         f: impl FnOnce(&mut event::NodeHandlers) -> R,
@@ -244,19 +242,7 @@ impl CocoaNodeExt for CocoaElem {
 
     // ---- Accessor surface ------------------------------------------
 
-    /// Borrow the node's [`CocoaMeta`] for read.
-    fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R {
-        let meta = CocoaBackend::meta(self.id).unwrap_or_default();
-        f(&meta)
-    }
 
-    /// Mutate the node's [`CocoaMeta`].
-    fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R {
-        let mut meta = CocoaBackend::meta(self.id).unwrap_or_default();
-        let r = f(&mut meta);
-        CocoaBackend::set_meta(self.id, meta);
-        r
-    }
 
     /// Mutate this node's per-node handler set in the store. Panics
     /// if the node isn't present (callers install handlers on live,
