@@ -28,9 +28,6 @@ use leptos_native::renderer::attrs::{
 use leptos_native::renderer::directive;
 use leptos_native::renderer::view::{Mountable, Render};
 
-// `apply_layout` / `apply_universal` live in `renderer`. The
-// `LayoutElement` / `UniversalElement` impls for `GtkNode` are in
-// `gtk_dom::layout` (orphan rule).
 use crate::dom::layout::{apply_layout, apply_universal};
 
 /// Apply the two "always there" attribute structs every builder

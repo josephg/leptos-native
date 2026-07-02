@@ -107,6 +107,9 @@ pub trait Backend: Send + Sync + 'static + Sized {
     type NodeMeta: Clone + Default;
     /// Per-node port-specific handler storage. `()` if unused.
     type Handlers: Default + 'static;
+    /// The port's color type (`leptos_cocoa::Color`, `gtk_dom::Color`, …).
+    /// Used by the decoration hooks below and `DecorationAttrs`.
+    type Color: 'static;
 
     /// Measure the intrinsic size of a leaf node's content. `known`
     /// carries any axis pinned by styles; return real values for the
@@ -129,12 +132,9 @@ pub trait Backend: Send + Sync + 'static + Sized {
     fn with_tree<R>(f: impl FnOnce(&mut LayoutState<Self>) -> R) -> R;
 
     // ---------------------------------------------------------------------
-    // Native view setters — the platform-specific view mutations the core
-    // element drivers (`LayoutElement` / `UniversalElement` blanket impls on
-    // `Node<B>`) forward to. They live here, next to `measure_leaf` /
-    // `first_baseline`, because once the per-port newtype is gone those
-    // drivers must be blanket-impl'd in core, and only a method on this
-    // trait can carry the per-port behavior (orphan rule). Same shape as
+    // Native view setters — the platform-specific view mutations that the
+    // core install loops (`apply_layout` / `apply_universal` /
+    // `apply_decoration` in `setters.rs`) forward to. Same shape as
     // `measure_leaf`: a static fn over `&Self::View`.
     //
     // `set_hidden` / `set_alpha` are required (every UI toolkit has them);
@@ -156,6 +156,23 @@ pub trait Backend: Send + Sync + 'static + Sized {
     /// Set the view's tooltip; empty string clears. No-op default for
     /// ports without a tooltip concept (e.g. touch).
     fn set_tool_tip(_view: &Self::View, _tip: &str) {}
+
+    // Decoration hooks (layer-backed chrome). No-op defaults: a port
+    // that doesn't support decoration simply doesn't expose the
+    // `WithDecoration` builder methods (or warns, like GTK), so these
+    // are unreachable there rather than silently ignored.
+
+    /// Fill the view's background with `color`.
+    fn set_background_color(_view: &Self::View, _color: Self::Color) {}
+
+    /// Round the view's corners by `radius` points; `0.0` disables.
+    fn set_corner_radius(_view: &Self::View, _radius: f32) {}
+
+    /// Border stroke width in points; `0.0` disables.
+    fn set_border_width(_view: &Self::View, _width: f32) {}
+
+    /// Border stroke color (visible when `border_width > 0`).
+    fn set_border_color(_view: &Self::View, _color: Self::Color) {}
 
     /// Trigger a native re-measure/relayout for the subtree containing
     /// `id` (gtk `queue_resize`, cocoa/iOS main-queue dispatch). Required:

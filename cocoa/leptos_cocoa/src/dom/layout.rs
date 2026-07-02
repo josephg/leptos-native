@@ -106,6 +106,7 @@ impl Backend for CocoaBackend {
     type View = SendWrapper<Retained<NSView>>;
     type NodeMeta = CocoaMeta;
     type Handlers = event::NodeHandlers;
+    type Color = Color;
 
     fn measure_leaf(
         view: &Self::View,
@@ -124,9 +125,8 @@ impl Backend for CocoaBackend {
         TREE.with(|t| f(&mut t.borrow_mut()))
     }
 
-    // Native view setters — forwarded to by the core `Node<B>` driver
-    // blanket impls (orphan rule). Diff-guarded, matching the existing
-    // per-port `LayoutElement`/`UniversalElement` bodies.
+    // Native view setters — forwarded to by the core apply_* install
+    // loops. Diff-guarded against current widget state.
 
     fn set_hidden(view: &Self::View, hidden: bool) {
         let v: &NSView = view;
@@ -163,6 +163,22 @@ impl Backend for CocoaBackend {
     fn schedule_relayout(id: NodeId) {
         CocoaBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    fn set_background_color(view: &Self::View, color: Color) {
+        set_background_color_on_view(view, color);
+    }
+
+    fn set_corner_radius(view: &Self::View, radius: f32) {
+        set_corner_radius_on_view(view, radius);
+    }
+
+    fn set_border_width(view: &Self::View, width: f32) {
+        set_border_width_on_view(view, width);
+    }
+
+    fn set_border_color(view: &Self::View, color: Color) {
+        set_border_color_on_view(view, color);
     }
 
     fn remove_from_native_parent(view: &Self::View) {
@@ -819,36 +835,10 @@ fn set_frame_from_layout(
 }
 
 // ---------------------------------------------------------------------
-// Generic style setters — lifted to `renderer::setters` and
-// generic over `LayoutNodeOps`. The trait impl below wires this
-// port's `Node` into that machinery; the `pub use` re-exports keep
-// the short paths (`cocoa_dom::layout::set_padding`, etc.) stable.
+// Generic style setters — live in `renderer::setters` as free fns
+// over `Node<B>`. The `pub use` re-exports keep the short paths
+// (`cocoa_dom::layout::set_padding`, etc.) stable.
 // ---------------------------------------------------------------------
-
-// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
-// that used to live here are gone: with `CocoaElem` now an alias for the
-// foreign `Node<CocoaBackend>`, impl'ing those (foreign, param-less) traits
-// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `Backend` native-setter hooks (`set_hidden`,
-// `set_clip`, `set_alpha`, `set_tool_tip`, `schedule_relayout`) on
-// `CocoaBackend` above.
-//
-// `DecorationElement<Color>` stays a per-port impl: its local `Color` type
-// parameter makes it orphan-safe even on the alias.
-impl renderer::DecorationElement<Color> for CocoaElem {
-    fn set_background_color(self, color: Color) {
-        set_background_color(self, color);
-    }
-    fn set_corner_radius(self, radius: f32) {
-        set_corner_radius(self, radius);
-    }
-    fn set_border_width(self, width: f32) {
-        set_border_width(self, width);
-    }
-    fn set_border_color(self, color: Color) {
-        set_border_color(self, color);
-    }
-}
 
 pub use renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
@@ -869,7 +859,12 @@ use crate::dom::{event, Color};
 // ---------------------------------------------------------------------
 
 pub fn set_background_color(node: CocoaElem, color: Color) {
-    let view = node.ns_view();
+    if let Some(view) = node.try_ns_view() {
+        set_background_color_on_view(&view, color);
+    }
+}
+
+pub(crate) fn set_background_color_on_view(view: &NSView, color: Color) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         let ns_color = color.to_nscolor();
@@ -908,7 +903,12 @@ pub fn set_clip(node: CocoaElem, clip: bool) {
 /// container stacks; almost never wanted on buttons, where masking
 /// can chew into the rendered title near the corners).
 pub fn set_corner_radius(node: CocoaElem, radius: f32) {
-    let view = node.ns_view();
+    if let Some(view) = node.try_ns_view() {
+        set_corner_radius_on_view(&view, radius);
+    }
+}
+
+pub(crate) fn set_corner_radius_on_view(view: &NSView, radius: f32) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         #[cfg(feature = "animation")]
@@ -930,7 +930,12 @@ pub fn set_corner_radius(node: CocoaElem, radius: f32) {
 /// Border color defaults to opaque black when set the first time;
 /// pair with [`set_border_color`] for non-default colors.
 pub fn set_border_width(node: CocoaElem, width: f32) {
-    let view = node.ns_view();
+    if let Some(view) = node.try_ns_view() {
+        set_border_width_on_view(&view, width);
+    }
+}
+
+pub(crate) fn set_border_width_on_view(view: &NSView, width: f32) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         #[cfg(feature = "animation")]
@@ -1061,7 +1066,12 @@ pub fn set_scale(node: CocoaElem, sx: f64, sy: f64) {
 /// Set the CALayer border color. No effect unless [`set_border_width`]
 /// has been called with a width > 0.
 pub fn set_border_color(node: CocoaElem, color: Color) {
-    let view = node.ns_view();
+    if let Some(view) = node.try_ns_view() {
+        set_border_color_on_view(&view, color);
+    }
+}
+
+pub(crate) fn set_border_color_on_view(view: &NSView, color: Color) {
     view.setWantsLayer(true);
     if let Some(layer) = view.layer() {
         let ns = color.to_nscolor();

@@ -48,6 +48,7 @@ impl Backend for GtkBackend {
     type View = gtk4::Widget;
     type NodeMeta = ();
     type Handlers = ();
+    type Color = crate::dom::Color;
 
     fn measure_leaf(
         widget: &Self::View,
@@ -74,9 +75,8 @@ impl Backend for GtkBackend {
         TREE.with(|t| f(&mut t.borrow_mut()))
     }
 
-    // Native view setters — relocated from the old per-port `LayoutElement`
-    // / `UniversalElement` impls (now blanket-impl'd in core for `Node<B>`,
-    // forwarding here). Bodies are diff-guarded, matching the originals.
+    // Native view setters — forwarded to by the core apply_* install
+    // loops. Bodies are diff-guarded against current widget state.
 
     fn set_hidden(view: &Self::View, hidden: bool) {
         if view.is_visible() == hidden {
@@ -337,15 +337,9 @@ pub fn schedule_relayout_for(id: NodeId) {
 }
 
 // ---------------------------------------------------------------------
-// Generic style setters — lifted to `renderer::setters`. See the
-// cocoa port's equivalent block for the design rationale.
+// Generic style setters — live in `renderer::setters` as free fns
+// over `Node<B>`; re-exported here to keep the short paths stable.
 // ---------------------------------------------------------------------
-
-// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
-// that used to live here are gone: with `GtkElem` now an alias for the
-// foreign `Node<GtkBackend>`, impl'ing those (foreign, param-less) traits
-// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `Backend` native-setter hooks above.
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,

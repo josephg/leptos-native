@@ -66,6 +66,7 @@ impl Backend for IosBackend {
     type View = SendWrapper<Retained<UIView>>;
     type NodeMeta = IosMeta;
     type Handlers = IosNodeHandlers;
+    type Color = crate::dom::Color;
 
     fn measure_leaf(
         view: &Self::View,
@@ -614,18 +615,11 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 }
 
 // ---------------------------------------------------------------------
-// Generic style setters — lifted to `renderer::setters`. See the
-// cocoa port's equivalent block for the design rationale.
+// Generic style setters — live in `renderer::setters` as free fns
+// over `Node<B>`; re-exported here to keep the short paths stable.
+// iOS leaves `set_clip` / `set_tool_tip` defaulted on the Backend
+// hooks (no inline clip primitive / no hover tooltips on touch).
 // ---------------------------------------------------------------------
-
-// The per-port `LayoutNodeOps` / `LayoutElement` / `UniversalElement` impls
-// that used to live here are gone: with `UikitElem` now an alias for the
-// foreign `Node<IosBackend>`, impl'ing those (foreign, param-less) traits
-// here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `Backend` native-setter hooks (`set_hidden`,
-// `set_alpha`, `schedule_relayout`) on `IosBackend` above. iOS leaves
-// `set_clip` / `set_tool_tip` defaulted (no inline clip primitive / no
-// hover tooltips on touch).
 
 // ---------------------------------------------------------------------
 // iOS-only setters — Taffy fields the cocoa port doesn't currently

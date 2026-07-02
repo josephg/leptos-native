@@ -3,67 +3,41 @@
 //! Each native port (cocoa, iOS, GTK) needs the same set of helpers
 //! for mutating a node's Taffy [`Style`] — `set_padding`,
 //! `set_flex_grow`, `set_grid_template_columns`, etc. The mutations
-//! themselves are identical across ports; only the surrounding glue
-//! (`update_style` to write into the per-node slot + sync to the
-//! tree, `schedule_relayout` to coalesce reflows onto one main-loop
-//! tick) is port-specific.
-//!
-//! [`LayoutNodeOps`] captures the two port-specific operations. Each
-//! port implements it for its `Node` type. Every other setter lives
-//! here as a generic free function over `<N: LayoutNodeOps>`, so
-//! adding (say) a new grid attribute is a one-line edit instead of
-//! one edit per port.
+//! are identical across ports, so they live here once as free
+//! functions over the universal handle [`Node<B>`]. Each one writes
+//! the style change into the store and schedules a (deduped) relayout
+//! pass for the node's tree.
 //!
 //! Pure renderer-type → taffy-type conversions ([`dim_to_dimension`],
 //! [`align_self_to_taffy`], [`grid_line_to_placement`]) also live
 //! here for the same reason.
 //!
-//! Per-port `layout.rs` re-exports the generic setters under their
-//! short names so caller paths (`cocoa_dom::layout::set_padding(...)`,
-//! `gtk_dom::layout::set_grid_template_columns(...)`) stay stable.
+//! The reactive install loops [`apply_layout`] / [`apply_universal`] /
+//! [`apply_decoration`] read the builder-side attr structs
+//! ([`LayoutAttrs`], …) and install a setter (static) or a
+//! `RenderEffect` (reactive) per populated field. Platform-visual
+//! side effects (hide the view, clip, alpha, tooltip, decoration)
+//! route through the [`Backend`] native-setter hooks, always via
+//! [`Node::try_view`] so an effect that fires after its node was torn
+//! down is a graceful no-op.
 
-use crate::renderer::scene::{
-    AlignContent, AlignItems, Dimension, FlexDirection, FlexWrap,
-    GridAutoFlow, GridPlacement, GridTemplateComponent, JustifyContent,
-    JustifyItems, LengthPercentage, LengthPercentageAuto, Rect, Size, Style,
-    TrackSizingFunction, Display,
-};
 use crate::renderer::attrs::{
     install, AlignSelf, DecorationAttrs, Dim, Edges, GridLine, LayoutAttrs,
     Overflow, RenderEffect, UniversalAttrs,
 };
+use crate::renderer::node::Node;
+use crate::renderer::scene::{
+    AlignContent, AlignItems, Backend, Dimension, Display, FlexDirection,
+    FlexWrap, GridAutoFlow, GridPlacement, GridTemplateComponent,
+    JustifyContent, JustifyItems, LengthPercentage, LengthPercentageAuto,
+    Rect, Size, Style, TrackSizingFunction,
+};
 
-// ---------------------------------------------------------------------
-// Port-specific glue trait
-// ---------------------------------------------------------------------
-
-/// Implemented by each port's `Node` type. The two methods are the
-/// only port-specific operations the generic setters below need:
-///
-/// - [`Self::update_style`] runs the given closure against the node's
-///   local style copy, then syncs the result back into the layout
-///   tree (if the node has joined one).
-/// - [`Self::schedule_relayout`] queues a single layout pass for the
-///   node's tree at the next main-loop tick, deduping with any other
-///   queued pass.
-///
-/// All other setter behaviour — what fields to touch, what conversion
-/// to apply — is identical across ports and lives in the free
-/// functions below.
-pub trait LayoutNodeOps: Clone + Copy {
-    /// Mutate the node's style. The closure receives a `&mut Style`;
-    /// changes are written back to the per-tree storage on return.
-    fn update_style<F: FnOnce(&mut Style)>(self, f: F);
-
-    /// Mark this node (and its ancestors) dirty and queue a relayout
-    /// pass for its tree.
-    fn schedule_relayout(self);
-
-    /// Read-only peek at the current `Style`. Provided so callers
-    /// like the `hidden=` wiring in [`apply_layout`] can capture
-    /// the node's natural `display` value to restore later.
-    #[deprecated]
-    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R;
+/// Apply a style mutation and schedule a relayout — the shared tail of
+/// every setter below.
+fn style<B: Backend>(node: Node<B>, f: impl FnOnce(&mut Style)) {
+    node.with_style_mut(f);
+    node.schedule_relayout();
 }
 
 // ---------------------------------------------------------------------
@@ -105,39 +79,33 @@ pub fn grid_line_to_placement(line: GridLine) -> GridPlacement {
 // Sizing & box-model setters
 // ---------------------------------------------------------------------
 
-pub fn set_width<N: LayoutNodeOps>(node: N, width_px: f32) {
-    node.update_style(|s| s.size.width = Dimension::length(width_px));
-    node.schedule_relayout();
+pub fn set_width<B: Backend>(node: Node<B>, width_px: f32) {
+    style(node, |s| s.size.width = Dimension::length(width_px));
 }
 
-pub fn set_height<N: LayoutNodeOps>(node: N, height_px: f32) {
-    node.update_style(|s| s.size.height = Dimension::length(height_px));
-    node.schedule_relayout();
+pub fn set_height<B: Backend>(node: Node<B>, height_px: f32) {
+    style(node, |s| s.size.height = Dimension::length(height_px));
 }
 
-pub fn set_min_width<N: LayoutNodeOps>(node: N, px: f32) {
-    node.update_style(|s| s.min_size.width = Dimension::length(px));
-    node.schedule_relayout();
+pub fn set_min_width<B: Backend>(node: Node<B>, px: f32) {
+    style(node, |s| s.min_size.width = Dimension::length(px));
 }
 
-pub fn set_max_width<N: LayoutNodeOps>(node: N, px: f32) {
-    node.update_style(|s| s.max_size.width = Dimension::length(px));
-    node.schedule_relayout();
+pub fn set_max_width<B: Backend>(node: Node<B>, px: f32) {
+    style(node, |s| s.max_size.width = Dimension::length(px));
 }
 
-pub fn set_min_height<N: LayoutNodeOps>(node: N, px: f32) {
-    node.update_style(|s| s.min_size.height = Dimension::length(px));
-    node.schedule_relayout();
+pub fn set_min_height<B: Backend>(node: Node<B>, px: f32) {
+    style(node, |s| s.min_size.height = Dimension::length(px));
 }
 
-pub fn set_max_height<N: LayoutNodeOps>(node: N, px: f32) {
-    node.update_style(|s| s.max_size.height = Dimension::length(px));
-    node.schedule_relayout();
+pub fn set_max_height<B: Backend>(node: Node<B>, px: f32) {
+    style(node, |s| s.max_size.height = Dimension::length(px));
 }
 
-pub fn set_padding<N: LayoutNodeOps>(node: N, e: impl Into<Edges>) {
+pub fn set_padding<B: Backend>(node: Node<B>, e: impl Into<Edges>) {
     let e = e.into();
-    node.update_style(|s| {
+    style(node, |s| {
         s.padding = Rect {
             left:   LengthPercentage::length(e.left),
             right:  LengthPercentage::length(e.right),
@@ -145,12 +113,11 @@ pub fn set_padding<N: LayoutNodeOps>(node: N, e: impl Into<Edges>) {
             bottom: LengthPercentage::length(e.bottom),
         };
     });
-    node.schedule_relayout();
 }
 
-pub fn set_margin<N: LayoutNodeOps>(node: N, e: impl Into<Edges>) {
+pub fn set_margin<B: Backend>(node: Node<B>, e: impl Into<Edges>) {
     let e = e.into();
-    node.update_style(|s| {
+    style(node, |s| {
         s.margin = Rect {
             left:   LengthPercentageAuto::length(e.left),
             right:  LengthPercentageAuto::length(e.right),
@@ -158,154 +125,131 @@ pub fn set_margin<N: LayoutNodeOps>(node: N, e: impl Into<Edges>) {
             bottom: LengthPercentageAuto::length(e.bottom),
         };
     });
-    node.schedule_relayout();
 }
 
 // ---------------------------------------------------------------------
 // Flex (container + item) setters
 // ---------------------------------------------------------------------
 
-pub fn set_flex_direction<N: LayoutNodeOps>(node: N, dir: FlexDirection) {
-    node.update_style(|s| s.flex_direction = dir);
-    node.schedule_relayout();
+pub fn set_flex_direction<B: Backend>(node: Node<B>, dir: FlexDirection) {
+    style(node, |s| s.flex_direction = dir);
 }
 
-pub fn set_flex_wrap<N: LayoutNodeOps>(node: N, fw: FlexWrap) {
-    node.update_style(|s| s.flex_wrap = fw);
-    node.schedule_relayout();
+pub fn set_flex_wrap<B: Backend>(node: Node<B>, fw: FlexWrap) {
+    style(node, |s| s.flex_wrap = fw);
 }
 
-pub fn set_justify_content<N: LayoutNodeOps>(node: N, jc: JustifyContent) {
-    node.update_style(|s| s.justify_content = Some(jc));
-    node.schedule_relayout();
+pub fn set_justify_content<B: Backend>(node: Node<B>, jc: JustifyContent) {
+    style(node, |s| s.justify_content = Some(jc));
 }
 
-pub fn set_align_items<N: LayoutNodeOps>(node: N, ai: AlignItems) {
-    node.update_style(|s| s.align_items = Some(ai));
-    node.schedule_relayout();
+pub fn set_align_items<B: Backend>(node: Node<B>, ai: AlignItems) {
+    style(node, |s| s.align_items = Some(ai));
 }
 
-pub fn set_flex_grow<N: LayoutNodeOps>(node: N, grow: f32) {
-    node.update_style(|s| s.flex_grow = grow);
-    node.schedule_relayout();
+pub fn set_flex_grow<B: Backend>(node: Node<B>, grow: f32) {
+    style(node, |s| s.flex_grow = grow);
 }
 
-pub fn set_flex_shrink<N: LayoutNodeOps>(node: N, shrink: f32) {
-    node.update_style(|s| s.flex_shrink = shrink);
-    node.schedule_relayout();
+pub fn set_flex_shrink<B: Backend>(node: Node<B>, shrink: f32) {
+    style(node, |s| s.flex_shrink = shrink);
 }
 
-pub fn set_flex_basis<N: LayoutNodeOps>(node: N, basis_px: f32) {
-    node.update_style(|s| s.flex_basis = Dimension::length(basis_px));
-    node.schedule_relayout();
+pub fn set_flex_basis<B: Backend>(node: Node<B>, basis_px: f32) {
+    style(node, |s| s.flex_basis = Dimension::length(basis_px));
 }
 
-pub fn set_align_self<N: LayoutNodeOps>(node: N, ai: Option<AlignItems>) {
-    node.update_style(|s| s.align_self = ai);
-    node.schedule_relayout();
+pub fn set_align_self<B: Backend>(node: Node<B>, ai: Option<AlignItems>) {
+    style(node, |s| s.align_self = ai);
 }
 
 // ---------------------------------------------------------------------
 // Gap (shared by flex & grid; shorthand sets both axes)
 // ---------------------------------------------------------------------
 
-pub fn set_gap<N: LayoutNodeOps>(node: N, gap_px: f32) {
-    node.update_style(|s| {
+pub fn set_gap<B: Backend>(node: Node<B>, gap_px: f32) {
+    style(node, |s| {
         s.gap = Size {
             width: LengthPercentage::length(gap_px),
             height: LengthPercentage::length(gap_px),
         };
     });
-    node.schedule_relayout();
 }
 
-pub fn set_column_gap<N: LayoutNodeOps>(node: N, gap_px: f32) {
-    node.update_style(|s| s.gap.width = LengthPercentage::length(gap_px));
-    node.schedule_relayout();
+pub fn set_column_gap<B: Backend>(node: Node<B>, gap_px: f32) {
+    style(node, |s| s.gap.width = LengthPercentage::length(gap_px));
 }
 
-pub fn set_row_gap<N: LayoutNodeOps>(node: N, gap_px: f32) {
-    node.update_style(|s| s.gap.height = LengthPercentage::length(gap_px));
-    node.schedule_relayout();
+pub fn set_row_gap<B: Backend>(node: Node<B>, gap_px: f32) {
+    style(node, |s| s.gap.height = LengthPercentage::length(gap_px));
 }
 
 // ---------------------------------------------------------------------
 // Grid container setters
 // ---------------------------------------------------------------------
 
-pub fn set_grid_template_columns<N: LayoutNodeOps>(
-    node: N,
+pub fn set_grid_template_columns<B: Backend>(
+    node: Node<B>,
     tracks: Vec<GridTemplateComponent>,
 ) {
-    node.update_style(|s| s.grid_template_columns = tracks);
-    node.schedule_relayout();
+    style(node, |s| s.grid_template_columns = tracks);
 }
 
-pub fn set_grid_template_rows<N: LayoutNodeOps>(
-    node: N,
+pub fn set_grid_template_rows<B: Backend>(
+    node: Node<B>,
     tracks: Vec<GridTemplateComponent>,
 ) {
-    node.update_style(|s| s.grid_template_rows = tracks);
-    node.schedule_relayout();
+    style(node, |s| s.grid_template_rows = tracks);
 }
 
-pub fn set_grid_auto_columns<N: LayoutNodeOps>(
-    node: N,
+pub fn set_grid_auto_columns<B: Backend>(
+    node: Node<B>,
     tracks: Vec<TrackSizingFunction>,
 ) {
-    node.update_style(|s| s.grid_auto_columns = tracks);
-    node.schedule_relayout();
+    style(node, |s| s.grid_auto_columns = tracks);
 }
 
-pub fn set_grid_auto_rows<N: LayoutNodeOps>(
-    node: N,
+pub fn set_grid_auto_rows<B: Backend>(
+    node: Node<B>,
     tracks: Vec<TrackSizingFunction>,
 ) {
-    node.update_style(|s| s.grid_auto_rows = tracks);
-    node.schedule_relayout();
+    style(node, |s| s.grid_auto_rows = tracks);
 }
 
-pub fn set_grid_auto_flow<N: LayoutNodeOps>(node: N, flow: GridAutoFlow) {
-    node.update_style(|s| s.grid_auto_flow = flow);
-    node.schedule_relayout();
+pub fn set_grid_auto_flow<B: Backend>(node: Node<B>, flow: GridAutoFlow) {
+    style(node, |s| s.grid_auto_flow = flow);
 }
 
-pub fn set_justify_items<N: LayoutNodeOps>(node: N, ji: JustifyItems) {
-    node.update_style(|s| s.justify_items = Some(ji));
-    node.schedule_relayout();
+pub fn set_justify_items<B: Backend>(node: Node<B>, ji: JustifyItems) {
+    style(node, |s| s.justify_items = Some(ji));
 }
 
-pub fn set_align_content<N: LayoutNodeOps>(node: N, ac: AlignContent) {
-    node.update_style(|s| s.align_content = Some(ac));
-    node.schedule_relayout();
+pub fn set_align_content<B: Backend>(node: Node<B>, ac: AlignContent) {
+    style(node, |s| s.align_content = Some(ac));
 }
 
 // ---------------------------------------------------------------------
 // Grid item-side placement
 // ---------------------------------------------------------------------
 
-pub fn set_grid_column_start<N: LayoutNodeOps>(node: N, line: GridLine) {
+pub fn set_grid_column_start<B: Backend>(node: Node<B>, line: GridLine) {
     let p = grid_line_to_placement(line);
-    node.update_style(|s| s.grid_column.start = p);
-    node.schedule_relayout();
+    style(node, |s| s.grid_column.start = p);
 }
 
-pub fn set_grid_column_end<N: LayoutNodeOps>(node: N, line: GridLine) {
+pub fn set_grid_column_end<B: Backend>(node: Node<B>, line: GridLine) {
     let p = grid_line_to_placement(line);
-    node.update_style(|s| s.grid_column.end = p);
-    node.schedule_relayout();
+    style(node, |s| s.grid_column.end = p);
 }
 
-pub fn set_grid_row_start<N: LayoutNodeOps>(node: N, line: GridLine) {
+pub fn set_grid_row_start<B: Backend>(node: Node<B>, line: GridLine) {
     let p = grid_line_to_placement(line);
-    node.update_style(|s| s.grid_row.start = p);
-    node.schedule_relayout();
+    style(node, |s| s.grid_row.start = p);
 }
 
-pub fn set_grid_row_end<N: LayoutNodeOps>(node: N, line: GridLine) {
+pub fn set_grid_row_end<B: Backend>(node: Node<B>, line: GridLine) {
     let p = grid_line_to_placement(line);
-    node.update_style(|s| s.grid_row.end = p);
-    node.schedule_relayout();
+    style(node, |s| s.grid_row.end = p);
 }
 
 // ---------------------------------------------------------------------
@@ -314,122 +258,23 @@ pub fn set_grid_row_end<N: LayoutNodeOps>(node: N, line: GridLine) {
 // from a `Dim` rather than a bare `f32`).
 // ---------------------------------------------------------------------
 
-pub fn set_size_width<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.size.width = dim_to_dimension(d));
-    node.schedule_relayout();
+pub fn set_size_width<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.size.width = dim_to_dimension(d));
 }
-pub fn set_size_height<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.size.height = dim_to_dimension(d));
-    node.schedule_relayout();
+pub fn set_size_height<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.size.height = dim_to_dimension(d));
 }
-pub fn set_min_size_width<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.min_size.width = dim_to_dimension(d));
-    node.schedule_relayout();
+pub fn set_min_size_width<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.min_size.width = dim_to_dimension(d));
 }
-pub fn set_min_size_height<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.min_size.height = dim_to_dimension(d));
-    node.schedule_relayout();
+pub fn set_min_size_height<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.min_size.height = dim_to_dimension(d));
 }
-pub fn set_max_size_width<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.max_size.width = dim_to_dimension(d));
-    node.schedule_relayout();
+pub fn set_max_size_width<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.max_size.width = dim_to_dimension(d));
 }
-pub fn set_max_size_height<N: LayoutNodeOps>(node: N, d: Dim) {
-    node.update_style(|s| s.max_size.height = dim_to_dimension(d));
-    node.schedule_relayout();
-}
-
-// ---------------------------------------------------------------------
-// Element-level traits — drive the reactive `apply_*` functions below.
-// ---------------------------------------------------------------------
-
-/// An element that owns (cheaply-cloneable handle to) a layout node.
-/// Implemented per-port for `CocoaElement` / `IosElement` /
-/// `GtkElement` so [`apply_layout`] can install reactive setters
-/// generically.
-pub trait LayoutElement: Copy + Clone + 'static {
-    /// Toggle the underlying view's visibility. Used by `apply_layout`
-    /// when wiring `hidden=` so the OS-side view is also hidden, not
-    /// just the layout slot collapsed. NSView's `isHidden` /
-    /// UIView's `isHidden` / GtkWidget's `set_visible(!hidden)`.
-    fn set_view_hidden(self, hidden: bool);
-
-    /// Toggle paint-time clipping of overflowing children. Used by
-    /// `apply_layout` when wiring `overflow=Hidden` so the layout
-    /// effect is paired with the corresponding visual clip — CALayer
-    /// `masksToBounds` / UIView `clipsToBounds` / GtkWidget
-    /// `set_overflow(Overflow::Hidden)`. Default is no-op for ports
-    /// that don't have a clip primitive (or haven't wired it yet);
-    /// in that case `overflow=Hidden` is layout-only on that port.
-    fn set_clip(self, _clip: bool) {}
-}
-
-/// Element-level handles for opacity + tooltip. Tooltip has a default
-/// no-op implementation because iOS (and any future touch-only port)
-/// has no hover-tooltip concept.
-pub trait UniversalElement: Copy + Clone + 'static {
-    fn set_alpha(self, alpha: f64);
-    fn set_tool_tip(self, _tip: &str) {}
-}
-
-// ---------------------------------------------------------------------
-// Blanket driver impls for the universal handle `Node<B>`.
-//
-// These replace the per-port impls that the `*Elem` newtypes used to
-// carry. They can't live in the port crates any more: with the newtype
-// gone, `impl LayoutElement for Node<B>` in a port would be an orphan
-// violation (foreign trait, foreign `Node`, the local `B` doesn't
-// count). So they live here, once, forwarding the platform-specific
-// parts to the `Backend` native-setter hooks.
-//
-// Every native setter routes through `try_view()`, never the panicking
-// `view()`: a `RenderEffect` can fire after its node is torn down, and
-// must degrade to a no-op rather than panic on a freed node.
-// ---------------------------------------------------------------------
-
-use crate::renderer::node::Node;
-use crate::renderer::scene::Backend;
-
-impl<B: Backend> LayoutNodeOps for Node<B> {
-    fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
-        self.with_style_mut(f);
-    }
-    fn schedule_relayout(self) {
-        B::schedule_relayout(self.id);
-    }
-    #[allow(deprecated)]
-    fn with_style<R, F: FnOnce(&Style) -> R>(self, f: F) -> R {
-        // Inlined rather than calling the (same-named) inherent method, to
-        // avoid any method-resolution ambiguity with this trait method.
-        let style = B::style(self.id).unwrap_or_default();
-        f(&style)
-    }
-}
-
-impl<B: Backend> LayoutElement for Node<B> {
-    fn set_view_hidden(self, hidden: bool) {
-        if let Some(v) = self.try_view() {
-            B::set_hidden(&v, hidden);
-        }
-    }
-    fn set_clip(self, clip: bool) {
-        if let Some(v) = self.try_view() {
-            B::set_clip(&v, clip);
-        }
-    }
-}
-
-impl<B: Backend> UniversalElement for Node<B> {
-    fn set_alpha(self, alpha: f64) {
-        if let Some(v) = self.try_view() {
-            B::set_alpha(&v, alpha);
-        }
-    }
-    fn set_tool_tip(self, tip: &str) {
-        if let Some(v) = self.try_view() {
-            B::set_tool_tip(&v, tip);
-        }
-    }
+pub fn set_max_size_height<B: Backend>(node: Node<B>, d: Dim) {
+    style(node, |s| s.max_size.height = dim_to_dimension(d));
 }
 
 // ---------------------------------------------------------------------
@@ -437,9 +282,8 @@ impl<B: Backend> UniversalElement for Node<B> {
 // slot in Taffy in addition to whatever visual hiding the port does).
 // ---------------------------------------------------------------------
 
-pub fn set_display<N: LayoutNodeOps>(node: N, display: Display) {
-    node.update_style(|s| s.display = display);
-    node.schedule_relayout();
+pub fn set_display<B: Backend>(node: Node<B>, display: Display) {
+    style(node, |s| s.display = display);
 }
 
 /// Sets Taffy `style.overflow` on both axes. The user-facing
@@ -450,44 +294,35 @@ pub fn set_display<N: LayoutNodeOps>(node: N, display: Display) {
 /// auto-min-size content-based — same effect on the flex/grid auto-min
 /// rule as `Visible`. `Hidden` maps to taffy's `Hidden`, which forces
 /// auto-min-size to 0.
-pub fn set_overflow<N: LayoutNodeOps>(node: N, overflow: Overflow) {
+pub fn set_overflow<B: Backend>(node: Node<B>, overflow: Overflow) {
     let v = match overflow {
         Overflow::Visible => taffy::Overflow::Visible,
         Overflow::Clip    => taffy::Overflow::Clip,
         Overflow::Hidden  => taffy::Overflow::Hidden,
     };
-    node.update_style(|s| s.overflow = taffy::Point { x: v, y: v });
-    node.schedule_relayout();
+    style(node, |s| s.overflow = taffy::Point { x: v, y: v });
 }
 
 // ---------------------------------------------------------------------
-// Decoration (background_color, corner_radius, border_*, clip)
+// apply_decoration — background_color, corner_radius, border. Routes
+// to the Backend decoration hooks (no-op defaults for ports without
+// layer-backed chrome).
 // ---------------------------------------------------------------------
 
-/// Port-side glue for [`apply_decoration`]. Each port implements this
-/// on its `Element` type by routing to its existing visual-state
-/// setters. `C` is the port's color type.
-pub trait DecorationElement<C: 'static>: Copy + Clone + 'static {
-    fn set_background_color(self, color: C);
-    fn set_corner_radius(self, radius: f32);
-    fn set_border_width(self, width: f32);
-    fn set_border_color(self, color: C);
-}
-
-pub fn apply_decoration<E, C>(
-    el: E,
-    attrs: DecorationAttrs<C>,
-) -> Vec<RenderEffect<()>>
-where
-    E: DecorationElement<C>,
-    C: 'static,
-{
+pub fn apply_decoration<B: Backend>(
+    el: Node<B>,
+    attrs: DecorationAttrs<B::Color>,
+) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
 
     macro_rules! install_setter {
-        ($field:expr, $method:ident) => {
+        ($field:expr, $hook:ident) => {
             if let Some(v) = $field {
-                if let Some(eff) = install(v, move |x| el.$method(x)) {
+                if let Some(eff) = install(v, move |x| {
+                    if let Some(view) = el.try_view() {
+                        B::$hook(&view, x);
+                    }
+                }) {
                     out.push(eff);
                 }
             }
@@ -507,21 +342,17 @@ where
 // them in its ElementState (they unsubscribe on drop).
 // ---------------------------------------------------------------------
 
-pub fn apply_layout<E>(
-    el: E,
+pub fn apply_layout<B: Backend>(
+    el: Node<B>,
     attrs: LayoutAttrs,
-) -> Vec<RenderEffect<()>>
-where
-    E: LayoutElement + LayoutNodeOps,
-{
+) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
 
     // helper: install a reactive setter that drives `setter(node, v)`.
     macro_rules! install_setter {
         ($field:expr, $setter:expr) => {
             if let Some(v) = $field {
-                let e = el.clone();
-                if let Some(eff) = install(v, move |x| $setter(e, x)) {
+                if let Some(eff) = install(v, move |x| $setter(el, x)) {
                     out.push(eff);
                 }
             }
@@ -543,9 +374,8 @@ where
     // `align_self` converts `AlignSelf` → `Option<AlignItems>` before
     // applying; doesn't fit the bare-setter macro.
     if let Some(v) = attrs.align_self {
-        let e = el.clone();
         if let Some(eff) = install(v, move |a: AlignSelf| {
-            set_align_self(e, align_self_to_taffy(a))
+            set_align_self(el, align_self_to_taffy(a))
         }) {
             out.push(eff);
         }
@@ -562,10 +392,11 @@ where
     //   Clip    → Taffy Clip,    clip on   (paint-only clipping)
     //   Hidden  → Taffy Hidden,  clip on   (clip + auto-min-size 0)
     if let Some(v) = attrs.overflow {
-        let e = el.clone();
         if let Some(eff) = install(v, move |o: Overflow| {
-            set_overflow(e, o);
-            e.set_clip(!matches!(o, Overflow::Visible));
+            set_overflow(el, o);
+            if let Some(view) = el.try_view() {
+                B::set_clip(&view, !matches!(o, Overflow::Visible));
+            }
         }) {
             out.push(eff);
         }
@@ -577,16 +408,15 @@ where
     // once at install time.
     if let Some(v) = attrs.hidden {
         let natural = el.with_style(|s| s.display);
-        let e = el.clone();
         if let Some(eff) = install(v, move |hide: bool| {
             let next = if hide { Display::None } else { natural };
-            set_display(e, next);
-            // The port also needs to update view-level visibility
-            // (NSView isHidden, UIView isHidden) so the actual
-            // pixels go away when we lay the element back into the
-            // tree at zero size. That's port-specific — we surface
-            // it via the LayoutElement's `set_view_hidden` hook.
-            e.set_view_hidden(hide);
+            set_display(el, next);
+            // The port also updates view-level visibility (NSView /
+            // UIView isHidden, gtk set_visible) so the actual pixels
+            // go away when the slot collapses to zero size.
+            if let Some(view) = el.try_view() {
+                B::set_hidden(&view, hide);
+            }
         }) {
             out.push(eff);
         }
@@ -599,21 +429,26 @@ where
 // apply_universal — opacity + tooltip.
 // ---------------------------------------------------------------------
 
-pub fn apply_universal<E>(
-    el: E,
+pub fn apply_universal<B: Backend>(
+    el: Node<B>,
     attrs: UniversalAttrs,
-) -> Vec<RenderEffect<()>>
-where
-    E: UniversalElement,
-{
+) -> Vec<RenderEffect<()>> {
     let mut out = Vec::new();
     if let Some(a) = attrs.alpha {
-        if let Some(eff) = install(a, move |v| el.set_alpha(v)) {
+        if let Some(eff) = install(a, move |v| {
+            if let Some(view) = el.try_view() {
+                B::set_alpha(&view, v);
+            }
+        }) {
             out.push(eff);
         }
     }
     if let Some(t) = attrs.tool_tip {
-        if let Some(eff) = install(t, move |s: String| el.set_tool_tip(&s)) {
+        if let Some(eff) = install(t, move |s: String| {
+            if let Some(view) = el.try_view() {
+                B::set_tool_tip(&view, &s);
+            }
+        }) {
             out.push(eff);
         }
     }

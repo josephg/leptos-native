@@ -28,14 +28,7 @@ use crate::dom::{layout::{
 }, Color, Date, DatePickerStyle, UikitElem, UikitMakeView, UikitNodeExt};
 use reactive_graph::effect::RenderEffect;
 
-// `apply_universal` lives in `renderer::apply_universal`. The
-// `UniversalElement` impl for `UikitElem` uses the trait's default
-// no-op for `set_tool_tip` (UIView has no hover-tooltip concept).
-use crate::dom::layout::apply_universal;
-
-// `apply_layout` lives in `renderer::apply_layout`; the
-// `LayoutElement` impl for `UikitElem` is in `ios_dom::layout`.
-use crate::dom::layout::apply_layout;
+use crate::dom::layout::{apply_layout, apply_universal};
 use leptos_native::node_ref::NodeRef;
 use leptos_native::prelude::AddAnyAttr;
 

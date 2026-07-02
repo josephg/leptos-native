@@ -161,6 +161,12 @@ impl<B: Backend> Node<B> {
         B::parent(self.id).map(Node::from_id)
     }
 
+    /// Mark this node dirty and queue a (deduped) relayout pass for its
+    /// tree on the next main-loop tick.
+    pub fn schedule_relayout(self) {
+        B::schedule_relayout(self.id);
+    }
+
     /// Tear the node down: detach its view from the native parent, free
     /// the store entry (cascading through the structural subtree), and
     /// queue a relayout for the ex-parent so siblings reflow. Idempotent —

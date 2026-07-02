@@ -49,11 +49,9 @@ pub mod node;
 pub mod scene;
 
 /// Generic, port-agnostic style mutators (`set_padding`,
-/// `set_grid_template_columns`, …) and the trait-driven
-/// `apply_layout` / `apply_universal` install loops. Each port impls
-/// [`setters::LayoutNodeOps`] / [`setters::LayoutElement`] /
-/// [`setters::UniversalElement`] for its node / element types and
-/// reuses the generic functions.
+/// `set_grid_template_columns`, …) and the reactive
+/// `apply_layout` / `apply_universal` / `apply_decoration` install
+/// loops, all free functions over the universal handle `Node<B>`.
 pub mod setters;
 
 /// Cross-backend menu types. Currently just [`menu::Modifiers`] —

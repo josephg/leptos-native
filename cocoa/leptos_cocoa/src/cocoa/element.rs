@@ -19,7 +19,7 @@ use leptos_native::renderer::attrs::{
 use leptos_native::renderer::view::{ApplyAttr, Mountable, Render};
 
 // `apply_universal` and `apply_layout` live in `renderer`. The
-// `UniversalElement` / `LayoutElement` impls for `CocoaNode` live
+// The `Backend` native-setter hooks for `CocoaBackend` live
 // in `cocoa_dom` (orphan rule).
 use leptos_native::renderer::{apply_decoration, apply_universal, directive, apply_layout};
 
