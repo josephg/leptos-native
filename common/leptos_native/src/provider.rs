@@ -1,7 +1,7 @@
 use crate::{children::TypedChildren, into_view::IntoView};
 use leptos_macro::component;
 use reactive_graph::owner::{provide_context, Owner};
-use crate::renderer::{reactive_graph::OwnedView, Renderer};
+use crate::renderer::{reactive_graph::OwnedView, Backend};
 
 /// Uses the context API to [`provide_context`] to its children and
 /// descendants, without overwriting any contexts of the same type in
@@ -15,7 +15,7 @@ pub fn Provider<T, Chil, R>(
     children: TypedChildren<Chil, R>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     T: Send + Sync + 'static,
     Chil: IntoView<R> + 'static,
 {

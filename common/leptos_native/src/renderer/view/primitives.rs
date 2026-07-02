@@ -1,20 +1,21 @@
 //! `Render<R>` for primitive scalar types — bool, char, integers, floats.
 //! Each renders as a text node displaying the value's `to_string()`.
 
+use crate::renderer::node::Node;
 use super::{Mountable, Render};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 
 /// Retained state for a primitive — the platform Text node plus the last
 /// value, so rebuild can skip the platform call when the value is unchanged.
-pub struct PrimitiveState<R: Renderer, T> {
-    text: R::Node,
+pub struct PrimitiveState<R: Backend, T> {
+    text: Node<R>,
     last: T,
 }
 
 macro_rules! impl_render_primitive {
     ($($ty:ty),* $(,)?) => {
         $(
-            impl<R: Renderer> Render<R> for $ty {
+            impl<R: Backend> Render<R> for $ty {
                 type State = PrimitiveState<R, $ty>;
 
                 fn build(self) -> Self::State {
@@ -38,17 +39,17 @@ impl_render_primitive!(
     f32, f64,
 );
 
-impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
+impl<R: Backend, T> Mountable<R> for PrimitiveState<R, T> {
     fn unmount(&mut self) {
-        R::remove(self.text);
+        self.text.remove();
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
-        R::insert_node(parent, self.text, marker);
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
+        parent.insert_node(self.text, marker);
     }
 
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(self.text) {
+        if let Some(parent) = self.text.parent() {
             child.mount(parent, Some(self.text));
             true
         } else {
@@ -56,7 +57,7 @@ impl<R: Renderer, T> Mountable<R> for PrimitiveState<R, T> {
         }
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         Vec::new()
     }
 }

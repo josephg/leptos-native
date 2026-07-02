@@ -1,14 +1,15 @@
 //! `Render<R>` impls for collections — `Vec<T>` (unkeyed diff) and
 //! fixed-size `[T; N]` arrays. Keyed iteration lives in `keyed.rs`.
 
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{Mountable, Render},
 };
 
 impl<R, T> Render<R> for Vec<T>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     type State = VecState<T::State, R>;
@@ -80,18 +81,18 @@ where
 /// Retained view state for a `Vec<_>`.
 pub struct VecState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Mountable<R>,
 {
     states: Vec<T>,
     /// Marker placeholder so new items can be inserted-before a known node
     /// rather than appended-after the last known item.
-    marker: R::Node,
+    marker: Node<R>,
 }
 
 impl<R, T> Mountable<R> for VecState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Mountable<R>,
 {
     fn unmount(&mut self) {
@@ -101,7 +102,7 @@ where
         self.marker.unmount();
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         for state in self.states.iter_mut() {
             state.mount(parent, marker);
         }
@@ -117,7 +118,7 @@ where
         self.marker.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.states
             .iter()
             .flat_map(|item| item.elements())

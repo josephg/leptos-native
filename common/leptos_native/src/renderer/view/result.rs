@@ -5,8 +5,9 @@
 //! rendered as usual. The `State` keeps the throw_error `ErrorId` so
 //! the error can be cleared on re-render or drop.
 
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{Mountable, Render, UnitState},
 };
 use either_of::Either;
@@ -16,7 +17,7 @@ use throw_error::{Error as AnyError, ErrorHook};
 /// View state for a `Result<_, _>`.
 pub struct ResultState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     state: Either<T::State, UnitState<R>>,
@@ -26,7 +27,7 @@ where
 
 impl<T, R> Drop for ResultState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     fn drop(&mut self) {
@@ -40,7 +41,7 @@ where
 
 impl<R, T, E> Render<R> for Result<T, E>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
     E: Into<AnyError> + 'static,
 {
@@ -99,14 +100,14 @@ where
 
 impl<R, T> Mountable<R> for ResultState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     fn unmount(&mut self) {
         self.state.unmount();
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         self.state.mount(parent, marker);
     }
 
@@ -114,7 +115,7 @@ where
         self.state.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.state.elements()
     }
 }

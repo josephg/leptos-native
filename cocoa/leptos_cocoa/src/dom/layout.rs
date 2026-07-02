@@ -33,13 +33,13 @@ pub use leptos_native::renderer::{
     JustifyItems, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size,
     Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{AttachOutcome, Layout, LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, Layout, Backend, LayoutState};
 
 // ---------------------------------------------------------------------
 // Cocoa backend
 // ---------------------------------------------------------------------
 
-/// `LayoutBackend` impl for AppKit. The `View` is a retained pointer
+/// `Backend` impl for AppKit. The `View` is a retained pointer
 /// to the per-node `NSView`; `NodeMeta` carries the scroll-view flag
 /// and the documentView-wrapper redirect used by `<scroll_view>`.
 pub struct CocoaBackend;
@@ -102,7 +102,7 @@ thread_local! {
         RefCell::new(LayoutState::default());
 }
 
-impl LayoutBackend for CocoaBackend {
+impl Backend for CocoaBackend {
     type View = SendWrapper<Retained<NSView>>;
     type NodeMeta = CocoaMeta;
     type Handlers = event::NodeHandlers;
@@ -163,6 +163,23 @@ impl LayoutBackend for CocoaBackend {
     fn schedule_relayout(id: NodeId) {
         CocoaBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    fn remove_from_native_parent(view: &Self::View) {
+        let v: &NSView = view;
+        v.removeFromSuperview();
+    }
+
+    fn create_text_node(text: &str) -> CocoaElem {
+        CocoaElem::create_text(text)
+    }
+
+    fn create_placeholder() -> CocoaElem {
+        CocoaElem::create_placeholder()
+    }
+
+    fn set_text(node: CocoaElem, text: &str) {
+        CocoaNodeExt::set_text(node, text);
     }
 
     // Native tree edits. The native parent is `subview_parent()` (the
@@ -329,17 +346,6 @@ pub fn scroll_view_document(view: &NSView) -> Option<Retained<NSView>> {
     let any: &AnyObject = view.as_ref();
     any.downcast_ref::<objc2_app_kit::NSScrollView>()
         .and_then(|s| s.documentView())
-}
-
-/// Remove the node (and its structural subtree) from the store and
-/// detach its NSView, then schedule a relayout of the (former)
-/// parent's subtree so its flex layout recomputes without the node.
-pub fn drop_node(node: CocoaElem) {
-    let parent = CocoaBackend::parent(node.id());
-    node.teardown();
-    if let Some(pid) = parent {
-        queue_relayout_for(pid);
-    }
 }
 
 // ---------------------------------------------------------------------
@@ -823,7 +829,7 @@ fn set_frame_from_layout(
 // that used to live here are gone: with `CocoaElem` now an alias for the
 // foreign `Node<CocoaBackend>`, impl'ing those (foreign, param-less) traits
 // here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `LayoutBackend` native-setter hooks (`set_hidden`,
+// forwarding to the `Backend` native-setter hooks (`set_hidden`,
 // `set_clip`, `set_alpha`, `set_tool_tip`, `schedule_relayout`) on
 // `CocoaBackend` above.
 //

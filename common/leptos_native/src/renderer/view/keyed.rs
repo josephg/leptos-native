@@ -35,8 +35,9 @@
 //! Adapted from `tachys/src/view/keyed.rs` (Greg Johnston / leptos).
 //! The diff algorithm is unchanged; only the surrounding glue is.
 
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{Mountable, Render},
 };
 use indexmap::IndexSet;
@@ -88,17 +89,17 @@ pub struct KeyedState<K, V, R>
 where
     K: Eq + Hash + 'static,
     V: Render<R>,
-    R: Renderer,
+    R: Backend,
 {
-    parent: Option<R::Node>,
-    marker: R::Node,
+    parent: Option<Node<R>>,
+    marker: Node<R>,
     hashed_items: FxIndexSet<K>,
     rendered_items: Vec<Option<V::State>>,
 }
 
 impl<R, T, I, K, KF, VF, V> Render<R> for Keyed<T, I, K, KF, VF, V>
 where
-    R: Renderer,
+    R: Backend,
     I: IntoIterator<Item = T>,
     K: Eq + Hash + 'static,
     KF: Fn(&T) -> K,
@@ -161,7 +162,7 @@ where
 
 impl<R, K, V> Mountable<R> for KeyedState<K, V, R>
 where
-    R: Renderer,
+    R: Backend,
     K: Eq + Hash + 'static,
     V: Render<R>,
 {
@@ -173,7 +174,7 @@ where
         self.parent = None;
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         self.parent = Some(parent.clone());
         self.marker.mount(parent, marker);
         for state in self.rendered_items.iter_mut().flatten() {
@@ -192,7 +193,7 @@ where
         self.marker.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.rendered_items
             .iter()
             .flatten()
@@ -332,14 +333,14 @@ fn group_adjacent_moves(moved: Vec<DiffOpMove>) -> Vec<DiffOpMove> {
 }
 
 fn apply_diff<R, T, V, VF>(
-    parent: Option<R::Node>,
-    marker: R::Node,
+    parent: Option<Node<R>>,
+    marker: Node<R>,
     diff: Diff,
     children: &mut Vec<Option<V::State>>,
     view_fn: &VF,
     mut items: Vec<Option<T>>,
 ) where
-    R: Renderer,
+    R: Backend,
     V: Render<R>,
     VF: Fn(usize, T) -> V,
 {
@@ -497,7 +498,7 @@ fn unpack_moves(diff: &Diff) -> (Vec<DiffOpMove>, Vec<DiffOpAdd>) {
 
 #[cfg(test)]
 mod tests {
-    //! Pure-Rust tests of the diff algorithm. No platform Renderer
+    //! Pure-Rust tests of the diff algorithm. No platform Backend
     //! involved — we test what `diff()` produces from `IndexSet` →
     //! `IndexSet`. The `apply_diff` path that touches platform
     //! `Mountable` impls is exercised by the cocoa/iOS counters

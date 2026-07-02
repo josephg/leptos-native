@@ -380,7 +380,7 @@ pub trait UniversalElement: Copy + Clone + 'static {
 // gone, `impl LayoutElement for Node<B>` in a port would be an orphan
 // violation (foreign trait, foreign `Node`, the local `B` doesn't
 // count). So they live here, once, forwarding the platform-specific
-// parts to the `LayoutBackend` native-setter hooks.
+// parts to the `Backend` native-setter hooks.
 //
 // Every native setter routes through `try_view()`, never the panicking
 // `view()`: a `RenderEffect` can fire after its node is torn down, and
@@ -388,9 +388,9 @@ pub trait UniversalElement: Copy + Clone + 'static {
 // ---------------------------------------------------------------------
 
 use crate::renderer::node::Node;
-use crate::renderer::scene::LayoutBackend;
+use crate::renderer::scene::Backend;
 
-impl<B: LayoutBackend> LayoutNodeOps for Node<B> {
+impl<B: Backend> LayoutNodeOps for Node<B> {
     fn update_style<F: FnOnce(&mut Style)>(self, f: F) {
         self.with_style_mut(f);
     }
@@ -406,7 +406,7 @@ impl<B: LayoutBackend> LayoutNodeOps for Node<B> {
     }
 }
 
-impl<B: LayoutBackend> LayoutElement for Node<B> {
+impl<B: Backend> LayoutElement for Node<B> {
     fn set_view_hidden(self, hidden: bool) {
         if let Some(v) = self.try_view() {
             B::set_hidden(&v, hidden);
@@ -419,7 +419,7 @@ impl<B: LayoutBackend> LayoutElement for Node<B> {
     }
 }
 
-impl<B: LayoutBackend> UniversalElement for Node<B> {
+impl<B: Backend> UniversalElement for Node<B> {
     fn set_alpha(self, alpha: f64) {
         if let Some(v) = self.try_view() {
             B::set_alpha(&v, alpha);

@@ -27,7 +27,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use leptos_native::renderer;
-use leptos_native::renderer::scene::LayoutBackend;
+use leptos_native::renderer::scene::Backend;
 
 static VISIBLE: AtomicBool = AtomicBool::new(false);
 
@@ -178,7 +178,7 @@ fn walk(
             // natural size.
             if baseline_in_use(node_id) {
                 if let Some(bo) =
-                    <crate::dom::layout::GtkBackend as renderer::LayoutBackend>::first_baseline(&view)
+                    <crate::dom::layout::GtkBackend as renderer::Backend>::first_baseline(&view)
                 {
                     if bo > 0.0 && bo < rect.height() {
                         let y = rect.y() + bo;

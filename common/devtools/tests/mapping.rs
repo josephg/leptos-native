@@ -1,8 +1,8 @@
 //! Exercises the CDP mapping against a hand-built layout tree, using a
-//! trivial in-memory [`LayoutBackend`] (no platform views).
+//! trivial in-memory [`Backend`] (no platform views).
 
 use leptos_native::renderer::{
-    AvailableSpace, Dimension, LayoutBackend, LayoutState, LengthPercentage, Size, Style,
+    AvailableSpace, Dimension, Backend, LayoutState, LengthPercentage, Size, Style,
 };
 use std::cell::RefCell;
 
@@ -12,7 +12,7 @@ thread_local! {
     static TREE: RefCell<LayoutState<TestB>> = RefCell::new(LayoutState::default());
 }
 
-impl LayoutBackend for TestB {
+impl Backend for TestB {
     type View = ();
     type NodeMeta = ();
     type Handlers = ();

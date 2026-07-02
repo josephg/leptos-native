@@ -8,7 +8,7 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::dom::{event, layout::*, CocoaElem, CocoaMakeView, CocoaNodeExt, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
-use crate::CocoaDom;
+use crate::CocoaBackend;
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;
 use leptos_native::prelude::AddAnyAttr;
@@ -198,7 +198,7 @@ pub struct ElementState<ChildState> {
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable<CocoaDom>> Mountable<CocoaDom>
+impl<ChildState: Mountable<CocoaBackend>> Mountable<CocoaBackend>
     for ElementState<ChildState>
 {
     fn unmount(&mut self) {
@@ -218,7 +218,7 @@ impl<ChildState: Mountable<CocoaDom>> Mountable<CocoaDom>
         // releases the subscription promptly instead of leaking it
         // until the `ElementState` value itself drops.
         self._effects.clear();
-        self.el.teardown();
+        self.el.remove();
     }
 
     fn mount(
@@ -238,8 +238,8 @@ impl<ChildState: Mountable<CocoaDom>> Mountable<CocoaDom>
         self.children.mount(self.el, None);
     }
 
-    fn insert_before_this(&self, child: &mut dyn Mountable<CocoaDom>) -> bool {
-        crate::renderer_cocoa::insert_before_node(self.el, child)
+    fn insert_before_this(&self, child: &mut dyn Mountable<CocoaBackend>) -> bool {
+        self.el.insert_before_this(child)
     }
 
     fn elements(&self) -> Vec<CocoaElem> {
@@ -259,7 +259,7 @@ impl<ChildState> Drop for ElementState<ChildState> {
     /// in `remove` also frees any children still in the store, and
     /// `ChildState` / `_effects` drop via ordinary field drop.
     fn drop(&mut self) {
-        self.el.teardown();
+        self.el.remove();
     }
 }
 
@@ -479,9 +479,9 @@ impl<Ch> WithDecoration for Stack<Ch> {
     fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
-impl<Ch> Render<CocoaDom> for Stack<Ch>
+impl<Ch> Render<CocoaBackend> for Stack<Ch>
 where
-    Ch: Render<CocoaDom>,
+    Ch: Render<CocoaBackend>,
 {
     type State = ElementState<Ch::State>;
 
@@ -722,9 +722,9 @@ impl<Ch> WithDecoration for Grid<Ch> {
     fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
 }
 
-impl<Ch> Render<CocoaDom> for Grid<Ch>
+impl<Ch> Render<CocoaBackend> for Grid<Ch>
 where
-    Ch: Render<CocoaDom>,
+    Ch: Render<CocoaBackend>,
 {
     type State = ElementState<Ch::State>;
 
@@ -1047,7 +1047,7 @@ impl WithDecoration for Button {
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
 
-impl Render<CocoaDom> for Button
+impl Render<CocoaBackend> for Button
 where
 {
     type State = ElementState<()>;
@@ -1251,7 +1251,7 @@ impl WithText for Checkbox {
 }
 
 
-impl Render<CocoaDom> for Checkbox
+impl Render<CocoaBackend> for Checkbox
 where
 {
     type State = ElementState<()>;
@@ -1464,7 +1464,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl Render<CocoaDom> for Slider
+impl Render<CocoaBackend> for Slider
 where
 {
     type State = ElementState<()>;
@@ -1683,7 +1683,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl Render<CocoaDom> for PopUpButton
+impl Render<CocoaBackend> for PopUpButton
 where
 {
     type State = ElementState<()>;
@@ -1945,7 +1945,7 @@ impl Label {
 }
 
 
-impl Render<CocoaDom> for Label
+impl Render<CocoaBackend> for Label
 where
 {
     type State = ElementState<()>;
@@ -2313,7 +2313,7 @@ impl TextField {
 }
 
 
-impl Render<CocoaDom> for TextField
+impl Render<CocoaBackend> for TextField
 where
 {
     type State = ElementState<()>;
@@ -2550,7 +2550,7 @@ impl DatePicker {
 }
 
 
-impl Render<CocoaDom> for DatePicker
+impl Render<CocoaBackend> for DatePicker
 where
 {
     type State = ElementState<()>;
@@ -2754,7 +2754,7 @@ impl WithUniversal for Stepper {
 }
 
 
-impl Render<CocoaDom> for Stepper
+impl Render<CocoaBackend> for Stepper
 where
 {
     type State = ElementState<()>;
@@ -2932,7 +2932,7 @@ impl ProgressIndicator {
 }
 
 
-impl Render<CocoaDom> for ProgressIndicator
+impl Render<CocoaBackend> for ProgressIndicator
 where
 {
     type State = ElementState<()>;
@@ -3097,7 +3097,7 @@ impl WithUniversal for ColorWell {
 }
 
 
-impl Render<CocoaDom> for ColorWell
+impl Render<CocoaBackend> for ColorWell
 where
 {
     type State = ElementState<()>;
@@ -3285,7 +3285,7 @@ impl SegmentedControl {
 }
 
 
-impl Render<CocoaDom> for SegmentedControl
+impl Render<CocoaBackend> for SegmentedControl
 where
 {
     type State = ElementState<()>;
@@ -3467,9 +3467,9 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<CocoaDom> for ScrollView<Ch>
+impl<Ch> Render<CocoaBackend> for ScrollView<Ch>
 where
-    Ch: Render<CocoaDom>,
+    Ch: Render<CocoaBackend>,
 {
     type State = ElementState<Ch::State>;
 
@@ -3649,7 +3649,7 @@ impl WithUniversal for ImageView {
 }
 
 
-impl Render<CocoaDom> for ImageView
+impl Render<CocoaBackend> for ImageView
 where
 {
     type State = ElementState<()>;
@@ -3806,7 +3806,7 @@ impl WithText for TextView {
 }
 
 
-impl Render<CocoaDom> for TextView
+impl Render<CocoaBackend> for TextView
 where
 {
     type State = ElementState<()>;
@@ -3887,10 +3887,10 @@ where
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl leptos_native::renderer::view::AddAnyAttr<crate::CocoaDom> for $builder {
+            impl leptos_native::renderer::view::AddAnyAttr<crate::CocoaBackend> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: leptos_native::renderer::view::ApplyAttr<crate::CocoaDom>,
+                    __A: leptos_native::renderer::view::ApplyAttr<crate::CocoaBackend>,
                 {
                     self.directives.push(Box::new(move |el: CocoaElem| {
                         attr.apply_to(el);
@@ -3919,11 +3919,11 @@ impl_add_any_attr_for_leaf!(
 // Future: NSClickGestureRecognizer integration so `<vstack on:click=…>`
 // becomes meaningful, then route through that.
 
-impl<Children> AddAnyAttr<CocoaDom> for Stack<Children> {
+impl<Children> AddAnyAttr<CocoaBackend> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/stack_view). Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
@@ -3931,11 +3931,11 @@ impl<Children> AddAnyAttr<CocoaDom> for Stack<Children> {
     }
 }
 
-impl<Children> AddAnyAttr<CocoaDom> for Grid<Children> {
+impl<Children> AddAnyAttr<CocoaBackend> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no NSControl target/action slot — click and other UIControl events have no install path. Attach to a child button/label/text_field instead."
@@ -3943,11 +3943,11 @@ impl<Children> AddAnyAttr<CocoaDom> for Grid<Children> {
     }
 }
 
-impl<Children> AddAnyAttr<CocoaDom> for ScrollView<Children> {
+impl<Children> AddAnyAttr<CocoaBackend> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: ApplyAttr<CocoaDom>,
+        __A: ApplyAttr<CocoaBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ScrollView. NSScrollView isn't an NSControl — click handlers have no install path. Attach to inner content instead."

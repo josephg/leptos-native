@@ -17,7 +17,7 @@ mod common;
 use leptos_cocoa::cocoa::element::label;
 use leptos_cocoa::dom::window::open_window;
 use leptos_cocoa::dom::CocoaNodeExt;
-use leptos_cocoa::CocoaDom;
+use leptos_cocoa::CocoaBackend;
 use leptos_native::children::ToChildren;
 use reactive_graph::owner::Owner;
 use reactive_graph::signal::RwSignal;
@@ -52,14 +52,14 @@ fn show_without_fallback_mounts_on_flip_false_to_true() {
         // explicitly with the same shape ShowEmpty would expose
         // (`Label` is a concrete IntoView).
         type Fb = leptos_cocoa::cocoa::element::Label;
-        let view = leptos_native::control_flow::Show::<_, Fb, CocoaDom>(
-            leptos_native::control_flow::ShowProps::<_, Fb, CocoaDom>::builder()
+        let view = leptos_native::control_flow::Show::<_, Fb, CocoaBackend>(
+            leptos_native::control_flow::ShowProps::<_, Fb, CocoaBackend>::builder()
                 .when(move || when.get())
                 .children(ToChildren::to_children(|| label().text("hello")))
                 .build(),
         );
 
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
         common::pump_run_loop(0.05);
 

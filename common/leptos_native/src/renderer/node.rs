@@ -27,11 +27,12 @@ use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
 
-use super::scene::{AttachOutcome, LayoutBackend, NodeId, Style};
+use super::scene::{AttachOutcome, Backend, NodeId, Style};
+use super::view::Mountable;
 
 /// A `Copy` handle into the ambient [`LayoutState<B>`] node store —
 /// structurally just a [`NodeId`]. See the module docs.
-pub struct Node<B: LayoutBackend> {
+pub struct Node<B: Backend> {
     /// The backing store key. Readable (it's the whole handle), but the
     /// private `_b` marker keeps `Node` non-constructible outside this
     /// module — use [`Node::from_id`]. Ports' extension-trait method
@@ -43,30 +44,30 @@ pub struct Node<B: LayoutBackend> {
 // Hand-written rather than derived: `derive` would spuriously require
 // `B: Clone/Copy/PartialEq/…`, but the handle's traits depend only on
 // `NodeId` (and `PhantomData<fn() -> B>`, which is unconditional).
-impl<B: LayoutBackend> Clone for Node<B> {
+impl<B: Backend> Clone for Node<B> {
     fn clone(&self) -> Self {
         *self
     }
 }
-impl<B: LayoutBackend> Copy for Node<B> {}
-impl<B: LayoutBackend> PartialEq for Node<B> {
+impl<B: Backend> Copy for Node<B> {}
+impl<B: Backend> PartialEq for Node<B> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
-impl<B: LayoutBackend> Eq for Node<B> {}
-impl<B: LayoutBackend> Hash for Node<B> {
+impl<B: Backend> Eq for Node<B> {}
+impl<B: Backend> Hash for Node<B> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
 }
-impl<B: LayoutBackend> fmt::Debug for Node<B> {
+impl<B: Backend> fmt::Debug for Node<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Node").field(&self.id).finish()
     }
 }
 
-impl<B: LayoutBackend> Node<B> {
+impl<B: Backend> Node<B> {
     /// Wrap an existing store id as a handle. (No store access — cheap.)
     pub fn from_id(id: NodeId) -> Self {
         Node { id, _b: PhantomData }
@@ -153,5 +154,57 @@ impl<B: LayoutBackend> Node<B> {
     /// reclaimed by the remove cascade, matching prior per-port behavior.
     pub fn clear_children(self) {
         B::clear_native_children(self.id);
+    }
+
+    /// The node's parent in the store, if any.
+    pub fn parent(self) -> Option<Self> {
+        B::parent(self.id).map(Node::from_id)
+    }
+
+    /// Tear the node down: detach its view from the native parent, free
+    /// the store entry (cascading through the structural subtree), and
+    /// queue a relayout for the ex-parent so siblings reflow. Idempotent —
+    /// a stale handle is a no-op.
+    pub fn remove(self) {
+        let parent = B::parent(self.id);
+        if let Some(view) = self.try_view() {
+            B::remove_from_native_parent(&view);
+        }
+        B::remove(self.id);
+        if let Some(pid) = parent {
+            B::schedule_relayout(pid);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// Mountable — how the view-tree core attaches/detaches a node. One
+// blanket impl; mounting is fully expressible through the backend's
+// native-edit hooks, so ports don't write this per-port any more.
+// ---------------------------------------------------------------------
+
+impl<B: Backend> Mountable<B> for Node<B> {
+    fn unmount(&mut self) {
+        (*self).remove();
+    }
+
+    fn mount(&mut self, parent: Self, marker: Option<Self>) {
+        parent.insert_node(*self, marker);
+    }
+
+    fn try_mount(&mut self, parent: Self, marker: Option<Self>) -> bool {
+        parent.insert_node(*self, marker)
+    }
+
+    fn insert_before_this(&self, child: &mut dyn Mountable<B>) -> bool {
+        let Some(parent) = self.parent() else {
+            return false;
+        };
+        child.mount(parent, Some(*self));
+        true
+    }
+
+    fn elements(&self) -> Vec<Self> {
+        vec![*self]
     }
 }

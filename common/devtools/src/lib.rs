@@ -10,7 +10,7 @@
 //!
 //! It is **transport-agnostic and port-agnostic**: it serves CDP over any
 //! `futures` [`AsyncRead`](futures::AsyncRead)/[`AsyncWrite`] stream and
-//! is generic over the port's [`LayoutBackend`]. The port owns the
+//! is generic over the port's [`Backend`]. The port owns the
 //! listener and the native-loop socket integration, and drives
 //! [`serve_connection`] on its main-loop executor — so the CDP dispatcher
 //! reads and mutates the thread-local tree directly, with no locking or

@@ -18,7 +18,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response};
 use hyper_util::rt::TokioIo;
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -106,7 +106,7 @@ where
     // main-thread-only socket type can satisfy this with a documented
     // `unsafe impl Send` wrapper.
     S: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static,
-    B: LayoutBackend,
+    B: Backend,
 {
     let io = TokioIo::new(Adapter(stream));
 
@@ -156,7 +156,7 @@ where
 async fn run_session<Ws, B>(ws: Ws, hooks: Hooks)
 where
     Ws: futures::Stream<Item = Frame> + futures::Sink<Frame> + Unpin,
-    B: LayoutBackend,
+    B: Backend,
 {
     use futures::FutureExt;
 

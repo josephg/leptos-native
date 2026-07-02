@@ -5,7 +5,7 @@
 //! [`IntoView<R>`] trait, the component-system glue, control-flow
 //! components, and the `<ErrorBoundary>` machinery — but it does
 //! **not** render anything by itself. Rendering happens through a
-//! platform-specific [`Renderer`](renderer::renderer::Renderer) impl provided by one of
+//! platform-specific [`Backend`](renderer::renderer::Backend) impl provided by one of
 //! the sibling crates:
 //!
 //! | Platform | Crate         | Backend  |
@@ -18,12 +18,12 @@
 //! = "leptos_cocoa" | "leptos_uikit" | … }`. The platform crate
 //! re-exports everything here under `::leptos_native::*`, plus its own
 //! element builders (`button`, `vstack`, `<text_field>`, etc.) and
-//! a `Dom` unit type that is the `Renderer` for that target.
+//! a `Dom` unit type that is the `Backend` for that target.
 //!
 //! ## What's in this crate
 //!
 //! - [`IntoView<R>`] — every type that can be rendered. Generic over
-//!   `R: Renderer` so the same view trees work across platforms; each
+//!   `R: Backend` so the same view trees work across platforms; each
 //!   platform crate provides a non-generic specialization
 //!   (`pub trait IntoView: leptos_native::IntoView<Dom>`) so user code writes
 //!   `impl IntoView` without the `<R>` parameter.

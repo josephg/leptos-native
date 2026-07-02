@@ -13,7 +13,7 @@
 //! `ChildrenOptContainer<T>` for the macro's optimised path.
 
 use crate::into_view::{IntoView, View};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 use std::{
     fmt::{self, Debug},
     marker::PhantomData,
@@ -36,12 +36,12 @@ pub struct ChildrenOptContainer<T>(pub T);
 
 /// A typed `children` prop, called once. `T` is the concrete view type
 /// the children closure returns, `R` is the renderer.
-pub struct TypedChildren<T, R: Renderer> {
+pub struct TypedChildren<T, R: Backend> {
     inner: Box<dyn FnOnce() -> View<T> + Send>,
     rndr: PhantomData<R>,
 }
 
-impl<T, R: Renderer> TypedChildren<T, R> {
+impl<T, R: Backend> TypedChildren<T, R> {
     /// Extracts the inner `children` function.
     pub fn into_inner(self) -> impl FnOnce() -> View<T> + Send {
         self.inner
@@ -50,7 +50,7 @@ impl<T, R: Renderer> TypedChildren<T, R> {
 
 impl<F, C, R> ToChildren<F> for TypedChildren<C, R>
 where
-    R: Renderer,
+    R: Backend,
     F: FnOnce() -> C + Send + 'static,
     C: IntoView<R>,
 {
@@ -65,7 +65,7 @@ where
 
 impl<T, R> ToChildren<ChildrenOptContainer<T>> for TypedChildren<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: IntoView<R> + 'static,
 {
     #[inline]
@@ -78,18 +78,18 @@ where
 }
 
 /// A typed `children` prop that may mutate state across calls.
-pub struct TypedChildrenMut<T, R: Renderer> {
+pub struct TypedChildrenMut<T, R: Backend> {
     inner: Box<dyn FnMut() -> View<T> + Send>,
     rndr: PhantomData<R>,
 }
 
-impl<T, R: Renderer> Debug for TypedChildrenMut<T, R> {
+impl<T, R: Backend> Debug for TypedChildrenMut<T, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("TypedChildrenMut").finish()
     }
 }
 
-impl<T, R: Renderer> TypedChildrenMut<T, R> {
+impl<T, R: Backend> TypedChildrenMut<T, R> {
     /// Extracts the inner `children` function.
     pub fn into_inner(self) -> impl FnMut() -> View<T> + Send {
         self.inner
@@ -98,7 +98,7 @@ impl<T, R: Renderer> TypedChildrenMut<T, R> {
 
 impl<F, C, R> ToChildren<F> for TypedChildrenMut<C, R>
 where
-    R: Renderer,
+    R: Backend,
     F: FnMut() -> C + Send + 'static,
     C: IntoView<R>,
 {
@@ -113,7 +113,7 @@ where
 
 impl<T, R> ToChildren<ChildrenOptContainer<T>> for TypedChildrenMut<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: IntoView<R> + Clone + 'static,
 {
     #[inline]
@@ -127,18 +127,18 @@ where
 
 /// A typed `children` prop that can be called many times (e.g. for `<Show>`,
 /// `<Suspense>`).
-pub struct TypedChildrenFn<T, R: Renderer> {
+pub struct TypedChildrenFn<T, R: Backend> {
     inner: Arc<dyn Fn() -> View<T> + Send + Sync>,
     rndr: PhantomData<R>,
 }
 
-impl<T, R: Renderer> Debug for TypedChildrenFn<T, R> {
+impl<T, R: Backend> Debug for TypedChildrenFn<T, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("TypedChildrenFn").finish()
     }
 }
 
-impl<T, R: Renderer> Clone for TypedChildrenFn<T, R> {
+impl<T, R: Backend> Clone for TypedChildrenFn<T, R> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -147,7 +147,7 @@ impl<T, R: Renderer> Clone for TypedChildrenFn<T, R> {
     }
 }
 
-impl<T, R: Renderer> TypedChildrenFn<T, R> {
+impl<T, R: Backend> TypedChildrenFn<T, R> {
     /// Extracts the inner `children` function.
     pub fn into_inner(self) -> Arc<dyn Fn() -> View<T> + Send + Sync> {
         self.inner
@@ -156,7 +156,7 @@ impl<T, R: Renderer> TypedChildrenFn<T, R> {
 
 impl<F, C, R> ToChildren<F> for TypedChildrenFn<C, R>
 where
-    R: Renderer,
+    R: Backend,
     F: Fn() -> C + Send + Sync + 'static,
     C: IntoView<R>,
 {
@@ -171,7 +171,7 @@ where
 
 impl<T, R> ToChildren<ChildrenOptContainer<T>> for TypedChildrenFn<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: IntoView<R> + Clone + Sync + 'static,
 {
     #[inline]
@@ -202,23 +202,23 @@ use crate::renderer::view::{AnyView, IntoAny};
 ///
 /// Generic over the renderer `R`; per-port aliases name a
 /// concrete `Children = ChildrenFn<Dom>`.
-pub struct ChildrenFn<R: Renderer> {
+pub struct ChildrenFn<R: Backend> {
     inner: Arc<dyn Fn() -> AnyView<R> + Send + Sync>,
 }
 
-impl<R: Renderer> Clone for ChildrenFn<R> {
+impl<R: Backend> Clone for ChildrenFn<R> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<R: Renderer> Debug for ChildrenFn<R> {
+impl<R: Backend> Debug for ChildrenFn<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("ChildrenFn").finish()
     }
 }
 
-impl<R: Renderer> ChildrenFn<R> {
+impl<R: Backend> ChildrenFn<R> {
     /// Call the children closure, producing a fresh `AnyView<R>`.
     pub fn run(&self) -> AnyView<R> {
         (self.inner)()
@@ -227,7 +227,7 @@ impl<R: Renderer> ChildrenFn<R> {
 
 /// Sugar so `children()` works in component bodies (matches the
 /// upstream Leptos ergonomics).
-impl<R: Renderer> std::ops::Deref for ChildrenFn<R> {
+impl<R: Backend> std::ops::Deref for ChildrenFn<R> {
     type Target = dyn Fn() -> AnyView<R> + Send + Sync;
     fn deref(&self) -> &Self::Target {
         &*self.inner
@@ -236,7 +236,7 @@ impl<R: Renderer> std::ops::Deref for ChildrenFn<R> {
 
 impl<F, V, R> ToChildren<F> for ChildrenFn<R>
 where
-    R: Renderer,
+    R: Backend,
     F: Fn() -> V + Send + Sync + 'static,
     V: Render<R> + Send + 'static,
     V::State: Send + Sync + 'static,
@@ -256,7 +256,7 @@ where
 /// closure. This impl lets that path land on `ChildrenFn`.
 impl<T, R> ToChildren<ChildrenOptContainer<T>> for ChildrenFn<R>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R> + Clone + Send + Sync + 'static,
     T::State: Send + Sync + 'static,
 {

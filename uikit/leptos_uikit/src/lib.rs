@@ -21,7 +21,6 @@ pub mod event_ios;
 pub mod ios;
 pub mod keys;
 pub mod mount;
-pub mod renderer_ios;
 pub mod dom;
 
 /// Aliased path for `leptos_native::mount_ios::run` so existing iOS example
@@ -31,13 +30,13 @@ pub mod mount_ios {
     pub use crate::mount::*;
 }
 
-pub use renderer_ios::UikitDom;
+pub use dom::layout::IosBackend;
 
 /// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
-pub type AnyView = leptos_native::renderer::view::AnyView<UikitDom>;
+pub type AnyView = leptos_native::renderer::view::AnyView<IosBackend>;
 
 /// iOS-pinned alias of [`leptos_native::children::ChildrenFn`].
-pub type ChildrenFn = ::leptos_native::children::ChildrenFn<UikitDom>;
+pub type ChildrenFn = ::leptos_native::children::ChildrenFn<IosBackend>;
 
 pub mod attr {
     pub use crate::keys::*;
@@ -84,10 +83,10 @@ pub mod reactive_graph {
     pub use leptos_native::renderer::reactive_graph::*;
 }
 
-/// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`UikitDom`]
+/// UIKit-specialized [`IntoView`](leptos_native::IntoView). Pins R to [`IosBackend`]
 /// so user code writes `impl IntoView` (no R param visible).
-pub trait IntoView: leptos_native::IntoView<UikitDom> {}
-impl<T: leptos_native::IntoView<UikitDom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<IosBackend> {}
+impl<T: leptos_native::IntoView<IosBackend>> IntoView for T {}
 
 pub mod prelude {
     // Re-export the leptos core prelude FIRST so our UIKit-specialized

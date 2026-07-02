@@ -1,18 +1,19 @@
 //! `Render<R>` for the unit type and tuples up to size 16.
 
+use crate::renderer::node::Node;
 use super::{Mountable, Render};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 
 /// Retained state for an `Option`/`Either` empty branch — a real
 /// placeholder node so insertion points stay stable when the branch
 /// flips between content and empty. Constructed explicitly by callers
 /// that need a placeholder (see `view::result`); not emitted by
 /// `() : Render<R>` itself, which is a no-op.
-pub struct UnitState<R: Renderer> {
-    placeholder: R::Node,
+pub struct UnitState<R: Backend> {
+    placeholder: Node<R>,
 }
 
-impl<R: Renderer> UnitState<R> {
+impl<R: Backend> UnitState<R> {
     /// Build a fresh placeholder-backed unit state in `tree`.
     pub fn new() -> Self {
         UnitState { placeholder: R::create_placeholder() }
@@ -29,7 +30,7 @@ impl<R: Renderer> UnitState<R> {
 /// would acquire an extra placeholder NSView underneath it — turning
 /// every leaf control (`button`, `label`, etc.) into a non-leaf in
 /// Taffy and breaking intrinsic-size measurement.
-impl<R: Renderer> Render<R> for () {
+impl<R: Backend> Render<R> for () {
     type State = ();
     fn build(self) -> Self::State {}
     fn rebuild(self, _state: &mut Self::State) {}
@@ -39,26 +40,26 @@ impl<R: Renderer> Render<R> for () {
 /// controls (Button, Label, …) that don't have any children. See the
 /// comment on `Render for ()` above for why a real placeholder there
 /// would break intrinsic-size measurement on the parent control.
-impl<R: Renderer> Mountable<R> for () {
+impl<R: Backend> Mountable<R> for () {
     fn unmount(&mut self) {}
-    fn mount(&mut self, _parent: R::Node, _marker: Option<R::Node>) {}
+    fn mount(&mut self, _parent: Node<R>, _marker: Option<Node<R>>) {}
     fn insert_before_this(&self, _child: &mut dyn Mountable<R>) -> bool {
         false
     }
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         Vec::new()
     }
 }
 
-impl<R: Renderer> Mountable<R> for UnitState<R> {
+impl<R: Backend> Mountable<R> for UnitState<R> {
     fn unmount(&mut self) {
-        R::remove(self.placeholder);
+        self.placeholder.remove();
     }
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
-        R::insert_node(parent, self.placeholder, marker);
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
+        parent.insert_node(self.placeholder, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
-        if let Some(parent) = R::get_parent(self.placeholder)
+        if let Some(parent) = self.placeholder.parent()
         {
             child.mount(parent, Some(self.placeholder));
             true
@@ -66,14 +67,14 @@ impl<R: Renderer> Mountable<R> for UnitState<R> {
             false
         }
     }
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         Vec::new()
     }
 }
 
 macro_rules! impl_render_tuple {
     ($(($idx:tt, $T:ident)),+ $(,)?) => {
-        impl<R: Renderer, $($T),+> Render<R> for ($($T,)+)
+        impl<R: Backend, $($T),+> Render<R> for ($($T,)+)
         where
             $($T: Render<R>,)+
         {
@@ -88,21 +89,21 @@ macro_rules! impl_render_tuple {
             }
         }
 
-        impl<R: Renderer, $($T),+> Mountable<R> for ($($T,)+)
+        impl<R: Backend, $($T),+> Mountable<R> for ($($T,)+)
         where
             $($T: Mountable<R>,)+
         {
             fn unmount(&mut self) {
                 $( self.$idx.unmount(); )+
             }
-            fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+            fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
                 $( self.$idx.mount(parent, marker); )+
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
                 $( if self.$idx.insert_before_this(child) { return true; } )+
                 false
             }
-            fn elements(&self) -> Vec<R::Node> {
+            fn elements(&self) -> Vec<Node<R>> {
                 let mut out = Vec::new();
                 $( out.extend(self.$idx.elements()); )+
                 out

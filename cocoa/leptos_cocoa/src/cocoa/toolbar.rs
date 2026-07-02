@@ -131,7 +131,7 @@ use crate::dom::{toolbar::{
 use crate::event_macos::{
     ActionEvent, EventDescriptor, InputEvent, PendingHandler, SupportsEvent,
 };
-use crate::CocoaDom;
+use crate::CocoaBackend;
 use std::collections::HashMap;
 
 // Re-export the dom-side enums from this module so user-facing
@@ -424,7 +424,7 @@ impl<CS> ToolbarState<CS> {
     }
 }
 
-impl<C> Render<CocoaDom> for Toolbar<C>
+impl<C> Render<CocoaBackend> for Toolbar<C>
 where
     C: ToolbarMountable,
 {
@@ -495,11 +495,11 @@ where
 // and the named setters above. Match the cocoa container pattern
 // (Stack/Grid/ScrollView) and panic loudly rather than silently
 // dropping the attribute.
-impl<C> AddAnyAttr<CocoaDom> for Toolbar<C> {
+impl<C> AddAnyAttr<CocoaBackend> for Toolbar<C> {
     #[track_caller]
     fn add_any_attr<A>(self, _attr: A) -> Self
     where
-        A: ApplyAttr<CocoaDom>,
+        A: ApplyAttr<CocoaBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Toolbar. Spread attributes \
@@ -510,7 +510,7 @@ impl<C> AddAnyAttr<CocoaDom> for Toolbar<C> {
     }
 }
 
-impl<CS: 'static> Mountable<CocoaDom> for ToolbarState<CS> {
+impl<CS: 'static> Mountable<CocoaBackend> for ToolbarState<CS> {
     fn unmount(&mut self) {
         // Drop releases the action handlers via Toolbar::Drop.
         // Nothing more to do; the window keeps its toolbar
@@ -538,7 +538,7 @@ impl<CS: 'static> Mountable<CocoaDom> for ToolbarState<CS> {
         self.toolbar.attach_to_window(&window);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaDom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaBackend>) -> bool {
         false
     }
 
@@ -700,8 +700,8 @@ impl ToolbarItem {
     /// are set, the custom view wins.
     pub fn view<V>(mut self, child: V) -> Self
     where
-        V: Render<CocoaDom> + Send + 'static,
-        V::State: Mountable<CocoaDom> + 'static,
+        V: Render<CocoaBackend> + Send + 'static,
+        V::State: Mountable<CocoaBackend> + 'static,
     {
         self.view_factory = Some(Box::new(move |_mtm| {
             // Toolbar custom views live outside the window's layout

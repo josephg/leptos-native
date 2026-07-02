@@ -60,7 +60,7 @@ fn teardown_removes_store_entry() {
     let id = el.id();
     assert!(layout::style(id).is_some());
 
-    el.teardown();
+    el.remove();
     assert!(
         layout::style(id).is_none(),
         "teardown removes the store entry"
@@ -81,7 +81,7 @@ fn handler_released_on_teardown() {
         baseline + 1,
         "on_click should allocate one ActionTarget"
     );
-    el.teardown();
+    el.remove();
     assert_eq!(
         handler_store_size_for_test(),
         baseline,
@@ -99,7 +99,7 @@ fn text_field_delegate_releases_on_teardown() {
         baseline + 1,
         "ensure_text_field_entry should allocate one TextFieldDelegate"
     );
-    el.teardown();
+    el.remove();
     assert_eq!(
         text_field_store_size_for_test(),
         baseline,
@@ -123,7 +123,7 @@ fn teardown_cascades_to_children() {
     assert!(layout::style(root_id).is_some());
     assert!(layout::style(child_id).is_some());
 
-    root.teardown();
+    root.remove();
     assert!(
         layout::style(root_id).is_none(),
         "root removed by teardown"
@@ -148,7 +148,7 @@ fn scroll_view_wrapper_freed_with_parent() {
     assert!(layout::style(scroll_id).is_some());
     assert!(layout::style(wrapper_id).is_some());
 
-    scroll.teardown();
+    scroll.remove();
     assert!(
         layout::style(scroll_id).is_none(),
         "scroll_view entry removed"
@@ -179,7 +179,7 @@ fn detach_does_not_free() {
         "detached node has no parent"
     );
 
-    child.teardown();
+    child.remove();
     assert!(layout::style(child_id).is_none());
 }
 
@@ -249,7 +249,7 @@ fn window_teardown_returns_to_baseline() {
 
     // Window close path: teardown the content_root (cascades the whole
     // subtree out of the store), then close the NSWindow.
-    opened.content_root.teardown();
+    opened.content_root.remove();
     opened.close();
 
     assert_eq!(
@@ -273,7 +273,7 @@ fn unattached_node_teardown_returns_to_baseline() {
 
     // Never attached to any parent — the orphan case. Explicit
     // teardown frees it.
-    el.teardown();
+    el.remove();
     assert_eq!(
         layout::node_count(),
         baseline,

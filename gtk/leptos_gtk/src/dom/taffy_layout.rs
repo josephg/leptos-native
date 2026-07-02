@@ -16,7 +16,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::RefCell;
 use leptos_native::renderer;
-use leptos_native::renderer::scene::LayoutBackend;
+use leptos_native::renderer::scene::Backend;
 
 mod imp {
     use crate::dom::layout::GtkBackend;

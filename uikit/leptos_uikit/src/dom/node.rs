@@ -27,7 +27,7 @@ use objc2_foundation::NSString;
 use send_wrapper::SendWrapper;
 use std::{cell::RefCell, rc::Rc};
 use super::layout::IosBackend;
-use leptos_native::renderer::{LayoutBackend, Node};
+use leptos_native::renderer::{Backend, Node};
 use crate::dom::event::IosNodeHandlers;
 use crate::dom::{event, layout};
 
@@ -70,7 +70,6 @@ pub trait UikitNodeExt: Copy {
     where
         T: DowncastTarget;
     fn ui_view_retained(self) -> Retained<UIView>;
-    fn teardown(self);
     fn with_meta<R>(self, f: impl FnOnce(&IosMeta) -> R) -> R;
     fn with_meta_mut<R>(self, f: impl FnOnce(&mut IosMeta) -> R) -> R;
     fn with_handlers_mut<R>(
@@ -226,14 +225,6 @@ impl UikitNodeExt for UikitElem {
         self.ui_view()
     }
 
-    /// Remove this node (and its structural subtree) from the store
-    /// and detach its UIView.
-    fn teardown(self) {
-        if let Some(view) = self.try_ui_view() {
-            view.removeFromSuperview();
-        }
-        IosBackend::remove(self.id);
-    }
 
     // ---- Accessor surface ------------------------------------------
 

@@ -41,7 +41,7 @@ mod ios {
         let el = UikitElem::create_button().0;
         let id = el.id();
         assert!(layout::style(id).is_some());
-        el.teardown();
+        el.remove();
         assert!(layout::style(id).is_none());
     }
 
@@ -51,7 +51,7 @@ mod ios {
         let copy = el;
         let _ = copy;
         assert!(layout::style(id).is_some());
-        el.teardown();
+        el.remove();
         assert!(layout::style(id).is_none());
     }
 
@@ -60,7 +60,7 @@ mod ios {
         let el = UikitElem::create_button().0;
         el.on_click(|| {});
         assert_eq!(handler_store_size_for_test(), baseline + 1);
-        el.teardown();
+        el.remove();
         assert_eq!(handler_store_size_for_test(), baseline);
     }
 
@@ -69,7 +69,7 @@ mod ios {
         let el = UikitElem::create_text_view().0;
         el.on_text_view_change(|_| {});
         assert_eq!(text_view_store_size_for_test(), baseline + 1);
-        el.teardown();
+        el.remove();
         assert_eq!(text_view_store_size_for_test(), baseline);
     }
 
@@ -81,7 +81,7 @@ mod ios {
         let child_id = child.id();
         assert!(layout::style(root_id).is_some());
         assert!(layout::style(child_id).is_some());
-        root.teardown();
+        root.remove();
         assert!(layout::style(root_id).is_none());
         assert!(layout::style(child_id).is_none());
     }
@@ -94,7 +94,7 @@ mod ios {
         layout::detach_child(root, child);
         assert!(layout::style(child_id).is_some());
         assert_eq!(layout::parent(child_id), None);
-        child.teardown();
+        child.remove();
         assert!(layout::style(child_id).is_none());
     }
 
@@ -124,7 +124,7 @@ mod ios {
             let _ = captured.id();
         });
         assert_eq!(handler_store_size_for_test(), baseline + 1);
-        el.teardown();
+        el.remove();
         assert!(layout::style(id).is_none());
         assert_eq!(handler_store_size_for_test(), baseline);
     }
@@ -149,7 +149,7 @@ mod ios {
 
         assert!(layout::node_count() > baseline, "mounting grows the store");
 
-        root.teardown();
+        root.remove();
         assert_eq!(
             layout::node_count(),
             baseline,
@@ -161,7 +161,7 @@ mod ios {
         let baseline = layout::node_count();
         let el = UikitElem::create_button().0;
         assert_eq!(layout::node_count(), baseline + 1);
-        el.teardown();
+        el.remove();
         assert_eq!(
             layout::node_count(),
             baseline,

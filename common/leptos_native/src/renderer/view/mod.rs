@@ -1,11 +1,12 @@
 //! Core view-tree traits — `Render<R>`, `Mountable<R>`, `IntoRender<R>`.
 //!
-//! Each platform implements a `Renderer` (see `crate::renderer::Renderer`).
+//! Each platform implements a `Backend` (see `crate::renderer::Backend`).
 //! View types implement `Render<R>` to describe how they build platform
 //! state, and the resulting `State` impls `Mountable<R>` so it can be
 //! attached to / detached from a parent.
 
-use crate::renderer::Renderer;
+use crate::renderer::node::Node;
+use crate::renderer::Backend;
 
 mod add_any_attr;
 mod any_view;
@@ -32,14 +33,14 @@ pub use tuples::UnitState;
 /// Each value `V: Render<R>` produces a `State` that owns the live UI nodes;
 /// `rebuild` updates them in place when the value changes (driven by the
 /// reactive graph).
-pub trait Render<R: Renderer>: Sized {
+pub trait Render<R: Backend>: Sized {
     /// Retained between updates. Typically owns the actual platform nodes
     /// for this view, plus enough information to compute a diff against
     /// new data.
     type State: Mountable<R>;
 
     /// Builds the view for the first time. Nodes are allocated into the
-    /// ambient thread-local store (see [`crate::scene::LayoutBackend::with_tree`]).
+    /// ambient thread-local store (see [`crate::scene::Backend::with_tree`]).
     fn build(self) -> Self::State;
 
     /// Updates the view with new data, in place.
@@ -47,19 +48,19 @@ pub trait Render<R: Renderer>: Sized {
 }
 
 /// Allows a view's state to be attached to / detached from the platform tree.
-pub trait Mountable<R: Renderer> {
+pub trait Mountable<R: Backend> {
     /// Detaches this view from its parent.
     fn unmount(&mut self);
 
     /// Mounts this view under `parent`. If `marker` is `Some`, inserts
     /// before the marker; otherwise appends.
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>);
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>);
 
     /// Same as `mount`, but returns `false` if it could not mount.
     fn try_mount(
         &mut self,
-        parent: R::Node,
-        marker: Option<R::Node>,
+        parent: Node<R>,
+        marker: Option<Node<R>>,
     ) -> bool {
         self.mount(parent, marker);
         true
@@ -73,9 +74,9 @@ pub trait Mountable<R: Renderer> {
     /// has no real presence in the UI.
     fn insert_before_this_or_marker(
         &self,
-        parent: R::Node,
+        parent: Node<R>,
         child: &mut dyn Mountable<R>,
-        marker: Option<R::Node>,
+        marker: Option<Node<R>>,
     ) {
         if !self.insert_before_this(child) {
             child.mount(parent, marker);
@@ -84,14 +85,14 @@ pub trait Mountable<R: Renderer> {
 
     // I'd like to have this return an element iterator to prevent a lot of allocations,
     // but this type needs to be able to go in Box<dyn _> for any_view.
-    // type ElemIter: Iterator<Item=R::Node>;
+    // type ElemIter: Iterator<Item=Node<R>>;
     /// Returns the elements owned by this view (used for things like NodeRef
     /// resolution).
-    fn elements(&self) -> Vec<R::Node>;
+    fn elements(&self) -> Vec<Node<R>>;
 }
 
 /// Declares that this type can be converted into something that can be rendered.
-pub trait IntoRender<R: Renderer> {
+pub trait IntoRender<R: Backend> {
     /// The output of the conversion.
     type Output;
 
@@ -99,7 +100,7 @@ pub trait IntoRender<R: Renderer> {
     fn into_render(self) -> Self::Output;
 }
 
-impl<R: Renderer, T: Render<R>> IntoRender<R> for T {
+impl<R: Backend, T: Render<R>> IntoRender<R> for T {
     type Output = Self;
 
     fn into_render(self) -> Self::Output {

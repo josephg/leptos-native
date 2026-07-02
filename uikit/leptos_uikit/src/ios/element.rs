@@ -11,7 +11,7 @@
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use crate::{
     event_ios::{EventDescriptor, PendingHandler, SupportsEvent},
-    UikitDom,
+    IosBackend,
 };
 use leptos_native::renderer::attrs::{
     LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
@@ -176,7 +176,7 @@ pub struct ElementState<ChildState> {
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable<UikitDom>> Mountable<UikitDom>
+impl<ChildState: Mountable<IosBackend>> Mountable<IosBackend>
     for ElementState<ChildState>
 {
     fn unmount(&mut self) {
@@ -188,7 +188,7 @@ impl<ChildState: Mountable<UikitDom>> Mountable<UikitDom>
         // drops). Each `RenderEffect` is the sole strong owner of its
         // `EffectInner`; dropping it ends the effect's driver future.
         self._effects.clear();
-        self.el.teardown();
+        self.el.remove();
     }
 
     fn mount(
@@ -200,8 +200,8 @@ impl<ChildState: Mountable<UikitDom>> Mountable<UikitDom>
         self.children.mount(self.el, None);
     }
 
-    fn insert_before_this(&self, child: &mut dyn Mountable<UikitDom>) -> bool {
-        crate::renderer_ios::insert_before_node(self.el, child)
+    fn insert_before_this(&self, child: &mut dyn Mountable<IosBackend>) -> bool {
+        self.el.insert_before_this(child)
     }
 
     fn elements(&self) -> Vec<UikitElem> {
@@ -215,7 +215,7 @@ impl<ChildState> Drop for ElementState<ChildState> {
     /// store entry so it doesn't leak. `teardown` (→ `renderer::remove`)
     /// is idempotent, so this is a no-op after a normal `unmount`.
     fn drop(&mut self) {
-        self.el.teardown();
+        self.el.remove();
     }
 }
 
@@ -417,7 +417,7 @@ impl<Ch> WithUniversal for View<Ch> {
 // fallback.
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
 
-impl<Ch: Render<UikitDom>> Render<UikitDom> for View<Ch> {
+impl<Ch: Render<IosBackend>> Render<IosBackend> for View<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_vstack();
@@ -677,7 +677,7 @@ impl<Ch> WithUniversal for Grid<Ch> {
 
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
 
-impl<Ch: Render<UikitDom>> Render<UikitDom> for Grid<Ch> {
+impl<Ch: Render<IosBackend>> Render<IosBackend> for Grid<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_grid();
@@ -778,10 +778,10 @@ impl<Ch: Render<UikitDom>> Render<UikitDom> for Grid<Ch> {
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-impl<Children> AddAnyAttr<crate::UikitDom> for Grid<Children> {
+impl<Children> AddAnyAttr<crate::IosBackend> for Grid<Children> {
     fn add_any_attr<__A>(mut self, attr: __A) -> Self
     where
-        __A: ApplyAttr<crate::UikitDom>,
+        __A: ApplyAttr<crate::IosBackend>,
     {
         self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
@@ -867,7 +867,7 @@ impl WithText for Button {
 }
 
 
-impl Render<UikitDom> for Button {
+impl Render<IosBackend> for Button {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_button().0;
@@ -991,7 +991,7 @@ impl WithText for Label {
 }
 
 
-impl Render<UikitDom> for Label {
+impl Render<IosBackend> for Label {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_label().0;
@@ -1130,7 +1130,7 @@ impl WithText for TextField {
 }
 
 
-impl Render<UikitDom> for TextField {
+impl Render<IosBackend> for TextField {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = if self.secure {
@@ -1272,7 +1272,7 @@ impl WithUniversal for Switch {
 }
 
 
-impl Render<UikitDom> for Switch {
+impl Render<IosBackend> for Switch {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_switch().0;
@@ -1404,7 +1404,7 @@ impl WithUniversal for Slider {
 }
 
 
-impl Render<UikitDom> for Slider {
+impl Render<IosBackend> for Slider {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_slider().0;
@@ -1544,7 +1544,7 @@ impl WithUniversal for Stepper {
 }
 
 
-impl Render<UikitDom> for Stepper {
+impl Render<IosBackend> for Stepper {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_stepper().0;
@@ -1641,7 +1641,7 @@ impl WithUniversal for ProgressIndicator {
 }
 
 
-impl Render<UikitDom> for ProgressIndicator {
+impl Render<IosBackend> for ProgressIndicator {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_progress_indicator().0;
@@ -1757,7 +1757,7 @@ impl WithUniversal for ImageView {
 }
 
 
-impl Render<UikitDom> for ImageView {
+impl Render<IosBackend> for ImageView {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_image_view().0;
@@ -1897,7 +1897,7 @@ impl WithUniversal for SegmentedControl {
 }
 
 
-impl Render<UikitDom> for SegmentedControl {
+impl Render<IosBackend> for SegmentedControl {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_segmented_control().0;
@@ -2027,7 +2027,7 @@ impl WithUniversal for PopUpButton {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<UikitDom> for PopUpButton {
+impl Render<IosBackend> for PopUpButton {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_pop_up_button().0;
@@ -2163,7 +2163,7 @@ impl WithUniversal for ColorWell {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<UikitDom> for ColorWell {
+impl Render<IosBackend> for ColorWell {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_color_well().0;
@@ -2301,7 +2301,7 @@ impl WithUniversal for DatePicker {
 }
 
 
-impl Render<UikitDom> for DatePicker {
+impl Render<IosBackend> for DatePicker {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_date_picker().0;
@@ -2438,7 +2438,7 @@ impl<Ch> WithUniversal for ScrollView<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch: Render<UikitDom>> Render<UikitDom> for ScrollView<Ch> {
+impl<Ch: Render<IosBackend>> Render<IosBackend> for ScrollView<Ch> {
     type State = ElementState<Ch::State>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_scroll_view().0;
@@ -2537,7 +2537,7 @@ impl WithText for TextView {
 }
 
 
-impl Render<UikitDom> for TextView {
+impl Render<IosBackend> for TextView {
     type State = ElementState<()>;
     fn build(self) -> Self::State {
         let el = UikitElem::create_text_view().0;
@@ -2596,10 +2596,10 @@ impl Render<UikitDom> for TextView {
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl leptos_native::renderer::view::AddAnyAttr<crate::UikitDom> for $builder {
+            impl leptos_native::renderer::view::AddAnyAttr<crate::IosBackend> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: leptos_native::renderer::view::ApplyAttr<crate::UikitDom>,
+                    __A: leptos_native::renderer::view::ApplyAttr<crate::IosBackend>,
                 {
                     self.pending_spreads.push(Box::new(move |el: UikitElem| {
                         attr.apply_to(el);
@@ -2621,10 +2621,10 @@ impl_add_any_attr_for_leaf!(
 // than silently drop. (UITextView and UIProgressView CAN take tap
 // gesture recognizers in principle, but adding the storage is
 // scope-creep for this commit.)
-impl AddAnyAttr<crate::UikitDom> for ProgressIndicator {
+impl AddAnyAttr<crate::IosBackend> for ProgressIndicator {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: ApplyAttr<crate::UikitDom> {
+    where __A: ApplyAttr<crate::IosBackend> {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ProgressIndicator — \
              UIProgressView doesn't carry handler/spread storage in \
@@ -2633,10 +2633,10 @@ impl AddAnyAttr<crate::UikitDom> for ProgressIndicator {
     }
 }
 
-impl AddAnyAttr<crate::UikitDom> for TextView {
+impl AddAnyAttr<crate::IosBackend> for TextView {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
-    where __A: ApplyAttr<crate::UikitDom> {
+    where __A: ApplyAttr<crate::IosBackend> {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on TextView — UITextView \
              doesn't carry handler/spread storage in this fork. \
@@ -2650,10 +2650,10 @@ impl AddAnyAttr<crate::UikitDom> for TextView {
 // views, so View *does* have a real install path. Push to
 // pending_spreads, drained in Render::build like the inline
 // `.on(click, …)` path.
-impl<Children> AddAnyAttr<crate::UikitDom> for View<Children> {
+impl<Children> AddAnyAttr<crate::IosBackend> for View<Children> {
     fn add_any_attr<__A>(mut self, attr: __A) -> Self
     where
-        __A: ApplyAttr<crate::UikitDom>,
+        __A: ApplyAttr<crate::IosBackend>,
     {
         self.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
@@ -2665,11 +2665,11 @@ impl<Children> AddAnyAttr<crate::UikitDom> for View<Children> {
 // ScrollView lacks pending_spreads in its struct — same treatment as
 // ProgressIndicator/TextView. UIScrollView could host a tap gesture
 // recognizer in principle but isn't wired here.
-impl<Children> AddAnyAttr<crate::UikitDom> for ScrollView<Children> {
+impl<Children> AddAnyAttr<crate::IosBackend> for ScrollView<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: ApplyAttr<crate::UikitDom>,
+        __A: ApplyAttr<crate::IosBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on ScrollView — no spread \

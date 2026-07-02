@@ -45,7 +45,7 @@
 //! regular `mount_to_window` flow.
 
 use crate::cocoa::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::CocoaDom;
+use crate::CocoaBackend;
 use crate::dom::split_window::*;
 use reactive_graph::effect::RenderEffect;
 use leptos_native::renderer::view::{Mountable, Render};
@@ -279,7 +279,7 @@ pub trait Panes: Send + 'static {
 /// resources alive for the SplitView's lifetime; dropping this
 /// struct unmounts the pane's children and cancels the collapsed
 /// subscription.
-pub struct PaneMountState<Ch: Render<CocoaDom>> {
+pub struct PaneMountState<Ch: Render<CocoaBackend>> {
     pub _child_state: Ch::State,
     pub _collapsed_effect: Option<RenderEffect<()>>,
 }
@@ -292,8 +292,8 @@ fn mount_one_pane<Ch>(
     sp: SplitPane<Ch>,
 ) -> PaneMountState<Ch>
 where
-    Ch: Render<CocoaDom> + Send + 'static,
-    <Ch as Render<CocoaDom>>::State: Mountable<CocoaDom> + 'static,
+    Ch: Render<CocoaBackend> + Send + 'static,
+    <Ch as Render<CocoaBackend>>::State: Mountable<CocoaBackend> + 'static,
 {
     let SplitPane { collapsed, children, .. } = sp;
 
@@ -340,8 +340,8 @@ macro_rules! impl_panes_tuple {
         impl<$($C),+> Panes for ( $(SplitPane<$C>,)+ )
         where
             $(
-                $C: Render<CocoaDom> + Send + 'static,
-                <$C as Render<CocoaDom>>::State: Mountable<CocoaDom> + 'static,
+                $C: Render<CocoaBackend> + Send + 'static,
+                <$C as Render<CocoaBackend>>::State: Mountable<CocoaBackend> + 'static,
             )+
         {
             type State = ( $(PaneMountState<$C>,)+ );
@@ -401,8 +401,8 @@ where
 // the latter.
 impl<C> SplitPaneList for ((), SplitPane<C>)
 where
-    C: Render<CocoaDom> + Send + 'static,
-    <C as Render<CocoaDom>>::State: Mountable<CocoaDom> + 'static,
+    C: Render<CocoaBackend> + Send + 'static,
+    <C as Render<CocoaBackend>>::State: Mountable<CocoaBackend> + 'static,
 {
     type State = (PaneMountState<C>,);
     fn pane_count(&self) -> usize { 1 }

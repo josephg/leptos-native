@@ -14,7 +14,7 @@ use leptos_cocoa::dom::CocoaNodeExt;
 use leptos_cocoa::{
     cocoa::element::button,
     event_macos::{click, on},
-    CocoaDom,
+    CocoaBackend,
 };
 use objc2_app_kit::NSControl;
 use leptos_native::renderer::view::{AddAnyAttr, Render};
@@ -64,7 +64,7 @@ fn add_any_attr_panics_on_reactive_closure() {
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let view = move || button().title("hi");
-        let _ = <_ as AddAnyAttr<CocoaDom>>::add_any_attr(
+        let _ = <_ as AddAnyAttr<CocoaBackend>>::add_any_attr(
             view,
             (on(click, |_: ()| {}),),
         );
@@ -91,7 +91,7 @@ fn add_any_attr_panics_on_string() {
     let _mtm = common::test_mtm();
     let result = std::panic::catch_unwind(|| {
         let s: String = "hello".into();
-        let _ = <String as AddAnyAttr<CocoaDom>>::add_any_attr(
+        let _ = <String as AddAnyAttr<CocoaBackend>>::add_any_attr(
             s,
             (on(click, |_: ()| {}),),
         );

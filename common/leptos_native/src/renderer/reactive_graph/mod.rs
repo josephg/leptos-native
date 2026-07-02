@@ -6,8 +6,9 @@
 mod owned;
 pub use owned::{OwnedView, OwnedViewState};
 
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::effect::RenderEffect;
@@ -49,7 +50,7 @@ impl<T: 'static> ReactiveFunction for Arc<Mutex<dyn FnMut() -> T + Send>> {
 
 impl<R, F, V> Render<R> for F
 where
-    R: Renderer,
+    R: Backend,
     F: ReactiveFunction<Output = V>,
     V: Render<R>,
     V::State: 'static,
@@ -84,12 +85,12 @@ where
 
 /// Retained view state for a reactive closure. Holds a `RenderEffect<T>`;
 /// dropping the state drops the effect, which auto-cancels the subscription.
-pub struct RenderEffectState<T: 'static, R: Renderer> {
+pub struct RenderEffectState<T: 'static, R: Backend> {
     inner: Option<RenderEffect<T>>,
     _phantom: PhantomData<R>,
 }
 
-impl<T: 'static, R: Renderer> RenderEffectState<T, R> {
+impl<T: 'static, R: Backend> RenderEffectState<T, R> {
     /// Construct from an already-built effect. Used by composite views
     /// (e.g. `<ErrorBoundary>`) that build the RenderEffect themselves.
     pub fn from_parts(effect: RenderEffect<T>) -> Self {
@@ -103,7 +104,7 @@ impl<T: 'static, R: Renderer> RenderEffectState<T, R> {
 impl<T, R> Mountable<R> for RenderEffectState<T, R>
 where
     T: Mountable<R> + 'static,
-    R: Renderer,
+    R: Backend,
 {
     fn unmount(&mut self) {
         if let Some(inner) = &self.inner {
@@ -111,7 +112,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         if let Some(inner) = &self.inner {
             inner.with_value_mut(|t| t.mount(parent, marker));
         }
@@ -126,7 +127,7 @@ where
         }
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.inner
             .as_ref()
             .and_then(|inner| inner.with_value_mut(|t| t.elements()))
@@ -143,7 +144,7 @@ where
 /// handler.
 impl<R, F, V> AddAnyAttr<R> for F
 where
-    R: Renderer,
+    R: Backend,
     F: ReactiveFunction<Output = V>,
     V: Render<R>,
 {

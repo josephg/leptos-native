@@ -19,7 +19,7 @@ use leptos_cocoa::cocoa::toolbar::{
 };
 use leptos_cocoa::dom::window::open_window;
 use leptos_cocoa::dom::{event, toolbar, CocoaNodeExt, Icon};
-use leptos_cocoa::CocoaDom;
+use leptos_cocoa::CocoaBackend;
 use reactive_graph::{
     owner::Owner,
     signal::RwSignal,
@@ -62,7 +62,7 @@ fn toolbar_attaches_to_window() {
                     .icon(Icon::sf_symbol("minus")),
             );
 
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         // `nswindow.toolbar()` returning Some is the main assertion
@@ -100,7 +100,7 @@ fn duplicate_identifier_panics() {
             );
         let result = std::panic::catch_unwind(
             std::panic::AssertUnwindSafe(|| {
-                let _ = <_ as Render<CocoaDom>>::build(view);
+                let _ = <_ as Render<CocoaBackend>>::build(view);
             }),
         );
         assert!(
@@ -234,7 +234,7 @@ fn drop_releases_action_target() {
                 .label("Drop me")
                 .on(leptos_cocoa::event_macos::action, |_| {}),
         );
-        let state = <_ as Render<CocoaDom>>::build(view);
+        let state = <_ as Render<CocoaBackend>>::build(view);
 
         // While the state is alive, the handler count should have
         // grown — the toolbar item registration owns one
@@ -317,7 +317,7 @@ fn toolbar_handle_insert_and_remove() {
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("first").label("First"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         // Insert a second item at index 1 (after "first").
@@ -371,7 +371,7 @@ fn toolbar_set_items_adds_one_item() {
         let view = toolbar()
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         // [a] → [a, b]. Retained-in-order check passes ('a' alone
@@ -408,7 +408,7 @@ fn toolbar_set_items_noop_on_unchanged() {
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
@@ -447,7 +447,7 @@ fn toolbar_set_items_removes_absent_identifier() {
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b"]);
@@ -481,7 +481,7 @@ fn toolbar_set_items_handles_reorder() {
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("b").label("B"))
             .child(toolbar_item().identifier("c").label("C"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "b", "c"]);
@@ -527,7 +527,7 @@ fn toolbar_set_items_inserts_between_retained() {
             .handle(handle)
             .child(toolbar_item().identifier("a").label("A"))
             .child(toolbar_item().identifier("c").label("C"));
-        let mut state = <_ as Render<CocoaDom>>::build(view);
+        let mut state = <_ as Render<CocoaBackend>>::build(view);
         state.mount(opened.content_root, None);
 
         assert_eq!(handle.current_identifiers(), vec!["a", "c"]);
@@ -566,7 +566,7 @@ fn two_toolbars_can_share_item_identifiers() {
         let view1 = toolbar()
             .child(toolbar_item().identifier("a").label("A1"))
             .child(toolbar_item().identifier("b").label("B1"));
-        let mut state1 = <_ as Render<CocoaDom>>::build(view1);
+        let mut state1 = <_ as Render<CocoaBackend>>::build(view1);
         state1.mount(opened1.content_root, None);
 
         // Second toolbar: defaults, cascade [a, b] — same item ids.
@@ -576,7 +576,7 @@ fn two_toolbars_can_share_item_identifiers() {
             .handle(handle2)
             .child(toolbar_item().identifier("a").label("A2"))
             .child(toolbar_item().identifier("b").label("B2"));
-        let mut state2 = <_ as Render<CocoaDom>>::build(view2);
+        let mut state2 = <_ as Render<CocoaBackend>>::build(view2);
         state2.mount(opened2.content_root, None);
 
         // Dynamically add 'c' to the second toolbar — this insert

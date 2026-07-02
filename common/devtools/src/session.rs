@@ -3,14 +3,14 @@
 //! Turns one incoming JSON-RPC message into the outgoing response (and
 //! any events) to write back. Node-id mapping is global (see
 //! [`crate::idmap`]); the session only carries the port [`Hooks`].
-//! Generic over the port's [`LayoutBackend`]; every tree access runs
+//! Generic over the port's [`Backend`]; every tree access runs
 //! synchronously on the main thread, since the whole server future is
 //! driven by the port's main-loop executor.
 
 use crate::idmap;
 use crate::mapping;
 use crate::Hooks;
-use leptos_native::renderer::{LayoutBackend, NodeId};
+use leptos_native::renderer::{Backend, NodeId};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::marker::PhantomData;
@@ -25,12 +25,12 @@ struct Command {
     session_id: Option<String>,
 }
 
-pub struct Session<B: LayoutBackend> {
+pub struct Session<B: Backend> {
     hooks: Hooks,
     _pd: PhantomData<B>,
 }
 
-impl<B: LayoutBackend> Session<B> {
+impl<B: Backend> Session<B> {
     pub fn new(hooks: Hooks) -> Self {
         Session {
             hooks,

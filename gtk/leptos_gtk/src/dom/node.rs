@@ -15,7 +15,7 @@ use crate::dom::taffy_layout::TaffyLayout;
 use crate::dom::{event, layout};
 use gtk4::glib;
 use gtk4::prelude::*;
-use leptos_native::renderer::{LayoutBackend, Node};
+use leptos_native::renderer::{Backend, Node};
 
 /// The GTK port's node handle: a [`Node`] tagged with [`GtkBackend`].
 /// Generic methods come from [`Node`]; GTK widget ops from [`GtkNodeExt`].
@@ -32,7 +32,6 @@ pub trait GtkNodeExt: Copy {
     fn widget(self) -> gtk4::Widget;
     fn try_widget(self) -> Option<gtk4::Widget>;
     fn into_widget(self) -> gtk4::Widget;
-    fn teardown(self);
     fn create_container() -> Self;
     fn set_title(self, value: &str);
     fn set_value(self, value: &str);
@@ -91,16 +90,6 @@ impl GtkNodeExt for GtkElem {
         self.widget()
     }
 
-    /// Remove this node (and its structural subtree) from the store and
-    /// unparent its widget.
-    fn teardown(self) {
-        if let Some(w) = self.try_widget() {
-            if let Some(parent) = w.parent() {
-                detach_child_widget(&parent, &w);
-            }
-        }
-        GtkBackend::remove(self.id);
-    }
 
     /// Generic flexbox container (gtk::Box-backed).
     fn create_container() -> Self {

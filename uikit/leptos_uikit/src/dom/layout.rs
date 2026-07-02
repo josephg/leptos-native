@@ -25,7 +25,7 @@ pub use leptos_native::renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{AttachOutcome, LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, Backend, LayoutState};
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,
@@ -44,7 +44,7 @@ use crate::dom::event::IosNodeHandlers;
 // iOS backend
 // ---------------------------------------------------------------------
 
-/// `LayoutBackend` impl for UIKit. Same shape as `CocoaBackend` —
+/// `Backend` impl for UIKit. Same shape as `CocoaBackend` —
 /// the `View` is a retained pointer to the per-node UIView; the
 /// `NodeMeta` carries the scroll-view flag so the iOS-side
 /// `compute_layout` knows to run a second pass on `<scroll_view>`
@@ -62,7 +62,7 @@ thread_local! {
         RefCell::new(LayoutState::default());
 }
 
-impl LayoutBackend for IosBackend {
+impl Backend for IosBackend {
     type View = SendWrapper<Retained<UIView>>;
     type NodeMeta = IosMeta;
     type Handlers = IosNodeHandlers;
@@ -106,6 +106,23 @@ impl LayoutBackend for IosBackend {
     fn schedule_relayout(id: NodeId) {
         IosBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    fn remove_from_native_parent(view: &Self::View) {
+        let v: &UIView = view;
+        v.removeFromSuperview();
+    }
+
+    fn create_text_node(text: &str) -> UikitElem {
+        UikitElem::create_text(text)
+    }
+
+    fn create_placeholder() -> UikitElem {
+        UikitElem::create_placeholder()
+    }
+
+    fn set_text(node: UikitElem, text: &str) {
+        UikitNodeExt::set_text(node, text);
     }
 
     // Native tree edits. Native parent is `subview_parent()` (the
@@ -199,16 +216,6 @@ fn layout_debug_enabled() -> bool {
 // ---------------------------------------------------------------------
 // Per-Node helpers — read/write Node state via its accessors
 // ---------------------------------------------------------------------
-
-/// Remove the node (and its structural subtree) and detach its view,
-/// then schedule a relayout of the (former) parent's subtree.
-pub fn drop_node(node: UikitElem) {
-    let parent = IosBackend::parent(node.id());
-    node.teardown();
-    if let Some(pid) = parent {
-        queue_relayout_for(pid);
-    }
-}
 
 // ---------------------------------------------------------------------
 // Dynamic relayout — coalesce mutation bursts into one pass per tick.
@@ -615,7 +622,7 @@ fn set_frame_from_layout(view: &UIView, layout: &Layout) {
 // that used to live here are gone: with `UikitElem` now an alias for the
 // foreign `Node<IosBackend>`, impl'ing those (foreign, param-less) traits
 // here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `LayoutBackend` native-setter hooks (`set_hidden`,
+// forwarding to the `Backend` native-setter hooks (`set_hidden`,
 // `set_alpha`, `schedule_relayout`) on `IosBackend` above. iOS leaves
 // `set_clip` / `set_tool_tip` defaulted (no inline clip primitive / no
 // hover tooltips on touch).

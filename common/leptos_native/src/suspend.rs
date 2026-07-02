@@ -38,9 +38,10 @@
 //! same `<Transition>` yet. Each suspended region shows its own
 //! placeholder until that specific future resolves.
 
+use crate::renderer::node::Node;
 use any_spawner::Executor;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{Mountable, Render},
 };
 use std::{cell::RefCell, future::Future, rc::Rc};
@@ -50,15 +51,15 @@ use std::{cell::RefCell, future::Future, rc::Rc};
 /// to `mount` against `parent`/`marker` if the placeholder has no
 /// real presence to splice before.
 fn splice_in_place<R, S>(
-    placeholder: &mut R::Node,
+    placeholder: &mut Node<R>,
     state: &mut S,
-    parent: Option<R::Node>,
-    marker: Option<R::Node>,
+    parent: Option<Node<R>>,
+    marker: Option<Node<R>>,
 ) where
-    R: Renderer,
+    R: Backend,
     S: Mountable<R>,
 {
-    let inserted = <R::Node as Mountable<R>>::insert_before_this(
+    let inserted = <Node<R> as Mountable<R>>::insert_before_this(
         placeholder,
         state as &mut dyn Mountable<R>,
     );
@@ -67,7 +68,7 @@ fn splice_in_place<R, S>(
             state.mount(parent, marker);
         }
     }
-    <R::Node as Mountable<R>>::unmount(placeholder);
+    <Node<R> as Mountable<R>>::unmount(placeholder);
 }
 
 /// Wraps a future so it can be rendered as a view. Built via
@@ -88,7 +89,7 @@ impl<F> Suspend<F> {
 /// state (after the future has resolved).
 pub struct SuspendState<R, V>
 where
-    R: Renderer,
+    R: Backend,
     V: Render<R>,
 {
     // Shared so the spawned task can mutate the variant when the
@@ -99,16 +100,16 @@ where
 
 enum SuspendInner<R, V>
 where
-    R: Renderer,
+    R: Backend,
     V: Render<R>,
 {
     /// Future hasn't resolved yet. We've mounted a placeholder
     /// somewhere; remember where so the future's continuation can
     /// splice the resolved view next to it.
     Pending {
-        placeholder: R::Node,
-        parent: Option<R::Node>,
-        marker: Option<R::Node>,
+        placeholder: Node<R>,
+        parent: Option<Node<R>>,
+        marker: Option<Node<R>>,
     },
     /// Future has resolved and the inner view is mounted.
     Ready { state: V::State },
@@ -116,7 +117,7 @@ where
 
 impl<F, V, R> Render<R> for Suspend<F>
 where
-    R: Renderer,
+    R: Backend,
     F: Future<Output = V> + 'static,
     V: Render<R> + 'static,
     V::State: 'static,
@@ -191,7 +192,7 @@ where
 
 impl<R, V> Mountable<R> for SuspendState<R, V>
 where
-    R: Renderer,
+    R: Backend,
     V: Render<R>,
 {
     fn unmount(&mut self) {
@@ -208,7 +209,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         let mut guard = self.inner.borrow_mut();
         match &mut *guard {
             SuspendInner::Pending { placeholder, parent: p, marker: m } => {
@@ -234,7 +235,7 @@ where
         }
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         let guard = self.inner.borrow();
         match &*guard {
             SuspendInner::Pending { placeholder, .. } => {

@@ -6,7 +6,7 @@
 //! need them on GTK can extend the builders.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::GtkDom;
+use crate::GtkBackend;
 use crate::dom::{
     layout::{
         set_align_content, set_align_items, set_column_gap, set_flex_basis,
@@ -64,7 +64,7 @@ pub struct ElementState<ChildState> {
     pub(crate) children: ChildState,
 }
 
-impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
+impl<ChildState: Mountable<GtkBackend>> Mountable<GtkBackend>
     for ElementState<ChildState>
 {
     fn unmount(&mut self) {
@@ -76,7 +76,7 @@ impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
         // drops). Each `RenderEffect` is the sole strong owner of its
         // `EffectInner`; dropping it ends the effect's driver future.
         self._effects.clear();
-        self.el.teardown();
+        self.el.remove();
     }
 
     fn mount(
@@ -104,7 +104,7 @@ impl<ChildState: Mountable<GtkDom>> Mountable<GtkDom>
         self.children.mount(self.el, None);
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkBackend>) -> bool {
         false
     }
 
@@ -119,7 +119,7 @@ impl<ChildState> Drop for ElementState<ChildState> {
     /// store entry so it doesn't leak. `teardown` (→ `renderer::remove`)
     /// is idempotent, so this is a no-op after a normal `unmount`.
     fn drop(&mut self) {
-        self.el.teardown();
+        self.el.remove();
     }
 }
 
@@ -307,9 +307,9 @@ impl<Ch> WithUniversal for Stack<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<GtkDom> for Stack<Ch>
+impl<Ch> Render<GtkBackend> for Stack<Ch>
 where
-    Ch: Render<GtkDom>,
+    Ch: Render<GtkBackend>,
 {
     type State = ElementState<Ch::State>;
 
@@ -528,9 +528,9 @@ impl<Ch> WithUniversal for Grid<Ch> {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl<Ch> Render<GtkDom> for Grid<Ch>
+impl<Ch> Render<GtkBackend> for Grid<Ch>
 where
-    Ch: Render<GtkDom>,
+    Ch: Render<GtkBackend>,
 {
     type State = ElementState<Ch::State>;
 
@@ -709,7 +709,7 @@ impl WithUniversal for Button {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<GtkDom> for Button {
+impl Render<GtkBackend> for Button {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -857,7 +857,7 @@ impl WithUniversal for Checkbox {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<GtkDom> for Checkbox {
+impl Render<GtkBackend> for Checkbox {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1009,7 +1009,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 {
 }
 
-impl Render<GtkDom> for Slider {
+impl Render<GtkBackend> for Slider {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1151,7 +1151,7 @@ impl crate::event_gtk::SupportsEvent<crate::event_gtk::ChangeEvent>
 {
 }
 
-impl Render<GtkDom> for PopUpButton {
+impl Render<GtkBackend> for PopUpButton {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1273,7 +1273,7 @@ impl WithUniversal for Label {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<GtkDom> for Label {
+impl Render<GtkBackend> for Label {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1431,7 +1431,7 @@ impl WithUniversal for TextField {
     fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
-impl Render<GtkDom> for TextField {
+impl Render<GtkBackend> for TextField {
     type State = ElementState<()>;
 
     fn build(self) -> Self::State {
@@ -1499,10 +1499,10 @@ impl Render<GtkDom> for TextField {
 macro_rules! impl_add_any_attr_for_leaf {
     ($($builder:ident),+ $(,)?) => {
         $(
-            impl renderer::view::AddAnyAttr<crate::GtkDom> for $builder {
+            impl renderer::view::AddAnyAttr<crate::GtkBackend> for $builder {
                 fn add_any_attr<__A>(mut self, attr: __A) -> Self
                 where
-                    __A: renderer::view::ApplyAttr<crate::GtkDom>,
+                    __A: renderer::view::ApplyAttr<crate::GtkBackend>,
                 {
                     self.directives.push(Box::new(move |el: GtkElem| {
                         attr.apply_to(el);
@@ -1519,11 +1519,11 @@ impl_add_any_attr_for_leaf!(
 );
 
 // Container builders panic on spread attrs — same as cocoa.
-impl<Children> renderer::view::AddAnyAttr<crate::GtkDom> for Stack<Children> {
+impl<Children> renderer::view::AddAnyAttr<crate::GtkBackend> for Stack<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::GtkDom>,
+        __A: renderer::view::ApplyAttr<crate::GtkBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Stack (vstack/hstack/\
@@ -1534,11 +1534,11 @@ impl<Children> renderer::view::AddAnyAttr<crate::GtkDom> for Stack<Children> {
     }
 }
 
-impl<Children> renderer::view::AddAnyAttr<crate::GtkDom> for Grid<Children> {
+impl<Children> renderer::view::AddAnyAttr<crate::GtkBackend> for Grid<Children> {
     #[track_caller]
     fn add_any_attr<__A>(self, _attr: __A) -> Self
     where
-        __A: renderer::view::ApplyAttr<crate::GtkDom>,
+        __A: renderer::view::ApplyAttr<crate::GtkBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Grid. Containers have no \

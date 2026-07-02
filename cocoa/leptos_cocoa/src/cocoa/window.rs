@@ -20,7 +20,7 @@
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
 use leptos_native::renderer::view::{AddAnyAttr, ApplyAttr, Mountable, Render};
-use crate::CocoaDom;
+use crate::CocoaBackend;
 use crate::dom::{layout, toolbar, window::{open_window, OpenedWindow}, CocoaElem, CocoaNodeExt, MainThreadMarker};
 use objc2::rc::Retained;
 use objc2_app_kit::NSWindow;
@@ -266,11 +266,11 @@ impl<Ch> SupportsWindowEvent<CloseEvent> for Window<Ch> {}
 // panic. The impl is still required so `View<Window<...>>` can
 // satisfy `IntoView<Dom>` when a Window is returned from a
 // `#[component]`.
-impl<Ch> AddAnyAttr<CocoaDom> for Window<Ch> {
+impl<Ch> AddAnyAttr<CocoaBackend> for Window<Ch> {
     #[track_caller]
     fn add_any_attr<A>(self, _attr: A) -> Self
     where
-        A: ApplyAttr<CocoaDom>,
+        A: ApplyAttr<CocoaBackend>,
     {
         panic!(
             "AddAnyAttr<Dom>::add_any_attr on Window. Spread attributes \
@@ -299,7 +299,7 @@ pub struct WindowState {
     _effects: Vec<RenderEffect<()>>,
 }
 
-impl<Ch: Render<CocoaDom>> Render<CocoaDom> for Window<Ch>
+impl<Ch: Render<CocoaBackend>> Render<CocoaBackend> for Window<Ch>
 where
     Ch::State: 'static,
 {
@@ -419,7 +419,7 @@ where
         let mut on_close = self.on_close;
         let _ = opened.delegate.install_close_handler(Box::new(move || {
             children.unmount();
-            content_root_for_cleanup.teardown();
+            content_root_for_cleanup.remove();
             if let Some(mut cb) = on_close.take() {
                 cb();
             }
@@ -438,7 +438,7 @@ where
     }
 }
 
-impl Mountable<CocoaDom> for WindowState {
+impl Mountable<CocoaBackend> for WindowState {
     fn unmount(&mut self) {
         // Programmatic close → AppKit fires windowWillClose: →
         // delegate runs the cleanup closure (idempotent: it Option-
@@ -455,7 +455,7 @@ impl Mountable<CocoaDom> for WindowState {
         // Element. The NSWindow was opened in `build()`.
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaDom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<CocoaBackend>) -> bool {
         false
     }
 

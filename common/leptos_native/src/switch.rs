@@ -31,7 +31,7 @@ use crate::{
 use either_of::{Either, EitherOf3, EitherOf4, EitherOf5, EitherOf6, EitherOf7, EitherOf8};
 use leptos_macro::component;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{AddAnyAttr, ApplyAttr, Render, UnitState},
 };
 
@@ -60,13 +60,13 @@ use crate::renderer::{
 #[derive(Clone, Copy)]
 pub struct EmptyBranch;
 
-impl<R: Renderer> Render<R> for EmptyBranch {
+impl<R: Backend> Render<R> for EmptyBranch {
     type State = UnitState<R>;
     fn build(self) -> Self::State { UnitState::new() }
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-impl<R: Renderer> AddAnyAttr<R> for EmptyBranch {
+impl<R: Backend> AddAnyAttr<R> for EmptyBranch {
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         // Never emitted to user code; this impl exists only so the
         // type satisfies `IntoView`'s bound chain.
@@ -97,7 +97,7 @@ impl<R: Renderer> AddAnyAttr<R> for EmptyBranch {
 /// inside `when` / children.
 pub struct Match<C, R>
 where
-    R: Renderer,
+    R: Backend,
 {
     pub(crate) when:     Box<dyn Fn() -> bool + Send + 'static>,
     pub(crate) children: Box<dyn Fn() -> View<C> + Send + 'static>,
@@ -112,7 +112,7 @@ where
 // and never asks for these — the only way these get called is if
 // someone writes `<Match/>` *outside* a `<Switch>`, which is user
 // error. Panic with a clear message.
-impl<R: Renderer, C> Render<R> for Match<C, R> {
+impl<R: Backend, C> Render<R> for Match<C, R> {
     type State = ();
     #[track_caller]
     fn build(self) -> Self::State {
@@ -125,7 +125,7 @@ impl<R: Renderer, C> Render<R> for Match<C, R> {
     fn rebuild(self, _state: &mut Self::State) {}
 }
 
-impl<R: Renderer, C> AddAnyAttr<R> for Match<C, R> {
+impl<R: Backend, C> AddAnyAttr<R> for Match<C, R> {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         panic!(
@@ -152,7 +152,7 @@ pub fn Match<W, C, R>(
     children: crate::children::TypedChildrenFn<C, R>,
 ) -> Match<C, R>
 where
-    R: Renderer,
+    R: Backend,
     W: Fn() -> bool + Send + 'static,
     C: IntoView<R> + 'static,
 {
@@ -180,7 +180,7 @@ where
 /// `Send` because [`IntoView`] requires it (Match's `Box<dyn Fn>`
 /// storage is `Send` by construction, so users almost never see
 /// this bound surface as a compile error).
-pub trait SwitchBranches<R: Renderer>: Send + 'static {
+pub trait SwitchBranches<R: Backend>: Send + 'static {
     /// Sum-type view produced by [`Self::render`]. `None` means no
     /// branch matched.
     type Output: IntoView<R>;
@@ -203,7 +203,7 @@ pub trait SwitchBranches<R: Renderer>: Send + 'static {
 // same when the inner is None.
 impl<C1, R> SwitchBranches<R> for (Match<C1, R>,)
 where
-    R: Renderer,
+    R: Backend,
     C1: IntoView<R> + 'static,
 {
     type Output = View<C1>;
@@ -222,7 +222,7 @@ macro_rules! switch_tuple_impl {
         $(
             impl<$($c),+, R> SwitchBranches<R> for ( $(Match<$c, R>,)+ )
             where
-                R: Renderer,
+                R: Backend,
                 $($c: IntoView<R> + 'static,)+
             {
                 type Output = $either< $(View<$c>),+ >;
@@ -335,7 +335,7 @@ pub fn Switch<B, R>(
     children: TypedChildren<B, R>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     B: SwitchBranches<R>,
 {
     // The tuple of Match values is invariant; only their `when`

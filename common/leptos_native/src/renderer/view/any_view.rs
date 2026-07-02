@@ -24,8 +24,9 @@
 //! have changed (the whole point of erasure). This is the same
 //! tradeoff upstream Leptos makes.
 
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{Mountable, Render},
 };
 
@@ -34,7 +35,7 @@ use crate::renderer::{
 ///
 /// Construct via `.into_any()` (extension method on any
 /// `Render<R>` value) or `AnyView::new(value)`.
-pub struct AnyView<R: Renderer> {
+pub struct AnyView<R: Backend> {
     inner: Box<dyn ErasedRender<R> + Send>,
 }
 
@@ -51,11 +52,11 @@ pub struct AnyView<R: Renderer> {
 /// All native ports keep their per-element state behind
 /// `SendWrapper`s — `Send + Sync` for any `Send` payload — so the
 /// stricter bound is satisfied in practice.
-pub struct AnyViewState<R: Renderer> {
+pub struct AnyViewState<R: Backend> {
     inner: Box<dyn ErasedMountable<R> + Send + Sync>,
 }
 
-impl<R: Renderer> AnyView<R> {
+impl<R: Backend> AnyView<R> {
     /// Erase a `Render<R>` into an `AnyView<R>`.
     pub fn new<V>(view: V) -> Self
     where
@@ -71,14 +72,14 @@ impl<R: Renderer> AnyView<R> {
 /// Extension trait that adds `.into_any()` to any `Render<R>` so
 /// callers can write `view.into_any()` instead of
 /// `AnyView::new(view)`. Matches the upstream API shape.
-pub trait IntoAny<R: Renderer> {
+pub trait IntoAny<R: Backend> {
     /// Erase this view into an `AnyView<R>`.
     fn into_any(self) -> AnyView<R>;
 }
 
 impl<R, V> IntoAny<R> for V
 where
-    R: Renderer,
+    R: Backend,
     V: Render<R> + Send + 'static,
     V::State: Send + Sync + 'static,
 {
@@ -87,7 +88,7 @@ where
     }
 }
 
-impl<R: Renderer> Render<R> for AnyView<R> {
+impl<R: Backend> Render<R> for AnyView<R> {
     type State = AnyViewState<R>;
 
     fn build(self) -> Self::State {
@@ -106,12 +107,12 @@ impl<R: Renderer> Render<R> for AnyView<R> {
     }
 }
 
-impl<R: Renderer> Mountable<R> for AnyViewState<R> {
+impl<R: Backend> Mountable<R> for AnyViewState<R> {
     fn unmount(&mut self) {
         self.inner.unmount();
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         self.inner.mount(parent, marker);
     }
 
@@ -119,7 +120,7 @@ impl<R: Renderer> Mountable<R> for AnyViewState<R> {
         self.inner.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.inner.elements()
     }
 }
@@ -128,7 +129,7 @@ impl<R: Renderer> Mountable<R> for AnyViewState<R> {
 // Internals: erased trait objects
 // ---------------------------------------------------------------------
 
-trait ErasedRender<R: Renderer> {
+trait ErasedRender<R: Backend> {
     /// Consume the boxed view and produce a boxed-state value. We
     /// take `Box<Self>` here so the impl can move the inner value
     /// out of `Option` (Rust can't move out of a `Box<dyn …>` by
@@ -145,11 +146,11 @@ trait ErasedRender<R: Renderer> {
 /// in `Arc<RwLock<Option<T>>>`) can satisfy its `Send` bound — see
 /// the docstring on `AnyViewState`. Blanket-impl'd for any
 /// concrete `M` that satisfies the bounds.
-trait ErasedMountable<R: Renderer>: Mountable<R> + Send + Sync {}
+trait ErasedMountable<R: Backend>: Mountable<R> + Send + Sync {}
 
 impl<R, M> ErasedMountable<R> for M
 where
-    R: Renderer,
+    R: Backend,
     M: Mountable<R> + Send + Sync + 'static,
 {
 }
@@ -162,7 +163,7 @@ struct ErasedRenderImpl<V>(Option<V>);
 
 impl<R, V> ErasedRender<R> for ErasedRenderImpl<V>
 where
-    R: Renderer,
+    R: Backend,
     V: Render<R> + Send + 'static,
     V::State: Send + Sync + 'static,
 {

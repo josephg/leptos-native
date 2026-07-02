@@ -1,7 +1,7 @@
-//! Renderer-agnostic layout engine over a **thread-local node store**.
+//! Backend-agnostic layout engine over a **thread-local node store**.
 //!
 //! Every node lives in a single per-thread [`LayoutState<B>`] slotmap,
-//! reached through [`LayoutBackend::with_tree`]. A node reference is a
+//! reached through [`Backend::with_tree`]. A node reference is a
 //! bare [`NodeId`] — `Copy + Send`, no handle, no refcount. Stale ids
 //! resolve to `None`/no-op via the generational slotmap key, which gives
 //! weak-reference behavior for free.
@@ -30,6 +30,8 @@
 
 use slotmap::{DefaultKey, SlotMap};
 use std::cell::Cell;
+
+use super::node::Node;
 
 pub use taffy::{
     AlignContent, AlignItems, AvailableSpace, Dimension, Display, FlexDirection,
@@ -80,7 +82,7 @@ use taffy::{
 /// **Drop ordering**: when the store drops a node, the `handlers` field
 /// drops BEFORE the `view` field so port-specific `Handlers` `Drop` impls
 /// can nil `setTarget`/`setDelegate` on the still-live view.
-/// Result of [`LayoutBackend::attach_native`]: how core should mirror a
+/// Result of [`Backend::attach_native`]: how core should mirror a
 /// just-performed native child-attach into the Taffy tree.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AttachOutcome {
@@ -94,7 +96,11 @@ pub enum AttachOutcome {
     Rejected,
 }
 
-pub trait LayoutBackend: 'static + Sized {
+/// `Send + Sync` is required of the backend *marker type* (not its views —
+/// those live pinned in the thread-local store): view-state structs embed
+/// `PhantomData<B>` and must stay `Send` for leptos's `IntoView` bounds.
+/// Real backends are fieldless unit structs, so this is free.
+pub trait Backend: Send + Sync + 'static + Sized {
     /// The platform view associated with each node (cheap to clone).
     type View: Clone;
     /// Per-node port-specific metadata. `()` if unused.
@@ -179,8 +185,47 @@ pub trait LayoutBackend: 'static + Sized {
     /// caller / the remove cascade, matching prior per-port behavior.)
     fn clear_native_children(parent: NodeId);
 
+    /// Natively detach `view` from whatever native parent currently
+    /// holds it (`removeFromSuperview` / `gtk_widget_unparent`-flavoured).
+    /// Called by [`Node::remove`] before the store entry is freed.
+    fn remove_from_native_parent(view: &Self::View);
+
+    // ---------------------------------------------------------------------
+    // Node construction & text. The view-tree core (`Render` impls for
+    // strings, control-flow markers, …) needs three per-port operations:
+    // make a text node, make an invisible placeholder, update a text
+    // node's content.
+    // ---------------------------------------------------------------------
+
+    /// Create a text node (a label-flavoured native view) showing `text`.
+    fn create_text_node(text: &str) -> Node<Self>;
+
+    /// Create an invisible placeholder node — the mount anchor used by
+    /// control-flow constructs.
+    fn create_placeholder() -> Node<Self>;
+
+    /// Set the text content of a node created by
+    /// [`Self::create_text_node`].
+    fn set_text(node: Node<Self>, text: &str);
+
+    /// Mounts `new_child` into the parent of `before`, immediately
+    /// before `before`. Returns `false` if `before` has no parent (the
+    /// caller then finds a different mount point).
+    #[track_caller]
+    fn try_mount_before<M>(new_child: &mut M, before: Node<Self>) -> bool
+    where
+        M: crate::renderer::view::Mountable<Self>,
+    {
+        if let Some(parent) = before.parent() {
+            new_child.mount(parent, Some(before));
+            true
+        } else {
+            false
+        }
+    }
+
     // *** Utility methods. These methods are implemented in the trait to make them available for
-    // downstream consumers. It is not expected that implementers of LayoutBackend override these
+    // downstream consumers. It is not expected that implementers of Backend override these
     // methods.
 
     fn new_leaf(
@@ -359,15 +404,15 @@ pub trait LayoutBackend: 'static + Sized {
 
 /// Lightweight read-only snapshot of a node's view + backend metadata.
 #[derive(Clone)]
-pub struct NodeContext<B: LayoutBackend> {
+pub struct NodeContext<B: Backend> {
     pub view: B::View,
     pub meta: B::NodeMeta,
 }
 
 /// The per-thread node store: a generational slotmap of [`NodeData`]
 /// plus the relayout work-queue. Ports hold one of these in a
-/// `thread_local!` and expose it via [`LayoutBackend::with_tree`].
-pub struct LayoutState<B: LayoutBackend> {
+/// `thread_local!` and expose it via [`Backend::with_tree`].
+pub struct LayoutState<B: Backend> {
     nodes: SlotMap<DefaultKey, NodeData<B>>,
     /// Subtree roots queued for recompute on the next main-loop tick.
     /// The port's relayout scheduler walks up from a mutated node to
@@ -381,7 +426,7 @@ pub struct LayoutState<B: LayoutBackend> {
     pub relayout_queued: Cell<bool>,
 }
 
-impl<B: LayoutBackend> Default for LayoutState<B> {
+impl<B: Backend> Default for LayoutState<B> {
     fn default() -> Self {
         LayoutState {
             nodes: SlotMap::new(),
@@ -391,7 +436,7 @@ impl<B: LayoutBackend> Default for LayoutState<B> {
     }
 }
 
-struct NodeData<B: LayoutBackend> {
+struct NodeData<B: Backend> {
     style: Style,
     cache: Cache,
     unrounded_layout: Layout,
@@ -410,7 +455,7 @@ struct NodeData<B: LayoutBackend> {
     meta: B::NodeMeta,
 }
 
-impl<B: LayoutBackend> NodeData<B> {
+impl<B: Backend> NodeData<B> {
     fn new(style: Style, view: B::View, meta: B::NodeMeta, handlers: B::Handlers) -> Self {
         NodeData {
             style,
@@ -435,7 +480,7 @@ fn key(id: NodeId) -> DefaultKey {
 // LayoutState inherent API (operates on the borrowed store)
 // ---------------------------------------------------------------------
 
-impl<B: LayoutBackend> LayoutState<B> {
+impl<B: Backend> LayoutState<B> {
     fn with_node<R>(&self, id: NodeId, f: impl FnOnce(&NodeData<B>) -> R) -> Option<R> {
         self.nodes.get(key(id)).map(f)
     }
@@ -747,7 +792,7 @@ impl<B: LayoutBackend> LayoutState<B> {
 // Taffy trait impls — operate on `LayoutState<B>`.
 // ---------------------------------------------------------------------
 
-impl<B: LayoutBackend> TraversePartialTree for LayoutState<B> {
+impl<B: Backend> TraversePartialTree for LayoutState<B> {
     type ChildIter<'a>
         = std::iter::Copied<std::slice::Iter<'a, NodeId>>
     where
@@ -771,9 +816,9 @@ impl<B: LayoutBackend> TraversePartialTree for LayoutState<B> {
     }
 }
 
-impl<B: LayoutBackend> TraverseTree for LayoutState<B> {}
+impl<B: Backend> TraverseTree for LayoutState<B> {}
 
-impl<B: LayoutBackend> CacheTree for LayoutState<B> {
+impl<B: Backend> CacheTree for LayoutState<B> {
     fn cache_get(&self, id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
         self.nodes[key(id)].cache.get(input)
     }
@@ -787,7 +832,7 @@ impl<B: LayoutBackend> CacheTree for LayoutState<B> {
     }
 }
 
-impl<B: LayoutBackend> LayoutPartialTree for LayoutState<B> {
+impl<B: Backend> LayoutPartialTree for LayoutState<B> {
     type CoreContainerStyle<'a>
         = &'a Style
     where
@@ -832,7 +877,7 @@ impl<B: LayoutBackend> LayoutPartialTree for LayoutState<B> {
     }
 }
 
-impl<B: LayoutBackend> LayoutFlexboxContainer for LayoutState<B> {
+impl<B: Backend> LayoutFlexboxContainer for LayoutState<B> {
     type FlexboxContainerStyle<'a>
         = &'a Style
     where
@@ -851,7 +896,7 @@ impl<B: LayoutBackend> LayoutFlexboxContainer for LayoutState<B> {
     }
 }
 
-impl<B: LayoutBackend> LayoutGridContainer for LayoutState<B> {
+impl<B: Backend> LayoutGridContainer for LayoutState<B> {
     type GridContainerStyle<'a>
         = &'a Style
     where
@@ -870,7 +915,7 @@ impl<B: LayoutBackend> LayoutGridContainer for LayoutState<B> {
     }
 }
 
-impl<B: LayoutBackend> RoundTree for LayoutState<B> {
+impl<B: Backend> RoundTree for LayoutState<B> {
     fn get_unrounded_layout(&self, id: NodeId) -> Layout {
         self.nodes[key(id)].unrounded_layout
     }

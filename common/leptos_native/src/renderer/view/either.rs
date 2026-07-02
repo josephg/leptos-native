@@ -2,8 +2,9 @@
 //! crate. Used by the `<Show>` / `<Match>` style components and by
 //! Option<T>'s state lowering.
 
+use crate::renderer::node::Node;
 use super::{Mountable, Render};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 use either_of::*;
 
 /// Wrapper around an `Either*` state.
@@ -11,24 +12,24 @@ pub struct EitherState<S> {
     inner: S,
 }
 
-impl<R: Renderer, S: Mountable<R>> Mountable<R> for EitherState<S> {
+impl<R: Backend, S: Mountable<R>> Mountable<R> for EitherState<S> {
     fn unmount(&mut self) {
         self.inner.unmount();
     }
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         self.inner.mount(parent, marker);
     }
     fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
         self.inner.insert_before_this(child)
     }
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.inner.elements()
     }
 }
 
 impl<R, A, B> Render<R> for Either<A, B>
 where
-    R: Renderer,
+    R: Backend,
     A: Render<R>,
     B: Render<R>,
 {
@@ -64,7 +65,7 @@ where
 
 impl<R, A, B> Mountable<R> for Either<A, B>
 where
-    R: Renderer,
+    R: Backend,
     A: Mountable<R>,
     B: Mountable<R>,
 {
@@ -74,7 +75,7 @@ where
             Either::Right(b) => b.unmount(),
         }
     }
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         match self {
             Either::Left(a) => a.mount(parent, marker),
             Either::Right(b) => b.mount(parent, marker),
@@ -86,7 +87,7 @@ where
             Either::Right(b) => b.insert_before_this(child),
         }
     }
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         match self {
             Either::Left(a) => a.elements(),
             Either::Right(b) => b.elements(),
@@ -98,7 +99,7 @@ macro_rules! impl_either_of {
     ($name:ident, $($var:ident),+) => {
         impl<R, $($var),+> Render<R> for $name<$($var),+>
         where
-            R: Renderer,
+            R: Backend,
             $($var: Render<R>,)+
         {
             type State = EitherState<$name<$($var::State),+>>;
@@ -129,19 +130,19 @@ macro_rules! impl_either_of {
 
         impl<R, $($var),+> Mountable<R> for $name<$($var),+>
         where
-            R: Renderer,
+            R: Backend,
             $($var: Mountable<R>,)+
         {
             fn unmount(&mut self) {
                 match self { $( $name::$var(v) => v.unmount(), )+ }
             }
-            fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+            fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
                 match self { $( $name::$var(v) => v.mount(parent, marker), )+ }
             }
             fn insert_before_this(&self, child: &mut dyn Mountable<R>) -> bool {
                 match self { $( $name::$var(v) => v.insert_before_this(child), )+ }
             }
-            fn elements(&self) -> Vec<R::Node> {
+            fn elements(&self) -> Vec<Node<R>> {
                 match self { $( $name::$var(v) => v.elements(), )+ }
             }
         }

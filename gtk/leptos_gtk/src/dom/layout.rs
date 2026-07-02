@@ -25,13 +25,13 @@ pub use leptos_native::renderer::{
     JustifyItems, Layout, LengthPercentage, LengthPercentageAuto, NodeId,
     Position, Rect, Size, Style, TrackSizingFunction,
 };
-use leptos_native::renderer::{AttachOutcome, LayoutBackend, LayoutState};
+use leptos_native::renderer::{AttachOutcome, Backend, LayoutState};
 
 // ---------------------------------------------------------------------
 // GTK backend
 // ---------------------------------------------------------------------
 
-/// `LayoutBackend` impl for GTK4. The `View` is a `gtk::Widget`
+/// `Backend` impl for GTK4. The `View` is a `gtk::Widget`
 /// (cheap-clonable reference). `NodeMeta = ()` — GTK has no
 /// scroll-view second pass like cocoa does (NSScrollView's
 /// content sizing); `gtk::ScrolledWindow` handles its own
@@ -44,7 +44,7 @@ thread_local! {
         RefCell::new(LayoutState::default());
 }
 
-impl LayoutBackend for GtkBackend {
+impl Backend for GtkBackend {
     type View = gtk4::Widget;
     type NodeMeta = ();
     type Handlers = ();
@@ -109,6 +109,25 @@ impl LayoutBackend for GtkBackend {
 
     fn schedule_relayout(id: NodeId) {
         schedule_relayout_for(id);
+    }
+
+    fn remove_from_native_parent(view: &Self::View) {
+        let w: &gtk4::Widget = view;
+        if let Some(parent) = w.parent() {
+            crate::dom::node::detach_child_widget(&parent, w);
+        }
+    }
+
+    fn create_text_node(text: &str) -> GtkElem {
+        GtkElem::create_text(text)
+    }
+
+    fn create_placeholder() -> GtkElem {
+        GtkElem::create_placeholder()
+    }
+
+    fn set_text(node: GtkElem, text: &str) {
+        GtkNodeExt::set_text(node, text);
     }
 
     fn attach_native(parent: NodeId, child: NodeId, before: Option<NodeId>) -> AttachOutcome {
@@ -244,18 +263,6 @@ pub type NodeContext = renderer::NodeContext<GtkBackend>;
 // Per-Node helpers — read/write Node state via its accessors.
 // ---------------------------------------------------------------------
 
-/// Drop the node (and its structural subtree) from the store and
-/// unparent its widget, then queue a resize of the (former) parent's
-/// root so its layout recomputes.
-pub fn drop_node(node: impl std::borrow::Borrow<GtkElem>) {
-    let node = *node.borrow();
-    let parent = GtkBackend::parent(node.id());
-    node.teardown();
-    if let Some(pid) = parent {
-        queue_root_resize_for(pid);
-    }
-}
-
 // ---------------------------------------------------------------------
 // Tree-edge mirroring
 // ---------------------------------------------------------------------
@@ -338,7 +345,7 @@ pub fn schedule_relayout_for(id: NodeId) {
 // that used to live here are gone: with `GtkElem` now an alias for the
 // foreign `Node<GtkBackend>`, impl'ing those (foreign, param-less) traits
 // here is an orphan violation. They're blanket-impl'd in core for `Node<B>`,
-// forwarding to the `LayoutBackend` native-setter hooks above.
+// forwarding to the `Backend` native-setter hooks above.
 
 pub use leptos_native::renderer::{
     align_self_to_taffy, apply_layout, apply_universal, dim_to_dimension,

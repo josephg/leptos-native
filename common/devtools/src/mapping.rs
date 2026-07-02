@@ -1,5 +1,5 @@
 //! Translation between the renderer's Taffy tree and the CDP DOM/CSS
-//! shapes. All functions are generic over the port's [`LayoutBackend`].
+//! shapes. All functions are generic over the port's [`Backend`].
 //!
 //! - Tree → `DOM.Node` (element nodes named by `debug_tag_name`).
 //! - Computed `Layout` → `DOM.BoxModel` (content/padding/border/margin
@@ -9,7 +9,7 @@
 
 use crate::idmap::{self, DOCUMENT_ID, ROOT_ID};
 use leptos_native::renderer::{
-    Dimension, Display, FlexDirection, LayoutBackend, LengthPercentage,
+    Dimension, Display, FlexDirection, Backend, LengthPercentage,
     LengthPercentageAuto, NodeId, Style,
 };
 use serde_json::{json, Value};
@@ -257,7 +257,7 @@ fn set<T>(slot: &mut T, parsed: Option<T>) -> bool {
 /// Parse a full declaration block (`"width: 10px; padding: 8px;"`) onto a
 /// clone of the node's current style and write it back, then trigger the
 /// port's relayout. No-op if the node is gone.
-pub fn apply_css_text<B: LayoutBackend>(
+pub fn apply_css_text<B: Backend>(
     id: NodeId,
     text: &str,
     schedule: &dyn Fn(NodeId),
@@ -289,7 +289,7 @@ pub fn sheet_node(sheet: &str) -> Option<i64> {
 }
 
 /// Build a `CSS.CSSStyle` for the node's inline (Taffy) style.
-pub fn css_style_json<B: LayoutBackend>(id: NodeId) -> Value {
+pub fn css_style_json<B: Backend>(id: NodeId) -> Value {
     let cdp = idmap::cdp_id(id);
     let style = B::style(id).unwrap_or_default();
     let decls = css_decls(&style);
@@ -327,7 +327,7 @@ pub fn css_style_json<B: LayoutBackend>(id: NodeId) -> Value {
 /// — the box metrics (width/height/padding/border/margin) come from the
 /// computed Taffy [`Layout`] in px, not the (often `auto`) style. The
 /// non-box properties (display, flex-*) come from the style.
-pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
+pub fn computed_style_json<B: Backend>(id: NodeId) -> Vec<Value> {
     let style = B::style(id).unwrap_or_default();
     let mut out: Vec<Value> = Vec::new();
     let mut push = |n: &str, v: String| out.push(json!({ "name": n, "value": v }));
@@ -372,7 +372,7 @@ pub fn computed_style_json<B: LayoutBackend>(id: NodeId) -> Vec<Value> {
 // DOM.Node tree
 // ---------------------------------------------------------------------
 
-fn node_name<B: LayoutBackend>(id: NodeId) -> String {
+fn node_name<B: Backend>(id: NodeId) -> String {
     let tag = B::debug_tag_name(id);
     if tag.is_empty() {
         "node".into()
@@ -398,7 +398,7 @@ fn attrs_array(pairs: Vec<(String, String)>) -> Vec<String> {
 
 /// One element node, including children to `depth` (`depth == 0` omits the
 /// `children` array but still reports `childNodeCount`).
-pub fn node_json<B: LayoutBackend>(id: NodeId, depth: i32, attrs: AttrFn) -> Value {
+pub fn node_json<B: Backend>(id: NodeId, depth: i32, attrs: AttrFn) -> Value {
     let cdp = idmap::cdp_id(id);
     let kids = B::children(id);
     let name = node_name::<B>(id);
@@ -426,7 +426,7 @@ pub fn node_json<B: LayoutBackend>(id: NodeId, depth: i32, attrs: AttrFn) -> Val
 /// The synthetic `#document` node and its single root-container child.
 /// Roots (and their descendants) are expanded to `depth` (a negative
 /// value means the entire subtree, matching CDP's convention).
-pub fn document_json<B: LayoutBackend>(attrs: AttrFn, depth: i32) -> Value {
+pub fn document_json<B: Backend>(attrs: AttrFn, depth: i32) -> Value {
     let roots = B::roots();
     let children: Vec<Value> =
         roots.iter().map(|r| node_json::<B>(*r, depth, attrs)).collect();
@@ -457,7 +457,7 @@ pub fn document_json<B: LayoutBackend>(attrs: AttrFn, depth: i32) -> Value {
 
 /// Children of a CDP node (handles the two synthetic ids), each as a
 /// depth-1 element node — for `DOM.requestChildNodes` → `setChildNodes`.
-pub fn child_nodes_json<B: LayoutBackend>(cdp: i64, attrs: AttrFn) -> Vec<Value> {
+pub fn child_nodes_json<B: Backend>(cdp: i64, attrs: AttrFn) -> Vec<Value> {
     if cdp == DOCUMENT_ID {
         return vec![document_json::<B>(attrs, 1)["children"][0].clone()];
     }
@@ -478,7 +478,7 @@ pub fn child_nodes_json<B: LayoutBackend>(cdp: i64, attrs: AttrFn) -> Vec<Value>
 
 /// Absolute (window-space) top-left of a node's border box, summing the
 /// relative `location` of the node and all its ancestors.
-fn abs_origin<B: LayoutBackend>(id: NodeId) -> (f32, f32) {
+fn abs_origin<B: Backend>(id: NodeId) -> (f32, f32) {
     let (mut x, mut y) = (0.0_f32, 0.0_f32);
     let mut cur = Some(id);
     while let Some(c) = cur {
@@ -498,7 +498,7 @@ fn quad(x: f32, y: f32, w: f32, h: f32) -> Value {
 
 /// `DOM.BoxModel` from the computed layout. `None` if the node has no
 /// stored layout (synthetic nodes, freed nodes).
-pub fn box_model_json<B: LayoutBackend>(id: NodeId) -> Option<Value> {
+pub fn box_model_json<B: Backend>(id: NodeId) -> Option<Value> {
     let l = B::layout(id)?;
     let (bx, by) = abs_origin::<B>(id);
     let (bw, bh) = (l.size.width, l.size.height);

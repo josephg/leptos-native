@@ -5,7 +5,7 @@
 //! Cargo.toml, then `use leptos_native::prelude::*` resolves to the
 //! cocoa-specialized prelude here.
 //!
-//! The [`CocoaDom`] unit type is this crate's [`renderer::Renderer`] impl.
+//! [`CocoaBackend`] is this crate's [`renderer::Backend`] impl.
 
 #![cfg(target_os = "macos")]
 #![allow(missing_docs)]
@@ -21,9 +21,8 @@ pub mod element_macos;
 pub mod event_macos;
 pub mod keys;
 pub mod mount;
-pub mod renderer_cocoa;
 
-pub use renderer_cocoa::CocoaDom;
+pub use dom::layout::CocoaBackend;
 
 pub mod dom;
 
@@ -31,12 +30,12 @@ pub mod dom;
 /// Used by type-erased prop types (`ChildrenFn`, slot children
 /// that vary per call-site, `<Show fallback>` branches with
 /// mismatched concrete types).
-pub type AnyView = leptos_native::renderer::view::AnyView<CocoaDom>;
+pub type AnyView = leptos_native::renderer::view::AnyView<CocoaBackend>;
 
 /// Cocoa-pinned alias of [`leptos_native::children::ChildrenFn`]. Lets
 /// slot definitions write `children: ChildrenFn` without the
 /// `<Dom>` type parameter.
-pub type ChildrenFn = children::ChildrenFn<CocoaDom>;
+pub type ChildrenFn = children::ChildrenFn<CocoaBackend>;
 
 /// Bind/attribute keys re-exported under the `leptos_native::attr` path the
 /// `bind:foo=value` macro syntax expands to (`::leptos_native::attr::Value`,
@@ -101,11 +100,11 @@ pub mod reactive_graph {
 }
 
 /// Cocoa-specialized [`IntoView`](leptos_native::IntoView). Pinning R to
-/// [`CocoaDom`] lets user code write `impl IntoView` (the type parameter
+/// [`CocoaBackend`] lets user code write `impl IntoView` (the type parameter
 /// is resolved at the trait boundary) without sprinkling `<Dom>` —
 /// or worse, `<R: Renderer>` — through every component signature.
-pub trait IntoView: leptos_native::IntoView<CocoaDom> {}
-impl<T: leptos_native::IntoView<CocoaDom>> IntoView for T {}
+pub trait IntoView: leptos_native::IntoView<CocoaBackend> {}
+impl<T: leptos_native::IntoView<CocoaBackend>> IntoView for T {}
 
 /// User prelude — the items end-user examples bring into scope.
 ///
@@ -257,5 +256,5 @@ pub mod prelude {
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.
     pub use crate::dom::app::{quit, set_quit_on_last_window_close};
-    pub use crate::CocoaDom;
+    pub use crate::CocoaBackend;
 }

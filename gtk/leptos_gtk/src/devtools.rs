@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use crate::dom::highlight;
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 
 const DEFAULT_PORT: u16 = 9223;
 

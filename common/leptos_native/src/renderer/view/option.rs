@@ -2,8 +2,9 @@
 //! semantics implicitly: when `Some`, the inner T's State; when `None`, no
 //! state.
 
+use crate::renderer::node::Node;
 use super::{Mountable, Render};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 
 /// Retained state for `Option<T>` — just the inner view's state.
 pub struct OptionState<St> {
@@ -12,7 +13,7 @@ pub struct OptionState<St> {
 
 impl<R, T> Render<R> for Option<T>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     type State = OptionState<T::State>;
@@ -47,7 +48,7 @@ where
 
 impl<R, St> Mountable<R> for OptionState<St>
 where
-    R: Renderer,
+    R: Backend,
     St: Mountable<R>,
 {
     fn unmount(&mut self) {
@@ -56,7 +57,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         if let Some(inner) = &mut self.inner {
             inner.mount(parent, marker);
         }
@@ -69,14 +70,14 @@ where
             .unwrap_or(false)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.inner.as_ref().map(Mountable::elements).unwrap_or_default()
     }
 }
 
 impl<R, T> Mountable<R> for Option<T>
 where
-    R: Renderer,
+    R: Backend,
     T: Mountable<R>,
 {
     fn unmount(&mut self) {
@@ -85,7 +86,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         if let Some(inner) = self {
             inner.mount(parent, marker);
         }
@@ -97,7 +98,7 @@ where
             .unwrap_or(false)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.as_ref().map(Mountable::elements).unwrap_or_default()
     }
 }

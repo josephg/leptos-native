@@ -14,7 +14,7 @@ use glib::subclass::prelude::*;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::{Cell, RefCell};
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 
 thread_local! {
     /// The node the frontend is hovering, or `None`.

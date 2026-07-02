@@ -31,12 +31,12 @@ use std::fmt::Write as _;
 
 use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{layout, layout::GtkBackend, GtkElem};
-use leptos_native::renderer::{length, LayoutBackend, NodeId, Rect, Size};
+use leptos_native::renderer::{length, Backend, NodeId, Rect, Size};
 
 const W: f32 = 320.0;
 const H: f32 = 200.0;
 
-// ---- snapshot serializer (generic-ready: only LayoutBackend accessors) -------
+// ---- snapshot serializer (generic-ready: only Backend accessors) -------
 
 fn snapshot(root: GtkElem) -> String {
     let mut out = String::new();
@@ -139,7 +139,7 @@ fn static_tree() {
     append(v, leaf("c"));
     layout::compute_layout(v, (W, H));
     check("static_tree", snapshot(v));
-    v.teardown();
+    v.remove();
 }
 
 /// Insert a child *before a mid-list marker* — the exact path the
@@ -154,7 +154,7 @@ fn insert_middle() {
     v.insert_node(leaf("b"), Some(c)); // before c
     layout::compute_layout(v, (W, H));
     check("insert_middle", snapshot(v));
-    v.teardown();
+    v.remove();
 }
 
 /// Remove a mid-list child; the survivors must close the gap in order.
@@ -167,10 +167,10 @@ fn remove_middle() {
     append(v, b);
     append(v, c);
     v.remove_child(b);
-    b.teardown();
+    b.remove();
     layout::compute_layout(v, (W, H));
     check("remove_middle", snapshot(v));
-    v.teardown();
+    v.remove();
 }
 
 fn main() {

@@ -12,7 +12,7 @@ mod common;
 
 use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{layout, GtkElem, layout::GtkBackend};
-use leptos_native::renderer::scene::LayoutBackend;
+use leptos_native::renderer::scene::Backend;
 
 /// Read the Taffy-computed layout for `el` and assert position +
 /// size against the expected values.

@@ -10,7 +10,7 @@
 //!    setter once (static) or wraps it in a `RenderEffect` (reactive).
 //!
 //! 2. **`Dim` + `AlignSelf`** — small enums used by the universal
-//!    layout attributes. Renderer-agnostic by design; each backend
+//!    layout attributes. Backend-agnostic by design; each backend
 //!    converts to its layout-engine-native type at apply time.
 //!
 //! 3. **`LayoutAttrs` / `UniversalAttrs` / `TextAttrs<C, A>`** + their
@@ -212,7 +212,7 @@ impl From<f32> for Edges {
 
 /// Per-child override of the parent flex container's `align_items`.
 ///
-/// Renderer-agnostic; each backend converts to its layout-engine
+/// Backend-agnostic; each backend converts to its layout-engine
 /// equivalent (e.g. `taffy::AlignItems`) at apply time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlignSelf {
@@ -235,7 +235,7 @@ pub enum AlignSelf {
 ///   the end (line `-1` = last line, like CSS).
 /// - `Span(n)` — N tracks from whichever end isn't pinned.
 ///
-/// Renderer-agnostic; each backend's `apply_layout` converts to its
+/// Backend-agnostic; each backend's `apply_layout` converts to its
 /// layout-engine type (`taffy::GridPlacement`) at install time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GridLine {

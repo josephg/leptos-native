@@ -15,7 +15,7 @@ use leptos_gtk::gtk::element::{button, hstack, label, vstack};
 use leptos_gtk::gtk4::prelude::*;
 use leptos_native::renderer::attrs::WithLayout;
 use leptos_native::renderer::view::{Mountable, Render};
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 use reactive_graph::owner::Owner;
 
 fn with_reactive_scope<F: FnOnce()>(body: F) {
@@ -29,8 +29,8 @@ fn with_reactive_scope<F: FnOnce()>(body: F) {
 /// pass the content_root to `f`.
 fn with_mounted_view<V, F>(view: V, size: (f32, f32), f: F)
 where
-    V: Render<leptos_gtk::GtkDom>,
-    V::State: Mountable<leptos_gtk::GtkDom>,
+    V: Render<leptos_gtk::GtkBackend>,
+    V::State: Mountable<leptos_gtk::GtkBackend>,
     F: FnOnce(&GtkElem),
 {
     let app = common::init_app_registered("org.test.leptos_gtk.layout");

@@ -37,7 +37,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 use taffy::NodeId;
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 
 /// Tag value the overlay reports for `-tag`. `apply_layout` reads
 /// this to skip the overlay when matching subviews to Taffy children.

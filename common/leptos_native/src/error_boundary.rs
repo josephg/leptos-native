@@ -10,6 +10,7 @@
 //!  - The reactive flip between children and fallback driven by
 //!    `errors_empty` memo + `RenderEffect`.
 
+use crate::renderer::node::Node;
 use crate::{
     children::TypedChildren,
     into_view::IntoView,
@@ -24,7 +25,7 @@ use reactive_graph::{
 };
 use crate::renderer::{
     reactive_graph::{OwnedView, RenderEffectState},
-    Renderer,
+    Backend,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use rustc_hash::FxHashMap;
@@ -47,7 +48,7 @@ pub fn ErrorBoundary<FalFn, Fal, Chil, R>(
     _marker: PhantomData<R>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     FalFn: FnMut(ArcRwSignal<Errors>) -> Fal + Send + 'static,
     Fal: IntoView<R> + Send + 'static,
     Chil: IntoView<R> + Send + 'static,
@@ -97,7 +98,7 @@ struct ErrorBoundaryViewState<Chil, Fal> {
 
 impl<R, Chil, Fal> Mountable<R> for ErrorBoundaryViewState<Chil, Fal>
 where
-    R: Renderer,
+    R: Backend,
     Chil: Mountable<R>,
     Fal: Mountable<R>,
 {
@@ -109,7 +110,7 @@ where
         }
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         if let Some(fallback) = &mut self.fallback {
             fallback.mount(parent, marker);
         } else {
@@ -125,7 +126,7 @@ where
         }
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         if let Some(fallback) = &self.fallback {
             fallback.elements()
         } else {
@@ -136,7 +137,7 @@ where
 
 impl<R, Chil, FalFn, Fal> Render<R> for ErrorBoundaryView<Chil, FalFn, R>
 where
-    R: Renderer,
+    R: Backend,
     Chil: Render<R> + 'static,
     FalFn: FnMut(ArcRwSignal<Errors>) -> Fal + Send + 'static,
     Fal: Render<R> + 'static,
@@ -321,7 +322,7 @@ impl<'a> Iterator for Iter<'a> {
 /// clear message rather than silently dropping the handler.
 impl<Chil, FalFn, R> AddAnyAttr<R> for ErrorBoundaryView<Chil, FalFn, R>
 where
-    R: Renderer,
+    R: Backend,
 {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {

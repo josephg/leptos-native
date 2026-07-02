@@ -25,14 +25,15 @@
 //!   `<Show on:click=…>` is deferred until we figure out the
 //!   re-attach-on-rebuild semantics.
 
-use crate::renderer::Renderer;
+use crate::renderer::node::Node;
+use crate::renderer::Backend;
 
 /// Receive deferred attribute spreads. Implemented on:
 /// - leaf builders (Button, Label, …) — push to their internal
 ///   pending-spreads Vec, drain in `Render::build`.
 /// - wrapper types ([`View<T>`], [`OwnedView<T>`]) — forward to the
 ///   wrapped value's `AddAnyAttr<R>`.
-pub trait AddAnyAttr<R: Renderer>: Sized {
+pub trait AddAnyAttr<R: Backend>: Sized {
     /// Stash `attr` so it gets applied to this view's eventual
     /// element. Returns `Self` (no static type-change — see module
     /// docs).
@@ -43,12 +44,12 @@ pub trait AddAnyAttr<R: Renderer>: Sized {
 /// platform element. Each platform's `OnAttribute` (and any future
 /// directive / use-attr / etc.) implements `ApplyAttr<Dom>` for
 /// its respective `Dom`.
-pub trait ApplyAttr<R: Renderer>: Send + 'static {
+pub trait ApplyAttr<R: Backend>: Send + 'static {
     /// Move-attach this attribute to a built element. Called
     /// during `Render::build` on the leaf builder, after the
     /// underlying NSView/UIView has been constructed and the
     /// builder's normal handlers installed.
-    fn apply_to(self, el: R::Node);
+    fn apply_to(self, el: Node<R>);
 }
 
 // ---------------------------------------------------------------------
@@ -60,17 +61,17 @@ pub trait ApplyAttr<R: Renderer>: Send + 'static {
 // list is empty.
 // ---------------------------------------------------------------------
 
-impl<R: Renderer> ApplyAttr<R> for () {
-    fn apply_to(self, _el: R::Node) {}
+impl<R: Backend> ApplyAttr<R> for () {
+    fn apply_to(self, _el: Node<R>) {}
 }
 
 macro_rules! impl_apply_attr_tuple {
     ($(($idx:tt, $T:ident)),+ $(,)?) => {
-        impl<R: Renderer, $($T),+> ApplyAttr<R> for ($($T,)+)
+        impl<R: Backend, $($T),+> ApplyAttr<R> for ($($T,)+)
         where
             $($T: ApplyAttr<R>,)+
         {
-            fn apply_to(self, el: R::Node) {
+            fn apply_to(self, el: Node<R>) {
                 $( self.$idx.apply_to(el); )+
             }
         }
@@ -124,7 +125,7 @@ fn panic_branching(kind: &str) -> ! {
     );
 }
 
-impl<R: Renderer> AddAnyAttr<R> for () {
+impl<R: Backend> AddAnyAttr<R> for () {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         panic_terminal("`()` (empty)")
@@ -134,7 +135,7 @@ impl<R: Renderer> AddAnyAttr<R> for () {
 macro_rules! terminal_add_any_attr {
     ($($ty:ty => $name:expr),+ $(,)?) => {
         $(
-            impl<R: Renderer> AddAnyAttr<R> for $ty {
+            impl<R: Backend> AddAnyAttr<R> for $ty {
                 #[track_caller]
                 fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
                     panic_terminal($name)
@@ -159,7 +160,7 @@ terminal_add_any_attr!(
     std::sync::Arc<str> => "Arc<str>",
 );
 
-impl<R: Renderer, A, B> AddAnyAttr<R> for either_of::Either<A, B> {
+impl<R: Backend, A, B> AddAnyAttr<R> for either_of::Either<A, B> {
     #[track_caller]
     fn add_any_attr<Attr: ApplyAttr<R>>(self, _attr: Attr) -> Self {
         panic_branching("`Either<A, B>`")
@@ -173,7 +174,7 @@ impl<R: Renderer, A, B> AddAnyAttr<R> for either_of::Either<A, B> {
 macro_rules! impl_addanyattr_eitherofn {
     ($($name:ident<$($T:ident),+>),+ $(,)?) => {
         $(
-            impl<R: Renderer, $($T),+> AddAnyAttr<R> for either_of::$name<$($T),+> {
+            impl<R: Backend, $($T),+> AddAnyAttr<R> for either_of::$name<$($T),+> {
                 #[track_caller]
                 fn add_any_attr<__A: ApplyAttr<R>>(self, _attr: __A) -> Self {
                     panic_branching(concat!("`", stringify!($name), "`"))
@@ -192,21 +193,21 @@ impl_addanyattr_eitherofn!(
     EitherOf8<A, B, C, D, E, F, G, H>,
 );
 
-impl<R: Renderer, T> AddAnyAttr<R> for Option<T> {
+impl<R: Backend, T> AddAnyAttr<R> for Option<T> {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         panic_branching("`Option<T>`")
     }
 }
 
-impl<R: Renderer, T> AddAnyAttr<R> for Vec<T> {
+impl<R: Backend, T> AddAnyAttr<R> for Vec<T> {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         panic_branching("`Vec<T>` (`<For>` body)")
     }
 }
 
-impl<R: Renderer, T, E> AddAnyAttr<R> for Result<T, E> {
+impl<R: Backend, T, E> AddAnyAttr<R> for Result<T, E> {
     #[track_caller]
     fn add_any_attr<A: ApplyAttr<R>>(self, _attr: A) -> Self {
         panic_branching("`Result<T, E>` (ErrorBoundary body)")
@@ -217,7 +218,7 @@ impl<R: Renderer, T, E> AddAnyAttr<R> for Result<T, E> {
 // it's ambiguous; surface the ambiguity to the user.
 macro_rules! impl_addanyattr_tuple_panic {
     ($(($idx:tt, $T:ident)),+ $(,)?) => {
-        impl<R: Renderer, $($T),+> AddAnyAttr<R> for ($($T,)+) {
+        impl<R: Backend, $($T),+> AddAnyAttr<R> for ($($T,)+) {
             #[track_caller]
             fn add_any_attr<__A: ApplyAttr<R>>(self, _attr: __A) -> Self {
                 panic!(

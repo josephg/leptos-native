@@ -13,7 +13,7 @@ use crate::into_view::IntoView;
 use leptos_macro::component;
 use reactive_graph::owner::Owner;
 use crate::renderer::{
-    reactive_graph::OwnedView, Renderer, view::keyed,
+    reactive_graph::OwnedView, Backend, view::keyed,
 };
 use std::{hash::Hash, marker::PhantomData};
 
@@ -37,7 +37,7 @@ pub fn For<IF, I, T, EF, N, KF, K, R>(
     _marker: PhantomData<R>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     IF: Fn() -> I + Send + 'static,
     I: IntoIterator<Item = T> + Send + 'static,
     EF: Fn(T) -> N + Send + Clone + 'static,

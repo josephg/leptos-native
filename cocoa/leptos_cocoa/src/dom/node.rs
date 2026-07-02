@@ -9,7 +9,7 @@
 //! stale id (after the node was freed) resolves to `None`/no-op via the
 //! generational key — weak-reference behavior for free.
 //!
-//! Lifecycle is explicit: [`CocoaElem::teardown`] removes the node and its
+//! Lifecycle is explicit: [`CocoaElem::remove`] removes the node and its
 //! whole structural subtree from the store. There is no drop-driven
 //! removal (a `Node` is `Copy`, so it has no `Drop`).
 
@@ -22,7 +22,7 @@ use objc2_app_kit::{
     NSButton, NSControl, NSTextField, NSView, NSWindowOrderingMode,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
-use leptos_native::renderer::{LayoutBackend, Node};
+use leptos_native::renderer::{Backend, Node};
 use send_wrapper::SendWrapper;
 use taffy::Style;
 use crate::dom::{event, layout, Color, Date, DatePickerStyle, KeyEvent, LineBreak, SegmentStyle, TextAlignment};
@@ -66,7 +66,6 @@ pub trait CocoaNodeExt: Copy {
     where
         T: DowncastTarget;
     fn ns_view_retained(self) -> Retained<NSView>;
-    fn teardown(self);
     fn with_meta<R>(self, f: impl FnOnce(&CocoaMeta) -> R) -> R;
     fn with_meta_mut<R>(self, f: impl FnOnce(&mut CocoaMeta) -> R) -> R;
     fn with_handlers_mut<R>(
@@ -242,14 +241,6 @@ impl CocoaNodeExt for CocoaElem {
         self.ns_view()
     }
 
-    /// Remove this node and its whole structural subtree from the
-    /// store, and detach its NSView from its superview.
-    fn teardown(self) {
-        if let Some(view) = self.try_ns_view() {
-            view.removeFromSuperview();
-        }
-        CocoaBackend::remove(self.id);
-    }
 
     // ---- Accessor surface ------------------------------------------
 

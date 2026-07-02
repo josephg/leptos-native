@@ -9,7 +9,7 @@ mod common;
 use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::GtkElem;
 use leptos_gtk::dom::layout::{self, GtkBackend};
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 
 fn dirty_for(el: &GtkElem) -> bool {
     GtkBackend::dirty(el.id())

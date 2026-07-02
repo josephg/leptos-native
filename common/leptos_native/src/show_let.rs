@@ -3,7 +3,7 @@ use either_of::Either;
 use leptos_macro::component;
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]
 use reactive_graph::traits::Get;
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 use std::{marker::PhantomData, sync::Arc};
 
 /// Like `<Show>`, but for `Option`. Shows children when `some` returns `Some`.
@@ -24,7 +24,7 @@ pub fn ShowLet<T, ChFn, V, M, R>(
     _marker: PhantomData<(T, M, R)>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     ChFn: Fn(T) -> V + Send + Clone + 'static,
     V: IntoView<R> + 'static,
     T: 'static,

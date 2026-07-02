@@ -6,7 +6,7 @@ use crate::{
 use either_of::Either;
 use leptos_macro::component;
 use reactive_graph::{computed::ArcMemo, traits::Get, wrappers::read::Signal};
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 use std::{marker::PhantomData, sync::Arc};
 
 /// Function-shaped fallback for `<Show>`. Wraps a `Fn() -> View<Fb>`
@@ -14,12 +14,12 @@ use std::{marker::PhantomData, sync::Arc};
 /// while preserving the inner Fb type for the renderer.
 ///
 /// Default is a no-op fallback that produces `View<()>`.
-pub struct FallbackFn<Fb, R: Renderer> {
+pub struct FallbackFn<Fb, R: Backend> {
     f: Arc<dyn Fn() -> View<Fb> + Send + Sync + 'static>,
     _marker: PhantomData<R>,
 }
 
-impl<Fb, R: Renderer> Clone for FallbackFn<Fb, R> {
+impl<Fb, R: Backend> Clone for FallbackFn<Fb, R> {
     fn clone(&self) -> Self {
         Self {
             f: Arc::clone(&self.f),
@@ -28,7 +28,7 @@ impl<Fb, R: Renderer> Clone for FallbackFn<Fb, R> {
     }
 }
 
-impl<Fb, R: Renderer> FallbackFn<Fb, R> {
+impl<Fb, R: Backend> FallbackFn<Fb, R> {
     /// Calls the fallback to produce its view.
     pub fn run(&self) -> View<Fb> {
         (self.f)()
@@ -37,7 +37,7 @@ impl<Fb, R: Renderer> FallbackFn<Fb, R> {
 
 impl<F, Fb, R> From<F> for FallbackFn<Fb, R>
 where
-    R: Renderer,
+    R: Backend,
     F: Fn() -> Fb + Send + Sync + 'static,
     Fb: IntoView<R>,
 {
@@ -66,7 +66,7 @@ pub fn Show<C, Fb, R>(
     fallback: Option<FallbackFn<Fb, R>>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     C: IntoView<R> + 'static,
     Fb: IntoView<R> + 'static,
 {

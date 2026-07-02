@@ -21,7 +21,7 @@ use crate::{
     children::TypedChildrenFn, into_view::IntoView, show::FallbackFn,
 };
 use leptos_macro::component;
-use crate::renderer::Renderer;
+use crate::renderer::Backend;
 
 /// Wrap children that contain one or more `Suspend`s. Renders
 /// the children directly today; the `fallback` prop is accepted
@@ -40,7 +40,7 @@ pub fn Transition<C, Fb, R>(
     fallback: Option<FallbackFn<Fb, R>>,
 ) -> impl IntoView<R>
 where
-    R: Renderer,
+    R: Backend,
     C: IntoView<R> + 'static,
     Fb: IntoView<R> + 'static,
 {

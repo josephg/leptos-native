@@ -1,5 +1,6 @@
+use crate::renderer::node::Node;
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{AddAnyAttr, ApplyAttr, Mountable, Render},
 };
 use reactive_graph::owner::Owner;
@@ -30,7 +31,7 @@ impl<T> OwnedView<T> {
 pub struct OwnedViewState<T, R>
 where
     T: Mountable<R>,
-    R: Renderer,
+    R: Backend,
 {
     owner: Owner,
     state: T,
@@ -40,7 +41,7 @@ where
 impl<T, R> OwnedViewState<T, R>
 where
     T: Mountable<R>,
-    R: Renderer,
+    R: Backend,
 {
     fn new(state: T, owner: Owner) -> Self {
         Self {
@@ -53,7 +54,7 @@ where
 
 impl<T, R> Render<R> for OwnedView<T>
 where
-    R: Renderer,
+    R: Backend,
     T: Render<R>,
 {
     type State = OwnedViewState<T::State, R>;
@@ -72,21 +73,21 @@ where
 
 impl<T, R> Mountable<R> for OwnedViewState<T, R>
 where
-    R: Renderer,
+    R: Backend,
     T: Mountable<R>,
 {
     fn unmount(&mut self) {
         self.state.unmount();
     }
 
-    fn mount(&mut self, parent: R::Node, marker: Option<R::Node>) {
+    fn mount(&mut self, parent: Node<R>, marker: Option<Node<R>>) {
         self.state.mount(parent, marker);
     }
 
     fn try_mount(
         &mut self,
-        parent: R::Node,
-        marker: Option<R::Node>,
+        parent: Node<R>,
+        marker: Option<Node<R>>,
     ) -> bool {
         self.state.try_mount(parent, marker)
     }
@@ -95,7 +96,7 @@ where
         self.state.insert_before_this(child)
     }
 
-    fn elements(&self) -> Vec<R::Node> {
+    fn elements(&self) -> Vec<Node<R>> {
         self.state.elements()
     }
 }
@@ -104,7 +105,7 @@ where
 /// reactive owner doesn't change anything about the spread path.
 impl<T, R> AddAnyAttr<R> for OwnedView<T>
 where
-    R: Renderer,
+    R: Backend,
     T: AddAnyAttr<R>,
 {
     fn add_any_attr<A: ApplyAttr<R>>(self, attr: A) -> Self {

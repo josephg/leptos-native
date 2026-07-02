@@ -24,9 +24,8 @@ use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
 use rand::rngs::ChaCha8Rng;
 use rand::SeedableRng;
 use reactive_graph::owner::Owner;
-use leptos_cocoa::CocoaDom;
-use leptos_cocoa::dom::layout::CocoaBackend;
-use leptos_native::renderer::LayoutBackend;
+use leptos_cocoa::CocoaBackend;
+use leptos_native::renderer::Backend;
 use leptos_native::renderer::view::{Mountable, Render};
 
 #[derive(Parser, Debug)]
@@ -327,7 +326,7 @@ fn run_one(
             // Field declaration order matters — Drop runs in
             // top-down field order, and we need state to unmount
             // before the window closes.
-            state: Box<dyn Mountable<CocoaDom>>,
+            state: Box<dyn Mountable<CocoaBackend>>,
             window: window::OpenedWindow,
             #[allow(dead_code)]
             store: SignalStore,
@@ -356,7 +355,7 @@ fn run_one(
             })?;
             let extra_store = SignalStore::new();
             let view = build(&extra_spec, &extra_store);
-            let mut st: Box<dyn Mountable<CocoaDom>> =
+            let mut st: Box<dyn Mountable<CocoaBackend>> =
                 Box::new(catch_ns("build-extra", || view.build())?);
             catch_ns("mount-extra", || {
                 st.mount(win.content_root, None);
@@ -556,7 +555,7 @@ fn run_one(
             let i = idx as u32;
             catch_ns("unmount-extra", || ex.state.unmount())?;
             catch_ns("teardown-extra", || {
-                ex.window.content_root.teardown()
+                ex.window.content_root.remove()
             })?;
             catch_ns("close-extra", || ex.window.close())?;
             // Drop `state` and `store` explicitly to detach them
@@ -568,8 +567,8 @@ fn run_one(
 
         catch_ns("unmount-A", || state_a.unmount())?;
         catch_ns("unmount-B", || state_b.unmount())?;
-        catch_ns("teardown-A", || win_a.content_root.teardown())?;
-        catch_ns("teardown-B", || win_b.content_root.teardown())?;
+        catch_ns("teardown-A", || win_a.content_root.remove())?;
+        catch_ns("teardown-B", || win_b.content_root.remove())?;
         catch_ns("close-A", || win_a.close())?;
         catch_ns("close-B", || win_b.close())?;
         for _ in 0..10 {

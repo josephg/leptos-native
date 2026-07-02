@@ -13,7 +13,7 @@ mod common;
 
 use leptos_gtk::dom::{GtkMakeView, GtkNodeExt};
 use leptos_gtk::dom::{layout, GtkElem, layout::GtkBackend};
-use leptos_native::renderer::LayoutBackend;
+use leptos_native::renderer::Backend;
 
 // 1. Fresh nodes are in the store from creation.
 fn freshly_created_node_is_in_store() {
@@ -36,7 +36,7 @@ fn teardown_removes_store_entry() {
     let el = GtkElem::create_button().0;
     let id = el.id();
     assert!(GtkBackend::style(id).is_some());
-    el.teardown();
+    el.remove();
     assert!(GtkBackend::style(id).is_none(), "teardown removes the entry");
 }
 
@@ -50,7 +50,7 @@ fn teardown_cascades_to_children() {
     assert!(GtkBackend::style(root_id).is_some());
     assert!(GtkBackend::style(child_id).is_some());
 
-    root.teardown();
+    root.remove();
     assert!(GtkBackend::style(root_id).is_none(), "root removed");
     assert!(
         GtkBackend::style(child_id).is_none(),
@@ -72,7 +72,7 @@ fn detach_does_not_free() {
     );
     assert_eq!(GtkBackend::parent(child_id), None);
 
-    child.teardown();
+    child.remove();
     assert!(GtkBackend::style(child_id).is_none());
 }
 
@@ -116,7 +116,7 @@ fn subtree_teardown_returns_to_baseline() {
 
     assert!(GtkBackend::node_count() > baseline, "mounting grows the store");
 
-    root.teardown();
+    root.remove();
     assert_eq!(
         GtkBackend::node_count(),
         baseline,
@@ -129,7 +129,7 @@ fn unattached_node_teardown_returns_to_baseline() {
     let baseline = GtkBackend::node_count();
     let el = GtkElem::create_button().0;
     assert_eq!(GtkBackend::node_count(), baseline + 1);
-    el.teardown();
+    el.remove();
     assert_eq!(
         GtkBackend::node_count(),
         baseline,

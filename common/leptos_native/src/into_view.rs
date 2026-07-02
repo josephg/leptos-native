@@ -1,5 +1,5 @@
 use crate::renderer::{
-    Renderer,
+    Backend,
     view::{AddAnyAttr, ApplyAttr, Render},
 };
 use std::borrow::Cow;
@@ -47,13 +47,13 @@ impl<T> View<T> {
 /// A trait that is implemented for types that can be rendered.
 ///
 /// Generic over the renderer backend `R`. Each platform's `leptos_<platform>`
-/// crate uses this with its own `Renderer` impl.
+/// crate uses this with its own `Backend` impl.
 ///
 /// Has `AddAnyAttr<R>` as a supertrait so the macro-emitted
 /// `MyComponent(props).add_any_attr(...)` call resolves on a
 /// component's opaque `impl IntoView` return type without the user
 /// needing the trait in scope explicitly.
-pub trait IntoView<R: Renderer>
+pub trait IntoView<R: Backend>
 where
     Self: Sized + Render<R> + AddAnyAttr<R> + Send,
 {
@@ -63,7 +63,7 @@ where
 
 impl<R, T> IntoView<R> for T
 where
-    R: Renderer,
+    R: Backend,
     T: Sized + Render<R> + AddAnyAttr<R> + Send,
 {
     fn into_view(self) -> View<Self> {
@@ -75,7 +75,7 @@ where
     }
 }
 
-impl<R: Renderer, T: Render<R>> Render<R> for View<T> {
+impl<R: Backend, T: Render<R>> Render<R> for View<T> {
     type State = T::State;
 
     fn build(self) -> Self::State {
@@ -92,7 +92,7 @@ impl<R: Renderer, T: Render<R>> Render<R> for View<T> {
 /// `<MyComponent on:click=…>` becomes
 /// `MyComponent(props).add_any_attr((on_click_attr,))`, and
 /// `MyComponent(props)` returns a `View<...>` from `into_view()`.
-impl<R: Renderer, T: AddAnyAttr<R>> AddAnyAttr<R> for View<T> {
+impl<R: Backend, T: AddAnyAttr<R>> AddAnyAttr<R> for View<T> {
     fn add_any_attr<A: ApplyAttr<R>>(self, attr: A) -> Self {
         View {
             inner: self.inner.add_any_attr(attr),
@@ -103,7 +103,7 @@ impl<R: Renderer, T: AddAnyAttr<R>> AddAnyAttr<R> for View<T> {
 }
 
 /// Collects some iterator of views into a list, so they can be rendered.
-pub trait CollectView<R: Renderer> {
+pub trait CollectView<R: Backend> {
     /// The inner view type.
     type View: IntoView<R>;
 
@@ -113,7 +113,7 @@ pub trait CollectView<R: Renderer> {
 
 impl<R, It, V> CollectView<R> for It
 where
-    R: Renderer,
+    R: Backend,
     It: IntoIterator<Item = V>,
     V: IntoView<R>,
 {

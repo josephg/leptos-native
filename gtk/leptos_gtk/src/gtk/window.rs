@@ -1,7 +1,7 @@
 //! `window()` builder — GTK ApplicationWindow as a [`Render`]
 //! type. Mirrors `leptos_cocoa::cocoa::window`.
 
-use crate::GtkDom;
+use crate::GtkBackend;
 use gtk4::prelude::*;
 pub use crate::dom::{window::{open_window, OpenedWindow}, GtkElem as GtkElement, GtkElem};
 use crate::dom::GtkNodeExt;
@@ -61,7 +61,7 @@ pub struct WindowState {
     opened: OpenedWindow,
 }
 
-impl<Ch: Render<GtkDom>> Render<GtkDom> for Window<Ch>
+impl<Ch: Render<GtkBackend>> Render<GtkBackend> for Window<Ch>
 where
     Ch::State: 'static,
 {
@@ -103,7 +103,7 @@ where
         opened.gtk_window.connect_close_request(move |_| {
             if let Some(mut children) = children_slot.borrow_mut().take() {
                 children.unmount();
-                content_root_for_cleanup.teardown();
+                content_root_for_cleanup.remove();
             }
             glib::Propagation::Proceed
         });
@@ -112,7 +112,7 @@ where
     }
 }
 
-impl Mountable<GtkDom> for WindowState {
+impl Mountable<GtkBackend> for WindowState {
     fn unmount(&mut self) {
         self.opened.close();
     }
@@ -125,7 +125,7 @@ impl Mountable<GtkDom> for WindowState {
         // Window is its own root; nothing to mount.
     }
 
-    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkDom>) -> bool {
+    fn insert_before_this(&self, _child: &mut dyn Mountable<GtkBackend>) -> bool {
         false
     }
 
