@@ -180,6 +180,124 @@ macro_rules! wire_attr {
 }
 
 // ---------------------------------------------------------------------
+// Common builder state — the attrs/handlers every builder carries.
+// ---------------------------------------------------------------------
+
+/// The builder state shared by every element builder: event handlers,
+/// `node_ref`, `use:` directives (also the install path for spread
+/// attrs), and the four chainable attr structs. Builders embed one of
+/// these as `common` and get the accessor-trait impls + `on` /
+/// `node_ref` / `directive` methods from [`impl_common!`].
+#[derive(Default)]
+pub struct Common {
+    handlers: Vec<crate::event_macos::PendingHandler>,
+    node_ref: Option<NodeRef<CocoaElem>>,
+    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
+    decoration: CocoaDecoration,
+    /// All-`None` (installs nothing) on builders that don't expose
+    /// [`WithText`] — carrying it unconditionally is cheaper than a
+    /// per-builder `Option`.
+    text: CocoaText,
+}
+
+impl Common {
+    /// The shared tail of every `Render::build`: install event
+    /// handlers, apply the attr structs (see [`apply_common`] for the
+    /// ordering contract), load the `node_ref`, run `use:` directives.
+    /// Call AFTER the builder's control-specific wiring. (Label rolls
+    /// its own tail — it routes Click through `on_action` and layers
+    /// `bold` between text and layout.)
+    fn finish(self, el: CocoaElem, effects: &mut Vec<RenderEffect<()>>) {
+        for h in self.handlers {
+            h.apply_to(el);
+        }
+        effects.extend(apply_common(
+            el,
+            self.decoration,
+            self.universal,
+            Some(self.text),
+            self.layout,
+        ));
+        if let Some(r) = self.node_ref {
+            r.load(el);
+        }
+        crate::cocoa::directives::run_all(self.directives, el);
+    }
+}
+
+/// Generate the boilerplate every builder repeats over its `common`
+/// field: the `WithLayout` / `WithUniversal` / `WithDecoration`
+/// accessor impls plus the `on` / `node_ref` / `directive` methods.
+/// Add `: text` for builders that render text (also impls
+/// [`WithText`]). Handles both plain and single-type-param builders.
+macro_rules! impl_common {
+    ($ty:ident $(<$g:ident>)?) => {
+        impl $(<$g>)? WithLayout for $ty $(<$g>)? {
+            fn layout_mut(&mut self) -> &mut LayoutAttrs {
+                &mut self.common.layout
+            }
+        }
+        impl $(<$g>)? WithUniversal for $ty $(<$g>)? {
+            fn universal_mut(&mut self) -> &mut UniversalAttrs {
+                &mut self.common.universal
+            }
+        }
+        impl $(<$g>)? WithDecoration for $ty $(<$g>)? {
+            fn decoration_mut(&mut self) -> &mut CocoaDecoration {
+                &mut self.common.decoration
+            }
+        }
+        impl $(<$g>)? $ty $(<$g>)? {
+            /// `on:event=handler` — install an event handler. Which
+            /// events a control supports is expressed via
+            /// `SupportsEvent<E>` impls; unsupported events are a
+            /// compile error.
+            pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+            where
+                Self: crate::event_macos::SupportsEvent<E>,
+                E: crate::event_macos::EventDescriptor,
+                F: FnMut(E::EventType) + Send + 'static,
+            {
+                self.common.handlers.push(E::into_pending(handler));
+                self
+            }
+
+            /// Capture the built element in a `NodeRef` for imperative
+            /// access (focus, measurement) after mount.
+            pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
+                self.common.node_ref = Some(r);
+                self
+            }
+
+            /// `use:directive=param` — run `handler(el, param)` once
+            /// after the element is built. Inherent method (Rust
+            /// resolves it before `DirectiveAttribute::directive`).
+            pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
+            where
+                D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
+                P: Send + 'static,
+                T: 'static,
+            {
+                self.common
+                    .directives
+                    .push(crate::cocoa::directives::pack(handler, param));
+                self
+            }
+        }
+    };
+    ($ty:ident $(<$g:ident>)? : text) => {
+        impl_common!($ty $(<$g>)?);
+        impl $(<$g>)? WithText for $ty $(<$g>)? {
+            fn text_attrs_mut(&mut self) -> &mut CocoaText {
+                &mut self.common.text
+            }
+        }
+    };
+}
+
+// ---------------------------------------------------------------------
 // Generic State machinery
 // ---------------------------------------------------------------------
 
@@ -293,10 +411,8 @@ pub struct Stack<Children> {
     /// enter, `false` on exit. Boxed setter so the Stack stays
     /// non-generic over the signal type.
     pending_bind_mouse_hover: Option<Box<dyn FnMut(bool) + Send + 'static>>,
-    layout:           LayoutAttrs,
-    universal:        UniversalAttrs,
-    decoration:       CocoaDecoration,
     children:         Children,
+    common: Common,
 }
 
 fn empty_stack() -> Stack<()> {
@@ -313,10 +429,8 @@ fn empty_stack() -> Stack<()> {
         #[cfg(feature = "animation")]
         translation_y: None,
         pending_bind_mouse_hover: None,
-        layout: LayoutAttrs::default(),
-        universal: UniversalAttrs::default(),
-        decoration: CocoaDecoration::default(),
         children: (),
+        common: Common::default(),
     }
 }
 
@@ -427,10 +541,8 @@ impl<Ch> Stack<Ch> {
             #[cfg(feature = "animation")]
             translation_y: self.translation_y,
             pending_bind_mouse_hover: self.pending_bind_mouse_hover,
-            layout: self.layout,
-            universal: self.universal,
-            decoration: self.decoration,
             children: (self.children, child),
+            common: self.common,
         }
     }
 
@@ -467,17 +579,7 @@ impl<Ch> Stack<Ch> {
     }
 }
 
-impl<Ch> WithLayout for Stack<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl<Ch> WithUniversal for Stack<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
-impl<Ch> WithDecoration for Stack<Ch> {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
+impl_common!(Stack<Children>);
 
 impl<Ch> Render<CocoaBackend> for Stack<Ch>
 where
@@ -522,7 +624,7 @@ where
         // (they're LayoutAttrs fields). Decoration attrs go through
         // apply_decoration. `hidden` goes through apply_layout (it
         // toggles Taffy display + NSView isHidden in one place).
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
 
         // Build children but DON'T mount them yet. Mounting is
         // deferred until ElementState::mount runs (when self.el has
@@ -565,10 +667,8 @@ pub struct Grid<Children> {
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align_content:   Option<MaybeReactive<AlignContent>>,
 
-    layout:           LayoutAttrs,
-    universal:        UniversalAttrs,
-    decoration:       CocoaDecoration,
     children:         Children,
+    common: Common,
 }
 
 /// Empty CSS-Grid container. Configure tracks via `.columns(...)` /
@@ -588,10 +688,8 @@ pub fn grid() -> Grid<()> {
         align_items: None,
         justify_content: None,
         align_content: None,
-        layout: LayoutAttrs::default(),
-        universal: UniversalAttrs::default(),
-        decoration: CocoaDecoration::default(),
         children: (),
+        common: Common::default(),
     }
 }
 
@@ -702,25 +800,13 @@ impl<Ch> Grid<Ch> {
             align_items: self.align_items,
             justify_content: self.justify_content,
             align_content: self.align_content,
-            layout: self.layout,
-            universal: self.universal,
-            decoration: self.decoration,
             children: (self.children, child),
+            common: self.common,
         }
     }
 }
 
-impl<Ch> WithLayout for Grid<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl<Ch> WithUniversal for Grid<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
-impl<Ch> WithDecoration for Grid<Ch> {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
+impl_common!(Grid<Children>);
 
 impl<Ch> Render<CocoaBackend> for Grid<Ch>
 where
@@ -802,7 +888,7 @@ where
             }
         }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
 
         let child_state = self.children.build();
 
@@ -823,20 +909,6 @@ where
 pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    // Text styling — Button uses font_size + alignment only (no
-    // text_color; that would need attributedTitle). Stored in the
-    // shared `text` struct with `text_color: None`.
-    text: CocoaText,
-    // Background fill / corner_radius / border_* / clip live in the
-    // shared `decoration` struct. Setting `background_color` or
-    // `corner_radius` here implies bordered=false (the bezel would
-    // fight the custom paint) — done in `Render::build` below.
-    decoration: CocoaDecoration,
     // Button-specific.
     bordered: Option<MaybeReactive<bool>>,
     key_equivalent: Option<MaybeReactive<String>>,
@@ -845,24 +917,19 @@ pub struct Button {
     text_color:       Option<MaybeReactive<Color>>,
     bold:             Option<MaybeReactive<bool>>,
     sf_symbol:        Option<MaybeReactive<String>>,
+    common: Common,
 }
 
 pub fn button() -> Button {
     Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        text: CocoaText::default(),
-        decoration: CocoaDecoration::default(),
         bordered: None,
         key_equivalent: None,
         text_color: None,
         bold: None,
         sf_symbol: None,
+        common: Common::default(),
     }
 }
 
@@ -886,44 +953,14 @@ impl Button {
     }
 
     pub fn on_click(mut self, mut cb: impl FnMut() + Send + 'static) -> Self {
-        self.handlers
+        self.common.handlers
             .push(crate::event_macos::PendingHandler::Click(Box::new(
                 move || cb(),
             )));
         self
     }
 
-    /// `node_ref=…` from the macro. The ref gets filled with this
-    /// builder's underlying `CocoaNode` after
-    /// `Render::build` runs.
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    /// `use:directive=param` from the macro. Stores the directive
-    /// call; runs at `Render::build` time with the constructed
-    /// `CocoaNode` and the supplied `param`.
-    ///
-    /// Directives are escape-hatches for imperative manipulation
-    /// of the underlying NSView — exactly the upstream
-    /// `IntoDirective` shape, with `CocoaNode` as the
-    /// element type. See `examples/.../directives_macos` for
-    /// usage.
-    ///
-    /// Inherent method (not a trait impl) — Rust resolves it
-    /// before `DirectiveAttribute::directive`, sidestepping the
-    /// fact that our `AddAnyAttr` stub drops attributes.
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 
     /// Toggle whether the button draws its bezel. `false` →
     /// borderless / link-style.
@@ -1000,24 +1037,6 @@ impl Button {
         self.title(value)
     }
 
-    /// Method called by the `view!{}` macro for the standard
-    /// `on:event=handler` syntax. Defers installation: the
-    /// [`PendingHandler`](crate::event_macos::PendingHandler) is
-    /// pushed onto a Vec and applied during `Render::build` once
-    /// the underlying NSView exists.
-    ///
-    /// The `Self: SupportsEvent<E>` bound rejects events the
-    /// element doesn't accept — `<button on:input=...>` won't
-    /// compile.
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 // Buttons fire on click (NSButton target/action). Generic over
@@ -1028,24 +1047,13 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 {
 }
 
-impl WithLayout for Button {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Button {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for Button {
-    fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
-}
-impl WithDecoration for Button {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-
 // AddAnyAttr — the typed-attribute pipeline. Each call extends
 // `attrs` from `At` to `<At as NextAttribute>::Output<NewAttr>`.
 // At Render::build time, `attrs.build(&el)` walks the resulting
 // tuple and runs each attribute's `build(&el)` against the live
 // NSView.
+
+impl_common!(Button: text);
 
 impl Render<CocoaBackend> for Button
 where
@@ -1066,9 +1074,6 @@ where
 
         wire_attr!(effects, el, self.enabled, |n: CocoaElem, b: bool| n.set_enabled(b));
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
 
         if let Some(b) = self.bordered {
             let el_for = el.clone();
@@ -1077,8 +1082,8 @@ where
             {
                 effects.push(eff);
             }
-        } else if self.decoration.background_color.is_some()
-            || self.decoration.corner_radius.is_some()
+        } else if self.common.decoration.background_color.is_some()
+            || self.common.decoration.corner_radius.is_some()
         {
             // Caller is doing custom paint — turn off the bezel so the
             // CALayer fill isn't fighting it.
@@ -1099,13 +1104,7 @@ where
         // can read `button.title().length()` to pick the right
         // `imagePosition`.
         wire_attr!(effects, el, self.sf_symbol, |n: CocoaElem, s: String| n.set_button_sf_symbol(&s));
-        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
         // Run the typed-attribute pipeline. For the empty-tuple
         // default this is `().build(&el)` — a no-op.
@@ -1133,13 +1132,7 @@ pub struct Checkbox {
     /// which sets `pending_bind_checked`.
     checked: MaybeReactive<bool>,
     pending_bind_checked: Option<crate::cocoa::bind::BoundChecked>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
-    text: CocoaText,
+    common: Common,
 }
 
 /// Portable name for the boolean toggle. On Cocoa this is the
@@ -1156,13 +1149,7 @@ pub fn checkbox() -> Checkbox {
         title: MaybeReactive::Static(String::new()),
         checked: MaybeReactive::Static(false),
         pending_bind_checked: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
-        text: CocoaText::default(),
+        common: Common::default(),
     }
 }
 
@@ -1200,34 +1187,8 @@ impl Checkbox {
         self.pending_bind_checked = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    /// `use:directive=param` — see Button::directive for full
-    /// docs. Inherent method (Rust resolves before
-    /// `DirectiveAttribute::directive`).
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // A checkbox toggles on click.
@@ -1236,20 +1197,7 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
 {
 }
 
-impl WithLayout for Checkbox {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for Checkbox {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for Checkbox {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for Checkbox {
-    fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
-}
-
+impl_common!(Checkbox: text);
 
 impl Render<CocoaBackend> for Checkbox
 where
@@ -1287,17 +1235,8 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1320,15 +1259,10 @@ pub struct Slider {
     max_value: MaybeReactive<f64>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     vertical: Option<MaybeReactive<bool>>,
     num_tick_marks: Option<MaybeReactive<usize>>,
     snaps_to_ticks: Option<MaybeReactive<bool>>,
+    common: Common,
 }
 
 pub fn slider() -> Slider {
@@ -1338,15 +1272,10 @@ pub fn slider() -> Slider {
         max_value: MaybeReactive::Static(1.0),
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         vertical: None,
         num_tick_marks: None,
         snaps_to_ticks: None,
-        node_ref: None,
-        directives: Vec::new(),
+        common: Common::default(),
     }
 }
 
@@ -1390,45 +1319,8 @@ impl Slider {
         self.pending_bind = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    /// `use:directive=param` — see Button::directive for full
-    /// docs. Inherent method (Rust resolves before
-    /// `DirectiveAttribute::directive`).
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
-}
-
-impl WithLayout for Slider {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for Slider {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for Slider {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl Slider {
@@ -1463,6 +1355,8 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for Slider
 {
 }
+
+impl_common!(Slider);
 
 impl Render<CocoaBackend> for Slider
 where
@@ -1510,9 +1404,6 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
 
         if let Some(v) = self.vertical {
             let el_for = el.clone();
@@ -1538,13 +1429,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1566,13 +1451,8 @@ pub struct PopUpButton {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     pulls_down: Option<MaybeReactive<bool>>,
+    common: Common,
 }
 
 pub fn pop_up_button() -> PopUpButton {
@@ -1581,13 +1461,8 @@ pub fn pop_up_button() -> PopUpButton {
         selection: MaybeReactive::Static(0),
         enabled: None,
         pending_bind_selection: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         pulls_down: None,
+        common: Common::default(),
     }
 }
 
@@ -1626,45 +1501,8 @@ impl PopUpButton {
         self.pending_bind_selection = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    /// `use:directive=param` — see Button::directive for full
-    /// docs. Inherent method (Rust resolves before
-    /// `DirectiveAttribute::directive`).
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
-}
-
-impl WithLayout for PopUpButton {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for PopUpButton {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for PopUpButton {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl PopUpButton {
@@ -1682,6 +1520,8 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for PopUpButton
 {
 }
+
+impl_common!(PopUpButton);
 
 impl Render<CocoaBackend> for PopUpButton
 where
@@ -1731,17 +1571,8 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1770,32 +1601,20 @@ type LabelTryTextFn =
 pub struct Label {
     value: MaybeReactive<String>,
     try_text: Option<LabelTryTextFn>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
-    text: CocoaText,
     selectable: Option<MaybeReactive<bool>>,
     bold: Option<MaybeReactive<bool>>,
     line_break: Option<MaybeReactive<LineBreak>>,
+    common: Common,
 }
 
 pub fn label() -> Label {
     Label {
         value: MaybeReactive::Static(String::new()),
         try_text: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
-        text: CocoaText::default(),
         selectable: None,
         bold: None,
         line_break: None,
+        common: Common::default(),
     }
 }
 
@@ -1836,31 +1655,8 @@ impl Label {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // Label is non-editable — treat it as a passive surface for events.
@@ -1871,20 +1667,6 @@ impl Label {
 impl crate::event_macos::SupportsEvent<crate::event_macos::ClickEvent>
     for Label
 {
-}
-
-impl WithLayout for Label {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for Label {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for Label {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for Label {
-    fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
 }
 
 impl Label {
@@ -1945,12 +1727,14 @@ impl Label {
 }
 
 
+impl_common!(Label: text);
+
 impl Render<CocoaBackend> for Label
 where
 {
     type State = ElementState<()>;
 
-    fn build(self) -> Self::State {
+    fn build(mut self) -> Self::State {
         let (el, _) = CocoaElem::create_label();
         let mut effects = Vec::new();
 
@@ -2000,7 +1784,7 @@ where
             // ErrorGuard inside drops and clears any active error.
         }
 
-        for h in self.handlers {
+        for h in std::mem::take(&mut self.common.handlers) {
             // NSTextField (label) is an NSControl but not an
             // NSButton. Route Click via on_action; other events
             // fall through to apply_to (no-ops on non-NSTextField
@@ -2025,9 +1809,9 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_decoration(el, self.decoration));
-        effects.extend(apply_universal(el, self.universal));
-        effects.extend(apply_text(el, self.text));
+        effects.extend(apply_decoration(el, self.common.decoration));
+        effects.extend(apply_universal(el, self.common.universal));
+        effects.extend(apply_text(el, self.common.text));
         // Apply bold AFTER apply_text so font_size is set first; bold
         // reads the current point size to preserve it.
         if let Some(b) = self.bold {
@@ -2036,13 +1820,13 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_layout(el, self.layout));
+        effects.extend(apply_layout(el, self.common.layout));
 
-        if let Some(r) = self.node_ref {
+        if let Some(r) = self.common.node_ref {
             r.load(el);
         }
 
-        crate::cocoa::directives::run_all(self.directives, el);
+        crate::cocoa::directives::run_all(self.common.directives, el);
 
 
         ElementState {
@@ -2073,16 +1857,10 @@ pub struct TextField {
     /// `install_text_field_value_bind`. Distinct from `.value(...)`
     /// (which is one-way: signal → field).
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
-    text: CocoaText,
     bordered: Option<MaybeReactive<bool>>,
     bezeled: Option<MaybeReactive<bool>>,
     intrinsic_width: Option<MaybeReactive<IntrinsicWidth>>,
+    common: Common,
 }
 
 /// Controls the field's behaviour during the measure pass.
@@ -2129,16 +1907,10 @@ pub fn text_field() -> TextField {
         enabled: None,
         secure: false,
         pending_bind: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
-        text: CocoaText::default(),
         bordered: None,
         bezeled: None,
         intrinsic_width: None,
+        common: Common::default(),
     }
 }
 
@@ -2152,16 +1924,10 @@ pub fn secure_text_field() -> TextField {
         enabled: None,
         secure: true,
         pending_bind: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
-        text: CocoaText::default(),
         bordered: None,
         bezeled: None,
         intrinsic_width: None,
+        common: Common::default(),
     }
 }
 
@@ -2199,37 +1965,8 @@ impl TextField {
         self.pending_bind = Some(bound);
     }
 
-    /// `on:event=handler` from the macro. Stashed; installed during
-    /// `Render::build`. Click handlers on a text field are silently
-    /// dropped (the underlying cocoa_dom call no-ops).
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    /// `use:directive=param` — see Button::directive for full
-    /// docs. Inherent method (Rust resolves before
-    /// `DirectiveAttribute::directive`).
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // Text fields fire on every keystroke (`input`) and on commit
@@ -2266,20 +2003,6 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::KeyUpEvent>
 {
 }
 
-impl WithLayout for TextField {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for TextField {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for TextField {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for TextField {
-    fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
-}
-
 impl TextField {
     /// Toggle the field's border. `false` → label-style flat
     /// appearance even on editable fields.
@@ -2312,6 +2035,8 @@ impl TextField {
     }
 }
 
+
+impl_common!(TextField: text);
 
 impl Render<CocoaBackend> for TextField
 where
@@ -2361,12 +2086,6 @@ where
             effects.push(eff);
         }
 
-        // Install user-supplied event handlers (on:input, on:change).
-        // These coexist with bind:value because the underlying
-        // delegate fans out across all installed callbacks.
-        for h in self.handlers {
-            h.apply_to(el);
-        }
 
         if let Some(b) = self.bordered {
             let el_for = el.clone();
@@ -2394,13 +2113,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -2421,15 +2134,10 @@ pub struct DatePicker {
     value: MaybeReactive<Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundDate>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     style: Option<MaybeReactive<DatePickerStyle>>,
     min_date: Option<MaybeReactive<Date>>,
     max_date: Option<MaybeReactive<Date>>,
+    common: Common,
 }
 
 pub fn date_picker() -> DatePicker {
@@ -2437,15 +2145,10 @@ pub fn date_picker() -> DatePicker {
         value: MaybeReactive::Static(Date::now()),
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         style: None,
         min_date: None,
         max_date: None,
+        common: Common::default(),
     }
 }
 
@@ -2473,31 +2176,8 @@ impl DatePicker {
         self.pending_bind = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // NSDatePicker fires target/action when the user changes the date.
@@ -2506,17 +2186,6 @@ impl DatePicker {
 impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for DatePicker
 {
-}
-
-impl WithLayout for DatePicker {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for DatePicker {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for DatePicker {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl DatePicker {
@@ -2550,12 +2219,14 @@ impl DatePicker {
 }
 
 
+impl_common!(DatePicker);
+
 impl Render<CocoaBackend> for DatePicker
 where
 {
     type State = ElementState<()>;
 
-    fn build(self) -> Self::State {
+    fn build(mut self) -> Self::State {
         let (el, _) = CocoaElem::create_date_picker();
         let mut effects = Vec::new();
 
@@ -2581,7 +2252,7 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
+        for h in std::mem::take(&mut self.common.handlers) {
             // Date picker is an NSControl, not an NSButton — route
             // Click via on_action.
             match h {
@@ -2616,13 +2287,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -2646,12 +2311,7 @@ pub struct Stepper {
     increment: MaybeReactive<f64>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundFloat>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
+    common: Common,
 }
 
 pub fn stepper() -> Stepper {
@@ -2662,12 +2322,7 @@ pub fn stepper() -> Stepper {
         increment: MaybeReactive::Static(1.0),
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
+        common: Common::default(),
     }
 }
 
@@ -2710,31 +2365,8 @@ impl Stepper {
         self.pending_bind = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
@@ -2742,24 +2374,14 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl WithLayout for Stepper {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for Stepper {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for Stepper {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(Stepper);
 
 impl Render<CocoaBackend> for Stepper
 where
 {
     type State = ElementState<()>;
 
-    fn build(self) -> Self::State {
+    fn build(mut self) -> Self::State {
         let (el, _) = CocoaElem::create_stepper();
         let mut effects = Vec::new();
 
@@ -2808,7 +2430,7 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
+        for h in std::mem::take(&mut self.common.handlers) {
             match h {
                 crate::event_macos::PendingHandler::Click(cb) => {
                     el.on_action(cb);
@@ -2817,13 +2439,7 @@ where
             }
         }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -2847,12 +2463,8 @@ pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
     max_value: MaybeReactive<f64>,
     indeterminate: MaybeReactive<bool>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     displayed_when_stopped: Option<MaybeReactive<bool>>,
+    common: Common,
 }
 
 pub fn progress_indicator() -> ProgressIndicator {
@@ -2860,12 +2472,8 @@ pub fn progress_indicator() -> ProgressIndicator {
         value: MaybeReactive::Static(0.0),
         max_value: MaybeReactive::Static(1.0),
         indeterminate: MaybeReactive::Static(false),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         displayed_when_stopped: None,
+        common: Common::default(),
     }
 }
 
@@ -2890,32 +2498,7 @@ impl ProgressIndicator {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
-}
-
-impl WithLayout for ProgressIndicator {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for ProgressIndicator {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for ProgressIndicator {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl ProgressIndicator {
@@ -2931,6 +2514,8 @@ impl ProgressIndicator {
     }
 }
 
+
+impl_common!(ProgressIndicator);
 
 impl Render<CocoaBackend> for ProgressIndicator
 where
@@ -2973,13 +2558,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -3001,12 +2580,7 @@ pub struct ColorWell {
     value: MaybeReactive<Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::cocoa::bind::BoundColor>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
+    common: Common,
 }
 
 pub fn color_well() -> ColorWell {
@@ -3014,12 +2588,7 @@ pub fn color_well() -> ColorWell {
         value: MaybeReactive::Static(Color::WHITE),
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
+        common: Common::default(),
     }
 }
 
@@ -3047,31 +2616,8 @@ impl ColorWell {
         self.pending_bind = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // NSColorWell fires target/action when the user picks a color and
@@ -3085,24 +2631,14 @@ impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
 {
 }
 
-impl WithLayout for ColorWell {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for ColorWell {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for ColorWell {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(ColorWell);
 
 impl Render<CocoaBackend> for ColorWell
 where
 {
     type State = ElementState<()>;
 
-    fn build(self) -> Self::State {
+    fn build(mut self) -> Self::State {
         let (el, _) = CocoaElem::create_color_well();
         let mut effects = Vec::new();
 
@@ -3128,7 +2664,7 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
+        for h in std::mem::take(&mut self.common.handlers) {
             // ColorWell is an NSControl, not an NSButton — route
             // Click via on_action so the target/action wiring fires
             // when the user picks a color.
@@ -3140,13 +2676,7 @@ where
             }
         }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -3168,13 +2698,8 @@ pub struct SegmentedControl {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::cocoa::bind::BoundIndex>,
-    handlers: Vec<crate::event_macos::PendingHandler>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     segment_style: Option<MaybeReactive<SegmentStyle>>,
+    common: Common,
 }
 
 pub fn segmented_control() -> SegmentedControl {
@@ -3183,13 +2708,8 @@ pub fn segmented_control() -> SegmentedControl {
         selection: MaybeReactive::Static(0),
         enabled: None,
         pending_bind_selection: None,
-        handlers: Vec::new(),
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         segment_style: None,
+        common: Common::default(),
     }
 }
 
@@ -3226,31 +2746,8 @@ impl SegmentedControl {
         self.pending_bind_selection = Some(bound);
     }
 
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: crate::event_macos::SupportsEvent<E>,
-        E: crate::event_macos::EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
 // Click semantics for segmented_control match popup: a "click"
@@ -3258,17 +2755,6 @@ impl SegmentedControl {
 impl crate::event_macos::SupportsEvent<crate::event_macos::ChangeEvent>
     for SegmentedControl
 {
-}
-
-impl WithLayout for SegmentedControl {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for SegmentedControl {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for SegmentedControl {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl SegmentedControl {
@@ -3285,12 +2771,14 @@ impl SegmentedControl {
 }
 
 
+impl_common!(SegmentedControl);
+
 impl Render<CocoaBackend> for SegmentedControl
 where
 {
     type State = ElementState<()>;
 
-    fn build(self) -> Self::State {
+    fn build(mut self) -> Self::State {
         let (el, _) = CocoaElem::create_segmented_control();
         let mut effects = Vec::new();
 
@@ -3320,7 +2808,7 @@ where
             effects.push(eff);
         }
 
-        for h in self.handlers {
+        for h in std::mem::take(&mut self.common.handlers) {
             // Click on a segmented control is conceptually
             // "selection changed" — install via on_action (NSControl
             // path) rather than on_click (NSButton subtree only).
@@ -3340,13 +2828,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -3373,25 +2855,21 @@ where
 
 pub struct ScrollView<Children> {
     children: Children,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
     axis: ScrollAxis,
     autohides_scrollers: Option<MaybeReactive<bool>>,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
+    common: Common,
 }
 
 pub fn scroll_view() -> ScrollView<()> {
     ScrollView {
         children: (),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
         axis: ScrollAxis::Vertical,
         autohides_scrollers: None,
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
+        common: Common::default(),
     }
 }
 
@@ -3445,27 +2923,16 @@ impl<Ch> ScrollView<Ch> {
     pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh)> {
         ScrollView {
             children: (self.children, child),
-            universal: self.universal,
-            layout: self.layout,
-            decoration: self.decoration,
             axis: self.axis,
             autohides_scrollers: self.autohides_scrollers,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
+            common: self.common,
         }
     }
 }
 
-impl<Ch> WithLayout for ScrollView<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl<Ch> WithDecoration for ScrollView<Ch> {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl<Ch> WithUniversal for ScrollView<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
+impl_common!(ScrollView<Children>);
 
 impl<Ch> Render<CocoaBackend> for ScrollView<Ch>
 where
@@ -3507,7 +2974,7 @@ where
                 effects.push(eff);
             }
         }
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
 
         // Same cascade pattern as View: defer child mount to
         // ElementState::mount, so the tree-aware insert_node
@@ -3534,11 +3001,7 @@ pub struct ImageView {
     bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<Color>>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
+    common: Common,
 }
 
 pub fn image_view() -> ImageView {
@@ -3547,11 +3010,7 @@ pub fn image_view() -> ImageView {
         bytes: None,
         sf_symbol: None,
         tint: None,
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
+        common: Common::default(),
     }
 }
 
@@ -3620,34 +3079,10 @@ impl ImageView {
         self
     }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
-impl WithLayout for ImageView {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for ImageView {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for ImageView {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(ImageView);
 
 impl Render<CocoaBackend> for ImageView
 where
@@ -3693,13 +3128,7 @@ where
             }
         }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -3725,12 +3154,7 @@ pub struct TextView {
     /// (one-way: signal → field). Installed at build time via
     /// `install_text_view_value_bind`.
     pending_bind: Option<crate::cocoa::bind::BoundValue>,
-    node_ref: Option<NodeRef<CocoaElem>>,
-    directives: Vec<Box<dyn FnOnce(CocoaElem) + Send + 'static>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    decoration: CocoaDecoration,
-    text: CocoaText,
+    common: Common,
 }
 
 pub fn text_view() -> TextView {
@@ -3738,12 +3162,7 @@ pub fn text_view() -> TextView {
         value: MaybeReactive::Static(String::new()),
         enabled: None,
         pending_bind: None,
-        node_ref: None,
-        directives: Vec::new(),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        decoration: CocoaDecoration::default(),
-        text: CocoaText::default(),
+        common: Common::default(),
     }
 }
 
@@ -3774,37 +3193,10 @@ impl TextView {
         self.pending_bind = Some(bound);
     }
 
-    pub fn node_ref(mut self, r: NodeRef<CocoaElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 
-    pub fn directive<D, T, P>(mut self, handler: D, param: P) -> Self
-    where
-        D: directive::IntoDirective<CocoaElem, T, P> + Send + 'static,
-        P: Send + 'static,
-        T: 'static,
-    {
-        self.directives
-            .push(crate::cocoa::directives::pack(handler, param));
-        self
-    }
 }
 
-impl WithLayout for TextView {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl WithDecoration for TextView {
-    fn decoration_mut(&mut self) -> &mut CocoaDecoration { &mut self.decoration }
-}
-impl WithUniversal for TextView {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for TextView {
-    fn text_attrs_mut(&mut self) -> &mut CocoaText { &mut self.text }
-}
-
+impl_common!(TextView: text);
 
 impl Render<CocoaBackend> for TextView
 where
@@ -3847,13 +3239,7 @@ where
             effects.push(eff);
         }
 
-        effects.extend(apply_common(el, self.decoration, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
-
-        crate::cocoa::directives::run_all(self.directives, el);
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -3892,7 +3278,7 @@ macro_rules! impl_add_any_attr_for_leaf {
                 where
                     __A: leptos_native::renderer::view::ApplyAttr<crate::CocoaBackend>,
                 {
-                    self.directives.push(Box::new(move |el: CocoaElem| {
+                    self.common.directives.push(Box::new(move |el: CocoaElem| {
                         attr.apply_to(el);
                     }));
                     self
