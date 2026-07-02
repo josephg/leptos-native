@@ -14,7 +14,8 @@ use crate::{
     IosBackend,
 };
 use leptos_native::renderer::attrs::{
-    LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout, WithUniversal,
+    DecorationAttrs, LayoutAttrs, TextAttrs, UniversalAttrs, WithLayout,
+    WithUniversal,
 };
 use leptos_native::renderer::view::{ApplyAttr, Mountable, Render};
 use crate::dom::{layout::{
@@ -29,6 +30,7 @@ use crate::dom::{layout::{
 use reactive_graph::effect::RenderEffect;
 
 use crate::dom::layout::{apply_layout, apply_universal};
+use leptos_native::renderer::apply_decoration;
 use leptos_native::node_ref::NodeRef;
 use leptos_native::prelude::AddAnyAttr;
 
@@ -115,48 +117,139 @@ fn apply_common(
     effects
 }
 
-/// Apply chrome attributes — background color, corner radius,
-/// border width + color. All four sit on the underlying UIView
-/// (or its CALayer); each is reactive via `MaybeReactive`.
-fn apply_chrome(
-    el: UikitElem,
-    background_color: Option<MaybeReactive<Color>>,
-    corner_radius: Option<MaybeReactive<f64>>,
-    border_width: Option<MaybeReactive<f64>>,
-    border_color: Option<MaybeReactive<Color>>,
-) -> Vec<RenderEffect<()>> {
-    let mut out = Vec::new();
-    if let Some(c) = background_color {
-        let el_for = el.clone();
-        if let Some(eff) =
-            install(c, move |v| el_for.set_background_color(Some(v)))
-        {
-            out.push(eff);
+/// iOS's decoration-attr struct alias — `DecorationAttrs<Color>`.
+pub type IosDecoration = DecorationAttrs<Color>;
+
+/// Port-local `WithDecoration` shadow. Same shape as the generic
+/// `renderer::attrs::WithDecoration<C>`, but pins `C = Color` and uses
+/// the port-local [`IntoMaybeReactive`] so chainable setters accept
+/// either bare `Color` or `Fn() -> Color` closures.
+pub trait WithDecoration: Sized {
+    fn decoration_mut(&mut self) -> &mut IosDecoration;
+
+    /// Background fill.
+    fn background_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
+        self.decoration_mut().background_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Round the corners (also enables `masksToBounds` when > 0).
+    fn corner_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
+        self.decoration_mut().corner_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Border width in points. `0.0` disables.
+    fn border_width<V: IntoMaybeReactive<f32>>(mut self, w: V) -> Self {
+        self.decoration_mut().border_width = Some(w.into_maybe_reactive());
+        self
+    }
+
+    /// Border color. Only visible when `border_width > 0`.
+    fn border_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
+        self.decoration_mut().border_color = Some(c.into_maybe_reactive());
+        self
+    }
+}
+
+// ---------------------------------------------------------------------
+// Common builder state — the attrs/handlers every builder carries.
+// ---------------------------------------------------------------------
+
+/// The builder state shared by every element builder: event handlers,
+/// spread attrs, `node_ref`, and the four chainable attr structs.
+/// Builders embed one of these as `common` and get the accessor-trait
+/// impls + `on` / `node_ref` methods from [`impl_common!`]. Mirrors
+/// cocoa's `Common`.
+#[derive(Default)]
+pub struct Common {
+    handlers: Vec<PendingHandler>,
+    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
+    node_ref: Option<NodeRef<UikitElem>>,
+    universal: UniversalAttrs,
+    layout: LayoutAttrs,
+    decoration: IosDecoration,
+    /// All-`None` (installs nothing) on builders that don't expose
+    /// [`WithText`].
+    text: IosText,
+}
+
+impl Common {
+    /// The shared tail of every `Render::build`: install event
+    /// handlers + spread attrs, apply the attr structs (layout LAST —
+    /// see [`apply_common`]), load the `node_ref`.
+    fn finish(self, el: UikitElem, effects: &mut Vec<RenderEffect<()>>) {
+        for h in self.handlers {
+            h.apply_to(el);
+        }
+        for f in self.pending_spreads {
+            f(el);
+        }
+        effects.extend(apply_decoration(el, self.decoration));
+        effects.extend(apply_common(
+            el,
+            self.universal,
+            Some(self.text),
+            self.layout,
+        ));
+        if let Some(r) = self.node_ref {
+            r.load(el);
         }
     }
-    if let Some(r) = corner_radius {
-        let el_for = el.clone();
-        if let Some(eff) = install(r, move |v| el_for.set_corner_radius(v))
-        {
-            out.push(eff);
+}
+
+/// Generate the boilerplate every builder repeats over its `common`
+/// field: the `WithLayout` / `WithUniversal` / `WithDecoration`
+/// accessor impls plus the `on` / `node_ref` methods. Add `: text`
+/// for builders that render text (also impls [`WithText`]).
+macro_rules! impl_common {
+    ($ty:ident $(<$g:ident>)?) => {
+        impl $(<$g>)? WithLayout for $ty $(<$g>)? {
+            fn layout_mut(&mut self) -> &mut LayoutAttrs {
+                &mut self.common.layout
+            }
         }
-    }
-    if let Some(w) = border_width {
-        let el_for = el.clone();
-        if let Some(eff) = install(w, move |v| el_for.set_border_width(v))
-        {
-            out.push(eff);
+        impl $(<$g>)? WithUniversal for $ty $(<$g>)? {
+            fn universal_mut(&mut self) -> &mut UniversalAttrs {
+                &mut self.common.universal
+            }
         }
-    }
-    if let Some(c) = border_color {
-        let el_for = el.clone();
-        if let Some(eff) =
-            install(c, move |v| el_for.set_border_color(Some(v)))
-        {
-            out.push(eff);
+        impl $(<$g>)? WithDecoration for $ty $(<$g>)? {
+            fn decoration_mut(&mut self) -> &mut IosDecoration {
+                &mut self.common.decoration
+            }
         }
-    }
-    out
+        impl $(<$g>)? $ty $(<$g>)? {
+            /// `on:event=handler` — install an event handler. Which
+            /// events a control supports is expressed via
+            /// `SupportsEvent<E>` impls; unsupported events are a
+            /// compile error.
+            pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
+            where
+                Self: SupportsEvent<E>,
+                E: EventDescriptor,
+                F: FnMut(E::EventType) + Send + 'static,
+            {
+                self.common.handlers.push(E::into_pending(handler));
+                self
+            }
+
+            /// Capture the built element in a `NodeRef` for imperative
+            /// access (focus, measurement) after mount.
+            pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
+                self.common.node_ref = Some(r);
+                self
+            }
+        }
+    };
+    ($ty:ident $(<$g:ident>)? : text) => {
+        impl_common!($ty $(<$g>)?);
+        impl $(<$g>)? WithText for $ty $(<$g>)? {
+            fn text_attrs_mut(&mut self) -> &mut IosText {
+                &mut self.common.text
+            }
+        }
+    };
 }
 
 // ---------------------------------------------------------------------
@@ -228,15 +321,8 @@ pub struct View<Children> {
     inset_right: Option<f32>,
     inset_bottom: Option<f32>,
     inset_left: Option<f32>,
-    background_color: Option<MaybeReactive<Color>>,
-    corner_radius: Option<MaybeReactive<f64>>,
-    border_width: Option<MaybeReactive<f64>>,
-    border_color: Option<MaybeReactive<Color>>,
-    layout: LayoutAttrs,
-    universal: UniversalAttrs,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     children: Children,
+    common: Common,
 }
 
 /// Generic flex container with no direction preset. Use
@@ -258,15 +344,8 @@ pub fn view() -> View<()> {
         inset_right: None,
         inset_bottom: None,
         inset_left: None,
-        background_color: None,
-        corner_radius: None,
-        border_width: None,
-        border_color: None,
-        layout: LayoutAttrs::default(),
-        universal: UniversalAttrs::default(),
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
         children: (),
+        common: Common::default(),
     }
 }
 
@@ -333,35 +412,6 @@ impl<Ch> View<Ch> {
         self.inset_left = Some(v);
         self
     }
-    /// Background fill colour. Pass a `Color` (e.g.
-    /// `Color::SYSTEM_BACKGROUND`) or a closure.
-    pub fn background_color<V: IntoMaybeReactive<Color>>(
-        mut self,
-        c: V,
-    ) -> Self {
-        self.background_color = Some(c.into_maybe_reactive());
-        self
-    }
-    /// Rounded corners (in points). 0 = square (default).
-    /// Sets `layer.cornerRadius` + `masksToBounds=true` so
-    /// children clip to the rounded shape.
-    pub fn corner_radius<V: IntoMaybeReactive<f64>>(mut self, r: V) -> Self {
-        self.corner_radius = Some(r.into_maybe_reactive());
-        self
-    }
-    /// Border width in points (default 0). Pair with `border_color`.
-    pub fn border_width<V: IntoMaybeReactive<f64>>(mut self, w: V) -> Self {
-        self.border_width = Some(w.into_maybe_reactive());
-        self
-    }
-    /// Border colour. See `border_width` for thickness.
-    pub fn border_color<V: IntoMaybeReactive<Color>>(
-        mut self,
-        c: V,
-    ) -> Self {
-        self.border_color = Some(c.into_maybe_reactive());
-        self
-    }
     pub fn child<NewCh>(self, child: NewCh) -> View<(Ch, NewCh)> {
         View {
             flex_direction: self.flex_direction,
@@ -374,34 +424,10 @@ impl<Ch> View<Ch> {
             inset_right: self.inset_right,
             inset_bottom: self.inset_bottom,
             inset_left: self.inset_left,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            layout: self.layout,
-            universal: self.universal,
-            handlers: self.handlers,
-            pending_spreads: self.pending_spreads,
             children: (self.children, child),
+            common: self.common,
         }
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
-}
-
-impl<Ch> WithLayout for View<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl<Ch> WithUniversal for View<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 // `<view on:click=...>` works via UITapGestureRecognizer (installed
@@ -409,6 +435,8 @@ impl<Ch> WithUniversal for View<Ch> {
 // Plain UIView, UILabel, UIImageView etc. all route through that
 // fallback.
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for View<Ch> {}
+
+impl_common!(View<Children>);
 
 impl<Ch: Render<IosBackend>> Render<IosBackend> for View<Ch> {
     type State = ElementState<Ch::State>;
@@ -450,19 +478,8 @@ impl<Ch: Render<IosBackend>> Render<IosBackend> for View<Ch> {
                 self.inset_left,
             );
         }
-        effects.extend(apply_chrome(
-            el,
-            self.background_color,
-            self.corner_radius,
-            self.border_width,
-            self.border_color,
-        ));
-        effects.extend(apply_common(el, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
         let child_state = self.children.build();
-        for handler in self.handlers {
-            handler.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
         ElementState {
             el,
             _effects: effects,
@@ -501,15 +518,8 @@ pub struct Grid<Children> {
     justify_content: Option<MaybeReactive<JustifyContent>>,
     align_content:   Option<MaybeReactive<AlignContent>>,
 
-    background_color: Option<MaybeReactive<Color>>,
-    corner_radius:    Option<MaybeReactive<f64>>,
-    border_width:     Option<MaybeReactive<f64>>,
-    border_color:     Option<MaybeReactive<Color>>,
-    layout:           LayoutAttrs,
-    universal:        UniversalAttrs,
-    handlers:         Vec<PendingHandler>,
-    pending_spreads:  Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
     children:         Children,
+    common: Common,
 }
 
 pub fn grid() -> Grid<()> {
@@ -526,15 +536,8 @@ pub fn grid() -> Grid<()> {
         align_items: None,
         justify_content: None,
         align_content: None,
-        background_color: None,
-        corner_radius: None,
-        border_width: None,
-        border_color: None,
-        layout: LayoutAttrs::default(),
-        universal: UniversalAttrs::default(),
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
         children: (),
+        common: Common::default(),
     }
 }
 
@@ -602,28 +605,6 @@ impl<Ch> Grid<Ch> {
         self.align_content = Some(v.into_maybe_reactive());
         self
     }
-    pub fn background_color<V: IntoMaybeReactive<Color>>(
-        mut self,
-        c: V,
-    ) -> Self {
-        self.background_color = Some(c.into_maybe_reactive());
-        self
-    }
-    pub fn corner_radius<V: IntoMaybeReactive<f64>>(mut self, r: V) -> Self {
-        self.corner_radius = Some(r.into_maybe_reactive());
-        self
-    }
-    pub fn border_width<V: IntoMaybeReactive<f64>>(mut self, w: V) -> Self {
-        self.border_width = Some(w.into_maybe_reactive());
-        self
-    }
-    pub fn border_color<V: IntoMaybeReactive<Color>>(
-        mut self,
-        c: V,
-    ) -> Self {
-        self.border_color = Some(c.into_maybe_reactive());
-        self
-    }
     pub fn child<NewCh>(self, child: NewCh) -> Grid<(Ch, NewCh)> {
         Grid {
             columns: self.columns,
@@ -638,37 +619,15 @@ impl<Ch> Grid<Ch> {
             align_items: self.align_items,
             justify_content: self.justify_content,
             align_content: self.align_content,
-            background_color: self.background_color,
-            corner_radius: self.corner_radius,
-            border_width: self.border_width,
-            border_color: self.border_color,
-            layout: self.layout,
-            universal: self.universal,
-            handlers: self.handlers,
-            pending_spreads: self.pending_spreads,
             children: (self.children, child),
+            common: self.common,
         }
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
-}
-
-impl<Ch> WithLayout for Grid<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-
-impl<Ch> WithUniversal for Grid<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
 }
 
 impl<Ch> SupportsEvent<crate::event_ios::ClickEvent> for Grid<Ch> {}
+
+impl_common!(Grid<Children>);
 
 impl<Ch: Render<IosBackend>> Render<IosBackend> for Grid<Ch> {
     type State = ElementState<Ch::State>;
@@ -749,19 +708,8 @@ impl<Ch: Render<IosBackend>> Render<IosBackend> for Grid<Ch> {
             }
         }
 
-        effects.extend(apply_chrome(
-            el,
-            self.background_color,
-            self.corner_radius,
-            self.border_width,
-            self.border_color,
-        ));
-        effects.extend(apply_common(el, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
         let child_state = self.children.build();
-        for handler in self.handlers {
-            handler.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
         ElementState {
             el,
             _effects: effects,
@@ -776,7 +724,7 @@ impl<Children> AddAnyAttr<crate::IosBackend> for Grid<Children> {
     where
         __A: ApplyAttr<crate::IosBackend>,
     {
-        self.pending_spreads.push(Box::new(move |el: UikitElem| {
+        self.common.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
         }));
         self
@@ -791,12 +739,7 @@ pub struct Button {
     title: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     sf_symbol: Option<MaybeReactive<String>>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    text: IosText,
+    common: Common,
 }
 
 pub fn button() -> Button {
@@ -804,12 +747,7 @@ pub fn button() -> Button {
         title: MaybeReactive::Static(String::new()),
         enabled: None,
         sf_symbol: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        text: IosText::default(),
+        common: Common::default(),
     }
 }
 
@@ -832,33 +770,11 @@ impl Button {
         self.sf_symbol = Some(name.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ClickEvent> for Button {}
 
-impl WithLayout for Button {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Button {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for Button {
-    fn text_attrs_mut(&mut self) -> &mut IosText { &mut self.text }
-}
-
+impl_common!(Button: text);
 
 impl Render<IosBackend> for Button {
     type State = ElementState<()>;
@@ -891,16 +807,8 @@ impl Render<IosBackend> for Button {
             }
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
         ElementState {
             el,
@@ -917,26 +825,16 @@ impl Render<IosBackend> for Button {
 
 pub struct Label {
     text_value: MaybeReactive<String>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    text: IosText,
     pending_bind_text:
         Option<Box<dyn Fn() -> String + Send + 'static>>,
+    common: Common,
 }
 
 pub fn label() -> Label {
     Label {
         text_value: MaybeReactive::Static(String::new()),
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        text: IosText::default(),
         pending_bind_text: None,
+        common: Common::default(),
     }
 }
 
@@ -949,10 +847,6 @@ impl Label {
     pub fn child<V: IntoMaybeReactive<String>>(self, value: V) -> Self {
         self.text(value)
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     /// Internal: stash a `bind:value=...` for installation in `build`.
     pub(crate) fn set_pending_bind_text(
         &mut self,
@@ -960,29 +854,11 @@ impl Label {
     ) {
         self.pending_bind_text = Some(getter);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ClickEvent> for Label {}
 
-impl WithLayout for Label {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Label {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for Label {
-    fn text_attrs_mut(&mut self) -> &mut IosText { &mut self.text }
-}
-
+impl_common!(Label: text);
 
 impl Render<IosBackend> for Label {
     type State = ElementState<()>;
@@ -1002,17 +878,9 @@ impl Render<IosBackend> for Label {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
         ElementState {
             el,
@@ -1035,12 +903,7 @@ pub struct TextField {
     /// `secure_text_field()` constructor; same builder otherwise.
     secure: bool,
     pending_bind: Option<crate::ios::bind::BoundValue>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    text: IosText,
+    common: Common,
 }
 
 pub fn text_field() -> TextField {
@@ -1050,12 +913,7 @@ pub fn text_field() -> TextField {
         enabled: None,
         secure: false,
         pending_bind: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        text: IosText::default(),
+        common: Common::default(),
     }
 }
 
@@ -1081,24 +939,11 @@ impl TextField {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_value(
         &mut self,
         bound: crate::ios::bind::BoundValue,
     ) {
         self.pending_bind = Some(bound);
-    }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
     }
 }
 
@@ -1112,16 +957,7 @@ impl SupportsEvent<crate::event_ios::CommitEvent> for TextField {}
 impl SupportsEvent<crate::event_ios::FocusEvent> for TextField {}
 impl SupportsEvent<crate::event_ios::BlurEvent> for TextField {}
 
-impl WithLayout for TextField {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for TextField {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for TextField {
-    fn text_attrs_mut(&mut self) -> &mut IosText { &mut self.text }
-}
-
+impl_common!(TextField: text);
 
 impl Render<IosBackend> for TextField {
     type State = ElementState<()>;
@@ -1162,17 +998,9 @@ impl Render<IosBackend> for TextField {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1195,11 +1023,7 @@ pub struct Switch {
     checked: MaybeReactive<bool>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_checked: Option<crate::ios::bind::BoundChecked>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 /// Portable name for the boolean toggle. On iOS this is the
@@ -1214,11 +1038,7 @@ pub fn switch_() -> Switch {
         checked: MaybeReactive::Static(false),
         enabled: None,
         pending_bind_checked: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1231,39 +1051,17 @@ impl Switch {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_checked(
         &mut self,
         bound: crate::ios::bind::BoundChecked,
     ) {
         self.pending_bind_checked = Some(bound);
     }
-    /// `<switch on:click=...>` — fires whenever the user toggles
-    /// the switch (UIControlEventValueChanged routed through the
-    /// shared `on_click` path).
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ClickEvent> for Switch {}
 
-impl WithLayout for Switch {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Switch {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(Switch);
 
 impl Render<IosBackend> for Switch {
     type State = ElementState<()>;
@@ -1295,17 +1093,9 @@ impl Render<IosBackend> for Switch {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1327,11 +1117,7 @@ pub struct Slider {
     max_value: f64,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn slider() -> Slider {
@@ -1341,11 +1127,7 @@ pub fn slider() -> Slider {
         max_value: 1.0,
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1366,36 +1148,17 @@ impl Slider {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_value(
         &mut self,
         bound: crate::ios::bind::BoundFloat,
     ) {
         self.pending_bind = Some(bound);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for Slider {}
 
-impl WithLayout for Slider {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Slider {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(Slider);
 
 impl Render<IosBackend> for Slider {
     type State = ElementState<()>;
@@ -1429,17 +1192,9 @@ impl Render<IosBackend> for Slider {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1462,11 +1217,7 @@ pub struct Stepper {
     increment: f64,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundFloat>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn stepper() -> Stepper {
@@ -1477,11 +1228,7 @@ pub fn stepper() -> Stepper {
         increment: 1.0,
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1506,36 +1253,17 @@ impl Stepper {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_value(
         &mut self,
         bound: crate::ios::bind::BoundFloat,
     ) {
         self.pending_bind = Some(bound);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for Stepper {}
 
-impl WithLayout for Stepper {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for Stepper {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(Stepper);
 
 impl Render<IosBackend> for Stepper {
     type State = ElementState<()>;
@@ -1568,17 +1296,9 @@ impl Render<IosBackend> for Stepper {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1601,17 +1321,13 @@ impl Render<IosBackend> for Stepper {
 
 pub struct ProgressIndicator {
     value: MaybeReactive<f64>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn progress_indicator() -> ProgressIndicator {
     ProgressIndicator {
         value: MaybeReactive::Static(0.0),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1620,19 +1336,9 @@ impl ProgressIndicator {
         self.value = v.into_maybe_reactive();
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
 }
 
-impl WithLayout for ProgressIndicator {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for ProgressIndicator {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(ProgressIndicator);
 
 impl Render<IosBackend> for ProgressIndicator {
     type State = ElementState<()>;
@@ -1647,11 +1353,7 @@ impl Render<IosBackend> for ProgressIndicator {
             effects.push(eff);
         }
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1672,11 +1374,7 @@ pub struct ImageView {
     bytes: Option<MaybeReactive<Option<Vec<u8>>>>,
     sf_symbol: Option<MaybeReactive<String>>,
     tint: Option<MaybeReactive<Color>>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn image_view() -> ImageView {
@@ -1685,11 +1383,7 @@ pub fn image_view() -> ImageView {
         bytes: None,
         sf_symbol: None,
         tint: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1723,32 +1417,13 @@ impl ImageView {
         self.tint = Some(c.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 // `<image_view on:click=...>` lands on a UITapGestureRecognizer via
 // the on_click → on_tap_gesture fallback.
 impl SupportsEvent<crate::event_ios::ClickEvent> for ImageView {}
 
-impl WithLayout for ImageView {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for ImageView {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(ImageView);
 
 impl Render<IosBackend> for ImageView {
     type State = ElementState<()>;
@@ -1790,17 +1465,9 @@ impl Render<IosBackend> for ImageView {
             }
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1821,11 +1488,7 @@ pub struct SegmentedControl {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn segmented_control() -> SegmentedControl {
@@ -1834,11 +1497,7 @@ pub fn segmented_control() -> SegmentedControl {
         selection: MaybeReactive::Static(0),
         enabled: None,
         pending_bind_selection: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1859,36 +1518,17 @@ impl SegmentedControl {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_selection(
         &mut self,
         bound: crate::ios::bind::BoundIndex,
     ) {
         self.pending_bind_selection = Some(bound);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for SegmentedControl {}
 
-impl WithLayout for SegmentedControl {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for SegmentedControl {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(SegmentedControl);
 
 impl Render<IosBackend> for SegmentedControl {
     type State = ElementState<()>;
@@ -1919,17 +1559,9 @@ impl Render<IosBackend> for SegmentedControl {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -1952,11 +1584,7 @@ pub struct PopUpButton {
     selection: MaybeReactive<usize>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn pop_up_button() -> PopUpButton {
@@ -1965,11 +1593,7 @@ pub fn pop_up_button() -> PopUpButton {
         selection: MaybeReactive::Static(0),
         enabled: None,
         pending_bind_selection: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -1990,35 +1614,17 @@ impl PopUpButton {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_selection(
         &mut self,
         bound: crate::ios::bind::BoundIndex,
     ) {
         self.pending_bind_selection = Some(bound);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for PopUpButton {}
 
-impl WithLayout for PopUpButton {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for PopUpButton {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
+impl_common!(PopUpButton);
 
 impl Render<IosBackend> for PopUpButton {
     type State = ElementState<()>;
@@ -2068,16 +1674,8 @@ impl Render<IosBackend> for PopUpButton {
             }
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
         ElementState {
             el,
@@ -2097,11 +1695,7 @@ pub struct ColorWell {
     value: MaybeReactive<Color>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind_value: Option<crate::ios::bind::BoundColor>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
+    common: Common,
 }
 
 pub fn color_well() -> ColorWell {
@@ -2109,11 +1703,7 @@ pub fn color_well() -> ColorWell {
         value: MaybeReactive::Static(Color::BLACK),
         enabled: None,
         pending_bind_value: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
+        common: Common::default(),
     }
 }
 
@@ -2126,35 +1716,17 @@ impl ColorWell {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_value(
         &mut self,
         bound: crate::ios::bind::BoundColor,
     ) {
         self.pending_bind_value = Some(bound);
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for ColorWell {}
 
-impl WithLayout for ColorWell {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for ColorWell {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
+impl_common!(ColorWell);
 
 impl Render<IosBackend> for ColorWell {
     type State = ElementState<()>;
@@ -2183,16 +1755,8 @@ impl Render<IosBackend> for ColorWell {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
         ElementState {
             el,
@@ -2211,14 +1775,10 @@ pub struct DatePicker {
     value: MaybeReactive<Date>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundDate>,
-    handlers: Vec<PendingHandler>,
-    pending_spreads: Vec<Box<dyn FnOnce(UikitElem) + Send + 'static>>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
     style: Option<MaybeReactive<DatePickerStyle>>,
     min_date: Option<MaybeReactive<Date>>,
     max_date: Option<MaybeReactive<Date>>,
+    common: Common,
 }
 
 pub fn date_picker() -> DatePicker {
@@ -2226,14 +1786,10 @@ pub fn date_picker() -> DatePicker {
         value: MaybeReactive::Static(Date::now()),
         enabled: None,
         pending_bind: None,
-        handlers: Vec::new(),
-        pending_spreads: Vec::new(),
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
         style: None,
         min_date: None,
         max_date: None,
+        common: Common::default(),
     }
 }
 
@@ -2244,10 +1800,6 @@ impl DatePicker {
     }
     pub fn enabled<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
         self.enabled = Some(v.into_maybe_reactive());
-        self
-    }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
         self
     }
     pub(crate) fn set_pending_bind_date(
@@ -2273,26 +1825,11 @@ impl DatePicker {
         self.max_date = Some(d.into_maybe_reactive());
         self
     }
-    pub fn on<E, F>(mut self, _event: E, handler: F) -> Self
-    where
-        Self: SupportsEvent<E>,
-        E: EventDescriptor,
-        F: FnMut(E::EventType) + Send + 'static,
-    {
-        self.handlers.push(E::into_pending(handler));
-        self
-    }
 }
 
 impl SupportsEvent<crate::event_ios::ChangeEvent> for DatePicker {}
 
-impl WithLayout for DatePicker {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for DatePicker {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-
+impl_common!(DatePicker);
 
 impl Render<IosBackend> for DatePicker {
     type State = ElementState<()>;
@@ -2321,10 +1858,6 @@ impl Render<IosBackend> for DatePicker {
             effects.push(eff);
         }
 
-        for h in self.handlers {
-            h.apply_to(el);
-        }
-        for f in self.pending_spreads { f(el); }
 
 
         if let Some(s) = self.style {
@@ -2352,11 +1885,7 @@ impl Render<IosBackend> for DatePicker {
             }
         }
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -2382,19 +1911,17 @@ impl Render<IosBackend> for DatePicker {
 
 pub struct ScrollView<Children> {
     children: Children,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
     has_horizontal_scroller: Option<MaybeReactive<bool>>,
     has_vertical_scroller: Option<MaybeReactive<bool>>,
+    common: Common,
 }
 
 pub fn scroll_view() -> ScrollView<()> {
     ScrollView {
         children: (),
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
         has_horizontal_scroller: None,
         has_vertical_scroller: None,
+        common: Common::default(),
     }
 }
 
@@ -2416,20 +1943,14 @@ impl<Ch> ScrollView<Ch> {
     pub fn child<NewCh>(self, child: NewCh) -> ScrollView<(Ch, NewCh)> {
         ScrollView {
             children: (self.children, child),
-            universal: self.universal,
-            layout: self.layout,
             has_horizontal_scroller: self.has_horizontal_scroller,
             has_vertical_scroller: self.has_vertical_scroller,
+            common: self.common,
         }
     }
 }
 
-impl<Ch> WithLayout for ScrollView<Ch> {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl<Ch> WithUniversal for ScrollView<Ch> {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
+impl_common!(ScrollView<Children>);
 
 impl<Ch: Render<IosBackend>> Render<IosBackend> for ScrollView<Ch> {
     type State = ElementState<Ch::State>;
@@ -2454,7 +1975,7 @@ impl<Ch: Render<IosBackend>> Render<IosBackend> for ScrollView<Ch> {
             }
         }
 
-        effects.extend(apply_common(el, self.universal, None, self.layout));
+        self.common.finish(el, &mut effects);
 
         let child_state = self.children.build();
 
@@ -2480,10 +2001,7 @@ pub struct TextView {
     value: MaybeReactive<String>,
     enabled: Option<MaybeReactive<bool>>,
     pending_bind: Option<crate::ios::bind::BoundValue>,
-    node_ref: Option<NodeRef<UikitElem>>,
-    universal: UniversalAttrs,
-    layout: LayoutAttrs,
-    text: IosText,
+    common: Common,
 }
 
 pub fn text_view() -> TextView {
@@ -2491,10 +2009,7 @@ pub fn text_view() -> TextView {
         value: MaybeReactive::Static(String::new()),
         enabled: None,
         pending_bind: None,
-        node_ref: None,
-        universal: UniversalAttrs::default(),
-        layout: LayoutAttrs::default(),
-        text: IosText::default(),
+        common: Common::default(),
     }
 }
 
@@ -2507,10 +2022,6 @@ impl TextView {
         self.enabled = Some(v.into_maybe_reactive());
         self
     }
-    pub fn node_ref(mut self, r: NodeRef<UikitElem>) -> Self {
-        self.node_ref = Some(r);
-        self
-    }
     pub(crate) fn set_pending_bind_value(
         &mut self,
         bound: crate::ios::bind::BoundValue,
@@ -2519,16 +2030,7 @@ impl TextView {
     }
 }
 
-impl WithLayout for TextView {
-    fn layout_mut(&mut self) -> &mut LayoutAttrs { &mut self.layout }
-}
-impl WithUniversal for TextView {
-    fn universal_mut(&mut self) -> &mut UniversalAttrs { &mut self.universal }
-}
-impl WithText for TextView {
-    fn text_attrs_mut(&mut self) -> &mut IosText { &mut self.text }
-}
-
+impl_common!(TextView: text);
 
 impl Render<IosBackend> for TextView {
     type State = ElementState<()>;
@@ -2561,11 +2063,7 @@ impl Render<IosBackend> for TextView {
             effects.push(eff);
         }
 
-        effects.extend(apply_common(el, self.universal, Some(self.text), self.layout));
-
-        if let Some(r) = self.node_ref {
-            r.load(el);
-        }
+        self.common.finish(el, &mut effects);
 
 
         ElementState {
@@ -2594,7 +2092,7 @@ macro_rules! impl_add_any_attr_for_leaf {
                 where
                     __A: leptos_native::renderer::view::ApplyAttr<crate::IosBackend>,
                 {
-                    self.pending_spreads.push(Box::new(move |el: UikitElem| {
+                    self.common.pending_spreads.push(Box::new(move |el: UikitElem| {
                         attr.apply_to(el);
                     }));
                     self
@@ -2648,7 +2146,7 @@ impl<Children> AddAnyAttr<crate::IosBackend> for View<Children> {
     where
         __A: ApplyAttr<crate::IosBackend>,
     {
-        self.pending_spreads.push(Box::new(move |el: UikitElem| {
+        self.common.pending_spreads.push(Box::new(move |el: UikitElem| {
             attr.apply_to(el);
         }));
         self

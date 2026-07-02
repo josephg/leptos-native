@@ -30,8 +30,12 @@ members = [
   "settings",
   "switch_demo",
   "timer",
-  "todomvc",
 ]
+
+# `todomvc` doesn't build today — it needs an `Element`-typed NodeRef
+# export story that isn't finished (its cocoa sibling is excluded from
+# the parent workspace for the same reason). Kept as documentation.
+exclude = ["todomvc"]
 
 [workspace.package]
 edition = "2021"

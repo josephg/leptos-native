@@ -11,6 +11,7 @@
 //! authoritative once set.
 
 use crate::dom::node::{UikitElem, UikitNodeExt};
+use crate::dom::Color;
 use dispatch2::DispatchQueue;
 use objc2::{rc::Retained, runtime::AnyObject};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
@@ -107,6 +108,40 @@ impl Backend for IosBackend {
     fn schedule_relayout(id: NodeId) {
         IosBackend::mark_dirty(id);
         queue_relayout_for(id);
+    }
+
+    // Decoration hooks — layer-backed chrome, diff-guarded. Driven by
+    // the core apply_decoration install loop.
+
+    fn set_background_color(view: &Self::View, color: Color) {
+        let v: &UIView = view;
+        v.setBackgroundColor(Some(&color.to_uicolor()));
+    }
+
+    fn set_corner_radius(view: &Self::View, radius: f32) {
+        let v: &UIView = view;
+        let layer = v.layer();
+        let r = radius as f64;
+        if (layer.cornerRadius() - r).abs() > f64::EPSILON {
+            layer.setCornerRadius(r);
+            layer.setMasksToBounds(r > 0.0);
+        }
+    }
+
+    fn set_border_width(view: &Self::View, width: f32) {
+        let v: &UIView = view;
+        let layer = v.layer();
+        let w = width as f64;
+        if (layer.borderWidth() - w).abs() > f64::EPSILON {
+            layer.setBorderWidth(w);
+        }
+    }
+
+    fn set_border_color(view: &Self::View, color: Color) {
+        let v: &UIView = view;
+        let layer = v.layer();
+        let cg = unsafe { color.to_uicolor().CGColor() };
+        layer.setBorderColor(Some(&cg));
     }
 
     fn remove_from_native_parent(view: &Self::View) {

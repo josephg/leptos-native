@@ -101,6 +101,7 @@ pub mod prelude {
     pub use crate::AnyView;
     pub use crate::ChildrenFn;
     pub use leptos_native::renderer::view::IntoAny;
+    pub use leptos_native::node_ref::NodeRef;
 
     pub use crate::mount::{mount, run};
 
@@ -109,7 +110,7 @@ pub mod prelude {
         bind::{BindAttribute, IntoSignal},
         element::{
             button, grid, hstack, label, scroll_view, secure_text_field,
-            slider, switch_, text_field, vstack, WithText,
+            slider, switch_, text_field, vstack, WithDecoration, WithText,
         },
         AlignContent, AlignItems, FlexDirection, GridAutoFlow,
         GridTemplateComponent, JustifyContent, JustifyItems,
