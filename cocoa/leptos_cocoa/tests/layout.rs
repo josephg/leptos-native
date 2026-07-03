@@ -19,7 +19,7 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSButton, NSTextField};
 use reactive_graph::owner::Owner;
 use leptos_native::renderer::attrs::WithLayout;
-use leptos_native::renderer::view::{Mountable, Render};
+use leptos_native::renderer::view::{keyed, Mountable, Render};
 
 /// Spin up a fresh reactive owner + the spawner the cocoa effect
 /// machinery needs for build/mount.
@@ -224,6 +224,70 @@ fn hidden_collapses_layout_slot() {
 // have a Taffy height to check. See
 // `cocoa/leptos_cocoa/tests/toolbar.rs` for the NSToolbar tests.
 
+/// REGRESSION: a keyed `<For>` reorder that changes no text (e.g. the
+/// counters example's "Shuffle" button) must still schedule a relayout
+/// pass. The move path reorders Taffy's children and marks them dirty,
+/// but for the reorder to become *visible* something has to dispatch a
+/// `compute_layout` — AppKit never auto-reflows. `remove()` schedules
+/// one; before the fix `insert_node()` did not, so a pure reorder (no
+/// add/remove, no text change) left the rows visually frozen until an
+/// unrelated layout trigger. The bug hid because Add/Clear happen to
+/// change the total-label text, which schedules a relayout incidentally.
+fn keyed_reorder_schedules_relayout() {
+    with_reactive_scope(|| {
+        let mtm = common::test_mtm();
+        let opened = window::open_window("reorder", (320.0, 240.0), mtm);
+        let root = opened.content_root;
+
+        // Non-capturing (⇒ `Copy`) closures so the same `KF`/`VF` types
+        // back both the initial `build` and the reordered `rebuild`.
+        let key_of = |t: &(usize, &'static str)| t.0;
+        let view_of = |_i: usize, t: (usize, &'static str)| label().child(t.1);
+
+        let mut state =
+            keyed(vec![(0, "a"), (1, "b"), (2, "c")], key_of, view_of).build();
+        state.mount(root, None);
+        let content_size = root.ns_view().frame().size;
+        layout::compute_layout(root, content_size);
+
+        let before = layout::children(root.id());
+        // Reset the queue so we observe only what the *reorder* schedules.
+        let _ = layout::drain_pending_relayout();
+
+        // Reverse the list — same keys, same text, order flipped. This
+        // exercises apply_diff's real-move path (a and c swap ends).
+        keyed(vec![(2, "c"), (1, "b"), (0, "a")], key_of, view_of)
+            .rebuild(&mut state);
+
+        let scheduled = layout::drain_pending_relayout();
+        let after = layout::children(root.id());
+
+        assert!(
+            !scheduled.is_empty(),
+            "text-free reorder scheduled no relayout — rows would stay \
+             visually frozen (regression)"
+        );
+        // The retained row nodes are the same ids, just reordered around
+        // the trailing placeholder marker — confirms the move landed.
+        assert_ne!(
+            before, after,
+            "Taffy child order unchanged after reorder"
+        );
+        assert_eq!(
+            before.len(),
+            after.len(),
+            "reorder changed the child count"
+        );
+        assert!(
+            before.iter().all(|id| after.contains(id)),
+            "reorder changed the set of children, not just their order"
+        );
+
+        drop(state);
+        drop(opened);
+    });
+}
+
 fn main() {
     common::run_tests(&[
         (
@@ -239,5 +303,9 @@ fn main() {
             vstack_label_plus_hstack_has_full_height,
         ),
         ("hidden_collapses_layout_slot", hidden_collapses_layout_slot),
+        (
+            "keyed_reorder_schedules_relayout",
+            keyed_reorder_schedules_relayout,
+        ),
     ]);
 }

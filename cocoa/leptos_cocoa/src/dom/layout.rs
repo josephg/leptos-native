@@ -275,6 +275,17 @@ pub fn dirty(id: NodeId) -> bool {
     CocoaBackend::dirty(id)
 }
 
+/// Test-only: clear the "a relayout pass is queued" dedup flag and
+/// drain the pending-relayout queue, returning the touched node ids.
+/// The async drain that normally does this (`ensure_relayout_pass_scheduled`)
+/// never fires under the test harness (no run loop), so tests reset the
+/// queue by hand to observe what a *subsequent* mutation schedules.
+#[doc(hidden)]
+pub fn drain_pending_relayout() -> Vec<NodeId> {
+    CocoaBackend::set_relayout_queued(false);
+    CocoaBackend::take_pending_relayout()
+}
+
 /// Parent of `id`, if attached.
 pub fn parent(id: NodeId) -> Option<NodeId> {
     CocoaBackend::parent(id)

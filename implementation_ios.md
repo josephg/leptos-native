@@ -6,6 +6,17 @@ top.
 
 ---
 
+## 2026-07-03 — `insert_node` schedules a relayout (cross-cutting; see macOS log)
+
+Shared-core fix: `Node::insert_node` now schedules a relayout on every
+attach, symmetric with `remove()`. A keyed-`<For>` reorder with no
+add/remove and no text change previously marked Taffy dirty but never
+dispatched `compute_layout`, so rows stayed frozen. UIKit is manual-
+relayout like AppKit, so it was affected identically. Full write-up in
+`implementation_log.md`.
+
+---
+
 ## 2026-07-03 — Builder `Common` consolidation + decoration on every control
 
 Mirrors the cocoa `Common` + `impl_common!` consolidation (see macOS

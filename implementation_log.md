@@ -5,6 +5,40 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-07-03 — `insert_node` must schedule a relayout (cross-cutting)
+
+`Node::insert_node` (`common/leptos_native/src/renderer/node.rs`) drove
+the native attach + Taffy mirror + `mark_dirty`, but — unlike its
+mirror `remove()` — never called `schedule_relayout`. Since no port
+auto-reflows (AppKit/UIKit are manual; GTK routes through our Taffy
+`LayoutManager` too), a structural edit that touches *only* ordering
+marked Taffy dirty but never dispatched a `compute_layout` pass.
+
+Symptom: the `counters` example's **Shuffle** button did nothing
+visible. A pure keyed-`<For>` reorder produces only *move* ops — no
+add/remove, so `remove()`'s incidental scheduling never fired — and
+shuffle changes neither the total nor the count, so the summary
+label's `set_text` (the other incidental scheduler) never fired
+either. The rows reordered in Taffy but stayed frozen on screen until
+an unrelated trigger (window resize, a `+1` click) dispatched a pass.
+Add/Clear masked the bug because both change the label text.
+
+Fix: `insert_node` now calls `B::schedule_relayout(self.id)` on every
+successful attach (both `Mirror` and `NativeOnly`), symmetric with
+`remove()`. `schedule_relayout` dedupes per tick via
+`relayout_queued`, so the hot append/mount paths still coalesce to one
+pass — no extra churn, just the previously-missing dispatch on
+reorder-only edits.
+
+Port-agnostic (lives in shared core) so it fixes cocoa/gtk/ios alike.
+Regression test: `keyed_reorder_schedules_relayout` in
+`cocoa/leptos_cocoa/tests/layout.rs` drives `Keyed::rebuild` through a
+text-free reversal and asserts a relayout was queued (via the new
+`layout::drain_pending_relayout` test accessor). Fails without the fix.
+See also `gtk_implementation_log.md`, `implementation_ios.md`.
+
+---
+
 ## 2026-07-03 — Builder boilerplate → `Common` + `impl_common!` (cocoa; mirrored on iOS)
 
 Every element builder in `cocoa/element.rs` repeated the same seven

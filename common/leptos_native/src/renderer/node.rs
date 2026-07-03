@@ -152,9 +152,19 @@ impl<B: Backend> Node<B> {
         match B::attach_native(self.id, child.id, marker.map(|m| m.id)) {
             AttachOutcome::Mirror => {
                 B::with_tree(|s| s.insert_child_before(self.id, child.id, marker.map(|m| m.id)));
+                // Symmetric with `remove()`: a structural edit changes
+                // layout, so queue a (deduped) relayout for the parent.
+                // Without this, a pure reorder (`<For>` keyed move with no
+                // add/remove and no text change — e.g. shuffling rows) marks
+                // Taffy dirty but never dispatches a compute pass, so the
+                // reorder stays invisible until an unrelated layout trigger.
+                B::schedule_relayout(self.id);
                 true
             }
-            AttachOutcome::NativeOnly => true,
+            AttachOutcome::NativeOnly => {
+                B::schedule_relayout(self.id);
+                true
+            }
             AttachOutcome::Rejected => false,
         }
     }

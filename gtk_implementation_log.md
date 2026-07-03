@@ -4,6 +4,15 @@ A running record of design decisions made during the Linux/GTK port,
 especially the ones we deliberately deferred. Newest entries at the
 top.
 
+## 2026-07-03 — `insert_node` schedules a relayout (cross-cutting; see macOS log)
+
+Shared-core fix: `Node::insert_node` now schedules a relayout on every
+attach, symmetric with `remove()`. Previously a keyed-`<For>` reorder
+with no add/remove and no text change marked Taffy dirty but dispatched
+no `compute_layout`, so the reorder stayed invisible. GTK routes layout
+through the same Taffy store (`taffy_layout` `LayoutManager`), so it was
+affected identically. Full write-up in `implementation_log.md`.
+
 ## 2026-07-03 — Backend unification (cross-cutting; see macOS log)
 
 The `Renderer` trait + `Dom` marker structs and the element-driver traits
