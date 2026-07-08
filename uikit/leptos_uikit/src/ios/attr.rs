@@ -22,6 +22,7 @@
 pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, MaybeReactive};
 use crate::dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
+    objc_enums::BlurStyle,
     Color, Date, DatePickerStyle, TextAlignment,
 };
 
@@ -40,8 +41,8 @@ use leptos_native::impl_pair;
 impl_pair!(
     String, bool, i32, f32, f64, usize, Dim,
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
-    Color, Date, TextAlignment, DatePickerStyle,
-    Option<Vec<u8>>,
+    Color, Date, TextAlignment, DatePickerStyle, BlurStyle,
+    Option<Vec<u8>>, (f32, f32),
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

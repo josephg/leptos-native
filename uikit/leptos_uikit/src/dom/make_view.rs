@@ -15,11 +15,14 @@ use crate::dom::{event::IosNodeHandlers, layout, layout::{Dimension, FlexDirecti
 use objc2::{rc::Retained, MainThreadMarker, MainThreadOnly};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_ui_kit::{
-    UIButton, UIButtonType, UIColorWell, UIDatePicker, UIImageView,
-    UILabel, UIProgressView, UIProgressViewStyle, UIScrollView,
-    UISegmentedControl, UISlider, UIStepper, UISwitch, UITextBorderStyle,
-    UITextField, UITextInputTraits, UITextView, UIView, UIViewContentMode,
+    UIBlurEffect, UIButton, UIButtonType, UIColorWell, UIDatePicker,
+    UIImageView, UILabel, UIProgressView, UIProgressViewStyle, UIScrollView,
+    UISegmentedControl, UISlider, UIStepper, UISwitch, UITabBar,
+    UITextBorderStyle, UITextField, UITextInputTraits, UITextView, UIView,
+    UIViewContentMode, UIVisualEffectView,
 };
+
+use crate::dom::objc_enums::BlurStyle;
 
 fn mtm() -> MainThreadMarker {
     MainThreadMarker::new().expect("ios_dom must run on the main thread")
@@ -55,6 +58,8 @@ pub trait UikitMakeView: Sized {
     fn create_segmented_control() -> (UikitElem, Retained<UISegmentedControl>);
     fn create_scroll_view() -> (UikitElem, Retained<UIScrollView>);
     fn create_text_view() -> (UikitElem, Retained<UITextView>);
+    fn create_tab_bar() -> (UikitElem, Retained<UITabBar>);
+    fn create_blur_view(style: BlurStyle) -> (UikitElem, Retained<UIVisualEffectView>);
     fn create_vstack() -> UikitElem;
     fn create_hstack() -> UikitElem;
     fn create_grid() -> UikitElem;
@@ -226,6 +231,31 @@ impl UikitMakeView for UikitElem {
         let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tv.clone()) };
         let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
         (n, tv)
+    }
+
+    /// UITabBar — the bar view only (no UITabBarController). Items
+    /// and selection wired via attribute setters / `on_tab_select`.
+    fn create_tab_bar() -> (UikitElem, Retained<UITabBar>) {
+        let tb = UITabBar::initWithFrame(UITabBar::alloc(mtm()), zero_frame());
+        let view: Retained<UIView> = unsafe { Retained::cast_unchecked(tb.clone()) };
+        let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
+        (n, tb)
+    }
+
+    /// UIVisualEffectView with a UIBlurEffect. Non-interactive
+    /// (touches pass through to siblings); used as a bar underlay.
+    fn create_blur_view(
+        style: BlurStyle,
+    ) -> (UikitElem, Retained<UIVisualEffectView>) {
+        let effect = UIBlurEffect::effectWithStyle(style.0, mtm());
+        let ev = UIVisualEffectView::initWithEffect(
+            UIVisualEffectView::alloc(mtm()),
+            Some(&effect),
+        );
+        ev.setUserInteractionEnabled(false);
+        let view: Retained<UIView> = unsafe { Retained::cast_unchecked(ev.clone()) };
+        let n = UikitElem::from_view(view, leaf_style(), IosMeta::default());
+        (n, ev)
     }
 
     /// `<stack_view>` / `<vstack>` / `<view>` — vertical UIView

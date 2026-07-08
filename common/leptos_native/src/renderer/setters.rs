@@ -333,6 +333,10 @@ pub fn apply_decoration<B: Backend>(
     install_setter!(attrs.corner_radius,    set_corner_radius);
     install_setter!(attrs.border_width,     set_border_width);
     install_setter!(attrs.border_color,     set_border_color);
+    install_setter!(attrs.shadow_color,     set_shadow_color);
+    install_setter!(attrs.shadow_opacity,   set_shadow_opacity);
+    install_setter!(attrs.shadow_radius,    set_shadow_radius);
+    install_setter!(attrs.shadow_offset,    set_shadow_offset);
     out
 }
 

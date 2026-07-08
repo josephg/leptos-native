@@ -17,7 +17,7 @@
 
 use crate::ios::element::{
     ColorWell, DatePicker, Label, PopUpButton, SegmentedControl, Slider,
-    Stepper, Switch, TextField, TextView,
+    Stepper, Switch, TabBar, TextField, TextView,
 };
 use crate::dom::{Color, Date, UikitElem, UikitNodeExt};
 use objc2::rc::Retained;
@@ -348,6 +348,35 @@ pub(crate) fn install_segmented_selection_bind(
         if seg.selectedSegmentIndex() != v {
             seg.setSelectedSegmentIndex(v);
         }
+    })
+}
+
+// ---------------------------------------------------------------------
+// TabBar — bind:selection=usize signal
+// ---------------------------------------------------------------------
+
+impl<Sig> BindAttribute<Selection, Sig> for TabBar
+where
+    Sig: IntoSignal<usize>,
+{
+    fn bind(mut self, _key: Selection, signal: Sig) -> Self {
+        let getter = signal.into_get();
+        let setter = signal.into_set();
+        self.set_pending_bind_selection(BoundIndex { getter, setter });
+        self
+    }
+}
+
+pub(crate) fn install_tab_selection_bind(
+    el: UikitElem,
+    bound: BoundIndex,
+) -> RenderEffect<()> {
+    let mut setter = bound.setter;
+    crate::dom::event::on_tab_select(el, move |idx| setter(idx));
+
+    let getter = bound.getter;
+    RenderEffect::new(move |_prev| {
+        el.set_tab_selection(getter());
     })
 }
 

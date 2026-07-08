@@ -339,7 +339,7 @@ macro_rules! impl_pair {
 
 impl_pair!(
     String, bool, i32, f32, f64, usize, Dim, AlignSelf, GridLine, Edges,
-    Overflow,
+    Overflow, (f32, f32),
 );
 
 // Sugar: pass raw integer literals to grid_column / grid_row methods
@@ -422,6 +422,7 @@ pub struct TextAttrs<C: 'static, A: 'static> {
     pub text_color: Option<MaybeReactive<C>>,
     pub alignment: Option<MaybeReactive<A>>,
     pub font_size: Option<MaybeReactive<f64>>,
+    pub font_weight: Option<MaybeReactive<i32>>,
 }
 
 // `Default` by hand: derive(Default) would require `C: Default + A: Default`
@@ -432,6 +433,7 @@ impl<C: 'static, A: 'static> Default for TextAttrs<C, A> {
             text_color: None,
             alignment: None,
             font_size: None,
+            font_weight: None,
         }
     }
 }
@@ -457,6 +459,12 @@ pub trait WithText<C: 'static, A: 'static>: Sized {
         self.text_attrs_mut().font_size = Some(p.into_maybe_reactive());
         self
     }
+
+    /// Font weight, CSS-style 100..=900 (400 regular, 700 bold).
+    fn font_weight<V: IntoMaybeReactive<i32>>(mut self, w: V) -> Self {
+        self.text_attrs_mut().font_weight = Some(w.into_maybe_reactive());
+        self
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -472,6 +480,10 @@ pub struct DecorationAttrs<C: 'static> {
     pub corner_radius:    Option<MaybeReactive<f32>>,
     pub border_width:     Option<MaybeReactive<f32>>,
     pub border_color:     Option<MaybeReactive<C>>,
+    pub shadow_color:     Option<MaybeReactive<C>>,
+    pub shadow_opacity:   Option<MaybeReactive<f32>>,
+    pub shadow_radius:    Option<MaybeReactive<f32>>,
+    pub shadow_offset:    Option<MaybeReactive<(f32, f32)>>,
 }
 
 impl<C: 'static> Default for DecorationAttrs<C> {
@@ -481,6 +493,10 @@ impl<C: 'static> Default for DecorationAttrs<C> {
             corner_radius:    None,
             border_width:     None,
             border_color:     None,
+            shadow_color:     None,
+            shadow_opacity:   None,
+            shadow_radius:    None,
+            shadow_offset:    None,
         }
     }
 }
@@ -518,6 +534,30 @@ pub trait WithDecoration<C: 'static>: Sized {
     /// Border color. Only visible when `border_width > 0`.
     fn border_color<V: IntoMaybeReactive<C>>(mut self, c: V) -> Self {
         self.decoration_mut().border_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow color. Only visible when `shadow_opacity > 0`.
+    fn shadow_color<V: IntoMaybeReactive<C>>(mut self, c: V) -> Self {
+        self.decoration_mut().shadow_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow opacity, 0.0..=1.0. `0.0` disables.
+    fn shadow_opacity<V: IntoMaybeReactive<f32>>(mut self, o: V) -> Self {
+        self.decoration_mut().shadow_opacity = Some(o.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow blur radius in points.
+    fn shadow_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
+        self.decoration_mut().shadow_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow offset as `(dx, dy)` points.
+    fn shadow_offset<V: IntoMaybeReactive<(f32, f32)>>(mut self, o: V) -> Self {
+        self.decoration_mut().shadow_offset = Some(o.into_maybe_reactive());
         self
     }
 }

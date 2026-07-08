@@ -37,12 +37,16 @@ pub mod layout;
 mod make_view;
 pub mod node;
 pub mod objc_enums;
+#[cfg(feature = "calendar")]
+pub mod calendar;
+pub mod navigation;
 pub mod spawner;
 pub mod storage;
+pub mod system;
 
 pub use color::{Color, SystemColor};
 pub use date::Date;
-pub use objc_enums::{DatePickerStyle, TextAlignment};
+pub use objc_enums::{BlurStyle, DatePickerStyle, TextAlignment};
 pub use interval::{
     set_interval, set_interval_with_handle, IntervalError, IntervalHandle,
 };
@@ -50,6 +54,7 @@ pub use key_event::KeyEvent;
 pub use make_view::UikitMakeView;
 pub use node::{UikitElem, UikitNodeExt};
 pub use storage::{local_storage, Storage, StorageError};
+pub use system::{open_url, resource_path, set_window_background};
 pub use event::Event;
 
 // Re-export the most common objc2 / objc2_ui_kit types so

@@ -32,6 +32,11 @@ pub mod mount_ios {
 
 pub use dom::layout::IosBackend;
 
+#[cfg(feature = "calendar")]
+pub use dom::calendar;
+
+pub use dom::navigation;
+
 /// iOS-pinned `AnyView` — alias of `renderer::view::AnyView<Dom>`.
 pub type AnyView = leptos_native::renderer::view::AnyView<IosBackend>;
 
@@ -130,12 +135,14 @@ pub mod prelude {
     // (`.padding(...)`, `.alpha(...)`, `.flex_grow(...)`, ...) into
     // scope on every builder.
     pub use leptos_native::renderer::attrs::{
-        AlignSelf, Dim, Overflow, WithLayout, WithUniversal,
+        AlignSelf, Dim, Edges, Overflow, WithLayout, WithUniversal,
     };
 
     pub use crate::dom::{
         self,
-        local_storage, set_interval, set_interval_with_handle, Color,
+        local_storage, open_url, resource_path, set_interval,
+        set_interval_with_handle, set_window_background, BlurStyle, Color,
         IntervalError, IntervalHandle, KeyEvent, Storage, StorageError,
+        UikitElem, UikitNodeExt,
     };
 }

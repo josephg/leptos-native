@@ -12,6 +12,7 @@ name = "leptos_uikit"
 
 [features]
 default = []
+calendar = ["dep:objc2-event-kit"]
 
 [dependencies]
 reactive_graph = { workspace = true, features = ["effects", "serde"] }
@@ -30,6 +31,10 @@ objc2-foundation = { version = "0.3", features = [
   "NSTimer",
   "NSDate",
   "NSUserDefaults",
+  "NSBundle",
+  "NSURL",
+  "NSDictionary",
+  "NSEnumerator",
 ] }
 objc2-ui-kit = { version = "0.3", features = [
   "alloc",
@@ -71,10 +76,34 @@ objc2-ui-kit = { version = "0.3", features = [
   "UIMenuElement",
   "NSText",
   "UITextInputTraits",
+  "UITabBar",
+  "UITabBarItem",
+  "UIBarItem",
+  "UIBarCommon",
+  "UIVisualEffectView",
+  "UIVisualEffect",
+  "UIBlurEffect",
+  "UITraitCollection",
+  "UIInterface",
+  "block2",
+  "UINavigationController",
+  "UINavigationBar",
+  "UINavigationItem",
+  "UIBarButtonItem",
 ] }
 objc2-quartz-core = { version = "0.3", features = [
   "CALayer",
   "objc2-core-foundation",
+] }
+objc2-event-kit = { version = "0.3", optional = true, features = [
+  "EKEventStore",
+  "EKEvent",
+  "EKCalendar",
+  "EKCalendarItem",
+  "EKObject",
+  "EKTypes",
+  "EKSource",
+  "block2",
 ] }
 any_spawner = { workspace = true }
 dispatch2 = "0.3"
@@ -106,6 +135,11 @@ harness = false
 [[test]]
 name = "dom_node_lifecycle"
 path = "tests/dom/node_lifecycle.rs"
+harness = false
+
+[[test]]
+name = "dom_new_features"
+path = "tests/dom/new_features.rs"
 harness = false
 
 [lints.rust]

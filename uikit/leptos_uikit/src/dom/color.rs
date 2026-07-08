@@ -27,6 +27,11 @@ pub enum Color {
     /// One of UIKit's named adaptive colors (light- and dark-mode
     /// aware).
     System(SystemColor),
+    /// A custom light/dark pair, resolved per trait collection via
+    /// `UIColor(dynamicProvider:)` — re-resolves automatically on
+    /// appearance changes, like [`Color::System`]. Components are
+    /// `[r, g, b, a]` in 0.0..=1.0.
+    Dynamic { light: [f32; 4], dark: [f32; 4] },
 }
 
 /// Named UIKit adaptive colors. See
@@ -105,6 +110,21 @@ impl Color {
         Self::Rgba { r, g, b, a }
     }
 
+    /// A light/dark adaptive pair from two fixed colors. Falls back
+    /// to `light` if either argument is not a plain [`Color::Rgba`].
+    pub fn dynamic(light: Self, dark: Self) -> Self {
+        match (light, dark) {
+            (
+                Self::Rgba { r, g, b, a },
+                Self::Rgba { r: dr, g: dg, b: db, a: da },
+            ) => Self::Dynamic {
+                light: [r, g, b, a],
+                dark: [dr, dg, db, da],
+            },
+            _ => light,
+        }
+    }
+
     /// Render this colour as a `UIColor`. For `System` variants
     /// the returned `UIColor` is dynamic — UIKit picks the correct
     /// concrete value at draw time based on the surrounding view's
@@ -115,6 +135,36 @@ impl Color {
                 UIColor::colorWithRed_green_blue_alpha(
                     r as f64, g as f64, b as f64, a as f64,
                 )
+            }
+            Self::Dynamic { light, dark } => {
+                use core::ptr::NonNull;
+                use objc2_ui_kit::{UITraitCollection, UIUserInterfaceStyle};
+
+                let mk = |c: [f32; 4]| {
+                    UIColor::colorWithRed_green_blue_alpha(
+                        c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64,
+                    )
+                };
+                // Both concrete colors are owned by the provider
+                // block; the dynamic UIColor retains the block, so
+                // the returned borrows stay valid for its lifetime.
+                let light = mk(light);
+                let dark = mk(dark);
+                let block = block2::RcBlock::new(
+                    move |traits: NonNull<UITraitCollection>| {
+                        let style = unsafe {
+                            traits.as_ref().userInterfaceStyle()
+                        };
+                        let chosen: &UIColor =
+                            if style == UIUserInterfaceStyle::Dark {
+                                &dark
+                            } else {
+                                &light
+                            };
+                        NonNull::from(chosen)
+                    },
+                );
+                unsafe { UIColor::colorWithDynamicProvider(&block) }
             }
             Self::System(s) => match s {
                 SystemColor::Label => UIColor::labelColor(),

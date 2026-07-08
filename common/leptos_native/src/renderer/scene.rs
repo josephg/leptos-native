@@ -175,6 +175,18 @@ pub trait Backend: Send + Sync + 'static + Sized {
     /// Border stroke color (visible when `border_width > 0`).
     fn set_border_color(_view: &Self::View, _color: Self::Color) {}
 
+    /// Drop-shadow color (visible when `shadow_opacity > 0`).
+    fn set_shadow_color(_view: &Self::View, _color: Self::Color) {}
+
+    /// Drop-shadow opacity, 0.0..=1.0; `0.0` disables.
+    fn set_shadow_opacity(_view: &Self::View, _opacity: f32) {}
+
+    /// Drop-shadow blur radius in points.
+    fn set_shadow_radius(_view: &Self::View, _radius: f32) {}
+
+    /// Drop-shadow offset as `(dx, dy)` points.
+    fn set_shadow_offset(_view: &Self::View, _offset: (f32, f32)) {}
+
     /// Trigger a native re-measure/relayout for the subtree containing
     /// `id` (gtk `queue_resize`, cocoa/iOS main-queue dispatch). Required:
     /// scheduling is genuinely per-port, so there is no sensible default.
@@ -910,6 +922,13 @@ impl<B: Backend> LayoutPartialTree for LayoutState<B> {
     }
 
     fn compute_child_layout(&mut self, id: NodeId, inputs: LayoutInput) -> LayoutOutput {
+        // Hidden-layout passes recurse into visible descendants of a
+        // `Display::None` node; taffy forbids running a leaf measure
+        // function in that mode (unreachable!), so short-circuit the
+        // whole subtree the way taffy's own TaffyTree does.
+        if inputs.run_mode == taffy::RunMode::PerformHiddenLayout {
+            return compute_hidden_layout(self, id);
+        }
         compute_cached_layout(self, id, inputs, |this, id, inputs| {
             let k = key(id);
             let display = this.nodes[k].style.display;

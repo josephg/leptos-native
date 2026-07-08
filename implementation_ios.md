@@ -6,6 +6,44 @@ top.
 
 ---
 
+## 2026-07-08 — Review fixes: tab_bar on:change, nav leak, shadow clipping
+
+Three fixes to the tab_bar / blur_view / navigation feature set:
+
+- **`<tab_bar on:change>` is now a compile error.** `UITabBar` is a
+  `UIView`, not a `UIControl`, so `on_value_change`'s target/action
+  path silently no-ops on it. The builder previously carried
+  `SupportsEvent<ChangeEvent>`, so the macro accepted `on:change` and
+  dropped the handler on the floor. Removed the impl; selection is
+  observed through the tab-bar delegate via `bind:selection`
+  (`on_tab_select`). Withholding the marker turns the footgun into a
+  type error that points at `bind:selection`.
+
+- **`navigation::push` no longer leaks its per-screen layout root.**
+  Each `push` builds a fresh `content_root` container and mounts the
+  screen under it, but only the mounted view's `ElementState` was torn
+  down on pop — nothing freed `content_root`, so one store node leaked
+  per push/pop. `PushedEntry` now carries the `content_root` id and
+  `cleanup_popped` `remove()`s it after dropping the view state +
+  reactive `Owner`.
+
+- **Shadow ↔ corner-radius `masksToBounds` is now a pure invariant.**
+  `masksToBounds` clips a layer's own drop shadow, so it must be off
+  while a shadow is live. `set_shadow_opacity` used to *one-way*
+  disable it (`if opacity > 0 { masksToBounds = false }`), so a
+  reactive shadow toggling back to 0 left corner clipping permanently
+  off. It now recomputes `masksToBounds = opacity <= 0 &&
+  cornerRadius > 0` — the same function `set_corner_radius` computes —
+  making the two setters order-independent and reactive-correct. The
+  currently-unused `UikitNodeExt::set_corner_radius` in `dom/node.rs`
+  was given the same shadow-aware guard so it can't reintroduce the bug
+  if it's ever wired up.
+
+Regression coverage for all of the above (plus the rest of the
+feature set) lives in `tests/dom/new_features.rs`.
+
+---
+
 ## 2026-07-03 — `insert_node` schedules a relayout (cross-cutting; see macOS log)
 
 Shared-core fix: `Node::insert_node` now schedules a relayout on every

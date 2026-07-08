@@ -16,7 +16,7 @@
 //! trait. See `cocoa/dom/src/objc_enums.rs` for the orphan-rule
 //! explanation.
 
-use objc2_ui_kit::{NSTextAlignment, UIDatePickerStyle};
+use objc2_ui_kit::{NSTextAlignment, UIBlurEffectStyle, UIDatePickerStyle};
 
 /// Text alignment within a label / text field / text view. iOS shares
 /// the `NSTextAlignment` enum with macOS via Foundation; the variants
@@ -52,5 +52,32 @@ impl DatePickerStyle {
 
 impl From<UIDatePickerStyle> for DatePickerStyle {
     fn from(v: UIDatePickerStyle) -> Self { Self(v) }
+}
+
+/// `UIBlurEffect` style for `<blur_view>` — the adaptive "material"
+/// styles plus the classic light/dark blurs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct BlurStyle(pub UIBlurEffectStyle);
+
+impl BlurStyle {
+    pub const SYSTEM_ULTRA_THIN_MATERIAL: Self =
+        Self(UIBlurEffectStyle::SystemUltraThinMaterial);
+    pub const SYSTEM_THIN_MATERIAL: Self =
+        Self(UIBlurEffectStyle::SystemThinMaterial);
+    pub const SYSTEM_MATERIAL: Self = Self(UIBlurEffectStyle::SystemMaterial);
+    pub const SYSTEM_THICK_MATERIAL: Self =
+        Self(UIBlurEffectStyle::SystemThickMaterial);
+    pub const SYSTEM_CHROME_MATERIAL: Self =
+        Self(UIBlurEffectStyle::SystemChromeMaterial);
+    pub const EXTRA_LIGHT: Self = Self(UIBlurEffectStyle::ExtraLight);
+    pub const LIGHT: Self = Self(UIBlurEffectStyle::Light);
+    pub const DARK: Self = Self(UIBlurEffectStyle::Dark);
+    pub const REGULAR: Self = Self(UIBlurEffectStyle::Regular);
+    pub const PROMINENT: Self = Self(UIBlurEffectStyle::Prominent);
+}
+
+impl From<UIBlurEffectStyle> for BlurStyle {
+    fn from(v: UIBlurEffectStyle) -> Self { Self(v) }
 }
 

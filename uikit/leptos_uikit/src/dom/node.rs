@@ -99,6 +99,10 @@ pub trait UikitNodeExt: Copy {
     fn set_segmented_items(self, items: &[String]);
     fn segmented_selection(self) -> isize;
     fn set_segmented_selection(self, idx: isize);
+    fn set_tab_items(self, items: &[(String, String)]);
+    fn tab_selected_index(self) -> Option<usize>;
+    fn set_tab_selection(self, idx: usize);
+    fn set_blur_style(self, style: crate::dom::objc_enums::BlurStyle);
     fn set_popup_items(
         self,
         items: &[String],
@@ -117,6 +121,9 @@ pub trait UikitNodeExt: Copy {
     fn set_text_color(self, color: Color);
     fn set_text_alignment(self, alignment: TextAlignment);
     fn set_font_size(self, points: f64);
+    fn set_font_weight(self, weight: i32);
+    fn set_label_lines(self, lines: i32);
+    fn set_scroll_offset_y(self, y: f64, animated: bool);
     fn set_text_field_bordered(self, bordered: bool);
     fn set_text_field_bezeled(self, bezeled: bool);
     fn set_slider_vertical(self, vertical: bool);
@@ -494,6 +501,58 @@ impl UikitNodeExt for UikitElem {
         }
     }
 
+    fn set_tab_items(self, items: &[(String, String)]) {
+        use objc2_ui_kit::{UITabBar, UITabBarItem};
+        let Some(tb) = self.try_downcast::<UITabBar>() else { return; };
+        let Some(mtm) = objc2::MainThreadMarker::new() else { return; };
+        let tab_items: Vec<Retained<UITabBarItem>> = items
+            .iter()
+            .enumerate()
+            .map(|(i, (title, symbol))| {
+                let image = Self::sf_symbol_image(symbol);
+                UITabBarItem::initWithTitle_image_tag(
+                    UITabBarItem::alloc(mtm),
+                    Some(&NSString::from_str(title)),
+                    image.as_deref(),
+                    i as isize,
+                )
+            })
+            .collect();
+        let arr = objc2_foundation::NSArray::from_retained_slice(&tab_items);
+        tb.setItems_animated(Some(&arr), false);
+        layout::schedule_relayout(self);
+    }
+
+    fn tab_selected_index(self) -> Option<usize> {
+        use objc2_ui_kit::UITabBar;
+        let tb = self.try_downcast::<UITabBar>()?;
+        let item = tb.selectedItem()?;
+        let tag = item.tag();
+        (tag >= 0).then_some(tag as usize)
+    }
+
+    fn set_tab_selection(self, idx: usize) {
+        use objc2_ui_kit::UITabBar;
+        let Some(tb) = self.try_downcast::<UITabBar>() else { return; };
+        if self.tab_selected_index() == Some(idx) {
+            return;
+        }
+        let Some(items) = tb.items() else { return; };
+        if idx < items.len() {
+            tb.setSelectedItem(Some(&items.objectAtIndex(idx)));
+        }
+    }
+
+    fn set_blur_style(self, style: crate::dom::objc_enums::BlurStyle) {
+        use objc2_ui_kit::{UIBlurEffect, UIVisualEffectView};
+        let Some(ev) = self.try_downcast::<UIVisualEffectView>() else {
+            return;
+        };
+        let Some(mtm) = objc2::MainThreadMarker::new() else { return; };
+        let effect = UIBlurEffect::effectWithStyle(style.0, mtm);
+        ev.setEffect(Some(&effect));
+    }
+
     fn set_popup_items(
         self,
         items: &[String],
@@ -628,7 +687,10 @@ impl UikitNodeExt for UikitElem {
         let layer = __v.layer();
         if (layer.cornerRadius() - radius).abs() > f64::EPSILON {
             layer.setCornerRadius(radius);
-            layer.setMasksToBounds(radius > 0.0);
+            // Keep the same shadow-aware invariant as the Backend
+            // `set_corner_radius` (dom/layout.rs): masksToBounds clips a
+            // live drop shadow, so only enable it when none is set.
+            layer.setMasksToBounds(radius > 0.0 && layer.shadowOpacity() <= 0.0);
         }
     }
 
@@ -709,6 +771,85 @@ impl UikitNodeExt for UikitElem {
         if applied {
             layout::schedule_relayout(self);
         }
+    }
+
+    fn set_font_weight(self, weight: i32) {
+        use objc2_ui_kit::UIFont;
+        let w = match weight {
+            ..=149 => -0.8,
+            150..=249 => -0.6,
+            250..=349 => -0.4,
+            350..=449 => 0.0,
+            450..=549 => 0.23,
+            550..=649 => 0.3,
+            650..=749 => 0.4,
+            750..=849 => 0.56,
+            _ => 0.62,
+        };
+
+        let Some(view) = self.try_ui_view() else { return; };
+        let mut applied = false;
+        if let Some(field) = downcast::<UITextField>(&view) {
+            let size = field
+                .font()
+                .map(|f| unsafe { f.pointSize() })
+                .unwrap_or(17.0);
+            field.setFont(Some(&UIFont::systemFontOfSize_weight(size, w)));
+            applied = true;
+        } else if let Some(label) = downcast::<objc2_ui_kit::UILabel>(&view) {
+            let size = label
+                .font()
+                .map(|f| unsafe { f.pointSize() })
+                .unwrap_or(17.0);
+            unsafe {
+                label.setFont(Some(&UIFont::systemFontOfSize_weight(size, w)))
+            };
+            applied = true;
+        } else if let Some(button) = downcast::<UIButton>(&view) {
+            if let Some(title_label) = button.titleLabel() {
+                let size = title_label
+                    .font()
+                    .map(|f| unsafe { f.pointSize() })
+                    .unwrap_or(17.0);
+                unsafe {
+                    title_label
+                        .setFont(Some(&UIFont::systemFontOfSize_weight(size, w)))
+                };
+                applied = true;
+            }
+        } else if let Some(tv) = downcast::<objc2_ui_kit::UITextView>(&view) {
+            let size = tv
+                .font()
+                .map(|f| unsafe { f.pointSize() })
+                .unwrap_or(17.0);
+            tv.setFont(Some(&UIFont::systemFontOfSize_weight(size, w)));
+            applied = true;
+        }
+        if applied {
+            layout::schedule_relayout(self);
+        }
+    }
+
+    fn set_label_lines(self, lines: i32) {
+        if let Some(label) = self.try_downcast::<objc2_ui_kit::UILabel>() {
+            label.setNumberOfLines(lines as isize);
+            layout::schedule_relayout(self);
+        }
+    }
+
+    fn set_scroll_offset_y(self, y: f64, animated: bool) {
+        use objc2_ui_kit::UIScrollView;
+        let Some(sv) = self.try_downcast::<UIScrollView>() else {
+            return;
+        };
+        let max_y = (sv.contentSize().height - sv.bounds().size.height
+            + sv.adjustedContentInset().bottom)
+            .max(0.0);
+        let target = objc2_foundation::NSPoint {
+            x: 0.0,
+            y: y.clamp(0.0, max_y),
+        };
+        sv.setContentOffset_animated(target, animated);
     }
 
     fn set_text_field_bordered(self, bordered: bool) {

@@ -124,7 +124,7 @@ impl Backend for IosBackend {
         let r = radius as f64;
         if (layer.cornerRadius() - r).abs() > f64::EPSILON {
             layer.setCornerRadius(r);
-            layer.setMasksToBounds(r > 0.0);
+            layer.setMasksToBounds(r > 0.0 && layer.shadowOpacity() <= 0.0);
         }
     }
 
@@ -142,6 +142,38 @@ impl Backend for IosBackend {
         let layer = v.layer();
         let cg = unsafe { color.to_uicolor().CGColor() };
         layer.setBorderColor(Some(&cg));
+    }
+
+    fn set_shadow_color(view: &Self::View, color: Color) {
+        let v: &UIView = view;
+        let layer = v.layer();
+        let cg = unsafe { color.to_uicolor().CGColor() };
+        layer.setShadowColor(Some(&cg));
+    }
+
+    fn set_shadow_opacity(view: &Self::View, opacity: f32) {
+        let v: &UIView = view;
+        let layer = v.layer();
+        layer.setShadowOpacity(opacity);
+        // `masksToBounds` clips the shadow, so it must be off whenever a
+        // shadow is live. Recompute it as the same pure function of
+        // (corner_radius, shadow_opacity) that `set_corner_radius` uses,
+        // rather than a one-way disable — otherwise a reactive shadow
+        // toggling back to 0 would leave corner clipping permanently off.
+        layer.setMasksToBounds(opacity <= 0.0 && layer.cornerRadius() > 0.0);
+    }
+
+    fn set_shadow_radius(view: &Self::View, radius: f32) {
+        let v: &UIView = view;
+        v.layer().setShadowRadius(radius as f64);
+    }
+
+    fn set_shadow_offset(view: &Self::View, offset: (f32, f32)) {
+        let v: &UIView = view;
+        v.layer().setShadowOffset(NSSize {
+            width: offset.0 as f64,
+            height: offset.1 as f64,
+        });
     }
 
     fn remove_from_native_parent(view: &Self::View) {
@@ -538,7 +570,10 @@ fn measure_leaf_size(
     let any: &AnyObject = view.as_ref();
     // For UIControl subclasses, call `sizeToFit` then read the frame.
     // For UILabel (not a UIControl on iOS) sizeToFit is also the
-    // right entry point.
+    // right entry point — except when the width is already known
+    // (stretched by the parent): a multiline label must then be
+    // measured via width-constrained `sizeThatFits` so wrapping is
+    // reflected in the returned height.
     let mut measured: NSSize = if let Some(control) = any.downcast_ref::<UIControl>() {
         let original = view.frame();
         control.sizeToFit();
@@ -546,11 +581,25 @@ fn measure_leaf_size(
         view.setFrame(original);
         fit
     } else if let Some(label) = any.downcast_ref::<objc2_ui_kit::UILabel>() {
-        let original = view.frame();
-        label.sizeToFit();
-        let fit = view.frame().size;
-        view.setFrame(original);
-        fit
+        let limit_w = known.width.map(|w| w as f64).or(match _avail.width {
+            AvailableSpace::Definite(w) => Some(w as f64),
+            _ => None,
+        });
+        // Ceil both branches: taffy's rounding pass can floor
+        // fractional sizes, and UILabel truncates on any shortfall —
+        // a 38.3pt-two-line height rounded to 38.0 renders one line;
+        // a 54.33pt natural width rounded to 54.0 ellipsizes the
+        // last characters.
+        if let Some(w) = limit_w {
+            let fit = label.sizeThatFits(NSSize::new(w, f64::MAX));
+            NSSize::new(fit.width.ceil(), fit.height.ceil())
+        } else {
+            let original = view.frame();
+            label.sizeToFit();
+            let fit = view.frame().size;
+            view.setFrame(original);
+            NSSize::new(fit.width.ceil(), fit.height.ceil())
+        }
     } else {
         view.intrinsicContentSize()
     };

@@ -31,8 +31,9 @@ use objc2::{
     sel, DefinedClass, MainThreadMarker, MainThreadOnly,
 };
 use objc2_ui_kit::{
-    UIControl, UIControlEvents, UITapGestureRecognizer, UITextField,
-    UITextView, UITextViewDelegate, UIView, UIScrollViewDelegate,
+    UIControl, UIControlEvents, UITabBar, UITabBarDelegate, UITabBarItem,
+    UITapGestureRecognizer, UITextField, UITextView, UITextViewDelegate,
+    UIView, UIScrollViewDelegate,
 };
 use objc2_foundation::NSObjectProtocol;
 use send_wrapper::SendWrapper;
@@ -94,6 +95,8 @@ pub struct IosNodeHandlers {
     pub(crate) text_view_delegate: Option<Retained<TextViewDelegate>>,
     /// Gesture-recognizer targets installed by `on_tap_gesture`.
     pub(crate) gesture_targets: Vec<Retained<ActionTarget>>,
+    /// UITabBar selection delegate installed by `on_tab_select`.
+    pub(crate) tab_bar_delegate: Option<Retained<TabBarDelegate>>,
 }
 
 impl IosNodeHandlers {
@@ -151,6 +154,9 @@ pub fn disconnect_view_handlers(view: &UIView) {
     }
     if let Some(tv) = any.downcast_ref::<UITextView>() {
         unsafe { tv.setDelegate(None) };
+    }
+    if let Some(tb) = any.downcast_ref::<UITabBar>() {
+        tb.setDelegate(None);
     }
     // Gesture recognizers: UIView retains its recognizer list. We
     // could iterate and `removeGestureRecognizer` each, but the
@@ -232,6 +238,12 @@ pub fn handler_store_size_for_test() -> usize {
 #[doc(hidden)]
 pub fn text_view_store_size_for_test() -> usize {
     LIVE_TEXT_VIEW_DELEGATES.load(Ordering::Relaxed)
+}
+
+/// Test-only: live TabBarDelegates.
+#[doc(hidden)]
+pub fn tab_bar_delegate_store_size_for_test() -> usize {
+    LIVE_TAB_BAR_DELEGATES.load(Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------
@@ -560,6 +572,89 @@ pub fn on_text_view_change(
     }
     let handlers = ensure_text_view_entry(node);
     handlers.borrow_mut().on_change.push(Box::new(cb));
+}
+
+// ---------------------------------------------------------------------
+// UITabBar delegate (item selection)
+// ---------------------------------------------------------------------
+
+static LIVE_TAB_BAR_DELEGATES: AtomicUsize = AtomicUsize::new(0);
+
+type TabCallback = RefCell<Box<dyn FnMut(usize) + 'static>>;
+
+pub struct TabBarIvars {
+    callback: TabCallback,
+    _live: LiveTracker,
+}
+
+define_class!(
+    /// UITabBar delegate that forwards `tabBar:didSelectItem:` to a
+    /// Rust closure with the selected item's tag (= item index).
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = TabBarIvars]
+    pub struct TabBarDelegate;
+
+    unsafe impl NSObjectProtocol for TabBarDelegate {}
+
+    unsafe impl UITabBarDelegate for TabBarDelegate {
+        #[unsafe(method(tabBar:didSelectItem:))]
+        fn tab_bar_did_select_item(
+            &self,
+            _tab_bar: &UITabBar,
+            item: &UITabBarItem,
+        ) {
+            let tag = item.tag();
+            if tag < 0 {
+                return;
+            }
+            let mut cb = match self.ivars().callback.try_borrow_mut() {
+                Ok(cb) => cb,
+                Err(_) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[ios_dom] reentrant tabBar:didSelectItem: skipped"
+                    );
+                    return;
+                }
+            };
+            (cb)(tag as usize);
+        }
+    }
+);
+
+impl TabBarDelegate {
+    fn new(
+        cb: impl FnMut(usize) + 'static,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let alloc = Self::alloc(mtm);
+        let this = alloc.set_ivars(TabBarIvars {
+            callback: RefCell::new(Box::new(cb)),
+            _live: LiveTracker::new(&LIVE_TAB_BAR_DELEGATES),
+        });
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// Install a selection observer on a UITabBar. Replaces any prior
+/// observer (UITabBar has a single delegate slot). No-op if `node`
+/// isn't a UITabBar.
+pub fn on_tab_select(node: UikitElem, cb: impl FnMut(usize) + 'static) {
+    let Some(tb) = downcast::<UITabBar>(&node.ui_view()) else {
+        return;
+    };
+    let mtm = MainThreadMarker::new()
+        .expect("on_tab_select must run on the main thread");
+    let delegate = TabBarDelegate::new(cb, mtm);
+    let proto: &ProtocolObject<dyn UITabBarDelegate> =
+        ProtocolObject::from_ref(&*delegate);
+    tb.setDelegate(Some(proto));
+    let view_retained = node.ui_view_retained();
+    node.with_handlers_mut(|h| {
+        h.attach_view(view_retained);
+        h.tab_bar_delegate = Some(delegate);
+    });
 }
 
 // ---------------------------------------------------------------------

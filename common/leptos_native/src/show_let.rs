@@ -1,4 +1,5 @@
 use crate::into_view::IntoView;
+use crate::switch::EmptyBranch;
 use either_of::Either;
 use leptos_macro::component;
 #[cfg(not(all(feature = "nightly", rustc_nightly)))]
@@ -34,10 +35,14 @@ where
     move || {
         let children = children.clone();
 
+        // `EmptyBranch` (not bare `()`) so the empty arm builds a real
+        // placeholder node — `()`'s no-op `insert_before_this` leaves
+        // the None -> Some transition with no mount anchor, silently
+        // dropping the children. Same pattern as `<Show>` / `<Switch>`.
         getter
             .run()
             .map(move |t| Either::Left(children(t)))
-            .unwrap_or(Either::Right(()))
+            .unwrap_or(Either::Right(EmptyBranch))
     }
 }
 

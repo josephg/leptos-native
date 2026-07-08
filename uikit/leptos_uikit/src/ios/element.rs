@@ -69,6 +69,11 @@ pub trait WithText: Sized {
         self.text_attrs_mut().font_size = Some(p.into_maybe_reactive());
         self
     }
+    /// Font weight, CSS-style 100..=900 (400 regular, 700 bold).
+    fn font_weight<V: IntoMaybeReactive<i32>>(mut self, w: V) -> Self {
+        self.text_attrs_mut().font_weight = Some(w.into_maybe_reactive());
+        self
+    }
 }
 
 
@@ -93,6 +98,12 @@ fn apply_text(el: UikitElem, attrs: IosText) -> Vec<RenderEffect<()>> {
     if let Some(s) = attrs.font_size {
         let el_for = el.clone();
         if let Some(eff) = install(s, move |v| el_for.set_font_size(v)) {
+            out.push(eff);
+        }
+    }
+    if let Some(w) = attrs.font_weight {
+        let el_for = el.clone();
+        if let Some(eff) = install(w, move |v| el_for.set_font_weight(v)) {
             out.push(eff);
         }
     }
@@ -148,6 +159,32 @@ pub trait WithDecoration: Sized {
     /// Border color. Only visible when `border_width > 0`.
     fn border_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
         self.decoration_mut().border_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow color. Only visible when `shadow_opacity > 0`.
+    fn shadow_color<V: IntoMaybeReactive<Color>>(mut self, c: V) -> Self {
+        self.decoration_mut().shadow_color = Some(c.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow opacity, 0.0..=1.0. `0.0` disables. Setting a
+    /// shadow disables `masksToBounds`, so pair with an inner
+    /// clipping view when children must clip to rounded corners.
+    fn shadow_opacity<V: IntoMaybeReactive<f32>>(mut self, o: V) -> Self {
+        self.decoration_mut().shadow_opacity = Some(o.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow blur radius in points.
+    fn shadow_radius<V: IntoMaybeReactive<f32>>(mut self, r: V) -> Self {
+        self.decoration_mut().shadow_radius = Some(r.into_maybe_reactive());
+        self
+    }
+
+    /// Drop-shadow offset as `(dx, dy)` points.
+    fn shadow_offset<V: IntoMaybeReactive<(f32, f32)>>(mut self, o: V) -> Self {
+        self.decoration_mut().shadow_offset = Some(o.into_maybe_reactive());
         self
     }
 }
@@ -825,6 +862,7 @@ impl Render<IosBackend> for Button {
 
 pub struct Label {
     text_value: MaybeReactive<String>,
+    lines: Option<MaybeReactive<i32>>,
     pending_bind_text:
         Option<Box<dyn Fn() -> String + Send + 'static>>,
     common: Common,
@@ -833,6 +871,7 @@ pub struct Label {
 pub fn label() -> Label {
     Label {
         text_value: MaybeReactive::Static(String::new()),
+        lines: None,
         pending_bind_text: None,
         common: Common::default(),
     }
@@ -846,6 +885,12 @@ impl Label {
     /// `<label>"X"</label>` or `<label>{closure}</label>`.
     pub fn child<V: IntoMaybeReactive<String>>(self, value: V) -> Self {
         self.text(value)
+    }
+    /// Maximum line count — `0` means unlimited (wrapping). Defaults
+    /// to UIKit's single line with tail truncation.
+    pub fn lines<V: IntoMaybeReactive<i32>>(mut self, v: V) -> Self {
+        self.lines = Some(v.into_maybe_reactive());
+        self
     }
     /// Internal: stash a `bind:value=...` for installation in `build`.
     pub(crate) fn set_pending_bind_text(
@@ -878,7 +923,14 @@ impl Render<IosBackend> for Label {
             effects.push(eff);
         }
 
-
+        if let Some(lines) = self.lines {
+            let el_for = el.clone();
+            if let Some(eff) = install(lines, move |n| {
+                el_for.set_label_lines(n);
+            }) {
+                effects.push(eff);
+            }
+        }
 
         self.common.finish(el, &mut effects);
 
@@ -1574,6 +1626,157 @@ impl Render<IosBackend> for SegmentedControl {
 }
 
 // ---------------------------------------------------------------------
+// tab_bar() — UITabBar (the bar view, not UITabBarController).
+// `.items([(title, sf_symbol)])`, `bind:selection=usize_signal`.
+// Content switching is the app's job (reactive `hidden` / `Show`).
+//
+// Do NOT force a `height` on this element: the bar's own
+// `sizeThatFits` drives the leaf measure, and modern UITabBar item
+// layouts need their natural height — a forced smaller height makes
+// titles overlap icons.
+// ---------------------------------------------------------------------
+
+pub struct TabBar {
+    items: Vec<(String, String)>,
+    selection: MaybeReactive<usize>,
+    pending_bind_selection: Option<crate::ios::bind::BoundIndex>,
+    common: Common,
+}
+
+pub fn tab_bar() -> TabBar {
+    TabBar {
+        items: Vec::new(),
+        selection: MaybeReactive::Static(0),
+        pending_bind_selection: None,
+        common: Common::default(),
+    }
+}
+
+impl TabBar {
+    pub fn items<I, S1, S2>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = (S1, S2)>,
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        self.items = items
+            .into_iter()
+            .map(|(title, symbol)| (title.into(), symbol.into()))
+            .collect();
+        self
+    }
+    pub fn selection<V: IntoMaybeReactive<usize>>(mut self, v: V) -> Self {
+        self.selection = v.into_maybe_reactive();
+        self
+    }
+    pub(crate) fn set_pending_bind_selection(
+        &mut self,
+        bound: crate::ios::bind::BoundIndex,
+    ) {
+        self.pending_bind_selection = Some(bound);
+    }
+}
+
+// No `SupportsEvent<ChangeEvent>`: UITabBar is a UIView, not a
+// UIControl, so target/action (`on_value_change`) never fires on it.
+// Selection changes are delivered through the tab-bar delegate, wired
+// by `bind:selection`. Withholding the impl makes `<tab_bar on:change>`
+// a compile error that steers callers to `bind:selection` instead of
+// silently dropping the handler.
+
+impl_common!(TabBar);
+
+impl Render<IosBackend> for TabBar {
+    type State = ElementState<()>;
+    fn build(self) -> Self::State {
+        let el = UikitElem::create_tab_bar().0;
+        let mut effects = Vec::new();
+
+        el.set_tab_items(&self.items);
+
+        let el_for = el.clone();
+        if let Some(eff) = install(self.selection, move |i| {
+            el_for.set_tab_selection(i);
+        }) {
+            effects.push(eff);
+        }
+
+        if let Some(bound) = self.pending_bind_selection {
+            let eff = crate::ios::bind::install_tab_selection_bind(el, bound);
+            effects.push(eff);
+        }
+
+        self.common.finish(el, &mut effects);
+
+        ElementState {
+            el,
+            _effects: effects,
+            children: (),
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
+// blur_view() — UIVisualEffectView + UIBlurEffect. Non-interactive
+// underlay (touches pass through); layer behind bar content with
+// `position_absolute`. Not a container — children are unsupported.
+// ---------------------------------------------------------------------
+
+pub struct BlurView {
+    style: Option<MaybeReactive<crate::dom::objc_enums::BlurStyle>>,
+    common: Common,
+}
+
+pub fn blur_view() -> BlurView {
+    BlurView {
+        style: None,
+        common: Common::default(),
+    }
+}
+
+impl BlurView {
+    pub fn style<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<crate::dom::objc_enums::BlurStyle>,
+    {
+        self.style = Some(v.into_maybe_reactive());
+        self
+    }
+}
+
+impl_common!(BlurView);
+
+impl Render<IosBackend> for BlurView {
+    type State = ElementState<()>;
+    fn build(self) -> Self::State {
+        let el = UikitElem::create_blur_view(
+            crate::dom::objc_enums::BlurStyle::SYSTEM_MATERIAL,
+        )
+        .0;
+        let mut effects = Vec::new();
+
+        if let Some(style) = self.style {
+            let el_for = el.clone();
+            if let Some(eff) = install(style, move |s| {
+                el_for.set_blur_style(s);
+            }) {
+                effects.push(eff);
+            }
+        }
+
+        self.common.finish(el, &mut effects);
+
+        ElementState {
+            el,
+            _effects: effects,
+            children: (),
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
 // pop_up_button() — UIButton + UIMenu (iOS 14+).
 // API mirrors the Cocoa `pop_up_button()` for portability:
 // `.items(...)`, `.selection(...)`, `bind:value=index_signal`.
@@ -2104,7 +2307,7 @@ macro_rules! impl_add_any_attr_for_leaf {
 
 impl_add_any_attr_for_leaf!(
     Button, Label, TextField, Switch, Slider, Stepper,
-    ImageView, SegmentedControl, DatePicker,
+    ImageView, SegmentedControl, DatePicker, TabBar, BlurView,
 );
 
 // ProgressIndicator + TextView don't carry a handlers/pending_spreads

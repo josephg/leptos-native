@@ -224,6 +224,9 @@ define_class!(
             window.setBackgroundColor(Some(
                 &objc2_ui_kit::UIColor::systemBackgroundColor(),
             ));
+            MAIN_WINDOW.with_borrow_mut(|slot| {
+                *slot = Some(window.clone());
+            });
 
             // Content root — a vstack filling the window. The tag
             // already implies `flex_direction: Column`.
@@ -249,7 +252,15 @@ define_class!(
             }
             let root_vc = RootViewController::new(mtm, content_root.clone());
             root_vc.setView(Some(&content_root.ui_view()));
-            window.setRootViewController(Some(&root_vc));
+            let root_vc: Retained<objc2_ui_kit::UIViewController> =
+                unsafe { Retained::cast_unchecked(root_vc) };
+            let nav = objc2_ui_kit::UINavigationController::initWithRootViewController(
+                objc2_ui_kit::UINavigationController::alloc(mtm),
+                &root_vc,
+            );
+            nav.setNavigationBarHidden(true);
+            window.setRootViewController(Some(&nav));
+            crate::dom::navigation::install(&nav, mtm);
 
             BUILDER.with_borrow_mut(|slot| {
                 if let Some(build) = slot.take() {
@@ -273,6 +284,19 @@ impl SceneDelegate {
         });
         unsafe { msg_send![super(alloc), init] }
     }
+}
+
+thread_local! {
+    /// The single scene's UIWindow, for post-mount tweaks like
+    /// [`main_window`]-based background painting. Set when the scene
+    /// connects; `None` before that (and in headless tests).
+    static MAIN_WINDOW: RefCell<Option<Retained<UIWindow>>> =
+        const { RefCell::new(None) };
+}
+
+/// The app's UIWindow, once the scene has connected.
+pub fn main_window() -> Option<Retained<UIWindow>> {
+    MAIN_WINDOW.with_borrow(|w| w.clone())
 }
 
 // ---------------------------------------------------------------------
