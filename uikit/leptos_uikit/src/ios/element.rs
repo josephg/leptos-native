@@ -2193,6 +2193,155 @@ impl<Ch: Render<IosBackend>> Render<IosBackend> for ScrollView<Ch> {
 
 
 // ---------------------------------------------------------------------
+// table_view() — UITableView (.plain style, sticky section headers)
+//
+// A LEAF element: content comes from the reactive `sections`
+// snapshot (Vec<TableSection>, each section carrying TableRow view-
+// builder closures), served to UIKit by the driver in `dom::table`.
+// Cells rebuild their leptos content on every dequeue; see the
+// module docs on `dom::table` for the full model.
+//
+// Like `<scroll_view>`, the element must be bounded by its parent
+// (typically `flex_grow=1.0` in a bounded stack) — UITableView owns
+// everything inside its frame.
+// ---------------------------------------------------------------------
+
+pub struct TableView {
+    sections: MaybeReactive<Vec<crate::dom::TableSection>>,
+    header: Option<crate::dom::table::HeaderBuild>,
+    row_height: Option<f64>,
+    header_height: Option<f64>,
+    separators: Option<MaybeReactive<bool>>,
+    content_inset: Option<leptos_native::renderer::attrs::Edges>,
+    common: Common,
+}
+
+pub fn table_view() -> TableView {
+    TableView {
+        sections: MaybeReactive::Static(Vec::new()),
+        header: None,
+        row_height: None,
+        header_height: None,
+        separators: None,
+        content_inset: None,
+        common: Common::default(),
+    }
+}
+
+impl TableView {
+    /// The table's content, as one snapshot: sections in order, each
+    /// with its header title and row view-builders. Reactive — pass a
+    /// closure reading signals and the table reloads when they change.
+    pub fn sections<V: IntoMaybeReactive<Vec<crate::dom::TableSection>>>(
+        mut self,
+        v: V,
+    ) -> Self {
+        self.sections = v.into_maybe_reactive();
+        self
+    }
+
+    /// Custom section-header view builder (receives the section
+    /// title). Without it, UIKit's default plain-style header renders
+    /// the title. Pair with `header_height` — the leptos-hosted
+    /// header is laid out against the height UIKit grants it.
+    pub fn header<F, V>(mut self, f: F) -> Self
+    where
+        F: Fn(String) -> V + Send + Sync + 'static,
+        V: Render<IosBackend>,
+        V::State: Mountable<IosBackend> + 'static,
+    {
+        self.header = Some(crate::dom::table::make_header_build(f));
+        self
+    }
+
+    /// Fixed row height in points. Strongly recommended: leptos-
+    /// hosted cells have no Auto Layout constraints for UIKit's
+    /// self-sizing to measure, so without a fixed height rows
+    /// collapse.
+    pub fn row_height(mut self, h: f64) -> Self {
+        self.row_height = Some(h);
+        self
+    }
+
+    /// Fixed section-header height in points (used with `header`).
+    pub fn header_height(mut self, h: f64) -> Self {
+        self.header_height = Some(h);
+        self
+    }
+
+    /// Show the system row separators (default: off).
+    pub fn separators<V: IntoMaybeReactive<bool>>(mut self, v: V) -> Self {
+        self.separators = Some(v.into_maybe_reactive());
+        self
+    }
+
+    /// `UIScrollView.contentInset` — clears overlaid bars while
+    /// sticky headers pin below them (a padding attr would instead
+    /// shrink the viewport and pin headers at the padding edge).
+    pub fn content_inset(
+        mut self,
+        e: leptos_native::renderer::attrs::Edges,
+    ) -> Self {
+        self.content_inset = Some(e);
+        self
+    }
+}
+
+impl_common!(TableView);
+
+impl Render<IosBackend> for TableView {
+    type State = ElementState<()>;
+    fn build(self) -> Self::State {
+        let el = UikitElem::create_table_view().0;
+        let mut effects = Vec::new();
+
+        let owner = reactive_graph::owner::Owner::current().expect(
+            "table_view must be built inside a reactive Owner \
+             (mount / navigation::push provide one)",
+        );
+        let model =
+            crate::dom::table::TableModel::new(self.header, self.header_height, owner);
+        crate::dom::table::install_table_driver(el, model.clone());
+
+        if let Some(h) = self.row_height {
+            el.set_table_row_height(h);
+        }
+        if let Some(e) = self.content_inset {
+            el.set_scroll_content_inset(
+                e.top as f64,
+                e.left as f64,
+                e.bottom as f64,
+                e.right as f64,
+            );
+        }
+        if let Some(s) = self.separators {
+            let el_for = el.clone();
+            if let Some(eff) =
+                install(s, move |v| el_for.set_table_separators(v))
+            {
+                effects.push(eff);
+            }
+        }
+
+        let model_for = model.clone();
+        if let Some(eff) = install(self.sections, move |secs| {
+            crate::dom::table::set_table_sections(el, &model_for, secs);
+        }) {
+            effects.push(eff);
+        }
+
+        self.common.finish(el, &mut effects);
+
+        ElementState {
+            el,
+            _effects: effects,
+            children: (),
+        }
+    }
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
 // text_view() — UITextView (multi-line plain-text editor)
 //
 // UITextView IS already a UIScrollView subclass — it scrolls itself,
@@ -2307,7 +2456,7 @@ macro_rules! impl_add_any_attr_for_leaf {
 
 impl_add_any_attr_for_leaf!(
     Button, Label, TextField, Switch, Slider, Stepper,
-    ImageView, SegmentedControl, DatePicker, TabBar, BlurView,
+    ImageView, SegmentedControl, DatePicker, TabBar, BlurView, TableView,
 );
 
 // ProgressIndicator + TextView don't carry a handlers/pending_spreads

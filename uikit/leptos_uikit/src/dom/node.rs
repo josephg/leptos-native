@@ -124,6 +124,10 @@ pub trait UikitNodeExt: Copy {
     fn set_font_weight(self, weight: i32);
     fn set_label_lines(self, lines: i32);
     fn set_scroll_offset_y(self, y: f64, animated: bool);
+    fn set_scroll_content_inset(self, top: f64, left: f64, bottom: f64, right: f64);
+    fn set_table_row_height(self, height: f64);
+    fn set_table_separators(self, visible: bool);
+    fn set_table_scroll_to_section(self, section: usize, animated: bool);
     fn set_text_field_bordered(self, bordered: bool);
     fn set_text_field_bezeled(self, bezeled: bool);
     fn set_slider_vertical(self, vertical: bool);
@@ -837,19 +841,114 @@ impl UikitNodeExt for UikitElem {
         }
     }
 
+    /// Scroll so the content point `y` (measured from the *adjusted*
+    /// content top — i.e. below any top `contentInset`) sits at the
+    /// viewport top. `y = 0.0` is "scrolled to the visual top". For
+    /// inset-free scroll views this is the raw content offset, so
+    /// existing callers are unaffected.
     fn set_scroll_offset_y(self, y: f64, animated: bool) {
         use objc2_ui_kit::UIScrollView;
         let Some(sv) = self.try_downcast::<UIScrollView>() else {
             return;
         };
+        let insets = sv.adjustedContentInset();
         let max_y = (sv.contentSize().height - sv.bounds().size.height
-            + sv.adjustedContentInset().bottom)
-            .max(0.0);
+            + insets.bottom)
+            .max(-insets.top);
         let target = objc2_foundation::NSPoint {
             x: 0.0,
-            y: y.clamp(0.0, max_y),
+            y: (y - insets.top).clamp(-insets.top, max_y),
         };
         sv.setContentOffset_animated(target, animated);
+    }
+
+    /// Set `UIScrollView.contentInset` (works for UITableView too —
+    /// it's how content clears overlaid bars while sticky section
+    /// headers pin below them). No-op on non-scroll views.
+    fn set_scroll_content_inset(
+        self,
+        top: f64,
+        left: f64,
+        bottom: f64,
+        right: f64,
+    ) {
+        use objc2_ui_kit::{UIEdgeInsets, UIScrollView};
+        let Some(sv) = self.try_downcast::<UIScrollView>() else {
+            return;
+        };
+        let was_at_top =
+            sv.contentOffset().y <= -sv.adjustedContentInset().top;
+        sv.setContentInset(UIEdgeInsets {
+            top,
+            left,
+            bottom,
+            right,
+        });
+        // Changing the inset doesn't move existing content. If the
+        // view was at (or above) its old visual top — always true for
+        // the at-build call — snap to the new visual top so content
+        // doesn't start hidden under the inset.
+        if was_at_top {
+            sv.setContentOffset(objc2_foundation::NSPoint {
+                x: sv.contentOffset().x,
+                y: -sv.adjustedContentInset().top,
+            });
+        }
+        // Match the scroll indicator to the content run.
+        sv.setVerticalScrollIndicatorInsets(UIEdgeInsets {
+            top,
+            left: 0.0,
+            bottom,
+            right: 0.0,
+        });
+    }
+
+    /// Fixed row height for a UITableView. Also zeroes
+    /// `estimatedRowHeight` so UIKit computes content size directly
+    /// from the fixed height instead of estimating. No-op on other
+    /// views.
+    fn set_table_row_height(self, height: f64) {
+        let Some(tv) = self.try_downcast::<objc2_ui_kit::UITableView>()
+        else {
+            return;
+        };
+        tv.setRowHeight(height);
+        tv.setEstimatedRowHeight(0.0);
+    }
+
+    /// Scroll a UITableView so `section` (including its header) sits
+    /// at the visual top, just under any top content inset. Uses
+    /// `rectForSection:` rather than `scrollToRowAtIndexPath:` so the
+    /// pinned section header lands fully visible above its first row.
+    /// Out-of-range sections are a no-op (an invalid index path would
+    /// raise an ObjC exception — fatal under `panic = "abort"`).
+    fn set_table_scroll_to_section(self, section: usize, animated: bool) {
+        let Some(tv) = self.try_downcast::<objc2_ui_kit::UITableView>()
+        else {
+            return;
+        };
+        let s = section as isize;
+        if s >= tv.numberOfSections() {
+            return;
+        }
+        let rect = tv.rectForSection(s);
+        self.set_scroll_offset_y(rect.origin.y, animated);
+    }
+
+    /// Toggle the system single-line separators on a UITableView.
+    /// The `<table_view>` default is off (leptos-hosted cells draw
+    /// their own chrome). No-op on other views.
+    fn set_table_separators(self, visible: bool) {
+        use objc2_ui_kit::UITableViewCellSeparatorStyle;
+        let Some(tv) = self.try_downcast::<objc2_ui_kit::UITableView>()
+        else {
+            return;
+        };
+        tv.setSeparatorStyle(if visible {
+            UITableViewCellSeparatorStyle::SingleLine
+        } else {
+            UITableViewCellSeparatorStyle::None
+        });
     }
 
     fn set_text_field_bordered(self, bordered: bool) {

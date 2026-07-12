@@ -43,6 +43,7 @@ pub mod navigation;
 pub mod spawner;
 pub mod storage;
 pub mod system;
+pub mod table;
 
 pub use color::{Color, SystemColor};
 pub use date::Date;
@@ -54,6 +55,7 @@ pub use key_event::KeyEvent;
 pub use make_view::UikitMakeView;
 pub use node::{UikitElem, UikitNodeExt};
 pub use storage::{local_storage, Storage, StorageError};
+pub use table::{TableRow, TableSection};
 pub use system::{open_url, resource_path, set_window_background};
 pub use event::Event;
 

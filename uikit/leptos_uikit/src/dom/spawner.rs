@@ -72,14 +72,17 @@ impl TaskFuture {
 }
 
 struct Task {
-    future: SendWrapper<RefCell<Option<TaskFuture>>>,
+    /// `Option` so [`Drop`] can move the wrapper out and defer its
+    /// destruction to the main queue — see the `Drop` impl. Always
+    /// `Some` while the task is live.
+    future: Option<SendWrapper<RefCell<Option<TaskFuture>>>>,
     queued: AtomicBool,
 }
 
 impl Task {
     fn new(fut: TaskFuture) -> Arc<Self> {
         Arc::new(Task {
-            future: SendWrapper::new(RefCell::new(Some(fut))),
+            future: Some(SendWrapper::new(RefCell::new(Some(fut)))),
             queued: AtomicBool::new(true),
         })
     }
@@ -90,11 +93,36 @@ impl Task {
         let waker: Waker = self.clone().into();
         let mut cx = Context::from_waker(&waker);
 
-        let mut slot = self.future.borrow_mut();
+        let Some(future) = self.future.as_ref() else {
+            return;
+        };
+        let mut slot = future.borrow_mut();
         if let Some(fut) = slot.as_mut() {
             match fut.poll(&mut cx) {
                 Poll::Ready(()) => *slot = None,
                 Poll::Pending => { /* will be re-polled by waker */ }
+            }
+        }
+    }
+}
+
+impl Drop for Task {
+    /// The task's `Waker` is a clone of the owning `Arc<Task>`, and
+    /// wakers legitimately travel to other threads (a `tokio::spawn`ed
+    /// job holds one registered by a bridged `JoinHandle`, then wakes
+    /// it from a worker thread). If such a thread drops the LAST
+    /// `Arc<Task>` reference — e.g. the final main-queue poll finishes
+    /// while the woken thread is still inside `wake()` — this Drop
+    /// runs off-main, and letting the `SendWrapper` field drop there
+    /// panics ("Dropped SendWrapper<T> variable from a thread
+    /// different to the one it has been created with"), which under
+    /// `panic = "abort"` kills the process. Ship the wrapper back to
+    /// the main queue instead; `SendWrapper<T>` is `Send`, and its
+    /// contents are only ever touched (and now destroyed) on main.
+    fn drop(&mut self) {
+        if let Some(fut) = self.future.take() {
+            if !fut.valid() {
+                DispatchQueue::main().exec_async(move || drop(fut));
             }
         }
     }

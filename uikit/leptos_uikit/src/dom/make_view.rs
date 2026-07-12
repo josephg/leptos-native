@@ -18,8 +18,8 @@ use objc2_ui_kit::{
     UIBlurEffect, UIButton, UIButtonType, UIColorWell, UIDatePicker,
     UIImageView, UILabel, UIProgressView, UIProgressViewStyle, UIScrollView,
     UISegmentedControl, UISlider, UIStepper, UISwitch, UITabBar,
-    UITextBorderStyle, UITextField, UITextInputTraits, UITextView, UIView,
-    UIViewContentMode, UIVisualEffectView,
+    UITableView, UITextBorderStyle, UITextField, UITextInputTraits,
+    UITextView, UIView, UIViewContentMode, UIVisualEffectView,
 };
 
 use crate::dom::objc_enums::BlurStyle;
@@ -57,6 +57,7 @@ pub trait UikitMakeView: Sized {
     fn create_color_well() -> (UikitElem, Retained<UIColorWell>);
     fn create_segmented_control() -> (UikitElem, Retained<UISegmentedControl>);
     fn create_scroll_view() -> (UikitElem, Retained<UIScrollView>);
+    fn create_table_view() -> (UikitElem, Retained<UITableView>);
     fn create_text_view() -> (UikitElem, Retained<UITextView>);
     fn create_tab_bar() -> (UikitElem, Retained<UITabBar>);
     fn create_blur_view(style: BlurStyle) -> (UikitElem, Retained<UIVisualEffectView>);
@@ -221,6 +222,78 @@ impl UikitMakeView for UikitElem {
 
         let n = UikitElem::from_view(view, s, meta);
         (n, scroll)
+    }
+
+    /// Sectioned native list — UITableView, `.plain` style (section
+    /// headers pin/float while scrolling). A **leaf** node: content
+    /// comes from the table driver (`dom::table`), not leptos
+    /// children. Configured for the leptos-hosted-cell model:
+    /// transparent, no separators, no selection, cells registered
+    /// under the shared reuse identifier. Content-inset adjustment is
+    /// `Never` because this port applies safe-area insets as padding
+    /// on the framework content root — letting UIKit adjust too would
+    /// double-inset the content and the header pin line.
+    fn create_table_view() -> (UikitElem, Retained<UITableView>) {
+        use objc2::ClassType;
+        use objc2_foundation::{NSObjectProtocol, NSString};
+        use objc2_ui_kit::{
+            UIScrollViewContentInsetAdjustmentBehavior, UITableViewCell,
+            UITableViewCellSeparatorStyle, UITableViewStyle,
+        };
+
+        let tv = UITableView::initWithFrame_style(
+            UITableView::alloc(mtm()),
+            zero_frame(),
+            UITableViewStyle::Plain,
+        );
+        tv.setBackgroundColor(None);
+        tv.setSeparatorStyle(UITableViewCellSeparatorStyle::None);
+        tv.setAllowsSelection(false);
+        tv.setContentInsetAdjustmentBehavior(
+            UIScrollViewContentInsetAdjustmentBehavior::Never,
+        );
+        // Kill the iOS 15+ default ~22pt gap above each section header.
+        tv.setSectionHeaderTopPadding(0.0);
+        // iOS 26's automatic scroll-edge effect re-hosts whatever pins
+        // at the content-inset edge into its "glass" treatment — a
+        // custom sticky header flashes inverted (white-on-black) while
+        // the sampled backdrop settles, then animates back. Apps
+        // drawing their own bar chrome over the table don't want the
+        // system effect at either edge. (API is iOS 26+; probe first.)
+        if tv.respondsToSelector(objc2::sel!(topEdgeEffect)) {
+            tv.topEdgeEffect().setHidden(true);
+            tv.bottomEdgeEffect().setHidden(true);
+        }
+        // Footers aren't part of the element's API; zero them out
+        // (estimated 0.0 = "don't estimate, ask once").
+        tv.setSectionFooterHeight(0.0);
+        tv.setEstimatedSectionFooterHeight(0.0);
+        unsafe {
+            tv.registerClass_forCellReuseIdentifier(
+                Some(UITableViewCell::class()),
+                &NSString::from_str("leptos_cell"),
+            );
+        }
+
+        let view: Retained<UIView> =
+            unsafe { Retained::cast_unchecked(tv.clone()) };
+        // Same Taffy contract as `<scroll_view>`: the app bounds the
+        // table (flex_grow in a bounded parent); UIKit lays out the
+        // inside.
+        let mut s = Style::default();
+        s.flex_direction = FlexDirection::Column;
+        s.flex_basis = Dimension::length(0.0);
+        s.min_size.height = Dimension::length(0.0);
+        s.overflow = taffy::Point {
+            x: taffy::Overflow::Hidden,
+            y: taffy::Overflow::Hidden,
+        };
+
+        let mut meta = IosMeta::default();
+        meta.is_table_view = true;
+
+        let n = UikitElem::from_view(view, s, meta);
+        (n, tv)
     }
 
     /// Multi-line text editing surface — UITextView, editable + selectable.

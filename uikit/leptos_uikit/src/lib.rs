@@ -143,6 +143,6 @@ pub mod prelude {
         local_storage, open_url, resource_path, set_interval,
         set_interval_with_handle, set_window_background, BlurStyle, Color,
         IntervalError, IntervalHandle, KeyEvent, Storage, StorageError,
-        UikitElem, UikitNodeExt,
+        TableRow, TableSection, UikitElem, UikitNodeExt,
     };
 }

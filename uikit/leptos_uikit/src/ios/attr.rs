@@ -23,7 +23,7 @@ pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, MaybeReactive}
 use crate::dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
     objc_enums::BlurStyle,
-    Color, Date, DatePickerStyle, TextAlignment,
+    Color, Date, DatePickerStyle, TableSection, TextAlignment,
 };
 
 /// Conversion trait so attribute setters can take either a bare
@@ -42,7 +42,7 @@ impl_pair!(
     String, bool, i32, f32, f64, usize, Dim,
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
     Color, Date, TextAlignment, DatePickerStyle, BlurStyle,
-    Option<Vec<u8>>, (f32, f32),
+    Option<Vec<u8>>, (f32, f32), Vec<TableSection>,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

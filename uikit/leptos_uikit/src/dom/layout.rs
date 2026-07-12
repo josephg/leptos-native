@@ -55,6 +55,11 @@ pub struct IosBackend;
 #[derive(Clone, Default)]
 pub struct IosMeta {
     pub is_scroll_view: bool,
+    /// UITableView leaf. Deliberately NOT `is_scroll_view`: the
+    /// scroll-view second layout pass and the contentSize fixup must
+    /// both skip it — UITableView manages its own contentSize and
+    /// subview layout internally.
+    pub is_table_view: bool,
 }
 
 thread_local! {

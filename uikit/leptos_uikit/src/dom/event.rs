@@ -52,11 +52,12 @@ static LIVE_TEXT_VIEW_DELEGATES: AtomicUsize = AtomicUsize::new(0);
 
 /// Sentinel embedded in each handler's ivars. Drop runs as part of
 /// the ObjC `dealloc` synthesised by `define_class!`, decrementing
-/// the matching counter.
-struct LiveTracker(&'static AtomicUsize);
+/// the matching counter. Shared with the sibling delegate modules
+/// (`table.rs`) so their live counts follow the same convention.
+pub(crate) struct LiveTracker(&'static AtomicUsize);
 
 impl LiveTracker {
-    fn new(counter: &'static AtomicUsize) -> Self {
+    pub(crate) fn new(counter: &'static AtomicUsize) -> Self {
         counter.fetch_add(1, Ordering::Relaxed);
         Self(counter)
     }
@@ -97,6 +98,10 @@ pub struct IosNodeHandlers {
     pub(crate) gesture_targets: Vec<Retained<ActionTarget>>,
     /// UITabBar selection delegate installed by `on_tab_select`.
     pub(crate) tab_bar_delegate: Option<Retained<TabBarDelegate>>,
+    /// UITableView dataSource + delegate installed by
+    /// `table::install_table_driver`. Both UITableView slots are
+    /// weak; this is the strong retain.
+    pub(crate) table_driver: Option<Retained<crate::dom::table::TableDriver>>,
 }
 
 impl IosNodeHandlers {
@@ -157,6 +162,10 @@ pub fn disconnect_view_handlers(view: &UIView) {
     }
     if let Some(tb) = any.downcast_ref::<UITabBar>() {
         tb.setDelegate(None);
+    }
+    if let Some(tv) = any.downcast_ref::<objc2_ui_kit::UITableView>() {
+        tv.setDataSource(None);
+        unsafe { tv.setDelegate(None) };
     }
     // Gesture recognizers: UIView retains its recognizer list. We
     // could iterate and `removeGestureRecognizer` each, but the

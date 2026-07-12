@@ -35,6 +35,7 @@ objc2-foundation = { version = "0.3", features = [
   "NSURL",
   "NSDictionary",
   "NSEnumerator",
+  "NSIndexPath",
 ] }
 objc2-ui-kit = { version = "0.3", features = [
   "alloc",
@@ -78,6 +79,10 @@ objc2-ui-kit = { version = "0.3", features = [
   "UITextInputTraits",
   "UITabBar",
   "UITabBarItem",
+  "UITableView",
+  "UITableViewCell",
+  "UITableViewHeaderFooterView",
+  "NSIndexPath_UIKitAdditions",
   "UIBarItem",
   "UIBarCommon",
   "UIVisualEffectView",
