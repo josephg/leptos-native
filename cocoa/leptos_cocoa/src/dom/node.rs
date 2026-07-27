@@ -25,7 +25,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use leptos_native::renderer::{Backend, Node};
 use send_wrapper::SendWrapper;
 use taffy::Style;
-use crate::dom::{event, layout, Color, Date, DatePickerStyle, KeyEvent, LineBreak, SegmentStyle, TextAlignment};
+use crate::dom::{canvas_view::CanvasView, event, layout, CanvasPoint, Color, Date, DatePickerStyle, DrawCmd, KeyEvent, LineBreak, SegmentStyle, TextAlignment};
 use super::layout::CocoaBackend;
 
 /// The macOS port's node handle: a [`Node`] tagged with [`CocoaBackend`].
@@ -156,6 +156,11 @@ pub trait CocoaNodeExt: Copy {
     fn on_text_view_change(self, cb: impl FnMut(String) + 'static);
     fn set_text_view_editable(self, editable: bool);
     fn text_view_value(self) -> Option<String>;
+    fn set_canvas_scene(self, cmds: Vec<DrawCmd>);
+    fn canvas_scene(self) -> Vec<DrawCmd>;
+    fn on_canvas_mouse_down(self, cb: impl FnMut(CanvasPoint) + 'static);
+    fn on_canvas_mouse_drag(self, cb: impl FnMut(CanvasPoint) + 'static);
+    fn on_canvas_mouse_up(self, cb: impl FnMut(CanvasPoint) + 'static);
     fn focus(self) -> bool;
     fn blur(self) -> bool;
     fn create_text(content: &str) -> Self;
@@ -1188,6 +1193,49 @@ impl CocoaNodeExt for CocoaElem {
         let any_doc: &AnyObject = &doc;
         let tv = any_doc.downcast_ref::<objc2_app_kit::NSTextView>()?;
         Some(tv.string().to_string())
+    }
+
+    /// Replace a `<canvas>`'s retained scene. Diff-guarded inside
+    /// `CanvasView::set_scene` (identical command lists don't
+    /// invalidate). No relayout — drawing never affects layout.
+    /// No-op on non-canvas views.
+    fn set_canvas_scene(self, cmds: Vec<DrawCmd>) {
+        if let Some(canvas) = self.try_downcast::<CanvasView>() {
+            canvas.set_scene(cmds);
+        }
+    }
+
+    /// Snapshot a `<canvas>`'s retained scene. Empty for non-canvas.
+    fn canvas_scene(self) -> Vec<DrawCmd> {
+        self.try_downcast::<CanvasView>()
+            .map(|c| c.scene())
+            .unwrap_or_default()
+    }
+
+    /// Wire a canvas mouse-down handler (canvas-local top-left-origin
+    /// coordinates). Single handler per canvas — a second install
+    /// panics (see `CanvasView::set_on_mouse_down`). No-op on
+    /// non-canvas views.
+    fn on_canvas_mouse_down(self, cb: impl FnMut(CanvasPoint) + 'static) {
+        if let Some(canvas) = self.try_downcast::<CanvasView>() {
+            canvas.set_on_mouse_down(Box::new(cb));
+        }
+    }
+
+    /// Wire a canvas mouse-drag handler. Single handler per canvas.
+    /// No-op on non-canvas views.
+    fn on_canvas_mouse_drag(self, cb: impl FnMut(CanvasPoint) + 'static) {
+        if let Some(canvas) = self.try_downcast::<CanvasView>() {
+            canvas.set_on_mouse_drag(Box::new(cb));
+        }
+    }
+
+    /// Wire a canvas mouse-up handler. Single handler per canvas.
+    /// No-op on non-canvas views.
+    fn on_canvas_mouse_up(self, cb: impl FnMut(CanvasPoint) + 'static) {
+        if let Some(canvas) = self.try_downcast::<CanvasView>() {
+            canvas.set_on_mouse_up(Box::new(cb));
+        }
     }
 
     /// Make this element the window's first responder (focus).

@@ -13,10 +13,10 @@
 
 // Direct re-exports for tags that map 1:1 to a Cocoa builder.
 pub use crate::cocoa::element::{
-    button, checkbox, color_well, date_picker, grid, hstack, image_view, label,
-    pop_up_button, progress_indicator, scroll_view, secure_text_field,
-    segmented_control, slider, stack, stepper, text_field, text_view, toggle,
-    vstack,
+    button, canvas, checkbox, color_well, date_picker, grid, hstack,
+    image_view, label, pop_up_button, progress_indicator, scroll_view,
+    secure_text_field, segmented_control, slider, stack, stepper, text_field,
+    text_view, toggle, vstack,
 };
 
 // Native NSToolbar-backed `<toolbar>` + items. Lives in its own

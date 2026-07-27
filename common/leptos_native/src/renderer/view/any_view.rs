@@ -101,7 +101,22 @@ impl<R: Backend> Render<R> for AnyView<R> {
         // the existing state. Unmount it, build the new view
         // fresh, and splice it in where the old one lived.
         let mut new_state = self.build();
-        state.inner.insert_before_this(&mut new_state);
+        let spliced = state.inner.insert_before_this(&mut new_state);
+        // If the old view has no presence in the UI there is no anchor
+        // to splice before, and the rebuilt view is silently dropped —
+        // a detached island that never lays out or draws. The classic
+        // way to hit this is a branch closure whose empty arm returns a
+        // bare `()`: `()` mounts nothing, so the swap BACK to real
+        // content has nothing to splice against. Render a real
+        // placeholder (an empty `stack()`, or `<Show>`'s `EmptyBranch`)
+        // instead.
+        debug_assert!(
+            spliced,
+            "AnyView::rebuild: the old view has no UI presence to splice \
+             the rebuilt view before, so the new view was dropped \
+             unmounted. An empty branch must render a real placeholder \
+             view (e.g. an empty `stack()`), not `()`."
+        );
         state.inner.unmount();
         *state = new_state;
     }

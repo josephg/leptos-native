@@ -7,7 +7,7 @@
 //! them.
 
 use super::attr::{install, IntoMaybeReactive, MaybeReactive};
-use crate::dom::{event, layout::*, CocoaElem, CocoaMakeView, CocoaNodeExt, Color, Date, DatePickerStyle, LineBreak, SegmentStyle, TextAlignment};
+use crate::dom::{event, layout::*, CocoaElem, CocoaMakeView, CocoaNodeExt, Color, Date, DatePickerStyle, DrawCmd, LineBreak, SegmentStyle, TextAlignment};
 use crate::CocoaBackend;
 use reactive_graph::effect::RenderEffect;
 use leptos_native::node_ref::NodeRef;
@@ -3256,6 +3256,91 @@ where
 
 
 // ---------------------------------------------------------------------
+// canvas() — retained-scene drawing surface (CanvasView) with mouse
+// input. `scene=` is the reactive command list; `on:mouse_down` /
+// `on:mouse_drag` / `on:mouse_up` deliver `CanvasPoint`s in
+// canvas-local top-left-origin coordinates.
+// ---------------------------------------------------------------------
+
+pub struct Canvas {
+    /// Retained draw-command list. Reactive — a `Fn() -> Vec<DrawCmd>`
+    /// closure re-runs on signal change; `CanvasView::set_scene`
+    /// diffs before invalidating, so no-change re-runs don't redraw.
+    scene: Option<MaybeReactive<Vec<DrawCmd>>>,
+    common: Common,
+}
+
+/// Retained-scene drawing surface backed by a flipped NSView
+/// subclass ([`crate::dom::CanvasView`]). No intrinsic size — give it
+/// `flex_grow` or an explicit width/height, like the web `<canvas>`
+/// with CSS sizing.
+pub fn canvas() -> Canvas {
+    Canvas {
+        scene: None,
+        common: Common::default(),
+    }
+}
+
+impl Canvas {
+    /// `scene=...` — the full list of draw commands to render, in
+    /// paint order. Accepts a bare `Vec<DrawCmd>` or a reactive
+    /// `Fn() -> Vec<DrawCmd>` closure.
+    pub fn scene<V>(mut self, v: V) -> Self
+    where
+        V: IntoMaybeReactive<Vec<DrawCmd>>,
+    {
+        self.scene = Some(v.into_maybe_reactive());
+        self
+    }
+}
+
+// The canvas is the only element that exposes raw mouse events —
+// AppKit controls own their mouse tracking (a button's mouseDown IS
+// the click), so the mouse descriptors are deliberately not
+// supported anywhere else.
+impl crate::event_macos::SupportsEvent<crate::event_macos::MouseDownEvent>
+    for Canvas
+{
+}
+impl crate::event_macos::SupportsEvent<crate::event_macos::MouseDragEvent>
+    for Canvas
+{
+}
+impl crate::event_macos::SupportsEvent<crate::event_macos::MouseUpEvent>
+    for Canvas
+{
+}
+
+impl_common!(Canvas);
+
+impl Render<CocoaBackend> for Canvas
+where
+{
+    type State = ElementState<()>;
+
+    fn build(self) -> Self::State {
+        let (el, _) = CocoaElem::create_canvas();
+        let mut effects = Vec::new();
+
+        wire_attr!(
+            effects, el, self.scene,
+            |n: CocoaElem, cmds: Vec<DrawCmd>| n.set_canvas_scene(cmds)
+        );
+
+        self.common.finish(el, &mut effects);
+
+
+        ElementState {
+            el,
+            _effects: effects,
+            children: (),
+        }
+    }
+
+    fn rebuild(self, _state: &mut Self::State) {}
+}
+
+// ---------------------------------------------------------------------
 // AddAnyAttr<Dom> for the 13 leaf builders. Routes spread attrs (e.g.
 // `<MyComponent on:click=...>`) onto the existing `directives: Vec<...>`
 // post-build hook, which gets drained in `Render::build` after the
@@ -3291,7 +3376,7 @@ macro_rules! impl_add_any_attr_for_leaf {
 impl_add_any_attr_for_leaf!(
     Button, Checkbox, Slider, PopUpButton, Label, TextField,
     DatePicker, Stepper, ProgressIndicator, ColorWell,
-    SegmentedControl, ImageView, TextView,
+    SegmentedControl, ImageView, TextView, Canvas,
 );
 
 // Container builders (Stack, Block, ScrollView) — no-op AddAnyAttr.

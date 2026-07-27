@@ -24,7 +24,7 @@
 //! `cocoa/dom/tests/` can drive these directly without depending
 //! on the renderer crate.
 
-use crate::dom::{event::NodeHandlers, flipped_view::FlippedView, layout, layout::{
+use crate::dom::{canvas_view::CanvasView, event::NodeHandlers, flipped_view::FlippedView, layout, layout::{
     build_scroll_wrapper_style, scroll_view_document, CocoaBackend,
     CocoaMeta, Dimension, FlexDirection, ScrollAxis,
     Style
@@ -80,6 +80,7 @@ pub trait CocoaMakeView: Sized {
     fn create_text_view() -> (CocoaElem, Retained<NSScrollView>);
     fn create_scroll_view() -> (CocoaElem, Retained<NSScrollView>);
     fn create_grid() -> CocoaElem;
+    fn create_canvas() -> (CocoaElem, Retained<CanvasView>);
 }
 
 impl CocoaMakeView for CocoaElem {
@@ -440,5 +441,24 @@ impl CocoaMakeView for CocoaElem {
         let mut style = Style::default();
         style.display = layout::Display::Grid;
         CocoaElem::from_view(view, style, CocoaMeta::default())
+    }
+
+    /// `<canvas>` — retained-scene drawing surface (see
+    /// [`crate::dom::canvas_view`]). No intrinsic content size: a bare
+    /// CanvasView measures 0×0 (NSView's `NSViewNoIntrinsicMetric` is
+    /// clamped to 0 in `measure_leaf_size`), so the parent decides the
+    /// size via `flex_grow` / explicit width+height — same contract as
+    /// the web `<canvas>` with CSS sizing.
+    fn create_canvas() -> (CocoaElem, Retained<CanvasView>) {
+        let mtm = mtm();
+        let canvas = CanvasView::new(mtm);
+        let view: Retained<NSView> =
+            unsafe { Retained::cast_unchecked(canvas.clone()) };
+        let el = CocoaElem::from_view(
+            view,
+            Style::default(),
+            CocoaMeta::default(),
+        );
+        (el, canvas)
     }
 }

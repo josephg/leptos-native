@@ -215,6 +215,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas_demo_cocoa"
+version = "0.1.0"
+dependencies = [
+ "leptos_cocoa",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"

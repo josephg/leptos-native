@@ -25,7 +25,8 @@ pub use leptos_native::renderer::attrs::{install, AlignSelf, Dim, Edges, MaybeRe
 use crate::dom::{
     layout::{AlignItems, FlexDirection, FlexWrap, JustifyContent},
     toolbar::{ToolbarDisplayMode, WindowToolbarStyle},
-    Color, Date, DatePickerStyle, Icon, LineBreak, SegmentStyle, TextAlignment,
+    Color, Date, DatePickerStyle, DrawCmd, Icon, LineBreak, SegmentStyle,
+    TextAlignment,
 };
 
 /// Conversion trait so attribute setters can take either a bare
@@ -45,7 +46,7 @@ impl_pair!(
     FlexDirection, JustifyContent, AlignItems, FlexWrap,
     Color, Date, TextAlignment, LineBreak, SegmentStyle, DatePickerStyle,
     ToolbarDisplayMode, WindowToolbarStyle, Icon,
-    Option<Vec<u8>>,
+    Option<Vec<u8>>, Vec<DrawCmd>,
 );
 
 // Conversion sugars that don't fit the static-T-for-T pattern.

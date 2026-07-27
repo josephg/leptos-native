@@ -48,6 +48,7 @@ default-members = [
 
   "cocoa/examples/async_derived",
   "cocoa/examples/bind_tuple_form",
+  "cocoa/examples/canvas_demo",
   "cocoa/examples/checkbox",
   "cocoa/examples/component_event_test",
   "cocoa/examples/counter",

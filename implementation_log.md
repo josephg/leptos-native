@@ -5,6 +5,121 @@ especially the ones we deliberately deferred. Newest entries at the top.
 
 ---
 
+## 2026-07-13 — scroll_view scroll range regression + fractional-measure label truncation (cocoa)
+
+Two layout fixes found while building an external app (schemaboi's
+`sb-viewer`), both in `dom/layout.rs`.
+
+**`<scroll_view>` had no scroll range** — every scroll gesture
+rubber-banded back (all three axis modes of the `scroll_view_cocoa`
+example affected). The scrollable range of an NSScrollView is
+`documentView.frame` vs the clip view's bounds, and the documentView's
+frame was coming out of the layout pass at 0 on the scrolling axis
+(e.g. `376x0` for the vertical example, content drawn 538 tall).
+Why: the single-pass refactor's document wrapper is an
+absolutely-positioned Taffy node whose `auto` size is supposed to
+shrink-wrap the content — but content children are mirrored into
+Taffy under the *scroll view node itself* (`attach_native`: "core
+mirrors the edge into Taffy under `parent` itself"), so the wrapper
+has no Taffy children at all, and abspos `auto` with no children
+resolves to 0. Content still *drew* because the FlippedView
+documentView doesn't clip its subviews — which made the bug look like
+an input problem rather than a sizing one.
+
+Fix: `fixup_scroll_document_frames`, run after `apply_frames` in
+`compute_layout_inner`. For each `is_scroll_view` node it computes the
+envelope of the scroll node's Taffy children (excluding the wrapper;
+their layouts are relative to the scroll node, which shares its origin
+with the documentView), floors it at the clip-view bounds so
+viewport-locked axes stay pinned, and `setFrameSize:`s the
+documentView. Scroll position lives in the clip view's bounds origin,
+so the resize doesn't disturb it. Verified with synthesized
+scroll-wheel CGEvents: content scrolls and holds position in the
+example and in sb-viewer.
+
+Known gap: for `ScrollAxis::Both`, the *content* is still laid out
+against the viewport's cross-axis width (the "Both" example's grid
+computes 240 wide inside a 240-wide viewport, squares overflowing
+their rows), so horizontal range can be smaller than the visually
+overflowing content. The doc-frame fix is correct for whatever Taffy
+lays out; making content lay out at max-content on both axes is a
+separate change.
+
+**Labels nondeterministically truncated their last 1–2 characters**
+("osdemo.drawing" → "osdemo.drawi…"), varying per layout pass even for
+identical text. `measure_leaf_size` returns fractional text widths
+(`sizeToFit`), and Taffy's final rounding computes a frame as
+`round(x+w)−round(x)` — which can shave up to a point off a fractional
+width depending on the node's x position. NSTextField responds to any
+shortfall by tail-truncating. Fix: `ceil()` measured leaf sizes in
+`measure_leaf_size::axis` — integral measurements survive positional
+rounding exactly. (Apps stacking multiple labels in a row — colored
+text-run segments — hit this constantly; single-label rows almost
+never do, which is why the examples never showed it.)
+
+---
+
+## 2026-07-12 — `<canvas>` retained-scene drawing surface + file panels (cocoa)
+
+Two additions, macOS-only.
+
+**`<canvas>`** (`dom/canvas_view.rs`, builder in `cocoa/element.rs`):
+a flipped NSView subclass that stores a `Vec<DrawCmd>` in an ivar and
+replays it with NSBezierPath in `drawRect:`. Retained-mode by design —
+the reactive `scene=` attribute regenerates the whole command list and
+`CanvasView::set_scene` diffs (`Vec<DrawCmd>: PartialEq`) before
+`setNeedsDisplay`, so effect re-runs that produce an identical scene
+don't repaint. All coordinates (draw commands AND the
+`CanvasPoint` mouse payloads) are top-left-origin y-down; flippedness
+makes both fall out for free (`drawRect:` draws in flipped coords,
+`convertPoint:fromView:nil` converts into them, and `drawAtPoint:`'s
+point is the text's top-left in a flipped view).
+
+Non-obvious decisions:
+
+- **Mouse handlers live in the view's ivars**, not `NodeHandlers`.
+  There's no ObjC delegate/target object pointing back at Rust-owned
+  memory — the closures are *part of* the view — so the
+  disconnect-before-release dance `NodeHandlers::Drop` does for
+  target/action is unnecessary; a lingering AppKit retain on the view
+  keeps the closures alive with it and can never dispatch into freed
+  memory. Single handler per slot; a second install panics (same rule
+  as `on_control_action`).
+- **`mouse_down`/`mouse_drag`/`mouse_up` were added to the macro's
+  `TYPED_EVENTS` table** (`common/leptos_macro/src/view/mod.rs`) —
+  same precedent as the native-only `action`/`commit` entries.
+  Without a table entry the macro routes unknown names to the
+  (nonexistent on native) `Custom::new(...)` path. Full
+  `EventDescriptor`/`PendingHandler`/`SupportsEvent` integration per
+  the add-an-event checklist; `SupportsEvent` impls exist for `Canvas`
+  only — AppKit controls own their mouse tracking (a button's
+  mouseDown *is* the click), so raw mouse events elsewhere would fight
+  the control.
+- **No intrinsic size**: a bare CanvasView measures 0×0 (NSView's
+  `NSViewNoIntrinsicMetric` clamps to 0 in `measure_leaf_size`);
+  callers size it via `flex_grow` / explicit width+height, same
+  contract as web `<canvas>` under CSS sizing.
+- `acceptsFirstMouse:` returns true so a click into an unfocused
+  window draws immediately instead of being swallowed as
+  activate-only.
+
+**File panels** (`cocoa/panels.rs`): blocking `save_panel(default_name,
+&[ext])` / `open_panel(&[ext])` → `Option<PathBuf>` over
+`NSSavePanel`/`NSOpenPanel` `runModal`. Extension filtering uses the
+deprecated `setAllowedFileTypes:` (plain extension strings) rather
+than `setAllowedContentTypes:` — the UTType API needs
+`objc2-uniform-type-identifiers`, which the workspace doesn't depend
+on. Swap when that crate joins. Empty extension list leaves the
+filter nil (an empty `allowedFileTypes` array raises ObjC-side).
+
+Tests: `cocoa/leptos_cocoa/tests/canvas.rs` (scene storage static +
+reactive, mouse dispatch via `fire_mouse_*_for_test` hooks — a real
+`mouseDown:` needs an NSEvent, which can't be synthesised without a
+window, same reason button tests invoke `actionFired:` directly).
+Example: `cocoa/examples/canvas_demo`.
+
+---
+
 ## 2026-07-03 — `insert_node` must schedule a relayout (cross-cutting)
 
 `Node::insert_node` (`common/leptos_native/src/renderer/node.rs`) drove

@@ -199,7 +199,7 @@ pub mod prelude {
         attr::{IntoMaybeReactive, MaybeReactive},
         bind::{BindAttribute, IntoSignal},
         element::{
-            button, grid, hstack, label, stack, text_field, vstack,
+            button, canvas, grid, hstack, label, stack, text_field, vstack,
             // Shadow the renderer-common `WithText` (re-exported via
             // `crate::core::prelude::*` above) with the port-local
             // one. The renderer trait is generic over `<C, A>` and
@@ -246,12 +246,16 @@ pub mod prelude {
     // (`use:directive=fn` calls `fn(el: Element)`; `NodeRef::get()` →
     // `Option<Element>`).
     pub use crate::dom::{
-        local_storage, set_interval, set_interval_with_handle, Color, Date,
-        DatePickerStyle, Icon, IntervalError, IntervalHandle,
-        KeyEvent, LineBreak, SegmentStyle, Storage, StorageError, TextAlignment,
+        local_storage, set_interval, set_interval_with_handle, CanvasPoint,
+        Color, Date, DatePickerStyle, DrawCmd, Icon, IntervalError,
+        IntervalHandle, KeyEvent, LineBreak, SegmentStyle, Storage,
+        StorageError, TextAlignment,
     };
     pub use crate::dom::layout::ScrollAxis;
     pub use crate::cocoa::element::IntrinsicWidth;
+    // Modal file dialogs. Blocking — call from event handlers on the
+    // main thread.
+    pub use crate::cocoa::panels::{open_panel, save_panel};
     // Programmatic shutdown. Wire to a Quit menu item's on:action,
     // or call from anywhere on the main thread.
     pub use crate::dom::app::{quit, set_quit_on_last_window_close};

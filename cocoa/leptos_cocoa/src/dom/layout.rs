@@ -568,8 +568,74 @@ fn compute_layout_inner(
         apply_frames_descendants_only(root_id);
     }
 
+    fixup_scroll_document_frames(root_id);
+
     #[cfg(feature = "debug-overlay")]
     super::debug_overlay::mark_overlays_dirty();
+}
+
+/// Size each `<scroll_view>`'s documentView to the envelope of the
+/// scroll view's laid-out content children.
+///
+/// The scrollable range of an NSScrollView is defined by
+/// `documentView.frame` vs the clip view's bounds. The documentView is
+/// backed by the wrapper Taffy node, but content children are mirrored
+/// into Taffy under the *scroll view node itself* (see `attach_native`),
+/// so the wrapper has no children and its absolutely-positioned `auto`
+/// size resolves to 0 on the scrolling axis. The content still *draws*
+/// (the FlippedView documentView doesn't clip its subviews), but with a
+/// zero-height document every scroll gesture just rubber-bands back.
+///
+/// Runs after `apply_frames`: computes the content envelope from the
+/// scroll node's Taffy children (their layouts are relative to the
+/// scroll node, which shares its origin with the documentView), floors
+/// it at the clip-view bounds so viewport-locked axes stay pinned, and
+/// sets the documentView's frame size. Scroll position lives in the
+/// clip view's bounds origin, so resizing the document here does not
+/// disturb it.
+fn fixup_scroll_document_frames(root: NodeId) {
+    fn visit(id: NodeId) {
+        let children = CocoaBackend::children(id);
+        let wrapper = CocoaBackend::meta(id).and_then(|m| {
+            if m.is_scroll_view {
+                m.child_taffy_parent
+            } else {
+                None
+            }
+        });
+        if let Some(wrapper_id) = wrapper {
+            let mut w = 0.0f32;
+            let mut h = 0.0f32;
+            for &c in children.iter().filter(|&&c| c != wrapper_id) {
+                if let Some(l) = CocoaBackend::layout(c) {
+                    w = w.max(l.location.x + l.size.width);
+                    h = h.max(l.location.y + l.size.height);
+                }
+            }
+            if let Some(view) = CocoaBackend::view(wrapper_id) {
+                let doc: Retained<NSView> = (*view).clone();
+                let (mut w, mut h) = (w as f64, h as f64);
+                if let Some(clip) = unsafe { doc.superview() } {
+                    let clip_bounds = clip.bounds().size;
+                    w = w.max(clip_bounds.width);
+                    h = h.max(clip_bounds.height);
+                }
+                let current = doc.frame().size;
+                if (current.width - w).abs() > 0.5
+                    || (current.height - h).abs() > 0.5
+                {
+                    doc.setFrameSize(NSSize::new(w, h));
+                    if layout_debug_enabled() {
+                        eprintln!("  [scroll-doc] {:p} <- {w:.0}x{h:.0}", &*doc);
+                    }
+                }
+            }
+        }
+        for k in children {
+            visit(k);
+        }
+    }
+    visit(root);
 }
 
 /// Warn (once per process) when a `<scroll_view>` ends up with a
@@ -591,7 +657,12 @@ fn warn_zero_height_scroll_views(root: NodeId) {
         let is_sv = CocoaBackend::meta(id)
             .map(|m| m.is_scroll_view)
             .unwrap_or(false);
-        if is_sv {
+        // A scroll view that is display:none (`hidden=true`) is *meant*
+        // to lay out at zero — don't warn until it's actually shown.
+        let displayed = CocoaBackend::style(id)
+            .map(|s| s.display != Display::None)
+            .unwrap_or(true);
+        if is_sv && displayed {
             if let Some(layout) = CocoaBackend::layout(id) {
                 let has_children =
                     !CocoaBackend::children(id).is_empty();
@@ -735,8 +806,16 @@ fn measure_leaf_size(
         if let Some(k) = known {
             return k;
         }
-        let v = measured_v as f32;
         // NSViewNoIntrinsicMetric is -1; clamp to 0.
+        //
+        // Ceil to whole points: Taffy's final rounding computes a node's
+        // frame as `round(x + w) - round(x)`, which can shave a fraction
+        // off a fractional measurement depending on where the node lands.
+        // NSTextField reacts to even a 0.1pt shortfall by tail-truncating
+        // ("osdemo.drawing" → "osdemo.drawi…"), and *which* labels lost a
+        // fraction varied per layout pass. Integral measurements survive
+        // that rounding exactly.
+        let v = (measured_v as f32).ceil();
         if v < 0.0 { 0.0 } else { v }
     }
 

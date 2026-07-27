@@ -896,7 +896,7 @@ fn attribute_value(
 }
 
 // Keep list alphabetized for binary search
-const TYPED_EVENTS: [&str; 129] = [
+const TYPED_EVENTS: [&str; 132] = [
     "DOMContentLoaded",
     "abort",
     // Native-only: fired by `<menu_item>` when activated via mouse,
@@ -963,6 +963,13 @@ const TYPED_EVENTS: [&str; 129] = [
     "lostpointercapture",
     "message",
     "messageerror",
+    // Native-only: raw mouse input on `<canvas>` (cocoa `CanvasView`
+    // mouseDown:/mouseDragged:/mouseUp:). Payload is a canvas-local
+    // top-left-origin point. Distinct from the web's "mousedown"/
+    // "mouseup" (which have no native mapping here).
+    "mouse_down",
+    "mouse_drag",
+    "mouse_up",
     "mousedown",
     "mouseenter",
     "mouseleave",

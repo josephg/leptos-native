@@ -28,6 +28,7 @@
 #[cfg(feature = "animation")]
 pub mod animation;
 pub mod app;
+pub mod canvas_view;
 pub mod color;
 #[cfg(feature = "debug-overlay")]
 pub mod debug_overlay;
@@ -48,6 +49,7 @@ pub mod storage;
 pub mod toolbar;
 pub mod window;
 
+pub use canvas_view::{CanvasPoint, CanvasView, DrawCmd};
 pub use color::Color;
 pub use date::Date;
 pub use icon::Icon;

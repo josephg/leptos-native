@@ -78,7 +78,17 @@ where
     fn rebuild(self, state: &mut Self::State) {
         let new = self.build();
         let mut old = std::mem::replace(state, new);
-        old.insert_before_this(state);
+        let spliced = old.insert_before_this(state);
+        // Same silent-drop hazard as `AnyView::rebuild`: no anchor means
+        // the replacement effect's view never mounts. See the comment
+        // there — empty branches need a real placeholder view, not `()`.
+        debug_assert!(
+            spliced,
+            "reactive closure rebuild: the old view has no UI presence to \
+             splice the rebuilt view before, so the new view was dropped \
+             unmounted. An empty branch must render a real placeholder \
+             view (e.g. an empty `stack()`), not `()`."
+        );
         old.unmount();
     }
 }

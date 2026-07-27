@@ -19,7 +19,7 @@
 // Event marker types and descriptors
 // ---------------------------------------------------------------------
 
-use crate::dom::{CocoaElem, CocoaNodeExt, KeyEvent};
+use crate::dom::{CanvasPoint, CocoaElem, CocoaNodeExt, KeyEvent};
 
 /// Marker type for the click event (NSButton target/action).
 pub struct ClickEvent;
@@ -74,6 +74,26 @@ pub const keydown: KeyDownEvent = KeyDownEvent;
 /// the keydown/keyup overlap.
 pub struct KeyUpEvent;
 pub const keyup: KeyUpEvent = KeyUpEvent;
+
+/// Marker type for mouse-down on a `<canvas>`. Payload is a
+/// [`CanvasPoint`] in canvas-local coordinates (top-left origin,
+/// y-down). Only `<canvas>` accepts the mouse events — AppKit
+/// controls own their mouse handling (a button's mouseDown *is* the
+/// click), so exposing raw mouse events there would fight the
+/// control's own tracking.
+pub struct MouseDownEvent;
+pub const mouse_down: MouseDownEvent = MouseDownEvent;
+
+/// Marker type for mouse-drag on a `<canvas>` — fires repeatedly
+/// while the mouse moves with the button held. See
+/// [`MouseDownEvent`] for the payload/coordinate contract.
+pub struct MouseDragEvent;
+pub const mouse_drag: MouseDragEvent = MouseDragEvent;
+
+/// Marker type for mouse-up on a `<canvas>`. See [`MouseDownEvent`]
+/// for the payload/coordinate contract.
+pub struct MouseUpEvent;
+pub const mouse_up: MouseUpEvent = MouseUpEvent;
 
 /// Marker type for the menu-item `action` event — fires when the
 /// user picks a `<menu_item>` (mouse, keyboard shortcut, voice
@@ -185,6 +205,36 @@ impl EventDescriptor for KeyUpEvent {
     }
 }
 
+impl EventDescriptor for MouseDownEvent {
+    type EventType = CanvasPoint;
+    fn into_pending<F>(handler: F) -> PendingHandler
+    where
+        F: FnMut(CanvasPoint) + Send + 'static,
+    {
+        PendingHandler::MouseDown(Box::new(handler))
+    }
+}
+
+impl EventDescriptor for MouseDragEvent {
+    type EventType = CanvasPoint;
+    fn into_pending<F>(handler: F) -> PendingHandler
+    where
+        F: FnMut(CanvasPoint) + Send + 'static,
+    {
+        PendingHandler::MouseDrag(Box::new(handler))
+    }
+}
+
+impl EventDescriptor for MouseUpEvent {
+    type EventType = CanvasPoint;
+    fn into_pending<F>(handler: F) -> PendingHandler
+    where
+        F: FnMut(CanvasPoint) + Send + 'static,
+    {
+        PendingHandler::MouseUp(Box::new(handler))
+    }
+}
+
 impl EventDescriptor for ActionEvent {
     type EventType = ();
     fn into_pending<F>(mut handler: F) -> PendingHandler
@@ -242,6 +292,12 @@ pub enum PendingHandler {
     Blur(Box<dyn FnMut() + Send + 'static>),
     KeyDown(Box<dyn FnMut(KeyEvent) + Send + 'static>),
     KeyUp(Box<dyn FnMut(KeyEvent) + Send + 'static>),
+    /// Canvas mouse events — payload is a [`CanvasPoint`] in
+    /// canvas-local top-left-origin coordinates. Installed via
+    /// `Element::on_canvas_mouse_*`, which no-op on non-canvas views.
+    MouseDown(Box<dyn FnMut(CanvasPoint) + Send + 'static>),
+    MouseDrag(Box<dyn FnMut(CanvasPoint) + Send + 'static>),
+    MouseUp(Box<dyn FnMut(CanvasPoint) + Send + 'static>),
     /// Menu-item activation — routed by `MenuItem::build` to
     /// `cocoa_dom::menu::MenuItem::set_action`, *not* by
     /// [`PendingHandler::apply_to`] (which targets NSView-backed
@@ -270,6 +326,9 @@ impl PendingHandler {
             PendingHandler::Blur(cb) => el.on_text_blur(cb),
             PendingHandler::KeyDown(cb) => el.on_text_keydown(cb),
             PendingHandler::KeyUp(cb) => el.on_text_keyup(cb),
+            PendingHandler::MouseDown(cb) => el.on_canvas_mouse_down(cb),
+            PendingHandler::MouseDrag(cb) => el.on_canvas_mouse_drag(cb),
+            PendingHandler::MouseUp(cb) => el.on_canvas_mouse_up(cb),
             PendingHandler::Action(_) => {
                 panic!(
                     "on:action handler reached PendingHandler::apply_to — \

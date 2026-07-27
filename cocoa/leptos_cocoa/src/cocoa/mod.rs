@@ -19,6 +19,7 @@ pub(crate) mod directives;
 pub mod element;
 pub(crate) mod error_guard;
 pub mod menu;
+pub mod panels;
 pub mod split;
 pub mod toolbar;
 pub mod window;
@@ -26,8 +27,9 @@ pub mod window;
 pub use attr::{IntoMaybeReactive, MaybeReactive};
 pub use bind::{BindAttribute, IntoSignal};
 pub use element::{
-    button, grid, hstack, label, stack, text_field, vstack,
+    button, canvas, grid, hstack, label, stack, text_field, vstack,
 };
+pub use panels::{open_panel, save_panel};
 pub use window::{window, Window};
 
 // Convenient passthrough of the most common style enums so users
